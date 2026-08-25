@@ -551,6 +551,7 @@ export default function App() {
           accountHeads={accountHeads}
           incomes={incomes}
           expenses={expenses}
+          currentMosque={mosque}
           language={language}
           onAddAccount={handleAddAccount}
           onAddAccountHead={handleAddAccountHead}

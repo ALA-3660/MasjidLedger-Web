@@ -493,8 +493,12 @@ export const DonationView: React.FC<DonationViewProps> = ({
     return filteredJumaDonations.reduce((s, d) => s + (d.amount || 0), 0);
   }, [filteredJumaDonations]);
 
+  const isAnyPrintModalOpen = isPrintReportOpen || isPrintBoxListOpen || isPrintJumaReportOpen;
+
   return (
     <div className="space-y-5 max-w-7xl mx-auto pb-12">
+      {/* Main Interactive Screen Content (Hidden in Print Mode when any Print Modal is open) */}
+      <div className={isAnyPrintModalOpen ? 'space-y-5 print:hidden' : 'space-y-5'}>
       {/* Top Header & Sub-tab Switcher */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs">
         <div className="flex items-center space-x-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 overflow-x-auto">
@@ -1331,6 +1335,7 @@ export const DonationView: React.FC<DonationViewProps> = ({
           </div>
         </div>
       )}
+      </div>
 
       {/* ---------------- NEW DONATION MODAL ---------------- */}
       {isDonationModalOpen && (
@@ -2151,10 +2156,10 @@ export const DonationView: React.FC<DonationViewProps> = ({
 
       {/* ---------------- 4. PRINT-READY DONATION BOX COLLECTION REPORT MODAL ---------------- */}
       {isPrintReportOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl max-w-5xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[96vh]">
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-150 report-modal-print-wrapper print:static print:inset-auto print:p-0 print:m-0 print:w-full print:h-auto print:bg-white print:overflow-visible print:block print:z-auto">
+          <div className="bg-white rounded-2xl max-w-5xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[96vh] report-modal-print-card print:static print:w-full print:max-w-none print:h-auto print:max-h-none print:overflow-visible print:border-none print:shadow-none print:rounded-none print:m-0 print:p-0">
             {/* Top Toolbar */}
-            <div className="p-4 bg-slate-900 text-white flex items-center justify-between print:hidden">
+            <div className="p-4 bg-slate-900 text-white flex items-center justify-between print:hidden print-controls-bar">
               <div className="flex items-center space-x-2">
                 <Printer className="w-5 h-5 text-teal-400" />
                 <h3 className="font-bold text-sm">
@@ -2181,7 +2186,7 @@ export const DonationView: React.FC<DonationViewProps> = ({
             </div>
 
             {/* Document Body (Printable) */}
-            <div className="p-6 sm:p-8 overflow-y-auto flex-1 bg-white text-slate-900 space-y-5 font-sans">
+            <div className="p-6 sm:p-8 overflow-y-auto flex-1 bg-white text-slate-900 space-y-5 font-sans report-modal-print-body print:p-0 print:m-0 print:overflow-visible print:h-auto print:max-h-none print:block print:shadow-none">
               {/* Structured Official Report Header */}
               <div className="border-2 border-slate-900 bg-white p-3.5 rounded-none overflow-hidden">
                 <div className="grid grid-cols-12 items-center gap-3">
@@ -2331,7 +2336,7 @@ export const DonationView: React.FC<DonationViewProps> = ({
 
               {/* Amount In Words */}
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs">
-                <strong>কথায় (In Words):</strong> {numberToBanglaWords(filteredCollectionsTotal)} মাত্র
+                <strong>কথায় (In Words):</strong> {numberToBanglaWords(filteredCollectionsTotal)}
               </div>
 
               {/* Official Approval Signatures Section */}
@@ -2403,10 +2408,10 @@ export const DonationView: React.FC<DonationViewProps> = ({
 
       {/* ---------------- 5. PRINT-READY DONATION BOXES MASTER LIST MODAL ---------------- */}
       {isPrintBoxListOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl max-w-5xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[96vh]">
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-150 report-modal-print-wrapper print:static print:inset-auto print:p-0 print:m-0 print:w-full print:h-auto print:bg-white print:overflow-visible print:block print:z-auto">
+          <div className="bg-white rounded-2xl max-w-5xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[96vh] report-modal-print-card print:static print:w-full print:max-w-none print:h-auto print:max-h-none print:overflow-visible print:border-none print:shadow-none print:rounded-none print:m-0 print:p-0">
             {/* Top Toolbar */}
-            <div className="p-4 bg-slate-900 text-white flex items-center justify-between print:hidden">
+            <div className="p-4 bg-slate-900 text-white flex items-center justify-between print:hidden print-controls-bar">
               <div className="flex items-center space-x-2">
                 <Printer className="w-5 h-5 text-teal-400" />
                 <h3 className="font-bold text-sm">
@@ -2433,7 +2438,7 @@ export const DonationView: React.FC<DonationViewProps> = ({
             </div>
 
             {/* Document Body (Printable) */}
-            <div className="p-6 sm:p-8 overflow-y-auto flex-1 bg-white text-slate-900 space-y-5 font-sans">
+            <div className="p-6 sm:p-8 overflow-y-auto flex-1 bg-white text-slate-900 space-y-5 font-sans report-modal-print-body print:p-0 print:m-0 print:overflow-visible print:h-auto print:max-h-none print:block print:shadow-none">
               {/* Structured Official Report Header */}
               <div className="border-2 border-slate-900 bg-white p-3.5 rounded-none overflow-hidden">
                 <div className="grid grid-cols-12 items-center gap-3">
@@ -2673,10 +2678,10 @@ export const DonationView: React.FC<DonationViewProps> = ({
 
       {/* ---------------- 6. PRINT-READY JUMA COLLECTION REGISTER REPORT MODAL ---------------- */}
       {isPrintJumaReportOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl max-w-5xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[96vh]">
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-150 report-modal-print-wrapper print:static print:inset-auto print:p-0 print:m-0 print:w-full print:h-auto print:bg-white print:overflow-visible print:block print:z-auto">
+          <div className="bg-white rounded-2xl max-w-5xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[96vh] report-modal-print-card print:static print:w-full print:max-w-none print:h-auto print:max-h-none print:overflow-visible print:border-none print:shadow-none print:rounded-none print:m-0 print:p-0">
             {/* Top Toolbar */}
-            <div className="p-4 bg-slate-900 text-white flex items-center justify-between print:hidden">
+            <div className="p-4 bg-slate-900 text-white flex items-center justify-between print:hidden print-controls-bar">
               <div className="flex items-center space-x-2">
                 <Printer className="w-5 h-5 text-emerald-400" />
                 <h3 className="font-bold text-sm">
@@ -2703,7 +2708,7 @@ export const DonationView: React.FC<DonationViewProps> = ({
             </div>
 
             {/* Document Body (Printable) */}
-            <div className="p-6 sm:p-8 overflow-y-auto flex-1 bg-white text-slate-900 space-y-5 font-sans">
+            <div className="p-6 sm:p-8 overflow-y-auto flex-1 bg-white text-slate-900 space-y-5 font-sans report-modal-print-body print:p-0 print:m-0 print:overflow-visible print:h-auto print:max-h-none print:block print:shadow-none">
               {/* Structured Official Report Header */}
               <div className="border-2 border-slate-900 bg-white p-3.5 rounded-none overflow-hidden">
                 <div className="grid grid-cols-12 items-center gap-3">
@@ -2841,7 +2846,7 @@ export const DonationView: React.FC<DonationViewProps> = ({
 
               {/* Amount In Words */}
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs">
-                <strong>কথায় (In Words):</strong> {numberToBanglaWords(filteredJumaTotal)} মাত্র
+                <strong>কথায় (In Words):</strong> {numberToBanglaWords(filteredJumaTotal)}
               </div>
 
               {/* Official Approval Signatures Section */}
