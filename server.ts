@@ -409,8 +409,84 @@ app.put('/api/v1/auth/profile', authenticate, (req: AuthRequest, res: Response) 
   res.json({ success: true, data: user, message: 'প্রোফাইল সফলভাবে আপডেট করা হয়েছে।' });
 });
 
+// Helper to extract Google Drive File ID from various link formats
+function extractGoogleDriveFileId(url: string): string | null {
+  if (!url || typeof url !== 'string') return null;
+  const trimmed = url.trim();
+  const patterns = [
+    /\/file\/d\/([a-zA-Z0-9_-]+)/,
+    /\/d\/([a-zA-Z0-9_-]+)/,
+    /[?&]id=([a-zA-Z0-9_-]+)/,
+    /\/open\?id=([a-zA-Z0-9_-]+)/,
+    /\/uc\?.*id=([a-zA-Z0-9_-]+)/,
+  ];
+  for (const p of patterns) {
+    const match = trimmed.match(p);
+    if (match && match[1]) return match[1];
+  }
+  if (/^[a-zA-Z0-9_-]{25,45}$/.test(trimmed)) {
+    return trimmed;
+  }
+  return null;
+}
+
+// Helper to fetch image from Google Drive
+async function fetchGoogleDriveImage(fileId: string): Promise<{ buffer: Buffer; mimeType: string } | null> {
+  const downloadUrls = [
+    `https://lh3.googleusercontent.com/d/${fileId}=w1200`,
+    `https://drive.google.com/uc?export=download&id=${fileId}`,
+    `https://drive.usercontent.google.com/download?id=${fileId}&export=download`,
+  ];
+
+  for (const url of downloadUrls) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 9000);
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+        },
+        redirect: 'follow',
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) continue;
+
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('text/html')) continue;
+
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+
+      if (buffer.length < 100) continue;
+      if (buffer.length > 8 * 1024 * 1024) continue;
+
+      let mimeType = contentType.split(';')[0].trim();
+      if (!mimeType.startsWith('image/')) {
+        if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
+          mimeType = 'image/png';
+        } else if (buffer[0] === 0xFF && buffer[1] === 0xD8) {
+          mimeType = 'image/jpeg';
+        } else if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46) {
+          mimeType = 'image/webp';
+        } else {
+          continue;
+        }
+      }
+
+      return { buffer, mimeType };
+    } catch (e) {
+      console.warn(`[GDrive Fetch] Failed on ${url}:`, e);
+    }
+  }
+
+  return null;
+}
+
 // ==========================================
-// 2. MOSQUE ENDPOINTS
+// 2. MOSQUE ENDPOINTS & BRANDING
 // ==========================================
 app.get('/api/v1/mosques', authenticate, (req: AuthRequest, res: Response) => {
   if (req.user?.role !== 'SUPER_ADMIN') {
@@ -423,15 +499,571 @@ app.get('/api/v1/mosques/current', authenticate, (req: AuthRequest, res: Respons
   res.json({ success: true, data: req.currentMosque });
 });
 
+// Serve mosque official logo directly as binary image asset
+app.get('/api/v1/mosques/:mosqueId/branding/logo', (req: Request, res: Response) => {
+  const { mosqueId } = req.params;
+  const mosque = db.mosques.find(m => m.id === mosqueId);
+  if (!mosque) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'মসজিদ পাওয়া যায়নি।' } });
+  }
+
+  // 1. Check if mosque has a stored uploaded file asset
+  if (mosque.logoAssetId) {
+    const file = db.uploadedFiles.find(f => f.id === mosque.logoAssetId);
+    if (file && file.url) {
+      if (file.url.startsWith('data:')) {
+        const matches = file.url.match(/^data:([^;]+);base64,(.+)$/);
+        if (matches) {
+          const mimeType = matches[1] || 'image/png';
+          const buffer = Buffer.from(matches[2], 'base64');
+          res.setHeader('Content-Type', mimeType);
+          res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+          res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+          return res.send(buffer);
+        }
+      }
+    }
+  }
+
+  // 2. Check if logoUrl is a data URI
+  if (mosque.logoUrl && mosque.logoUrl.startsWith('data:')) {
+    const matches = mosque.logoUrl.match(/^data:([^;]+);base64,(.+)$/);
+    if (matches) {
+      const mimeType = matches[1] || 'image/png';
+      const buffer = Buffer.from(matches[2], 'base64');
+      res.setHeader('Content-Type', mimeType);
+      res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      return res.send(buffer);
+    }
+  }
+
+  // 3. Check if logoUrl is external URL (e.g. Unsplash preset)
+  if (mosque.logoUrl && (mosque.logoUrl.startsWith('http://') || mosque.logoUrl.startsWith('https://'))) {
+    if (!mosque.logoUrl.includes('/branding/logo')) {
+      return res.redirect(302, mosque.logoUrl);
+    }
+  }
+
+  // 4. Default Clean SVG Placeholder fallback (never broken image)
+  const defaultSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+    <rect width="128" height="128" rx="24" fill="#F1F5F9"/>
+    <path d="M64 28L88 48V100H40V48L64 28Z" fill="#CBD5E1"/>
+    <path d="M64 20C65.5 20 67 21 67 22.5V28H61V22.5C61 21 62.5 20 64 20Z" fill="#3B82F6"/>
+    <circle cx="64" cy="16" r="3" fill="#3B82F6"/>
+    <path d="M54 100V70C54 64.5 58.5 60 64 60C69.5 60 74 64.5 74 70V100" stroke="#0F172A" stroke-width="4" stroke-linecap="round"/>
+  </svg>`;
+
+  res.setHeader('Content-Type', 'image/svg+xml');
+  res.setHeader('Cache-Control', 'public, max-age=600');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  return res.send(defaultSvg);
+});
+
+// Serve uploaded file binary by ID
+app.get('/api/v1/files/:fileId', (req: Request, res: Response) => {
+  const file = db.uploadedFiles.find(f => f.id === req.params.fileId);
+  if (!file) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ফাইল পাওয়া যায়নি।' } });
+  }
+
+  if (file.url.startsWith('data:')) {
+    const matches = file.url.match(/^data:([^;]+);base64,(.+)$/);
+    if (matches) {
+      const mimeType = matches[1] || file.fileType || 'application/octet-stream';
+      const buffer = Buffer.from(matches[2], 'base64');
+      res.setHeader('Content-Type', mimeType);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      return res.send(buffer);
+    }
+  }
+
+  res.redirect(302, file.url);
+});
+
 app.put('/api/v1/mosques/current', authenticate, requirePermission('MANAGE_SETTINGS'), (req: AuthRequest, res: Response) => {
   const m = req.currentMosque!;
-  Object.assign(m, req.body, { updatedAt: new Date().toISOString() });
+  const body = req.body;
+
+  const isChangingPresidentSig = body.presidentSignatureUrl !== undefined && body.presidentSignatureUrl !== m.presidentSignatureUrl;
+  const isChangingSecretarySig = body.secretarySignatureUrl !== undefined && body.secretarySignatureUrl !== m.secretarySignatureUrl;
+  const isChangingLogo = body.logoUrl !== undefined && body.logoUrl !== m.logoUrl;
+
+  // Security Check: Only SUPER_ADMIN and MOSQUE_ADMIN can modify official signatures or logo
+  if (isChangingPresidentSig || isChangingSecretarySig || isChangingLogo) {
+    if (req.user?.role !== 'SUPER_ADMIN' && req.user?.role !== 'MOSQUE_ADMIN') {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: 'PERMISSION_DENIED',
+          message: 'লোগো ও অনুমোদিত স্বাক্ষর পরিবর্তন বা মুছে ফেলার অনুমতি শুধুমাত্র সুপার অ্যাডমিন এবং মসজিদ অ্যাডমিনের রয়েছে।'
+        }
+      });
+    }
+  }
+
+  // Track logo changes
+  if (isChangingLogo) {
+    const oldLogo = m.logoUrl;
+    const newLogo = body.logoUrl;
+    if (!oldLogo && newLogo) {
+      db.logAudit(
+        m.id,
+        req.user!.id,
+        req.user!.name,
+        req.user!.role,
+        'MOSQUE_LOGO_ADDED',
+        'MOSQUE_SETTINGS',
+        'মসজিদের নতুন অফিশিয়াল লোগো যুক্ত করা হয়েছে',
+        m.id,
+        req.ip,
+        { previousState: 'NONE', newState: 'CONFIGURED', status: 'SUCCESS' }
+      );
+    } else if (oldLogo && newLogo) {
+      db.logAudit(
+        m.id,
+        req.user!.id,
+        req.user!.name,
+        req.user!.role,
+        'MOSQUE_LOGO_UPDATED',
+        'MOSQUE_SETTINGS',
+        'মসজিদের অফিশিয়াল লোগো পরিবর্তন ও আপডেট করা হয়েছে',
+        m.id,
+        req.ip,
+        { previousState: 'CONFIGURED', newState: 'UPDATED', status: 'SUCCESS' }
+      );
+    } else if (oldLogo && !newLogo) {
+      db.logAudit(
+        m.id,
+        req.user!.id,
+        req.user!.name,
+        req.user!.role,
+        'MOSQUE_LOGO_REMOVED',
+        'MOSQUE_SETTINGS',
+        'মসজিদের সংরক্ষিত অফিশিয়াল লোগো মুছে ফেলা হয়েছে',
+        m.id,
+        req.ip,
+        { previousState: 'CONFIGURED', newState: 'REMOVED', status: 'SUCCESS' }
+      );
+      m.logoAssetId = undefined;
+      m.logoMetadata = undefined;
+    }
+  }
+
+  // Track president signature changes
+  if (isChangingPresidentSig) {
+    const oldSig = m.presidentSignatureUrl;
+    const newSig = body.presidentSignatureUrl;
+    if (!oldSig && newSig) {
+      db.logAudit(
+        m.id,
+        req.user!.id,
+        req.user!.name,
+        req.user!.role,
+        'PRESIDENT_SIGNATURE_ADDED',
+        'MOSQUE_SETTINGS',
+        'সভাপতির নতুন অনুমোদিত ডিজিটাল স্বাক্ষর আপলোড ও যুক্ত করা হয়েছে',
+        m.id,
+        req.ip,
+        { previousState: 'NONE', newState: 'CONFIGURED', status: 'SUCCESS' }
+      );
+    } else if (oldSig && newSig) {
+      db.logAudit(
+        m.id,
+        req.user!.id,
+        req.user!.name,
+        req.user!.role,
+        'PRESIDENT_SIGNATURE_UPDATED',
+        'MOSQUE_SETTINGS',
+        'সভাপতির অনুমোদিত ডিজিটাল স্বাক্ষর পরিবর্তন ও আপডেট করা হয়েছে',
+        m.id,
+        req.ip,
+        { previousState: 'CONFIGURED', newState: 'UPDATED', status: 'SUCCESS' }
+      );
+    } else if (oldSig && !newSig) {
+      db.logAudit(
+        m.id,
+        req.user!.id,
+        req.user!.name,
+        req.user!.role,
+        'PRESIDENT_SIGNATURE_REMOVED',
+        'MOSQUE_SETTINGS',
+        'সভাপতির সংরক্ষিত ডিজিটাল স্বাক্ষর মুছে ফেলা হয়েছে (রশিদ ও রিপোর্টে খালি স্বাক্ষর লাইন প্রযোজ্য)',
+        m.id,
+        req.ip,
+        { previousState: 'CONFIGURED', newState: 'REMOVED', status: 'SUCCESS' }
+      );
+    }
+  }
+
+  // Track secretary signature changes
+  if (isChangingSecretarySig) {
+    const oldSig = m.secretarySignatureUrl;
+    const newSig = body.secretarySignatureUrl;
+    if (!oldSig && newSig) {
+      db.logAudit(
+        m.id,
+        req.user!.id,
+        req.user!.name,
+        req.user!.role,
+        'SECRETARY_SIGNATURE_ADDED',
+        'MOSQUE_SETTINGS',
+        'সেক্রেটারি / মোতাওয়াল্লীর নতুন অনুমোদিত ডিজিটাল স্বাক্ষর আপলোড ও যুক্ত করা হয়েছে',
+        m.id,
+        req.ip,
+        { previousState: 'NONE', newState: 'CONFIGURED', status: 'SUCCESS' }
+      );
+    } else if (oldSig && newSig) {
+      db.logAudit(
+        m.id,
+        req.user!.id,
+        req.user!.name,
+        req.user!.role,
+        'SECRETARY_SIGNATURE_UPDATED',
+        'MOSQUE_SETTINGS',
+        'সেক্রেটারি / মোতাওয়াল্লীর অনুমোদিত ডিজিটাল স্বাক্ষর পরিবর্তন ও আপডেট করা হয়েছে',
+        m.id,
+        req.ip,
+        { previousState: 'CONFIGURED', newState: 'UPDATED', status: 'SUCCESS' }
+      );
+    } else if (oldSig && !newSig) {
+      db.logAudit(
+        m.id,
+        req.user!.id,
+        req.user!.name,
+        req.user!.role,
+        'SECRETARY_SIGNATURE_REMOVED',
+        'MOSQUE_SETTINGS',
+        'সেক্রেটারি / মোতাওয়াল্লীর সংরক্ষিত ডিজিটাল স্বাক্ষর মুছে ফেলা হয়েছে (রশিদ ও রিপোর্টে খালি স্বাক্ষর লাইন প্রযোজ্য)',
+        m.id,
+        req.ip,
+        { previousState: 'CONFIGURED', newState: 'REMOVED', status: 'SUCCESS' }
+      );
+    }
+  }
+
+  Object.assign(m, body, { updatedAt: new Date().toISOString() });
   db.save();
 
-  db.logAudit(m.id, req.user!.id, req.user!.name, req.user!.role, 'SETTINGS_CHANGE', 'MOSQUE', 'মসজিদের তথ্য আপডেট করা হয়েছে');
+  if (!isChangingPresidentSig && !isChangingSecretarySig && !isChangingLogo) {
+    db.logAudit(m.id, req.user!.id, req.user!.name, req.user!.role, 'SETTINGS_CHANGE', 'MOSQUE', 'মসজিদের সাধারণ তথ্য ও সেটিংস আপডেট করা হয়েছে');
+  }
+
   realtime.broadcastToMosque(m.id, 'MOSQUE_SETTINGS_UPDATED', m, { senderId: req.user!.id });
 
-  res.json({ success: true, data: m, message: 'মসজিদ সেটিংস সফলভাবে সংরক্ষিত হয়েছে।' });
+  res.json({ success: true, data: m, message: 'মসজিদ সেটিংস, লোগো ও অনুমোদিত স্বাক্ষর সফলভাবে সংরক্ষিত হয়েছে।' });
+});
+
+// Dedicated Endpoint for Direct Logo Upload & Management
+app.post('/api/v1/mosques/current/branding/logo', authenticate, requirePermission('MANAGE_SETTINGS'), (req: AuthRequest, res: Response) => {
+  if (req.user?.role !== 'SUPER_ADMIN' && req.user?.role !== 'MOSQUE_ADMIN') {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: 'FORBIDDEN',
+        message: 'লোগো পরিবর্তন বা আপলোড করার অনুমতি শুধুমাত্র সুপার অ্যাডমিন এবং মসজিদ অ্যাডমিনের রয়েছে।'
+      }
+    });
+  }
+
+  const { fileName, fileType, mimeType, base64Data } = req.body;
+  const m = req.currentMosque!;
+
+  if (!base64Data) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'MISSING_FILE', message: 'ফাইলের ডাটা প্রদান আবশ্যক।' }
+    });
+  }
+
+  const resolvedMime = mimeType || fileType || 'image/png';
+  const allowedMimes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
+  if (!allowedMimes.includes(resolvedMime.toLowerCase())) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_FORMAT', message: 'শুধুমাত্র PNG, JPG, JPEG বা WEBP ফরম্যাটের ছবি আপলোড করা যাবে।' }
+    });
+  }
+
+  const fileSize = Math.round((base64Data.length * 3) / 4);
+  if (fileSize > 5 * 1024 * 1024) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'FILE_TOO_LARGE', message: 'ফাইলের আকার সর্বোচ্চ ৫ মেগাবাইট (5MB) হতে পারে।' }
+    });
+  }
+
+  const fileId = `logo-${m.id}-${Date.now()}`;
+  const dataUrl = base64Data.startsWith('data:') ? base64Data : `data:${resolvedMime};base64,${base64Data}`;
+
+  const uploadedAsset = {
+    id: fileId,
+    mosqueId: m.id,
+    fileName: fileName || `${m.code}-logo.png`,
+    fileType: resolvedMime,
+    fileSize,
+    url: dataUrl,
+    uploadedBy: req.user!.id,
+    uploadedAt: new Date().toISOString(),
+  };
+
+  db.uploadedFiles.push(uploadedAsset);
+
+  const oldLogo = m.logoUrl;
+  const versionedUrl = `/api/v1/mosques/${m.id}/branding/logo?v=${Date.now()}`;
+
+  m.logoAssetId = fileId;
+  m.logoUrl = versionedUrl;
+  m.logoMetadata = {
+    fileName: fileName || `${m.code}-logo.png`,
+    mimeType: resolvedMime,
+    fileSize,
+    uploadedAt: new Date().toISOString(),
+    uploadedBy: req.user!.name,
+    source: 'UPLOAD',
+  };
+  m.updatedAt = new Date().toISOString();
+
+  db.save();
+
+  const auditAction = !oldLogo ? 'MOSQUE_LOGO_ADDED' : 'MOSQUE_LOGO_UPDATED';
+  const auditDesc = !oldLogo
+    ? 'মসজিদের নতুন অফিশিয়াল লোগো আপলোড ও কেন্দ্রীয়ভাবে সংরক্ষণ করা হয়েছে'
+    : 'মসজিদের অফিশিয়াল লোগো প্রতিস্থাপন ও আপডেট করা হয়েছে';
+
+  db.logAudit(
+    m.id,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    auditAction,
+    'MOSQUE_SETTINGS',
+    auditDesc,
+    m.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(m.id, 'MOSQUE_SETTINGS_UPDATED', m, { senderId: req.user!.id });
+
+  res.json({
+    success: true,
+    data: m,
+    message: 'মসজিদের অফিসিয়াল লোগো সফলভাবে আপলোড ও সংরক্ষণ করা হয়েছে।'
+  });
+});
+
+// Dedicated Endpoint for Google Drive Logo Import
+app.post('/api/v1/mosques/current/branding/import-drive', authenticate, requirePermission('MANAGE_SETTINGS'), async (req: AuthRequest, res: Response) => {
+  if (req.user?.role !== 'SUPER_ADMIN' && req.user?.role !== 'MOSQUE_ADMIN') {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: 'FORBIDDEN',
+        message: 'লোগো পরিবর্তন বা ইমপোর্ট করার অনুমতি শুধুমাত্র সুপার অ্যাডমিন এবং মসজিদ অ্যাডমিনের রয়েছে।'
+      }
+    });
+  }
+
+  const { driveUrl } = req.body;
+  const m = req.currentMosque!;
+
+  if (!driveUrl || typeof driveUrl !== 'string') {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'MISSING_URL', message: 'Google Drive লিংক প্রদান আবশ্যক।' }
+    });
+  }
+
+  const fileId = extractGoogleDriveFileId(driveUrl);
+  if (!fileId) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: 'INVALID_DRIVE_URL',
+        message: 'অনুগ্রহ করে একটি সঠিক Google Drive ফাইল লিংক দিন (যেমন: https://drive.google.com/file/d/...)।'
+      }
+    });
+  }
+
+  const fetched = await fetchGoogleDriveImage(fileId);
+  if (!fetched) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: 'GOOGLE_DRIVE_FETCH_FAILED',
+        message: 'Google Drive লিংক থেকে লোগো নেওয়া সম্ভব হয়নি। অনুগ্রহ করে ফাইলটির এক্সেস "Anyone with the link (Viewer)" করা আছে কিনা নিশ্চিত করুন অথবা ছবিটি সরাসরি Upload করুন।'
+      }
+    });
+  }
+
+  const base64Data = fetched.buffer.toString('base64');
+  const assetId = `gdrive-logo-${m.id}-${Date.now()}`;
+  const dataUrl = `data:${fetched.mimeType};base64,${base64Data}`;
+
+  const uploadedAsset = {
+    id: assetId,
+    mosqueId: m.id,
+    fileName: `gdrive-imported-logo.${fetched.mimeType.split('/')[1] || 'png'}`,
+    fileType: fetched.mimeType,
+    fileSize: fetched.buffer.length,
+    url: dataUrl,
+    uploadedBy: req.user!.id,
+    uploadedAt: new Date().toISOString(),
+  };
+
+  db.uploadedFiles.push(uploadedAsset);
+
+  const versionedUrl = `/api/v1/mosques/${m.id}/branding/logo?v=${Date.now()}`;
+  m.logoAssetId = assetId;
+  m.logoUrl = versionedUrl;
+  m.logoMetadata = {
+    fileName: uploadedAsset.fileName,
+    mimeType: fetched.mimeType,
+    fileSize: fetched.buffer.length,
+    uploadedAt: new Date().toISOString(),
+    uploadedBy: req.user!.name,
+    source: 'GOOGLE_DRIVE',
+    originalDriveUrl: driveUrl,
+  };
+  m.updatedAt = new Date().toISOString();
+
+  db.save();
+
+  db.logAudit(
+    m.id,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'MOSQUE_LOGO_UPDATED',
+    'MOSQUE_SETTINGS',
+    'Google Drive থেকে নতুন লোগো সফলভাবে ইমপোর্ট ও সংরক্ষণ করা হয়েছে',
+    m.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(m.id, 'MOSQUE_SETTINGS_UPDATED', m, { senderId: req.user!.id });
+
+  res.json({
+    success: true,
+    data: m,
+    message: 'Google Drive থেকে লোগো সফলভাবে ইমপোর্ট ও সংরক্ষণ করা হয়েছে।'
+  });
+});
+
+// Dedicated Endpoint to Remove Mosque Logo
+app.delete('/api/v1/mosques/current/branding/logo', authenticate, requirePermission('MANAGE_SETTINGS'), (req: AuthRequest, res: Response) => {
+  if (req.user?.role !== 'SUPER_ADMIN' && req.user?.role !== 'MOSQUE_ADMIN') {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: 'FORBIDDEN',
+        message: 'লোগো মুছে ফেলার অনুমতি শুধুমাত্র সুপার অ্যাডমিন এবং মসজিদ অ্যাডমিনের রয়েছে।'
+      }
+    });
+  }
+
+  const m = req.currentMosque!;
+  m.logoUrl = '';
+  m.logoAssetId = undefined;
+  m.logoMetadata = undefined;
+  m.updatedAt = new Date().toISOString();
+
+  db.save();
+
+  db.logAudit(
+    m.id,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'MOSQUE_LOGO_REMOVED',
+    'MOSQUE_SETTINGS',
+    'মসজিদের সংরক্ষিত অফিশিয়াল লোগো মুছে ফেলা হয়েছে',
+    m.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(m.id, 'MOSQUE_SETTINGS_UPDATED', m, { senderId: req.user!.id });
+
+  res.json({
+    success: true,
+    data: m,
+    message: 'মসজিদের লোগো সফলভাবে মুছে ফেলা হয়েছে।'
+  });
+});
+
+// Dedicated Endpoint for Signatures
+app.put('/api/v1/mosques/current/signatures', authenticate, (req: AuthRequest, res: Response) => {
+  if (req.user?.role !== 'SUPER_ADMIN' && req.user?.role !== 'MOSQUE_ADMIN') {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: 'FORBIDDEN',
+        message: 'অনুমোদিত স্বাক্ষর পরিবর্তন করার অনুমতি শুধুমাত্র সুপার অ্যাডমিন এবং মসজিদ অ্যাডমিনের রয়েছে।'
+      }
+    });
+  }
+
+  const m = req.currentMosque!;
+  const { presidentSignatureUrl, secretarySignatureUrl } = req.body;
+
+  if (presidentSignatureUrl !== undefined && presidentSignatureUrl !== m.presidentSignatureUrl) {
+    const oldSig = m.presidentSignatureUrl;
+    m.presidentSignatureUrl = presidentSignatureUrl || '';
+    const action = !oldSig && presidentSignatureUrl ? 'PRESIDENT_SIGNATURE_ADDED' : !presidentSignatureUrl ? 'PRESIDENT_SIGNATURE_REMOVED' : 'PRESIDENT_SIGNATURE_UPDATED';
+    db.logAudit(
+      m.id,
+      req.user!.id,
+      req.user!.name,
+      req.user!.role,
+      action,
+      'MOSQUE_SETTINGS',
+      action === 'PRESIDENT_SIGNATURE_ADDED'
+        ? 'সভাপতির নতুন অনুমোদিত ডিজিটাল স্বাক্ষর আপলোড ও যুক্ত করা হয়েছে'
+        : action === 'PRESIDENT_SIGNATURE_REMOVED'
+        ? 'সভাপতির সংরক্ষিত ডিজিটাল স্বাক্ষর মুছে ফেলা হয়েছে'
+        : 'সভাপতির অনুমোদিত ডিজিটাল স্বাক্ষর পরিবর্তন করা হয়েছে',
+      m.id,
+      req.ip
+    );
+  }
+
+  if (secretarySignatureUrl !== undefined && secretarySignatureUrl !== m.secretarySignatureUrl) {
+    const oldSig = m.secretarySignatureUrl;
+    m.secretarySignatureUrl = secretarySignatureUrl || '';
+    const action = !oldSig && secretarySignatureUrl ? 'SECRETARY_SIGNATURE_ADDED' : !secretarySignatureUrl ? 'SECRETARY_SIGNATURE_REMOVED' : 'SECRETARY_SIGNATURE_UPDATED';
+    db.logAudit(
+      m.id,
+      req.user!.id,
+      req.user!.name,
+      req.user!.role,
+      action,
+      'MOSQUE_SETTINGS',
+      action === 'SECRETARY_SIGNATURE_ADDED'
+        ? 'সেক্রেটারি / মোতাওয়াল্লীর নতুন অনুমোদিত ডিজিটাল স্বাক্ষর আপলোড ও যুক্ত করা হয়েছে'
+        : action === 'SECRETARY_SIGNATURE_REMOVED'
+        ? 'সেক্রেটারি / মোতাওয়াল্লীর সংরক্ষিত ডিজিটাল স্বাক্ষর মুছে ফেলা হয়েছে'
+        : 'সেক্রেটারি / মোতাওয়াল্লীর অনুমোদিত ডিজিটাল স্বাক্ষর পরিবর্তন করা হয়েছে',
+      m.id,
+      req.ip
+    );
+  }
+
+  m.updatedAt = new Date().toISOString();
+  db.save();
+  realtime.broadcastToMosque(m.id, 'MOSQUE_SETTINGS_UPDATED', m, { senderId: req.user!.id });
+
+  res.json({
+    success: true,
+    data: {
+      presidentSignatureUrl: m.presidentSignatureUrl,
+      secretarySignatureUrl: m.secretarySignatureUrl,
+    },
+    message: 'অনুমোদিত স্বাক্ষর সফলভাবে সংরক্ষিত হয়েছে।'
+  });
 });
 
 // Public transparency portal
@@ -2171,7 +2803,14 @@ app.post('/api/v1/ai/advisor', authenticate, async (req: AuthRequest, res: Respo
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (apiKey) {
-      const ai = new GoogleGenAI({ apiKey });
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          },
+        },
+      });
       const prompt = `
 You are the AI Financial Advisor & Mosque Auditor of "MasjidLedger" (মসজিদলেজার).
 Answer the user query precisely, respectfully, and constructively based strictly on the provided financial context of "${mosque.nameBn}".
@@ -2189,11 +2828,24 @@ Provide a structured, clear financial breakdown, highlighting:
 4. ক্যাশ ও ব্যাংক স্থিতি
 5. মসজিদ কমিটির জন্য গুরুত্বপূর্ণ সুপারিশ
 `;
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt,
-      });
-      reply = response.text || '';
+      try {
+        const response = await ai.models.generateContent({
+          model: 'gemini-3.7-flash',
+          contents: prompt,
+        });
+        reply = response.text || '';
+      } catch (genErr) {
+        console.error('Gemini generateContent error, falling back to local audit calculation:', genErr);
+        reply = `**${mosque.nameBn} এর আর্থিক নিরীক্ষা সারসংক্ষেপ:**\n\n` +
+          `• **বর্তমান মোট ব্যালেন্স:** ৳ ${stats.currentBalance.toLocaleString('en-IN')}\n` +
+          `• **চলতি মাসের মোট আয়:** ৳ ${stats.monthlyIncome.toLocaleString('en-IN')}\n` +
+          `• **চলতি মাসের মোট ব্যয়:** ৳ ${stats.monthlyExpense.toLocaleString('en-IN')}\n` +
+          `• **নিট উদ্বৃত্ত (Surplus):** ৳ ${(stats.monthlyIncome - stats.monthlyExpense).toLocaleString('en-IN')}\n\n` +
+          `**পর্যবেক্ষণ ও বিশ্লেষণ:**\n` +
+          `১. আয়ের প্রধান খাত হলো জুমার সাধারণ দান ও দোকান ভাড়া থেকে নিয়মিত মাসিক আয়।\n` +
+          `২. ব্যয়ের মধ্যে সবচেয়ে বড় অংশ হলো বিদ্যুৎ বিল এবং মসজিদ রক্ষণাবেক্ষণ ব্যয়।\n` +
+          `৩. নগদ ক্যাশ তহবিলে ৳ ${stats.cashBalance.toLocaleString('en-IN')} রয়েছে, যা নিয়মিত ব্যাংকে জমা করার পরামর্শ দেওয়া হলো।`;
+      }
     } else {
       reply = `**${mosque.nameBn} এর আর্থিক নিরীক্ষা সারসংক্ষেপ:**\n\n` +
         `• **বর্তমান মোট ব্যালেন্স:** ৳ ${stats.currentBalance.toLocaleString('en-IN')}\n` +

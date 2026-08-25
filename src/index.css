@@ -2,74 +2,352 @@
 
 @layer base {
   :root {
-    --font-heading-bn: "Hind Siliguri", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    --font-body-bn: "Tiro Bangla", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    /* ============================================================
+       CENTRALIZED BANGLA TYPOGRAPHY TOKENS
+       ============================================================ */
+    --font-primary: "Hind Siliguri", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-secondary: "Baloo Da 2", system-ui, -apple-system, BlinkMacSystemFont, cursive, "Segoe UI", Roboto, sans-serif;
+    --font-print-body: "Tiro Bangla", system-ui, -apple-system, BlinkMacSystemFont, serif;
+    --font-arabic: "Amiri", "Traditional Arabic", "Scheherazade New", serif;
+
+    /* Semantic UI Aliases */
+    --font-sidebar: var(--font-primary);
+    --font-navigation: var(--font-primary);
+    --font-page-title: var(--font-primary);
+    --font-button: var(--font-primary);
+    --font-subheading: var(--font-secondary);
+    --font-form-label: var(--font-secondary);
+    --font-table-header: var(--font-secondary);
+    --font-table-data: var(--font-secondary);
+    --font-helper-text: var(--font-secondary);
+
+    /* Print Document Tokens */
+    --font-mosque-name: var(--font-primary);
+    --font-letterhead: var(--font-secondary);
+    --font-document-body: var(--font-print-body);
+    --font-arabic-bismillah: var(--font-arabic);
   }
 
   html {
-    font-family: var(--font-body-bn);
+    font-family: var(--font-secondary);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
   }
 
   body {
-    font-family: var(--font-body-bn);
+    font-family: var(--font-secondary);
     line-height: 1.6;
     letter-spacing: 0.01em;
+    font-size: 14px;
+    color: #0f172a; /* slate-900 */
   }
 
-  /* Bengali Heading Hierarchy (Hind Siliguri) */
-  h1, h2, h3, h4, h5, h6,
-  .font-heading,
-  .heading-bn,
-  [data-heading] {
-    font-family: var(--font-heading-bn);
-    letter-spacing: -0.01em;
-  }
-
-  h1 {
+  /* 1. Page Titles (Hind Siliguri) */
+  h1,
+  .page-title,
+  .font-title,
+  .font-page-title,
+  .modal-title {
+    font-family: var(--font-primary) !important;
     font-weight: 700;
+    letter-spacing: -0.015em;
+  }
+
+  /* 2. Subheadings & Section Headings (Baloo Da 2) */
+  h2, h3, h4, h5, h6,
+  .font-subheading,
+  .section-heading,
+  .card-heading,
+  .modal-subtitle {
+    font-family: var(--font-secondary) !important;
+    letter-spacing: -0.005em;
   }
 
   h2 {
-    font-weight: 600;
+    font-weight: 700;
+    font-size: 1.25rem;
+    line-height: 1.75rem;
   }
 
   h3 {
     font-weight: 600;
+    font-size: 1.1rem;
+    line-height: 1.5rem;
   }
 
   h4, h5, h6 {
-    font-weight: 500;
+    font-weight: 600;
+    font-size: 0.95rem;
+    line-height: 1.35rem;
   }
 
-  /* Form & UI Controls Inherit Body Typography */
-  input, select, textarea, button, optgroup, option {
-    font-family: inherit;
+  /* 3. Form Labels, Inputs & Controls (Baloo Da 2) */
+  label,
+  .form-label,
+  fieldset legend,
+  .input-label {
+    font-family: var(--font-secondary) !important;
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #334155; /* slate-700 */
+  }
+
+  input, select, textarea, optgroup, option {
+    font-family: var(--font-secondary);
+    font-size: 0.875rem;
+  }
+
+  /* 4. Table Headers & Table Data (Baloo Da 2) */
+  th,
+  .table-header,
+  thead th {
+    font-family: var(--font-secondary) !important;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    font-size: 0.825rem;
+  }
+
+  td,
+  .table-cell,
+  tbody td {
+    font-family: var(--font-secondary);
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+
+  /* 5. Primary Button & Navigation Elements (Hind Siliguri) */
+  button,
+  .btn-primary,
+  .btn-action,
+  .btn-nav,
+  .primary-button,
+  nav,
+  header,
+  .breadcrumb,
+  .nav-tabs {
+    font-family: var(--font-primary);
   }
 }
 
-/* Reusable Typography Utility Classes */
-.font-heading {
-  font-family: var(--font-heading-bn) !important;
+/* ============================================================
+   1. GLOBAL SIDEBAR TYPOGRAPHY (STRICT HIND SILIGURI)
+   ============================================================ */
+aside,
+#app-sidebar,
+.sidebar-root,
+[data-sidebar],
+.app-sidebar-container {
+  font-family: "Hind Siliguri", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
 }
 
-.font-body {
-  font-family: var(--font-body-bn) !important;
+aside *,
+#app-sidebar *,
+.sidebar-root *,
+[data-sidebar] *,
+.app-sidebar-container * {
+  font-family: "Hind Siliguri", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
 }
 
-.font-siliguri {
-  font-family: var(--font-heading-bn) !important;
+/* Sidebar Headings & Menu Item Readability */
+aside h3,
+#app-sidebar h3 {
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.05em !important;
+  color: #64748b !important; /* slate-500 */
 }
 
+aside button,
+#app-sidebar button {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.01em !important;
+}
+
+/* ============================================================
+   2. REUSABLE TYPOGRAPHY CLASSES & DESIGN TOKENS
+   ============================================================ */
+
+/* Primary UI & Navigation: Hind Siliguri */
+.font-primary,
+.font-hind-siliguri,
+.font-siliguri,
+.font-nav,
+.font-heading,
+.heading-bn,
+.font-button {
+  font-family: "Hind Siliguri", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+
+/* Subheadings, Forms, Tables, Helper/Small Text: Baloo Da 2 */
+.font-secondary,
+.font-baloo,
+.font-baloo-da-2,
+.font-subheading,
+.font-form-label,
+.font-table,
+.font-caption,
+.font-helper {
+  font-family: "Baloo Da 2", system-ui, -apple-system, BlinkMacSystemFont, cursive, "Segoe UI", Roboto, sans-serif !important;
+}
+
+/* Official Print Document Body: Tiro Bangla */
+.font-print-body,
+.font-document-body,
+.font-tiro-bangla,
 .font-tiro {
-  font-family: var(--font-body-bn) !important;
+  font-family: "Tiro Bangla", system-ui, -apple-system, BlinkMacSystemFont, serif !important;
+}
+
+/* Arabic Bismillah & Quranic text: Amiri */
+.font-arabic,
+.font-arabic-bismillah,
+.font-amiri {
+  font-family: "Amiri", "Traditional Arabic", "Scheherazade New", serif !important;
+}
+
+/* Print Letterhead Tokens */
+.font-mosque-name {
+  font-family: "Hind Siliguri", system-ui, -apple-system, BlinkMacSystemFont, sans-serif !important;
+}
+
+.font-letterhead {
+  font-family: "Baloo Da 2", system-ui, -apple-system, BlinkMacSystemFont, cursive, sans-serif !important;
 }
 
 /* Financial & Currency number support */
-.font-taka {
-  font-family: var(--font-heading-bn), system-ui, -apple-system, sans-serif;
+.font-taka,
+.font-currency,
+.font-numeric {
+  font-family: "Hind Siliguri", system-ui, -apple-system, sans-serif;
   font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Readability utilities for Bengali text */
+.text-readable-xs {
+  font-size: 11.5px;
+  line-height: 1.5;
+  font-family: "Baloo Da 2", sans-serif;
+}
+
+.text-readable-sm {
+  font-size: 13px;
+  line-height: 1.5;
+  font-family: "Baloo Da 2", sans-serif;
+}
+
+/* ============================================================
+   3. OFFICIAL PRINT DOCUMENTS ISOLATION (APPROVED STANDARD)
+   ============================================================ */
+.single-invoice-print-card,
+.print-document,
+.official-money-receipt,
+.official-expense-voucher,
+.official-report-sheet {
+  font-family: "Tiro Bangla", system-ui, serif;
+}
+
+.single-invoice-print-card .font-mosque-name,
+.official-money-receipt .font-mosque-name,
+.official-expense-voucher .font-mosque-name {
+  font-family: "Hind Siliguri", system-ui, sans-serif !important;
+}
+
+.single-invoice-print-card .font-letterhead,
+.official-money-receipt .font-letterhead,
+.official-expense-voucher .font-letterhead {
+  font-family: "Baloo Da 2", system-ui, cursive, sans-serif !important;
+}
+
+.single-invoice-print-card .font-arabic-bismillah,
+.official-money-receipt .font-arabic-bismillah,
+.official-expense-voucher .font-arabic-bismillah {
+  font-family: "Amiri", serif !important;
+}
+
+/* ============================================================
+   SINGLE INVOICE & VOUCHER PRINTING RULES
+   ============================================================ */
+@page {
+  size: A4 portrait;
+  margin: 10mm 12mm;
+}
+
+@media print {
+  html,
+  body,
+  #root {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* When an invoice/receipt modal is open, completely hide background app shell */
+  .app-shell-hidden-for-print {
+    display: none !important;
+  }
+
+  /* Single Invoice Modal Overlay Reset */
+  .single-invoice-print-wrapper {
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+    z-index: auto !important;
+    overflow: visible !important;
+  }
+
+  .single-invoice-print-card {
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    overflow: visible !important;
+  }
+
+  /* Single Invoice / Voucher Sheet Boundary */
+  .single-invoice-sheet {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-before: auto !important;
+    page-break-after: auto !important;
+    break-before: auto !important;
+    break-after: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+  }
+
+  /* Ensure screen-only controls, backdrops, and interactive elements are hidden */
+  .print-controls-bar,
+  .print\\:hidden {
+    display: none !important;
+  }
 }
 

@@ -66,21 +66,27 @@ class ApiService {
       headers['Authorization'] = `Bearer ${this.token}`;
     }
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+
     try {
       const response = await fetch(`/api/v1${endpoint}`, {
         ...options,
         headers,
+        signal: controller.signal,
       });
 
+      clearTimeout(timeoutId);
       const json = await response.json();
       return json;
     } catch (err: any) {
+      clearTimeout(timeoutId);
       console.error(`API Error on ${endpoint}:`, err);
       return {
         success: false,
         error: {
-          code: 'NETWORK_ERROR',
-          message: 'সার্ভারের সাথে সংযোগ স্থাপন করা সম্ভব হয়নি।',
+          code: err.name === 'AbortError' ? 'TIMEOUT_ERROR' : 'NETWORK_ERROR',
+          message: err.name === 'AbortError' ? 'সার্ভার অনুরোধের সময়সীমা পার হয়েছে (Timeout)।' : 'সার্ভারের সাথে সংযোগ স্থাপন করা সম্ভব হয়নি।',
         },
       };
     }
@@ -112,6 +118,41 @@ class ApiService {
   async getMosque(): Promise<Mosque | null> {
     const res = await this.request<Mosque>('/mosques/current');
     return res.data || null;
+  }
+
+  async updateMosqueSettings(data: Partial<Mosque>): Promise<Mosque> {
+    const res = await this.request<Mosque>('/mosques/current', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to update mosque settings');
+    return res.data!;
+  }
+
+  async uploadMosqueLogo(data: { fileName: string; fileType?: string; mimeType?: string; base64Data: string }): Promise<Mosque> {
+    const res = await this.request<Mosque>('/mosques/current/branding/logo', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'লোগো আপলোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async importMosqueLogoFromGoogleDrive(driveUrl: string): Promise<Mosque> {
+    const res = await this.request<Mosque>('/mosques/current/branding/import-drive', {
+      method: 'POST',
+      body: JSON.stringify({ driveUrl }),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'Google Drive থেকে লোগো ইমপোর্ট করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async deleteMosqueLogo(): Promise<Mosque> {
+    const res = await this.request<Mosque>('/mosques/current/branding/logo', {
+      method: 'DELETE',
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'লোগো মুছে ফেলতে ব্যর্থ হয়েছে');
+    return res.data;
   }
 
   async getDashboardStats(): Promise<DashboardStats | null> {

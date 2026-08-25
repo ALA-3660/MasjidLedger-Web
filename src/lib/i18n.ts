@@ -30,9 +30,9 @@ export const translations = {
     reports: 'রিপোর্ট সেন্টার',
     admin: 'প্রশাসন ও সেটিংস',
     users: 'ব্যবহারকারী ও রোল',
-    mosqueSettings: 'মসজিদ সেটিংস',
+    mosqueSettings: 'মসজিদ সেটিং',
     qrSettings: 'অনলাইন ও কিউআর দান',
-    auditLogs: 'অডিট লগ',
+    auditLogs: 'সিস্টেম ও আর্থিক অডিট লগ',
     aiAdvisor: 'এআই আর্থিক বিশ্লেষক',
     publicPortal: 'পাবলিক পেজ',
 
@@ -161,7 +161,7 @@ export const translations = {
     users: 'Users & Roles',
     mosqueSettings: 'Mosque Settings',
     qrSettings: 'Online & QR Donation',
-    auditLogs: 'Audit Logs',
+    auditLogs: 'System & Financial Audit Trail',
     aiAdvisor: 'AI Financial Advisor',
     publicPortal: 'Public Page',
 

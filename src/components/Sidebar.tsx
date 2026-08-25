@@ -142,14 +142,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       <aside
-        className={`fixed top-16 bottom-0 left-0 z-40 w-64 bg-white border-r border-slate-200 flex flex-col transition-transform duration-200 ease-in-out lg:translate-x-0 ${
+        id="app-sidebar"
+        data-sidebar="true"
+        className={`fixed top-16 bottom-0 left-0 z-40 w-64 bg-white border-r border-slate-200 flex flex-col font-siliguri transition-transform duration-200 ease-in-out lg:translate-x-0 ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        <div className="flex-1 overflow-y-auto px-3.5 py-4 space-y-5">
+        <div className="flex-1 overflow-y-auto px-3.5 py-4 space-y-5 font-siliguri">
           {navSections.map((sec, idx) => (
             <div key={idx} className="space-y-1">
-              <h3 className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+              <h3 className="px-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider font-siliguri">
                 {sec.title}
               </h3>
               <div className="space-y-1 mt-1">
@@ -161,22 +163,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       key={item.id}
                       id={`nav-item-${item.id}`}
                       onClick={() => handleTabClick(item.id)}
-                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-[13px] font-semibold font-siliguri transition-all cursor-pointer ${
                         isActive
-                          ? 'bg-blue-50 text-blue-700 shadow-2xs'
-                          : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                          ? 'bg-blue-50 text-blue-700 font-bold shadow-2xs'
+                          : 'text-slate-700 hover:bg-slate-50 hover:text-slate-900'
                       }`}
                     >
                       <div className="flex items-center space-x-2.5">
                         <Icon
-                          className={`w-4 h-4 ${
+                          className={`w-4 h-4 shrink-0 ${
                             isActive ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'
                           }`}
                         />
-                        <span className="truncate">{item.label}</span>
+                        <span className="truncate text-[13px] font-siliguri">{item.label}</span>
                       </div>
                       {item.badge && (
-                        <span className="bg-blue-100 text-blue-700 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+                        <span className="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full font-bold font-siliguri">
                           {item.badge}
                         </span>
                       )}
@@ -188,19 +190,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
           ))}
 
           {/* Android Mobile Edition Card */}
-          <div className="p-3.5 bg-slate-50 rounded-xl border border-dashed border-slate-300 mt-4">
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">
+          <div className="p-3.5 bg-slate-50 rounded-xl border border-dashed border-slate-300 mt-4 font-siliguri">
+            <p className="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1 font-siliguri">
               {language === 'bn' ? 'মোবাইল পরিকল্পনা' : 'Mobile Plan'}
             </p>
-            <p className="text-[11px] leading-relaxed text-slate-600">
+            <p className="text-xs leading-relaxed text-slate-700 font-siliguri">
               {language === 'bn'
                 ? 'পরবর্তী সংস্করণ: অ্যান্ড্রয়েড নেটিভ অ্যাপ্লিকেশন। আপনার UI এখন প্রতিক্রিয়াশীল।'
                 : 'Next edition: Android Native App. Responsive architecture active.'}
             </p>
-            <div className="mt-2.5 flex items-center justify-between text-[10px] text-slate-500 font-medium">
+            <div className="mt-2.5 flex items-center justify-between text-xs text-slate-600 font-semibold font-siliguri">
               <span>{language === 'bn' ? 'মুদ্রা:' : 'Currency:'} BDT (৳)</span>
-              <span className="flex items-center text-green-600 font-bold">
-                <span className="w-2 h-2 rounded-full bg-green-500 mr-1 animate-pulse"></span>
+              <span className="flex items-center text-green-700 font-bold">
+                <span className="w-2 h-2 rounded-full bg-green-500 mr-1.5 animate-pulse"></span>
                 {language === 'bn' ? 'অনলাইন' : 'Online'}
               </span>
             </div>

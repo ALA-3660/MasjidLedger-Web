@@ -985,7 +985,7 @@ export class DatabaseStore {
       }
     );
 
-    // 15. Audit Log Seed
+    // 15. Audit Log Seed (Comprehensive activity history)
     this.auditLogs.push(
       {
         id: 'aud-001',
@@ -995,9 +995,11 @@ export class DatabaseStore {
         userRole: 'MOSQUE_ADMIN',
         action: 'LOGIN',
         module: 'AUTH',
-        details: 'ব্যবহারকারী সফলভাবে সিস্টেমে লগইন করেছেন।',
-        timestamp: '2026-08-24T08:30:00.000Z',
-        ipAddress: '192.168.1.100'
+        details: 'ব্যবহারকারী মুহাম্মদ রফিকুল ইসলাম সফলভাবে সিস্টেমে লগইন করেছেন।',
+        timestamp: '2026-08-25T08:00:00.000Z',
+        ipAddress: '192.168.1.100',
+        device: 'Chrome 128 (Windows 11)',
+        status: 'SUCCESS'
       },
       {
         id: 'aud-002',
@@ -1005,12 +1007,95 @@ export class DatabaseStore {
         userId: 'usr-admin-1',
         userName: 'মুহাম্মদ রফিকুল ইসলাম',
         userRole: 'MOSQUE_ADMIN',
-        action: 'APPROVE',
+        action: 'SETTINGS_CHANGE',
+        module: 'MOSQUE',
+        recordId: mosque1.id,
+        details: 'মসজিদ সেটিংস ও অনলাইন কিউআর পেমেন্ট তথ্য হালনাগাদ করা হয়েছে।',
+        timestamp: '2026-08-24T18:15:00.000Z',
+        ipAddress: '192.168.1.100',
+        device: 'Chrome 128 (Windows 11)',
+        status: 'SUCCESS'
+      },
+      {
+        id: 'aud-003',
+        mosqueId: mosque1.id,
+        userId: 'usr-accountant-1',
+        userName: 'আব্দুল করিম',
+        userRole: 'ACCOUNTANT',
+        action: 'CREATE',
         module: 'INCOME',
         recordId: 'inc-003',
-        details: 'আয় ভাউচার INC-2026-000003 (টাকা: ৫০,০০০/-) অনুমোদন করা হয়েছে।',
-        timestamp: '2026-08-23T16:00:00.000Z',
-        ipAddress: '192.168.1.100'
+        voucherNumber: 'INC-2026-000003',
+        details: 'নতুন আয় ভাউচার তৈরি (INC-2026-000003): ৳ ৫০,০০০/- (খাত: জুমা উন্মুক্ত দান)',
+        previousState: 'খসড়া এন্ট্রি',
+        newState: 'অনুমোদিত ভাউচার',
+        timestamp: '2026-08-23T14:30:00.000Z',
+        ipAddress: '192.168.1.105',
+        device: 'Firefox 129 (Windows 10)',
+        status: 'SUCCESS'
+      },
+      {
+        id: 'aud-004',
+        mosqueId: mosque1.id,
+        userId: 'usr-admin-1',
+        userName: 'মুহাম্মদ রফিকুল ইসলাম',
+        userRole: 'MOSQUE_ADMIN',
+        action: 'APPROVE',
+        module: 'EXPENSE',
+        recordId: 'exp-001',
+        voucherNumber: 'EXP-2026-000001',
+        details: 'ব্যয় ভাউচার অনুমোদন (EXP-2026-000001): ৳ ২৫,০০০/- (খাত: খতিব ও ইমামের মাসিক সম্মানী)',
+        timestamp: '2026-08-22T11:00:00.000Z',
+        ipAddress: '192.168.1.100',
+        device: 'Chrome 128 (Windows 11)',
+        status: 'SUCCESS'
+      },
+      {
+        id: 'aud-005',
+        mosqueId: mosque1.id,
+        userId: 'usr-accountant-1',
+        userName: 'আব্দুল করিম',
+        userRole: 'ACCOUNTANT',
+        action: 'CREATE',
+        module: 'DONATION_BOX',
+        recordId: 'boxcol-01',
+        voucherNumber: 'BOX-COL-001',
+        details: 'দানবাক্স সিল খোলা ও অর্থ গণনা সম্পন্ন (প্রধান গেট ১ নং বক্স): ৳ ১২,৫০০/- ক্যাশ হিসেবে জমা',
+        timestamp: '2026-08-22T15:45:00.000Z',
+        ipAddress: '192.168.1.105',
+        device: 'Firefox 129 (Windows 10)',
+        status: 'SUCCESS'
+      },
+      {
+        id: 'aud-006',
+        mosqueId: mosque1.id,
+        userId: 'usr-admin-1',
+        userName: 'মুহাম্মদ রফিকুল ইসলাম',
+        userRole: 'MOSQUE_ADMIN',
+        action: 'CREATE',
+        module: 'ACCOUNT_TRANSFER',
+        recordId: 'trf-001',
+        voucherNumber: 'TRF-2026-001',
+        details: 'তহবিল স্থানান্তর: প্রধান ক্যাশ হতে ইসলামী ব্যাংক চলতি হিসাবে ৳ ১,০০,০০০/- স্থানান্তর',
+        timestamp: '2026-08-21T10:20:00.000Z',
+        ipAddress: '192.168.1.100',
+        device: 'Chrome 128 (Windows 11)',
+        status: 'SUCCESS'
+      },
+      {
+        id: 'aud-007',
+        mosqueId: mosque1.id,
+        userId: 'usr-admin-1',
+        userName: 'মুহাম্মদ রফিকুল ইসলাম',
+        userRole: 'MOSQUE_ADMIN',
+        action: 'CREATE',
+        module: 'USER',
+        recordId: 'usr-collector-1',
+        details: 'নতুন ব্যবহারকারী অ্যাকাউন্ট তৈরি করা হয়েছে: মো: জাহিদ হাসান (পদবী: COLLECTOR)',
+        timestamp: '2026-08-20T09:00:00.000Z',
+        ipAddress: '192.168.1.100',
+        device: 'Chrome 128 (Windows 11)',
+        status: 'SUCCESS'
       }
     );
   }
@@ -1033,7 +1118,14 @@ export class DatabaseStore {
     module: string,
     details: string,
     recordId?: string,
-    ipAddress?: string
+    ipAddress?: string,
+    extra?: {
+      voucherNumber?: string;
+      previousState?: string;
+      newState?: string;
+      device?: string;
+      status?: 'SUCCESS' | 'FAILED' | 'WARNING';
+    }
   ) {
     const log: AuditLog = {
       id: `aud-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -1044,9 +1136,14 @@ export class DatabaseStore {
       action,
       module,
       recordId,
+      voucherNumber: extra?.voucherNumber,
       details,
+      previousState: extra?.previousState,
+      newState: extra?.newState,
       timestamp: new Date().toISOString(),
-      ipAddress: ipAddress || '127.0.0.1'
+      ipAddress: ipAddress || '127.0.0.1',
+      device: extra?.device || 'Chrome 128 / Windows',
+      status: extra?.status || 'SUCCESS'
     };
     this.auditLogs.unshift(log);
     this.save();

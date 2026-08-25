@@ -217,17 +217,36 @@ export const AuditReportsView: React.FC<AuditAuditReportsViewProps> = ({
 
             {/* Official Signatures */}
             <div className="pt-12 grid grid-cols-3 gap-6 text-center text-xs text-slate-700">
-              <div>
-                <div className="border-t border-slate-300 pt-2 font-semibold text-slate-800">কোষাধ্যক্ষ</div>
+              <div className="flex flex-col items-center justify-end">
+                <div className="h-12 w-full" />
+                <div className="border-t border-slate-300 pt-2 font-semibold text-slate-800 w-full">কোষাধ্যক্ষ / হিসাবরক্ষক</div>
                 <div className="text-[10px] text-slate-400">স্বাক্ষর ও তারিখ</div>
               </div>
-              <div>
-                <div className="border-t border-slate-300 pt-2 font-semibold text-slate-800">সাধারণ সম্পাদক</div>
-                <div className="text-[10px] text-slate-400">স্বাক্ষর ও তারিখ</div>
+              <div className="flex flex-col items-center justify-end">
+                <div className="h-12 w-full flex items-end justify-center">
+                  {mosque?.secretarySignatureUrl ? (
+                    <img
+                      src={mosque.secretarySignatureUrl}
+                      alt="Secretary Signature"
+                      className="max-h-12 max-w-full object-contain mb-1"
+                    />
+                  ) : null}
+                </div>
+                <div className="border-t border-slate-300 pt-2 font-semibold text-slate-800 w-full">সেক্রেটারি / মোতাওয়াল্লী</div>
+                <div className="text-[10px] text-slate-400">স্বাক্ষর ও সীল</div>
               </div>
-              <div>
-                <div className="border-t border-slate-300 pt-2 font-semibold text-slate-800">সভাপতি</div>
-                <div className="text-[10px] text-slate-400">স্বাক্ষর ও তারিখ</div>
+              <div className="flex flex-col items-center justify-end">
+                <div className="h-12 w-full flex items-end justify-center">
+                  {mosque?.presidentSignatureUrl ? (
+                    <img
+                      src={mosque.presidentSignatureUrl}
+                      alt="President Signature"
+                      className="max-h-12 max-w-full object-contain mb-1"
+                    />
+                  ) : null}
+                </div>
+                <div className="border-t border-slate-300 pt-2 font-semibold text-slate-800 w-full">সভাপতি</div>
+                <div className="text-[10px] text-slate-400">স্বাক্ষর ও সীল</div>
               </div>
             </div>
           </div>

@@ -22,6 +22,7 @@ import {
   AuditLog,
   SavedReportConfig,
   UserStatus,
+  DashboardStats,
 } from './types';
 import { Language, translations } from './lib/i18n';
 import { Navbar } from './components/Navbar';
@@ -33,6 +34,7 @@ import { CashBankView } from './components/CashBankView';
 import { CommitteeView } from './components/CommitteeView';
 import { ManagementView } from './components/ManagementView';
 import { ReportCenterView } from './components/ReportCenterView';
+import { MosqueSettingsView } from './components/MosqueSettingsView';
 import { AuditLogView } from './components/AuditLogView';
 import { DailyTransactionsView } from './components/DailyTransactionsView';
 import { UserManagementView } from './components/UserManagementView';
@@ -99,10 +101,13 @@ export default function App() {
     item: IncomeEntry | ExpenseEntry | null;
     type: 'INCOME' | 'EXPENSE';
   }>({ item: null, type: 'INCOME' });
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
 
-  // Fetch all initial data from backend
-  const loadData = async () => {
-    setIsLoading(true);
+  // Fetch all initial data from backend (isInitial = true shows full splash; isInitial = false performs background silent sync)
+  const loadData = async (isInitial: boolean = false) => {
+    if (isInitial) {
+      setIsLoading(true);
+    }
     setErrorMessage('');
     try {
       const [
@@ -126,65 +131,74 @@ export default function App() {
         cemeteryRes,
         noticesRes,
         auditRes,
+        statsRes,
       ] = await Promise.all([
-        api.getMosque(),
-        api.getCurrentUser(),
+        api.getMosque().catch(() => null),
+        api.getCurrentUser().catch(() => null),
         api.getUsers().catch(() => []),
-        api.getAccounts(),
-        api.getAccountHeads(),
-        api.getIncomes(),
-        api.getExpenses(),
-        api.getDonations(),
-        api.getDonationBoxes(),
-        api.getDonationBoxCollections(),
-        api.getCommitteeTerms(),
-        api.getCommitteeMembers(),
-        api.getCommitteeMeetings(),
-        api.getStaff(),
-        api.getStaffPayments(),
-        api.getAssets(),
-        api.getProperties(),
-        api.getCemeteryRecords(),
-        api.getNotices(),
-        api.getAuditLogs(),
+        api.getAccounts().catch(() => []),
+        api.getAccountHeads().catch(() => []),
+        api.getIncomes().catch(() => []),
+        api.getExpenses().catch(() => []),
+        api.getDonations().catch(() => []),
+        api.getDonationBoxes().catch(() => []),
+        api.getDonationBoxCollections().catch(() => []),
+        api.getCommitteeTerms().catch(() => []),
+        api.getCommitteeMembers().catch(() => []),
+        api.getCommitteeMeetings().catch(() => []),
+        api.getStaff().catch(() => []),
+        api.getStaffPayments().catch(() => []),
+        api.getAssets().catch(() => []),
+        api.getProperties().catch(() => []),
+        api.getCemeteryRecords().catch(() => []),
+        api.getNotices().catch(() => []),
+        api.getAuditLogs().catch(() => []),
+        api.getDashboardStats().catch(() => null),
       ]);
 
-      setMosque(mosqueRes);
-      if (mosqueRes) setAllMosques([mosqueRes]);
-      setCurrentUser(userRes);
-      setAllUsers(usersListRes || []);
-      setAccounts(accountsRes);
-      setAccountHeads(headsRes);
-      setIncomes(incomesRes);
-      setExpenses(expensesRes);
-      setDonations(donationsRes);
-      setDonationBoxes(boxesRes);
-      setBoxCollections(boxColsRes);
-      setTerms(termsRes);
-      setMembers(membersRes);
-      setMeetings(meetingsRes);
-      setStaff(staffRes);
-      setStaffPayments(staffPaysRes);
-      setAssets(assetsRes);
-      setProperties(propsRes);
-      setCemetery(cemeteryRes);
-      setNotices(noticesRes);
-      setAuditLogs(auditRes);
-      setIsAuthenticated(true);
+      if (mosqueRes) {
+        setMosque(mosqueRes);
+        setAllMosques([mosqueRes]);
+      }
+      if (userRes) {
+        setCurrentUser(userRes);
+        setIsAuthenticated(true);
+      }
+      if (usersListRes) setAllUsers(usersListRes);
+      if (accountsRes) setAccounts(accountsRes);
+      if (headsRes) setAccountHeads(headsRes);
+      if (incomesRes) setIncomes(incomesRes);
+      if (expensesRes) setExpenses(expensesRes);
+      if (donationsRes) setDonations(donationsRes);
+      if (boxesRes) setDonationBoxes(boxesRes);
+      if (boxColsRes) setBoxCollections(boxColsRes);
+      if (termsRes) setTerms(termsRes);
+      if (membersRes) setMembers(membersRes);
+      if (meetingsRes) setMeetings(meetingsRes);
+      if (staffRes) setStaff(staffRes);
+      if (staffPaysRes) setStaffPayments(staffPaysRes);
+      if (assetsRes) setAssets(assetsRes);
+      if (propsRes) setProperties(propsRes);
+      if (cemeteryRes) setCemetery(cemeteryRes);
+      if (noticesRes) setNotices(noticesRes);
+      if (auditRes) setAuditLogs(auditRes);
+      if (statsRes) setDashboardStats(statsRes);
     } catch (err: any) {
       console.error('Failed to load initial data:', err);
       setErrorMessage(err.message || 'ডাটা লোড করতে ব্যর্থ হয়েছে');
     } finally {
-      setIsLoading(false);
+      if (isInitial) {
+        setIsLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    loadData();
+    loadData(true);
 
     // Connect WebSocket for real-time synchronization with Android & other clients
     api.connectWebSocket((event) => {
-      // Auto reload data on entity changes
+      // Auto reload data silently on entity changes
       if (
         event.type?.includes('_CREATED') ||
         event.type?.includes('_UPDATED') ||
@@ -196,14 +210,14 @@ export default function App() {
         event.type?.includes('_STATUS') ||
         event.type === 'DASHBOARD_STATS_UPDATED'
       ) {
-        loadData();
+        loadData(false);
       }
     });
 
-    // Fallback polling sync
+    // Fallback polling sync (silent background fetch)
     const pollInterval = setInterval(() => {
       if (document.visibilityState === 'visible') {
-        loadData();
+        loadData(false);
       }
     }, 60000);
 
@@ -219,7 +233,7 @@ export default function App() {
       if (res.user) {
         setCurrentUser(res.user);
         setIsAuthenticated(true);
-        await loadData();
+        await loadData(true);
       }
     } catch (err: any) {
       throw new Error(err.message || 'লগইন ব্যর্থ হয়েছে। সঠিক তথ্য প্রদান করুন।');
@@ -238,129 +252,135 @@ export default function App() {
 
   const handleAddIncome = async (data: any) => {
     const created = await api.createIncome(data);
-    await loadData();
+    await loadData(false);
     setActiveVoucher({ item: created, type: 'INCOME' });
   };
 
   const handleUpdateIncome = async (id: string, data: any) => {
     await api.updateIncome(id, data);
-    await loadData();
+    await loadData(false);
   };
 
   const handleAddExpense = async (data: any) => {
     const created = await api.createExpense(data);
-    await loadData();
+    await loadData(false);
     setActiveVoucher({ item: created, type: 'EXPENSE' });
   };
 
   const handleUpdateExpense = async (id: string, data: any) => {
     await api.updateExpense(id, data);
-    await loadData();
+    await loadData(false);
   };
 
   const handleReverseIncome = async (id: string, reason: string) => {
     await api.reverseIncome(id, reason);
-    await loadData();
+    await loadData(false);
   };
 
   const handleReverseExpense = async (id: string, reason: string) => {
     await api.reverseExpense(id, reason);
-    await loadData();
+    await loadData(false);
   };
 
   const handleAddDonation = async (data: any) => {
     const created = await api.createDonation(data);
-    await loadData();
+    await loadData(false);
     return created;
   };
 
   const handleCollectBox = async (data: any) => {
     await api.createDonationBoxCollection(data);
-    await loadData();
+    await loadData(false);
   };
 
   const handleAddDonationBox = async (data: any) => {
     await api.createDonationBox(data);
-    await loadData();
+    await loadData(false);
   };
 
   const handleUpdateDonationBox = async (id: string, data: any) => {
     await api.updateDonationBox(id, data);
-    await loadData();
+    await loadData(false);
   };
 
   const handleAddAccount = async (data: any) => {
     await api.createAccount(data);
-    await loadData();
+    await loadData(false);
   };
 
   const handleAddAccountHead = async (data: any) => {
     await api.createAccountHead(data);
-    await loadData();
+    await loadData(false);
   };
 
   const handleTransferFund = async (data: any) => {
     await api.transferFund(data);
-    await loadData();
+    await loadData(false);
   };
 
   const handleAddCommitteeTerm = async (data: any) => {
     await api.createCommitteeTerm(data);
-    await loadData();
+    await loadData(false);
   };
 
   const handleAddCommitteeMember = async (data: any) => {
     await api.createCommitteeMember(data);
-    await loadData();
+    await loadData(false);
   };
 
   const handleAddCommitteeMeeting = async (data: any) => {
     await api.createCommitteeMeeting(data);
-    await loadData();
+    await loadData(false);
   };
 
   const handlePayStaff = async (data: any) => {
     await api.payStaffSalary(data);
-    await loadData();
+    await loadData(false);
   };
 
   const handleAddCemetery = async (data: any) => {
     await api.createCemeteryRecord(data);
-    await loadData();
+    await loadData(false);
   };
 
   const handleAddNotice = async (data: any) => {
     await api.createNotice(data);
-    await loadData();
+    await loadData(false);
   };
 
   const handleAddUser = async (data: any) => {
     await api.createUser(data);
-    await loadData();
+    await loadData(false);
   };
 
   const handleUpdateUser = async (id: string, data: any) => {
     await api.updateUser(id, data);
-    await loadData();
+    await loadData(false);
   };
 
   const handleUpdateUserStatus = async (id: string, status: UserStatus) => {
     await api.updateUserStatus(id, status);
-    await loadData();
+    await loadData(false);
   };
 
   const handleResetUserPassword = async (id: string, newPass: string) => {
     await api.resetUserPassword(id, newPass);
-    await loadData();
+    await loadData(false);
   };
 
   const handleDeleteUser = async (id: string) => {
     await api.deleteUser(id);
-    await loadData();
+    await loadData(false);
   };
 
   const handleSendSms = async (phone: string, message: string, tokenUrl?: string) => {
     return await api.sendSms(phone, message, tokenUrl);
+  };
+
+  const handleSaveMosqueSettings = async (data: Partial<Mosque>) => {
+    const updated = await api.updateMosqueSettings(data);
+    setMosque(updated);
+    await loadData(false);
   };
 
   // AI Advisor query execution
@@ -415,8 +435,9 @@ export default function App() {
             <span>{errorMessage}</span>
           </div>
           <button
-            onClick={loadData}
-            className="flex items-center space-x-1.5 font-bold text-rose-900 hover:underline bg-white px-2.5 py-1 rounded-md border border-rose-200"
+            type="button"
+            onClick={() => loadData(true)}
+            className="flex items-center space-x-1.5 font-bold text-rose-900 hover:underline bg-white px-2.5 py-1 rounded-md border border-rose-200 cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             <span>পুনরায় চেষ্টা করুন</span>
@@ -427,7 +448,9 @@ export default function App() {
       {/* 1. Dashboard View */}
       {currentTab === 'dashboard' && (
         <DashboardView
+          stats={dashboardStats}
           mosque={mosque}
+          currentMosque={mosque}
           accounts={accounts}
           incomes={incomes}
           expenses={expenses}
@@ -436,6 +459,13 @@ export default function App() {
           notices={notices}
           language={language}
           onNavigate={(tab) => setCurrentTab(tab)}
+          onQuickAction={(act) => {
+            if (act === 'income') setCurrentTab('income');
+            else if (act === 'expense') setCurrentTab('expense');
+            else if (act === 'donation') setCurrentTab('donations');
+          }}
+          onOpenAi={() => setIsAiOpen(true)}
+          onRefresh={() => loadData(false)}
         />
       )}
 
@@ -593,16 +623,28 @@ export default function App() {
         />
       )}
 
-      {/* 10. Audit Log Trail View */}
-      {(currentTab === 'audit' || currentTab === 'admin') && (
-        <AuditLogView
-          logs={auditLogs}
+      {/* 10. Mosque Settings View (Dedicated Configuration Page) */}
+      {(currentTab === 'admin' || currentTab === 'settings') && (
+        <MosqueSettingsView
           currentMosque={mosque}
+          currentUser={currentUser}
           language={language}
+          onSaveSettings={handleSaveMosqueSettings}
         />
       )}
 
-      {/* 11. Public Portal View */}
+      {/* 11. Audit Log Trail View (Dedicated Immutable Audit Page) */}
+      {currentTab === 'audit' && (
+        <AuditLogView
+          logs={auditLogs}
+          currentMosque={mosque}
+          currentUser={currentUser}
+          language={language}
+          onRefresh={() => loadData(false)}
+        />
+      )}
+
+      {/* 12. Public Portal View */}
       {(currentTab === 'public' || currentTab === 'publicPortal') && (
         <PublicPortalView
           mosque={mosque}
@@ -616,126 +658,137 @@ export default function App() {
     </>
   );
 
+  const isSingleInvoicePrintActive = Boolean(activeDonationReceipt || activeVoucher.item);
+
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans text-slate-800 antialiased selection:bg-blue-100 selection:text-blue-900">
-      {/* Top Application Navbar */}
-      <Navbar
-        currentMosque={mosque}
-        mosque={mosque}
-        currentUser={currentUser}
-        allMosques={allMosques}
-        language={language}
-        onLanguageChange={setLanguage}
-        onLanguageToggle={() => setLanguage((prev) => (prev === 'bn' ? 'en' : 'bn'))}
-        onRoleChange={(role) => setCurrentUser((prev) => (prev ? { ...prev, role } : null))}
-        onNavigate={(tab) => setCurrentTab(tab)}
-        viewMode={viewMode}
-        onViewModeChange={(mode) => setViewMode(mode)}
-        onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
-        onOpenAi={() => setIsAiOpen(true)}
-        onLogout={handleLogout}
-        onQuickAction={(act) => {
-          if (act === 'income') setCurrentTab('income');
-          else if (act === 'expense') setCurrentTab('expense');
-          else if (act === 'donation') setCurrentTab('donations');
-        }}
-      />
+    <div className={`min-h-screen bg-[#F8FAFC] flex flex-col font-sans text-slate-800 antialiased selection:bg-blue-100 selection:text-blue-900 ${
+      isSingleInvoicePrintActive ? 'print:bg-white print:min-h-0 print:h-auto' : ''
+    }`}>
+      {/* Top Application Navbar & Main App Shell */}
+      <div className={isSingleInvoicePrintActive ? 'app-shell-hidden-for-print print:hidden' : 'contents'}>
+        <Navbar
+          currentMosque={mosque}
+          mosque={mosque}
+          currentUser={currentUser}
+          allMosques={allMosques}
+          language={language}
+          onLanguageChange={setLanguage}
+          onLanguageToggle={() => setLanguage((prev) => (prev === 'bn' ? 'en' : 'bn'))}
+          onRoleChange={(role) => setCurrentUser((prev) => (prev ? { ...prev, role } : null))}
+          onNavigate={(tab) => setCurrentTab(tab)}
+          viewMode={viewMode}
+          onViewModeChange={(mode) => setViewMode(mode)}
+          onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
+          onOpenAi={() => setIsAiOpen(true)}
+          onLogout={handleLogout}
+          onQuickAction={(act) => {
+            if (act === 'income') setCurrentTab('income');
+            else if (act === 'expense') setCurrentTab('expense');
+            else if (act === 'donation') setCurrentTab('donations');
+          }}
+        />
 
-      {/* Main Container Layout */}
-      {viewMode === 'mobile' ? (
-        /* Native Android Phone Simulation Frame */
-        <div className="flex-1 flex items-center justify-center p-4 sm:p-8 bg-slate-900/90">
-          <div className="w-full max-w-md bg-white rounded-[40px] shadow-2xl border-[10px] border-slate-800 overflow-hidden flex flex-col h-[840px] relative">
-            {/* Android Notch / Camera Pin */}
-            <div className="h-7 bg-slate-900 text-white text-[11px] px-6 flex items-center justify-between font-mono shrink-0 select-none">
-              <span>9:41</span>
-              <div className="w-16 h-3.5 bg-black rounded-full mx-auto" />
-              <div className="flex items-center space-x-1.5 text-[10px]">
-                <span>5G</span>
-                <span>100%</span>
+        {/* Main Container Layout */}
+        {viewMode === 'mobile' ? (
+          /* Native Android Phone Simulation Frame */
+          <div className="flex-1 flex items-center justify-center p-4 sm:p-8 bg-slate-900/90">
+            <div className="w-full max-w-md bg-white rounded-[40px] shadow-2xl border-[10px] border-slate-800 overflow-hidden flex flex-col h-[840px] relative">
+              {/* Android Notch / Camera Pin */}
+              <div className="h-7 bg-slate-900 text-white text-[11px] px-6 flex items-center justify-between font-mono shrink-0 select-none">
+                <span>9:41</span>
+                <div className="w-16 h-3.5 bg-black rounded-full mx-auto" />
+                <div className="flex items-center space-x-1.5 text-[10px]">
+                  <span>5G</span>
+                  <span>100%</span>
+                </div>
               </div>
-            </div>
 
-            {/* Mobile Header Bar */}
-            <div className="bg-blue-700 text-white px-4 py-3 flex items-center justify-between shadow-xs shrink-0">
-              <div className="flex items-center space-x-2">
-                <Smartphone className="w-4 h-4 text-blue-200" />
-                <span className="font-heading font-bold text-sm">
-                  {mosque?.nameBn || 'মসজিদলেজার'}
-                </span>
+              {/* Mobile Header Bar */}
+              <div className="bg-blue-700 text-white px-4 py-3 flex items-center justify-between shadow-xs shrink-0">
+                <div className="flex items-center space-x-2">
+                  <Smartphone className="w-4 h-4 text-blue-200" />
+                  <span className="font-heading font-bold text-sm">
+                    {mosque?.nameBn || 'মসজিদলেজার'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('desktop')}
+                  className="text-[10px] bg-blue-800 hover:bg-blue-900 text-blue-100 px-2 py-1 rounded font-medium border border-blue-600 cursor-pointer"
+                >
+                  ডেস্কটপ ভিউ
+                </button>
               </div>
-              <button
-                onClick={() => setViewMode('desktop')}
-                className="text-[10px] bg-blue-800 hover:bg-blue-900 text-blue-100 px-2 py-1 rounded font-medium border border-blue-600"
-              >
-                ডেস্কটপ ভিউ
-              </button>
-            </div>
 
-            {/* Mobile Scrollable Viewport */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
-              {renderMainContent()}
-            </div>
+              {/* Mobile Scrollable Viewport */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
+                {renderMainContent()}
+              </div>
 
-            {/* Mobile Bottom Navigation Bar */}
-            <div className="h-14 bg-white border-t border-slate-200 grid grid-cols-4 items-center shrink-0 px-2 select-none">
-              <button
-                onClick={() => setCurrentTab('dashboard')}
-                className={`flex flex-col items-center justify-center text-[10px] font-semibold py-1 ${
-                  currentTab === 'dashboard' ? 'text-blue-700' : 'text-slate-500'
-                }`}
-              >
-                <span>সারসংক্ষেপ</span>
-              </button>
-              <button
-                onClick={() => setCurrentTab('income')}
-                className={`flex flex-col items-center justify-center text-[10px] font-semibold py-1 ${
-                  currentTab === 'income' || currentTab === 'expense' ? 'text-blue-700' : 'text-slate-500'
-                }`}
-              >
-                <span>আয়-ব্যয়</span>
-              </button>
-              <button
-                onClick={() => setCurrentTab('donations')}
-                className={`flex flex-col items-center justify-center text-[10px] font-semibold py-1 ${
-                  currentTab === 'donations' ? 'text-blue-700' : 'text-slate-500'
-                }`}
-              >
-                <span>দান</span>
-              </button>
-              <button
-                onClick={() => setCurrentTab('reports')}
-                className={`flex flex-col items-center justify-center text-[10px] font-semibold py-1 ${
-                  currentTab === 'reports' ? 'text-blue-700' : 'text-slate-500'
-                }`}
-              >
-                <span>রিপোর্ট</span>
-              </button>
+              {/* Mobile Bottom Navigation Bar */}
+              <div className="h-14 bg-white border-t border-slate-200 grid grid-cols-4 items-center shrink-0 px-2 select-none">
+                <button
+                  type="button"
+                  onClick={() => setCurrentTab('dashboard')}
+                  className={`flex flex-col items-center justify-center text-[10px] font-semibold py-1 cursor-pointer ${
+                    currentTab === 'dashboard' ? 'text-blue-700' : 'text-slate-500'
+                  }`}
+                >
+                  <span>সারসংক্ষেপ</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCurrentTab('income')}
+                  className={`flex flex-col items-center justify-center text-[10px] font-semibold py-1 cursor-pointer ${
+                    currentTab === 'income' || currentTab === 'expense' ? 'text-blue-700' : 'text-slate-500'
+                  }`}
+                >
+                  <span>আয়-ব্যয়</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCurrentTab('donations')}
+                  className={`flex flex-col items-center justify-center text-[10px] font-semibold py-1 cursor-pointer ${
+                    currentTab === 'donations' ? 'text-blue-700' : 'text-slate-500'
+                  }`}
+                >
+                  <span>দান</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCurrentTab('reports')}
+                  className={`flex flex-col items-center justify-center text-[10px] font-semibold py-1 cursor-pointer ${
+                    currentTab === 'reports' ? 'text-blue-700' : 'text-slate-500'
+                  }`}
+                >
+                  <span>রিপোর্ট</span>
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      ) : (
-        /* Standard Responsive Desktop / Tablet Layout */
-        <div className="flex flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 gap-6">
-          {/* Left Navigation Sidebar */}
-          <Sidebar
-            activeTab={currentTab as NavTab}
-            onSelectTab={(tab) => setCurrentTab(tab)}
-            onTabChange={(tab) => setCurrentTab(tab)}
-            language={language}
-            isOpen={isSidebarOpen}
-            onClose={() => setIsSidebarOpen(false)}
-            currentUser={currentUser}
-          />
+        ) : (
+          /* Standard Responsive Desktop / Tablet Layout */
+          <div className="flex flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 gap-6">
+            {/* Left Navigation Sidebar */}
+            <Sidebar
+              activeTab={currentTab as NavTab}
+              onSelectTab={(tab) => setCurrentTab(tab)}
+              onTabChange={(tab) => setCurrentTab(tab)}
+              language={language}
+              isOpen={isSidebarOpen}
+              onClose={() => setIsSidebarOpen(false)}
+              currentUser={currentUser}
+            />
 
-          {/* Content Display Area */}
-          <main className="flex-1 min-w-0">{renderMainContent()}</main>
-        </div>
-      )}
+            {/* Content Display Area */}
+            <main className="flex-1 min-w-0">{renderMainContent()}</main>
+          </div>
+        )}
+      </div>
 
       {/* AI Financial Auditor & Advisor Modal */}
       {isAiOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 animate-fade-in">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 animate-fade-in print:hidden">
           <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
             {/* Modal Header */}
             <div className="bg-gradient-to-r from-blue-700 to-indigo-800 text-white px-6 py-4 flex items-center justify-between">
@@ -755,8 +808,9 @@ export default function App() {
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setIsAiOpen(false)}
-                className="p-1 rounded-lg hover:bg-white/10 text-white/80 hover:text-white transition-colors"
+                className="p-1 rounded-lg hover:bg-white/10 text-white/80 hover:text-white transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -786,11 +840,12 @@ export default function App() {
                   ].map((preset, idx) => (
                     <button
                       key={idx}
+                      type="button"
                       onClick={() => {
                         setAiQuestion(preset);
                         handleAskAi(preset);
                       }}
-                      className="text-left p-2.5 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/50 text-xs text-slate-700 transition-colors flex items-start space-x-2"
+                      className="text-left p-2.5 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/50 text-xs text-slate-700 transition-colors flex items-start space-x-2 cursor-pointer"
                     >
                       <Sparkles className="w-3.5 h-3.5 text-blue-600 mt-0.5 shrink-0" />
                       <span className="line-clamp-2">{preset}</span>
@@ -820,9 +875,10 @@ export default function App() {
                     className="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                   />
                   <button
+                    type="button"
                     onClick={() => handleAskAi()}
                     disabled={isAiLoading || !aiQuestion.trim()}
-                    className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-colors shadow-xs"
+                    className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-colors shadow-xs cursor-pointer"
                   >
                     {isAiLoading ? (
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -860,8 +916,9 @@ export default function App() {
             {/* Modal Footer */}
             <div className="bg-slate-50 px-6 py-3 border-t border-slate-200 flex justify-end">
               <button
+                type="button"
                 onClick={() => setIsAiOpen(false)}
-                className="px-4 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                className="px-4 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 cursor-pointer"
               >
                 {language === 'bn' ? 'বন্ধ করুন' : 'Close'}
               </button>

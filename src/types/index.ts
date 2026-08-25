@@ -68,6 +68,18 @@ export interface Mosque {
   email?: string;
   website?: string;
   logoUrl?: string;
+  logoAssetId?: string;
+  logoMetadata?: {
+    fileName?: string;
+    mimeType?: string;
+    fileSize?: number;
+    uploadedAt?: string;
+    uploadedBy?: string;
+    source?: 'UPLOAD' | 'GOOGLE_DRIVE' | 'PRESET';
+    originalDriveUrl?: string;
+  };
+  presidentSignatureUrl?: string;
+  secretarySignatureUrl?: string;
   establishedDate?: string;
   status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
   qrSettings?: {
@@ -453,12 +465,35 @@ export interface AuditLog {
   userId: string;
   userName: string;
   userRole: string;
-  action: 'LOGIN' | 'LOGOUT' | 'CREATE' | 'UPDATE' | 'DELETE' | 'APPROVE' | 'REJECT' | 'CANCEL' | 'POST' | 'EXPORT' | 'SETTINGS_CHANGE';
+  action:
+    | 'LOGIN'
+    | 'LOGOUT'
+    | 'CREATE'
+    | 'UPDATE'
+    | 'DELETE'
+    | 'APPROVE'
+    | 'REJECT'
+    | 'CANCEL'
+    | 'POST'
+    | 'EXPORT'
+    | 'SETTINGS_CHANGE'
+    | 'PRESIDENT_SIGNATURE_ADDED'
+    | 'PRESIDENT_SIGNATURE_UPDATED'
+    | 'PRESIDENT_SIGNATURE_REMOVED'
+    | 'SECRETARY_SIGNATURE_ADDED'
+    | 'SECRETARY_SIGNATURE_UPDATED'
+    | 'SECRETARY_SIGNATURE_REMOVED'
+    | string;
   module: string;
   recordId?: string;
+  voucherNumber?: string;
   details: string;
+  previousState?: string;
+  newState?: string;
   timestamp: string;
   ipAddress?: string;
+  device?: string;
+  status?: 'SUCCESS' | 'FAILED' | 'WARNING';
 }
 
 export interface DashboardStats {

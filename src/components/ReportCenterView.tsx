@@ -550,13 +550,35 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
       {/* ----------------- REPORT RENDER AREA ----------------- */}
 
       {/* Print-Only Header */}
-      <div className="hidden print:block text-center border-b-2 border-slate-900 pb-4 mb-4">
-        <h1 className="text-2xl font-black text-slate-900">{currentMosque?.nameBn || 'মসজিদুল মামুর কমপ্লেক্স'}</h1>
-        <p className="text-xs text-slate-600">{currentMosque?.address || 'মিরপুর-১২, ঢাকা-১২১৬'}</p>
-        <div className="my-3 py-1.5 px-4 bg-slate-100 border border-slate-300 inline-block font-bold text-sm">
-          {REPORT_TYPES.find((r) => r.id === reportType)?.labelBn || reportType}
+      <div className="hidden print:block border-b-2 border-slate-900 pb-4 mb-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="w-16 h-16 flex items-center justify-center shrink-0">
+            {currentMosque?.logoUrl ? (
+              <img
+                src={currentMosque.logoUrl}
+                alt="Mosque Logo"
+                className="max-h-16 max-w-16 object-contain rounded"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div className="w-14 h-14 border border-slate-300 rounded-lg bg-slate-50 flex items-center justify-center text-slate-600">
+                <Building className="w-7 h-7" />
+              </div>
+            )}
+          </div>
+          <div className="text-center flex-1">
+            <h1 className="text-2xl font-black text-slate-900">{currentMosque?.nameBn || 'মসজিদুল মামুর কমপ্লেক্স'}</h1>
+            <p className="text-xs text-slate-600">{currentMosque?.address || 'মিরপুর-১২, ঢাকা-১২১৬'}</p>
+            <div className="my-2 py-1 px-4 bg-slate-100 border border-slate-300 inline-block font-bold text-sm">
+              {REPORT_TYPES.find((r) => r.id === reportType)?.labelBn || reportType}
+            </div>
+          </div>
+          <div className="w-20 text-right text-[10px] text-slate-600 font-medium space-y-1">
+            <div>কোড: {currentMosque?.code || 'MOSQUE'}</div>
+            <div>{new Date().toLocaleDateString('bn-BD')}</div>
+          </div>
         </div>
-        <div className="flex justify-between text-xs text-slate-600 font-medium">
+        <div className="flex justify-between text-xs text-slate-600 font-medium mt-2 pt-2 border-t border-slate-200">
           <span>সময়সীমা: {formatDate(fromDate)} হতে {formatDate(toDate)}</span>
           <span>প্রিন্টের সময়: {new Date().toLocaleString('bn-BD')}</span>
         </div>
@@ -813,9 +835,37 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
 
         {/* Print Signatures */}
         <div className="hidden print:grid grid-cols-3 gap-8 pt-16 px-6 pb-6 text-center text-xs">
-          <div className="border-t border-slate-400 pt-2 font-bold">হিসাবরক্ষক / প্রস্তুতকারী</div>
-          <div className="border-t border-slate-400 pt-2 font-bold">কোষাধ্যক্ষ</div>
-          <div className="border-t border-slate-400 pt-2 font-bold">সভাপতি / সাধারণ সম্পাদক</div>
+          <div className="flex flex-col items-center justify-end">
+            <div className="h-12 w-full" />
+            <div className="border-t border-slate-400 pt-2 font-bold w-full">হিসাবরক্ষক / প্রস্তুতকারী</div>
+            <div className="text-[10px] text-slate-500">স্বাক্ষর ও তারিখ</div>
+          </div>
+          <div className="flex flex-col items-center justify-end">
+            <div className="h-12 w-full flex items-end justify-center">
+              {currentMosque?.secretarySignatureUrl ? (
+                <img
+                  src={currentMosque.secretarySignatureUrl}
+                  alt="Secretary Signature"
+                  className="max-h-12 max-w-full object-contain mb-1"
+                />
+              ) : null}
+            </div>
+            <div className="border-t border-slate-400 pt-2 font-bold w-full">সেক্রেটারি / মোতাওয়াল্লী</div>
+            <div className="text-[10px] text-slate-500">স্বাক্ষর ও সীল</div>
+          </div>
+          <div className="flex flex-col items-center justify-end">
+            <div className="h-12 w-full flex items-end justify-center">
+              {currentMosque?.presidentSignatureUrl ? (
+                <img
+                  src={currentMosque.presidentSignatureUrl}
+                  alt="President Signature"
+                  className="max-h-12 max-w-full object-contain mb-1"
+                />
+              ) : null}
+            </div>
+            <div className="border-t border-slate-400 pt-2 font-bold w-full">সভাপতি</div>
+            <div className="text-[10px] text-slate-500">স্বাক্ষর ও সীল</div>
+          </div>
         </div>
       </div>
 
