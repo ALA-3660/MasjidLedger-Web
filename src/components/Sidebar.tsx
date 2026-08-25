@@ -1,0 +1,212 @@
+import React from 'react';
+import {
+  LayoutDashboard,
+  ArrowDownLeft,
+  ArrowUpRight,
+  HeartHandshake,
+  Box,
+  Wallet,
+  Landmark,
+  Layers,
+  Users2,
+  CalendarCheck,
+  UserCheck,
+  Package,
+  Building,
+  Crosshair,
+  Bell,
+  FileBarChart,
+  Settings,
+  ShieldAlert,
+  ExternalLink,
+  Bot
+} from 'lucide-react';
+import { Language, translations } from '../lib/i18n';
+
+export type NavTab =
+  | 'dashboard'
+  | 'income'
+  | 'expense'
+  | 'donations'
+  | 'donationBox'
+  | 'dailyLedger'
+  | 'cashbook'
+  | 'bank'
+  | 'accountHeads'
+  | 'committee'
+  | 'meetings'
+  | 'staff'
+  | 'assets'
+  | 'property'
+  | 'cemetery'
+  | 'notices'
+  | 'reports'
+  | 'users'
+  | 'admin'
+  | 'audit'
+  | 'publicPortal';
+
+export interface SidebarProps {
+  activeTab?: NavTab | string;
+  onSelectTab?: (tab: NavTab) => void;
+  onTabChange?: (tab: any) => void;
+  language?: Language;
+  isOpen?: boolean;
+  onClose?: () => void;
+  currentUser?: any;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({
+  activeTab = 'dashboard',
+  onSelectTab,
+  onTabChange,
+  language = 'bn',
+  isOpen = false,
+  onClose,
+}) => {
+  const t = translations[language] || translations.bn;
+
+  const handleTabClick = (tabId: NavTab) => {
+    if (typeof onSelectTab === 'function') {
+      onSelectTab(tabId);
+    } else if (typeof onTabChange === 'function') {
+      onTabChange(tabId);
+    }
+    if (typeof onClose === 'function') {
+      onClose();
+    }
+  };
+
+  const navSections = [
+    {
+      title: language === 'bn' ? 'সারসংক্ষেপ' : 'Overview',
+      items: [
+        { id: 'dashboard' as NavTab, label: t.dashboard, icon: LayoutDashboard },
+      ],
+    },
+    {
+      title: t.financials,
+      items: [
+        { id: 'income' as NavTab, label: t.income, icon: ArrowDownLeft, color: 'text-emerald-600' },
+        { id: 'expense' as NavTab, label: t.expense, icon: ArrowUpRight, color: 'text-rose-600' },
+        { id: 'dailyLedger' as NavTab, label: language === 'bn' ? 'দৈনিক লেনদেন' : 'Daily Statement', icon: CalendarCheck, color: 'text-blue-600' },
+        { id: 'donations' as NavTab, label: t.donations, icon: HeartHandshake, color: 'text-teal-600' },
+        { id: 'donationBox' as NavTab, label: t.donationBox, icon: Box },
+        { id: 'cashbook' as NavTab, label: t.cashbook, icon: Wallet },
+        { id: 'bank' as NavTab, label: t.bankAccounts, icon: Landmark },
+        { id: 'accountHeads' as NavTab, label: t.accountHeads, icon: Layers },
+      ],
+    },
+    {
+      title: t.committee,
+      items: [
+        { id: 'committee' as NavTab, label: t.currentCommittee, icon: Users2 },
+        { id: 'meetings' as NavTab, label: t.meetings, icon: CalendarCheck },
+      ],
+    },
+    {
+      title: t.management,
+      items: [
+        { id: 'staff' as NavTab, label: t.staff, icon: UserCheck },
+        { id: 'assets' as NavTab, label: t.assets, icon: Package },
+        { id: 'property' as NavTab, label: t.property, icon: Building },
+        { id: 'cemetery' as NavTab, label: t.cemetery, icon: Crosshair },
+        { id: 'notices' as NavTab, label: t.notices, icon: Bell },
+      ],
+    },
+    {
+      title: language === 'bn' ? 'রিপোর্টিং ও পাবলিক' : 'Reports & Public',
+      items: [
+        { id: 'reports' as NavTab, label: t.reports, icon: FileBarChart, badge: '20+' },
+        { id: 'publicPortal' as NavTab, label: t.publicPortal, icon: ExternalLink },
+      ],
+    },
+    {
+      title: t.admin,
+      items: [
+        { id: 'users' as NavTab, label: language === 'bn' ? 'ইউজার ব্যবস্থাপনা' : 'User Management', icon: Users2, color: 'text-blue-600' },
+        { id: 'admin' as NavTab, label: t.mosqueSettings, icon: Settings },
+        { id: 'audit' as NavTab, label: t.auditLogs, icon: ShieldAlert },
+      ],
+    },
+  ];
+
+  return (
+    <>
+      {/* Mobile backdrop */}
+      {isOpen && (
+        <div
+          onClick={onClose}
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-40 lg:hidden"
+        />
+      )}
+
+      <aside
+        className={`fixed top-16 bottom-0 left-0 z-40 w-64 bg-white border-r border-slate-200 flex flex-col transition-transform duration-200 ease-in-out lg:translate-x-0 ${
+          isOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        <div className="flex-1 overflow-y-auto px-3.5 py-4 space-y-5">
+          {navSections.map((sec, idx) => (
+            <div key={idx} className="space-y-1">
+              <h3 className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                {sec.title}
+              </h3>
+              <div className="space-y-1 mt-1">
+                {sec.items.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      id={`nav-item-${item.id}`}
+                      onClick={() => handleTabClick(item.id)}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                        isActive
+                          ? 'bg-blue-50 text-blue-700 shadow-2xs'
+                          : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2.5">
+                        <Icon
+                          className={`w-4 h-4 ${
+                            isActive ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'
+                          }`}
+                        />
+                        <span className="truncate">{item.label}</span>
+                      </div>
+                      {item.badge && (
+                        <span className="bg-blue-100 text-blue-700 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+                          {item.badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+
+          {/* Android Mobile Edition Card */}
+          <div className="p-3.5 bg-slate-50 rounded-xl border border-dashed border-slate-300 mt-4">
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">
+              {language === 'bn' ? 'মোবাইল পরিকল্পনা' : 'Mobile Plan'}
+            </p>
+            <p className="text-[11px] leading-relaxed text-slate-600">
+              {language === 'bn'
+                ? 'পরবর্তী সংস্করণ: অ্যান্ড্রয়েড নেটিভ অ্যাপ্লিকেশন। আপনার UI এখন প্রতিক্রিয়াশীল।'
+                : 'Next edition: Android Native App. Responsive architecture active.'}
+            </p>
+            <div className="mt-2.5 flex items-center justify-between text-[10px] text-slate-500 font-medium">
+              <span>{language === 'bn' ? 'মুদ্রা:' : 'Currency:'} BDT (৳)</span>
+              <span className="flex items-center text-green-600 font-bold">
+                <span className="w-2 h-2 rounded-full bg-green-500 mr-1 animate-pulse"></span>
+                {language === 'bn' ? 'অনলাইন' : 'Online'}
+              </span>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </>
+  );
+};

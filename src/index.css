@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-heading-bn: "Hind Siliguri", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-body-bn: "Tiro Bangla", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  html {
+    font-family: var(--font-body-bn);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    font-family: var(--font-body-bn);
+    line-height: 1.6;
+    letter-spacing: 0.01em;
+  }
+
+  /* Bengali Heading Hierarchy (Hind Siliguri) */
+  h1, h2, h3, h4, h5, h6,
+  .font-heading,
+  .heading-bn,
+  [data-heading] {
+    font-family: var(--font-heading-bn);
+    letter-spacing: -0.01em;
+  }
+
+  h1 {
+    font-weight: 700;
+  }
+
+  h2 {
+    font-weight: 600;
+  }
+
+  h3 {
+    font-weight: 600;
+  }
+
+  h4, h5, h6 {
+    font-weight: 500;
+  }
+
+  /* Form & UI Controls Inherit Body Typography */
+  input, select, textarea, button, optgroup, option {
+    font-family: inherit;
+  }
+}
+
+/* Reusable Typography Utility Classes */
+.font-heading {
+  font-family: var(--font-heading-bn) !important;
+}
+
+.font-body {
+  font-family: var(--font-body-bn) !important;
+}
+
+.font-siliguri {
+  font-family: var(--font-heading-bn) !important;
+}
+
+.font-tiro {
+  font-family: var(--font-body-bn) !important;
+}
+
+/* Financial & Currency number support */
+.font-taka {
+  font-family: var(--font-heading-bn), system-ui, -apple-system, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
