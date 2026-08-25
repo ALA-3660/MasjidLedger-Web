@@ -410,6 +410,22 @@ class ApiService {
     return res.data!;
   }
 
+  async updateCommitteeMember(id: string, data: any): Promise<CommitteeMember> {
+    const res = await this.request<CommitteeMember>(`/committee/members/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to update committee member');
+    return res.data!;
+  }
+
+  async deleteCommitteeMember(id: string): Promise<void> {
+    const res = await this.request<void>(`/committee/members/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to delete committee member');
+  }
+
   async createCommitteeMeeting(data: any): Promise<CommitteeMeeting> {
     const res = await this.request<CommitteeMeeting>('/committee/meetings', {
       method: 'POST',

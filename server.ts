@@ -1785,24 +1785,44 @@ app.post('/api/v1/committee/terms', authenticate, requirePermission('MANAGE_COMM
 });
 
 app.post('/api/v1/committee/members', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
-  const { termId, name, designation, designationBn, phone, nid, email, address, occupation, photoUrl, orderIndex } = req.body;
+  const { termId, name, designation, designationBn, phone, nid, email, address, occupation, photoUrl, orderIndex, position, positionCustomBn } = req.body;
   const mosqueId = req.currentMosque!.id;
 
-  if (!name || !designationBn || !phone) {
-    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'সদস্যের নাম, পদবী ও মোবাইল নম্বর আবশ্যক।' } });
+  const POSITION_MAP_BN: Record<string, string> = {
+    PRESIDENT: 'সভাপতি (President)',
+    VICE_PRESIDENT: 'সহ-সভাপতি (Vice President)',
+    SECRETARY: 'সাধারণ সম্পাদক (General Secretary)',
+    JOINT_SECRETARY: 'যুগ্ম সম্পাদক (Joint Secretary)',
+    TREASURER: 'কোষাধ্যক্ষ (Treasurer)',
+    ORGANIZING_SECRETARY: 'সাংগঠনিক সম্পাদক',
+    MEMBER: 'কার্যনির্বাহী সদস্য (Member)',
+    IMAM: 'ইমাম (সদস্য)',
+    ADVISOR: 'উপদেষ্টা (Advisor)',
+    OTHER: 'অন্যান্য পদবি',
+  };
+
+  if (!name || !name.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'সদস্যের নাম আবশ্যক।' } });
   }
+
+  if (!phone || !phone.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'মোবাইল নম্বর আবশ্যক।' } });
+  }
+
+  const finalPosition = position || designation || 'MEMBER';
+  const finalDesignationBn = positionCustomBn || designationBn || POSITION_MAP_BN[finalPosition] || POSITION_MAP_BN['MEMBER'] || 'কার্যনির্বাহী সদস্য';
 
   const member: CommitteeMember = {
     id: `mem-${Date.now()}`,
     mosqueId,
-    termId: termId || db.committeeTerms.find(t => t.mosqueId === mosqueId)?.id || 'term-2025-2027',
-    name,
-    nid: nid || '',
-    phone,
-    address,
-    photoUrl,
-    position: (designation as any) || 'MEMBER',
-    positionCustomBn: designationBn,
+    termId: termId || db.committeeTerms.find(t => t.mosqueId === mosqueId && t.status === 'ACTIVE')?.id || db.committeeTerms.find(t => t.mosqueId === mosqueId)?.id || 'term-2024-2026',
+    name: name.trim(),
+    nid: nid ? String(nid).trim() : '',
+    phone: phone.trim(),
+    address: address ? String(address).trim() : '',
+    photoUrl: photoUrl || '',
+    position: (finalPosition as any) || 'MEMBER',
+    positionCustomBn: finalDesignationBn,
     joinDate: new Date().toISOString().split('T')[0],
     status: 'ACTIVE',
     notes: occupation ? `পেশা: ${occupation}` : undefined,
@@ -1811,7 +1831,7 @@ app.post('/api/v1/committee/members', authenticate, requirePermission('MANAGE_CO
 
   db.committeeMembers.push(member);
   db.save();
-  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'COMMITTEE_MEMBER', `কমিটিতে সদস্য অন্তর্ভুক্তি: ${name} (${designationBn})`);
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'COMMITTEE_MEMBER', `কমিটিতে সদস্য অন্তর্ভুক্তি: ${member.name} (${finalDesignationBn})`);
   realtime.broadcastToMosque(mosqueId, 'COMMITTEE_MEMBER_CREATED', member, { senderId: req.user!.id });
 
   res.json({ success: true, data: member, message: 'কমিটির সদস্য সফলভাবে অন্তর্ভুক্ত করা হয়েছে।' });
@@ -1821,9 +1841,41 @@ app.put('/api/v1/committee/members/:id', authenticate, requirePermission('MANAGE
   const member = db.committeeMembers.find(m => m.id === req.params.id && m.mosqueId === req.currentMosque!.id);
   if (!member) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সদস্য পাওয়া যায়নি।' } });
 
-  Object.assign(member, req.body);
+  const POSITION_MAP_BN: Record<string, string> = {
+    PRESIDENT: 'সভাপতি (President)',
+    VICE_PRESIDENT: 'সহ-সভাপতি (Vice President)',
+    SECRETARY: 'সাধারণ সম্পাদক (General Secretary)',
+    JOINT_SECRETARY: 'যুগ্ম সম্পাদক (Joint Secretary)',
+    TREASURER: 'কোষাধ্যক্ষ (Treasurer)',
+    ORGANIZING_SECRETARY: 'সাংগঠনিক সম্পাদক',
+    MEMBER: 'কার্যনির্বাহী সদস্য (Member)',
+    IMAM: 'ইমাম (সদস্য)',
+    ADVISOR: 'উপদেষ্টা (Advisor)',
+    OTHER: 'অন্যান্য পদবি',
+  };
+
+  const { name, phone, nid, address, position, positionCustomBn, designation, designationBn, status, termId, notes, photoUrl } = req.body;
+
+  if (name !== undefined) member.name = String(name).trim();
+  if (phone !== undefined) member.phone = String(phone).trim();
+  if (nid !== undefined) member.nid = String(nid).trim();
+  if (address !== undefined) member.address = String(address).trim();
+  if (termId !== undefined) member.termId = termId;
+  if (status !== undefined) member.status = status;
+  if (notes !== undefined) member.notes = notes;
+  if (photoUrl !== undefined) member.photoUrl = photoUrl;
+
+  const finalPos = position || designation;
+  if (finalPos) {
+    member.position = finalPos;
+  }
+  const finalPosBn = positionCustomBn || designationBn || (finalPos ? POSITION_MAP_BN[finalPos] : undefined);
+  if (finalPosBn) {
+    member.positionCustomBn = finalPosBn;
+  }
+
   db.save();
-  db.logAudit(req.currentMosque!.id, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'COMMITTEE_MEMBER', `সদস্য তথ্য আপডেট: ${member.name}`);
+  db.logAudit(req.currentMosque!.id, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'COMMITTEE_MEMBER', `সদস্য তথ্য আপডেট: ${member.name} (${member.status === 'ACTIVE' ? 'সক্রিয়' : 'নিষ্ক্রিয়'})`);
   realtime.broadcastToMosque(req.currentMosque!.id, 'COMMITTEE_MEMBER_UPDATED', member, { senderId: req.user!.id });
 
   res.json({ success: true, data: member, message: 'সদস্য তথ্য সফলভাবে আপডেট হয়েছে।' });

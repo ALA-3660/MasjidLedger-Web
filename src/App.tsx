@@ -347,6 +347,16 @@ export default function App() {
     await loadData(false);
   };
 
+  const handleUpdateCommitteeMember = async (id: string, data: any) => {
+    await api.updateCommitteeMember(id, data);
+    await loadData(false);
+  };
+
+  const handleDeleteCommitteeMember = async (id: string) => {
+    await api.deleteCommitteeMember(id);
+    await loadData(false);
+  };
+
   const handleAddCommitteeMeeting = async (data: any) => {
     await api.createCommitteeMeeting(data);
     await loadData(false);
@@ -568,6 +578,8 @@ export default function App() {
           language={language}
           onAddTerm={handleAddCommitteeTerm}
           onAddMember={handleAddCommitteeMember}
+          onUpdateMember={handleUpdateCommitteeMember}
+          onDeleteMember={handleDeleteCommitteeMember}
           onAddMeeting={handleAddCommitteeMeeting}
         />
       )}
