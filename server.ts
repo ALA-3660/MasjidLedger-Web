@@ -1584,28 +1584,85 @@ app.get('/api/v1/donation-boxes', authenticate, (req: AuthRequest, res: Response
 });
 
 app.post('/api/v1/donation-boxes', authenticate, requirePermission('MANAGE_ACCOUNTS'), (req: AuthRequest, res: Response) => {
-  const { boxNumber, boxCode, location, description, notes } = req.body;
+  const { boxNumber, boxCode, manualName, location, shopName, ownerName, ownerPhone, address, area, ward, responsiblePerson, status, description, notes, lastCollectedDate, installationDate, createdAt } = req.body;
   const mosqueId = req.currentMosque!.id;
-  const code = boxCode || boxNumber || `BOX-${db.donationBoxes.filter(b => b.mosqueId === mosqueId).length + 1}`;
+  const existingCount = db.donationBoxes.filter(b => b.mosqueId === mosqueId).length;
+  const code = boxCode || boxNumber || `BOX-${String(existingCount + 1).padStart(3, '0')}`;
 
   const box: DonationBox = {
     id: `box-${Date.now()}`,
     mosqueId,
     boxCode: code,
-    location: location || 'প্রধান ফটক',
-    description: description || notes || 'সাধারণ তহবিল',
-    status: 'ACTIVE',
-    lastCollectedDate: undefined,
+    manualName: manualName || '',
+    location: location || shopName || 'প্রধান ফটক',
+    shopName: shopName || '',
+    ownerName: ownerName || '',
+    ownerPhone: ownerPhone || '',
+    address: address || '',
+    area: area || '',
+    ward: ward || '',
+    responsiblePerson: responsiblePerson || '',
+    description: description || notes || '',
+    notes: notes || description || '',
+    status: status || 'ACTIVE',
+    lastCollectedDate: lastCollectedDate ? lastCollectedDate : undefined,
+    installationDate: installationDate || createdAt || new Date().toISOString().split('T')[0],
     totalCollected: 0,
-    createdAt: new Date().toISOString()
+    createdAt: installationDate || createdAt || new Date().toISOString()
   };
 
   db.donationBoxes.push(box);
   db.save();
-  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'DONATION_BOX', `নতুন দানবাক্স তৈরি: ${box.boxCode}`);
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'DONATION_BOX', `নতুন দানবাক্স তৈরি: ${box.boxCode} (${box.manualName || box.shopName || box.location})`);
   realtime.broadcastToMosque(mosqueId, 'DONATION_BOX_CREATED', box, { senderId: req.user!.id });
 
   res.json({ success: true, data: box, message: 'দানবাক্স সফলভাবে তৈরি হয়েছে।' });
+});
+
+app.put('/api/v1/donation-boxes/:id', authenticate, requirePermission('MANAGE_ACCOUNTS'), (req: AuthRequest, res: Response) => {
+  const box = db.donationBoxes.find(b => b.id === req.params.id && b.mosqueId === req.currentMosque!.id);
+  if (!box) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'দানবাক্স পাওয়া যায়নি।' } });
+  }
+
+  const { boxCode, manualName, location, shopName, ownerName, ownerPhone, address, area, ward, responsiblePerson, status, description, notes, lastCollectedDate, installationDate, createdAt } = req.body;
+
+  if (boxCode !== undefined) box.boxCode = boxCode;
+  if (manualName !== undefined) box.manualName = manualName;
+  if (location !== undefined) box.location = location;
+  if (shopName !== undefined) box.shopName = shopName;
+  if (ownerName !== undefined) box.ownerName = ownerName;
+  if (ownerPhone !== undefined) box.ownerPhone = ownerPhone;
+  if (address !== undefined) box.address = address;
+  if (area !== undefined) box.area = area;
+  if (ward !== undefined) box.ward = ward;
+  if (responsiblePerson !== undefined) box.responsiblePerson = responsiblePerson;
+  if (status !== undefined) box.status = status;
+  if (description !== undefined) box.description = description;
+  if (notes !== undefined) box.notes = notes;
+  if (lastCollectedDate !== undefined) box.lastCollectedDate = lastCollectedDate ? lastCollectedDate : undefined;
+  if (installationDate !== undefined) box.installationDate = installationDate;
+  if (createdAt !== undefined) box.createdAt = createdAt;
+
+  db.save();
+  db.logAudit(req.currentMosque!.id, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'DONATION_BOX', `দানবাক্স তথ্য আপডেট: ${box.boxCode} (${box.manualName || box.shopName || box.location})`);
+  realtime.broadcastToMosque(req.currentMosque!.id, 'DONATION_BOX_UPDATED', box, { senderId: req.user!.id });
+
+  res.json({ success: true, data: box, message: 'দানবাক্সের তথ্য সফলভাবে হালনাগাদ করা হয়েছে।' });
+});
+
+app.delete('/api/v1/donation-boxes/:id', authenticate, requirePermission('MANAGE_ACCOUNTS'), (req: AuthRequest, res: Response) => {
+  const idx = db.donationBoxes.findIndex(b => b.id === req.params.id && b.mosqueId === req.currentMosque!.id);
+  if (idx === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'দানবাক্স পাওয়া যায়নি।' } });
+  }
+
+  const removed = db.donationBoxes.splice(idx, 1)[0];
+  db.save();
+  db.logAudit(req.currentMosque!.id, req.user!.id, req.user!.name, req.user!.role, 'DELETE', 'DONATION_BOX', `দানবাক্স মুছে ফেলা হয়েছে: ${removed.boxCode}`);
+  realtime.broadcastToMosque(req.currentMosque!.id, 'DONATION_BOX_DELETED', { id: removed.id }, { senderId: req.user!.id });
+
+  res.json({ success: true, message: 'দানবাক্স সফলভাবে মুছে ফেলা হয়েছে।' });
 });
 
 app.post('/api/v1/donation-boxes/collect', authenticate, requirePermission('CREATE_INCOME'), (req: AuthRequest, res: Response) => {

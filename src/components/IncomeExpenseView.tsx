@@ -12,6 +12,7 @@ import {
   FileText,
   AlertTriangle,
   Calculator,
+  Banknote,
   MessageSquare,
   Edit2,
 } from 'lucide-react';
@@ -505,18 +506,22 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
                   />
                 </div>
 
-                {/* Amount with calculator */}
+                {/* Amount with Denomination Counter for Income Only */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-xs font-semibold text-slate-700">{t.amount} *</label>
-                    <button
-                      type="button"
-                      onClick={() => setIsCalculatorOpen(true)}
-                      className="text-[11px] text-blue-600 hover:text-blue-700 font-bold flex items-center space-x-1"
-                    >
-                      <Calculator className="w-3.5 h-3.5" />
-                      <span>ভাংতি গণনা</span>
-                    </button>
+                    {modalType === 'INCOME' && (
+                      <button
+                        type="button"
+                        id="btn-income-change-counter"
+                        onClick={() => setIsCalculatorOpen(true)}
+                        className="text-[11px] bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-lg font-bold flex items-center space-x-1 transition-colors cursor-pointer"
+                        title="ভাংতি টাকা ও ক্যাশ নোট গণনা"
+                      >
+                        <Banknote className="w-3.5 h-3.5 text-emerald-700" />
+                        <span>ভাংতি টাকা গণনা</span>
+                      </button>
+                    )}
                   </div>
                   <input
                     id="input-voucher-amount"

@@ -19,7 +19,9 @@ import {
   Settings,
   ShieldAlert,
   ExternalLink,
-  Bot
+  Bot,
+  Banknote,
+  Calculator
 } from 'lucide-react';
 import { Language, translations } from '../lib/i18n';
 
@@ -50,6 +52,7 @@ export interface SidebarProps {
   activeTab?: NavTab | string;
   onSelectTab?: (tab: NavTab) => void;
   onTabChange?: (tab: any) => void;
+  onOpenCalculator?: () => void;
   language?: Language;
   isOpen?: boolean;
   onClose?: () => void;
@@ -60,6 +63,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeTab = 'dashboard',
   onSelectTab,
   onTabChange,
+  onOpenCalculator,
   language = 'bn',
   isOpen = false,
   onClose,
@@ -144,7 +148,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <aside
         id="app-sidebar"
         data-sidebar="true"
-        className={`fixed top-16 bottom-0 left-0 z-40 w-64 bg-white border-r border-slate-200 flex flex-col font-siliguri transition-transform duration-200 ease-in-out lg:translate-x-0 ${
+        className={`fixed top-16 bottom-0 left-0 z-40 w-64 bg-white border-r border-slate-200 flex flex-col font-siliguri transition-transform duration-200 ease-in-out lg:translate-x-0 print:hidden ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -188,6 +192,36 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             </div>
           ))}
+
+          {/* Denomination Counter Quick Trigger */}
+          {onOpenCalculator && (
+            <button
+              id="btn-sidebar-calculator"
+              type="button"
+              onClick={() => {
+                onOpenCalculator();
+                if (onClose) onClose();
+              }}
+              className="w-full flex items-center justify-between p-3 bg-gradient-to-r from-emerald-50 to-teal-50 hover:from-emerald-100 hover:to-teal-100 border border-emerald-200/80 rounded-xl text-left transition-all group cursor-pointer shadow-2xs"
+            >
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 bg-emerald-600 text-white rounded-lg group-hover:scale-105 transition-transform">
+                  <Banknote className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-emerald-950 font-siliguri">
+                    {language === 'bn' ? 'ভাংতি টাকা গণনা' : 'Cash & Change Counter'}
+                  </p>
+                  <p className="text-[11px] text-emerald-700 font-baloo">
+                    {language === 'bn' ? 'নোট ও কয়েন কাউন্টার' : 'Denomination Notes & Coins'}
+                  </p>
+                </div>
+              </div>
+              <span className="text-[10px] bg-emerald-200/70 text-emerald-900 font-bold px-1.5 py-0.5 rounded font-mono">
+                Alt+C
+              </span>
+            </button>
+          )}
 
           {/* Android Mobile Edition Card */}
           <div className="p-3.5 bg-slate-50 rounded-xl border border-dashed border-slate-300 mt-4 font-siliguri">

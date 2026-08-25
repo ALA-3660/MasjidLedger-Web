@@ -290,6 +290,20 @@ aside button,
     print-color-adjust: exact !important;
   }
 
+  /* Global Scrollbar Suppression in Print Mode */
+  *,
+  *::before,
+  *::after {
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+  }
+
+  ::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+  }
+
   /* When an invoice/receipt modal is open, completely hide background app shell */
   .app-shell-hidden-for-print {
     display: none !important;
@@ -346,8 +360,77 @@ aside button,
 
   /* Ensure screen-only controls, backdrops, and interactive elements are hidden */
   .print-controls-bar,
+  .no-print,
+  .print-hidden,
   .print\\:hidden {
     display: none !important;
   }
+
+  /* Hide all navigation, headers, sidebars, drawers, buttons */
+  header,
+  nav,
+  aside,
+  #app-sidebar,
+  .navbar-root,
+  .app-header,
+  .mobile-nav-bar,
+  .mobile-status-bar,
+  .mobile-header-bar,
+  .ai-advisor-modal,
+  .btn-floating,
+  .report-screen-ui {
+    display: none !important;
+  }
+
+  /* Main App Container Reset for Print */
+  #app-shell-root,
+  .app-shell-container,
+  main,
+  .report-center-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    background: #ffffff !important;
+    overflow: visible !important;
+  }
+
+  /* Official Report Print System Container */
+  .report-print-root {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+    font-family: "Baloo Da 2", system-ui, sans-serif !important;
+  }
+
+  .report-print-root table {
+    width: 100% !important;
+    max-width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  .report-print-root thead {
+    display: table-header-group !important;
+  }
+
+  .report-print-root tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .report-print-root td,
+  .report-print-root th {
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
 }
+
 

@@ -1,24 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   FileText,
-  Calendar,
-  Filter,
-  Download,
-  Printer,
-  Sparkles,
   Bookmark,
-  Plus,
   Trash2,
-  PieChart,
+  PieChart as PieIcon,
   BarChart3,
-  Layers,
-  ChevronRight,
   TrendingUp,
   TrendingDown,
-  CheckCircle2,
   Building,
-  DollarSign,
-  Search,
+  Printer,
+  Download,
+  Sparkles,
+  Eye,
+  CheckCircle2,
 } from 'lucide-react';
 import {
   IncomeEntry,
@@ -38,8 +32,9 @@ import {
   AuditLog,
   Mosque,
   SavedReportConfig,
+  User,
 } from '../types';
-import { Language, translations, formatCurrency, formatDate } from '../lib/i18n';
+import { Language, translations } from '../lib/i18n';
 import {
   ResponsiveContainer,
   BarChart,
@@ -53,6 +48,7 @@ import {
   Pie,
   Cell,
 } from 'recharts';
+import { ReportPrintDocument, REPORT_TITLES } from './ReportPrintDocument';
 
 interface ReportCenterViewProps {
   incomes: IncomeEntry[];
@@ -71,6 +67,7 @@ interface ReportCenterViewProps {
   notices: MosqueNotice[];
   auditLogs: AuditLog[];
   currentMosque: Mosque | null;
+  currentUser?: User | null;
   savedConfigs?: SavedReportConfig[];
   onSaveReportConfig?: (config: Omit<SavedReportConfig, 'id' | 'createdAt'>) => Promise<void>;
   onDeleteReportConfig?: (id: string) => Promise<void>;
@@ -79,26 +76,27 @@ interface ReportCenterViewProps {
 
 const REPORT_TYPES = [
   { id: 'SUMMARY', labelBn: 'আর্থিক সারসংক্ষেপ (Executive Summary)', category: 'আর্থিক' },
+  { id: 'DAILY_STATEMENT', labelBn: 'দৈনিক লেনদেন বিবরণী ও চলমান লেজার (Daily Ledger)', category: 'আর্থিক' },
   { id: 'INCOME_STATEMENT', labelBn: 'আয় বিবরণী (Income Statement)', category: 'আর্থিক' },
   { id: 'EXPENSE_STATEMENT', labelBn: 'ব্যয় বিবরণী (Expense Statement)', category: 'আর্থিক' },
   { id: 'INCOME_EXPENSE_COMBINED', labelBn: 'আয় ও ব্যয় যৌথ বিবরণী (Income & Expense Statement)', category: 'আর্থিক' },
-  { id: 'CASHBOOK', labelBn: 'নগদ বহি (Cashbook)', category: 'আর্থিক' },
-  { id: 'BANKBOOK', labelBn: 'ব্যাংক বহি (Bankbook)', category: 'আর্থিক' },
-  { id: 'CASH_BANK_COMBINED', labelBn: 'ক্যাশ ও ব্যাংক যৌথ বিবরণী', category: 'আর্থিক' },
+  { id: 'CASHBOOK', labelBn: 'নগদ বহি (Cashbook Ledger)', category: 'আর্থিক' },
+  { id: 'BANKBOOK', labelBn: 'ব্যাংক বহি ও স্টেটমেন্ট (Bankbook)', category: 'আর্থিক' },
+  { id: 'CASH_BANK_COMBINED', labelBn: 'ক্যাশ ও ব্যাংক যৌথ সমন্বিত বিবরণী', category: 'আর্থিক' },
   { id: 'HEADWISE_LEDGER', labelBn: 'খাতভিত্তিক লেজার (Head-wise Ledger)', category: 'আর্থিক' },
-  { id: 'MONTHLY_SUMMARY', labelBn: 'মাসভিত্তিক তুলনামূলক প্রতিবেদন (Monthly Trend)', category: 'আর্থিক' },
-  { id: 'DONATION_SUMMARY', labelBn: 'দান ও অনুদান প্রতিবেদন (Donations)', category: 'দান ও কালেকশন' },
+  { id: 'MONTHLY_SUMMARY', labelBn: 'মাসভিত্তিক তুলনামূলক আর্থিক প্রতিবেদন', category: 'আর্থিক' },
+  { id: 'DONATION_SUMMARY', labelBn: 'দান ও অনুদান সংকলন প্রতিবেদন', category: 'দান ও কালেকশন' },
   { id: 'DONATION_BOX_REPORT', labelBn: 'দানবাক্স কালেকশন ও স্ট্যাটাস রিপোর্ট', category: 'দান ও কালেকশন' },
   { id: 'JUMA_COLLECTION_REPORT', labelBn: 'জুমার কালেকশন রেজিস্টার', category: 'দান ও কালেকশন' },
-  { id: 'STAFF_SALARY_REPORT', labelBn: 'স্টাফ ও বেতন বিবরণী (Staff Salary)', category: 'প্রশাসন' },
+  { id: 'STAFF_SALARY_REPORT', labelBn: 'স্টাফ ও বেতন বিবরণী (Staff Salary Sheet)', category: 'প্রশাসন' },
   { id: 'ASSET_REGISTER_REPORT', labelBn: 'সম্পদ রেজিস্ট্রি প্রতিবেদন (Asset Register)', category: 'প্রশাসন' },
   { id: 'PROPERTY_REGISTER_REPORT', labelBn: 'ওয়াকফ ও সম্পত্তি রেজিস্ট্রি (Property Register)', category: 'প্রশাসন' },
   { id: 'CEMETERY_REGISTER_REPORT', labelBn: 'কবরস্থান রেজিস্ট্রি প্রতিবেদন (Cemetery)', category: 'প্রশাসন' },
   { id: 'COMMITTEE_REPORT', labelBn: 'কমিটি ও সভার কার্যবিবরণী রিপোর্ট', category: 'প্রশাসন' },
-  { id: 'AUDIT_LOG_REPORT', labelBn: 'সিস্টেম অডিট ট্রেইল লগ (Audit Trail)', category: 'নিরাপত্তা' },
+  { id: 'AUDIT_LOG_REPORT', labelBn: 'সিস্টেম অডিট ট্রেইল ও নিরাপত্তা লগ (Audit Trail)', category: 'নিরাপত্তা' },
 ];
 
-const COLORS = ['#059669', '#2563eb', '#d97706', '#dc2626', '#7c3aed', '#0891b2', '#ea580c', '#475569'];
+const CHART_COLORS = ['#059669', '#2563eb', '#d97706', '#dc2626', '#7c3aed', '#0891b2', '#ea580c', '#475569'];
 
 export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
   incomes,
@@ -117,6 +115,7 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
   notices,
   auditLogs,
   currentMosque,
+  currentUser,
   savedConfigs = [],
   onSaveReportConfig,
   onDeleteReportConfig,
@@ -137,6 +136,7 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
   const [level, setLevel] = useState<string>('DETAILED');
   const [selectedHeadId, setSelectedHeadId] = useState<string>('ALL');
   const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL');
+  const [showCharts, setShowCharts] = useState<boolean>(false);
 
   // Save report modal
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
@@ -170,7 +170,7 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
     }
   };
 
-  // Filtered dataset calculations
+  // Filtered dataset calculations for screen charts
   const filteredIncomes = incomes.filter((i) => {
     if (i.status !== 'APPROVED') return false;
     const matchesDate = i.date >= fromDate && i.date <= toDate;
@@ -194,18 +194,18 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
   // Head-wise grouping for charts & breakdown
   const headWiseIncome: Record<string, { name: string; amount: number }> = {};
   filteredIncomes.forEach((i) => {
-    const key = i.mainHeadId;
+    const key = i.mainHeadId || 'other';
     if (!headWiseIncome[key]) {
-      headWiseIncome[key] = { name: i.mainHeadNameBn, amount: 0 };
+      headWiseIncome[key] = { name: i.mainHeadNameBn || 'অন্যান্য', amount: 0 };
     }
     headWiseIncome[key].amount += i.amount;
   });
 
   const headWiseExpense: Record<string, { name: string; amount: number }> = {};
   filteredExpenses.forEach((e) => {
-    const key = e.mainHeadId;
+    const key = e.mainHeadId || 'other';
     if (!headWiseExpense[key]) {
-      headWiseExpense[key] = { name: e.mainHeadNameBn, amount: 0 };
+      headWiseExpense[key] = { name: e.mainHeadNameBn || 'অন্যান্য', amount: 0 };
     }
     headWiseExpense[key].amount += e.amount;
   });
@@ -300,9 +300,17 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
     document.body.removeChild(link);
   };
 
+  const currentReportMeta = REPORT_TITLES[reportType] || {
+    titleBn: reportType,
+    subtitleBn: '',
+    isLandscape: false,
+  };
+
   return (
-    <div className="space-y-5 max-w-7xl mx-auto pb-12">
-      {/* Top Banner */}
+    <div className="report-center-container space-y-5 max-w-7xl mx-auto pb-12 font-baloo">
+      {/* ============================================================
+          1. TOP BANNER & ACTION BAR (PRINT HIDDEN)
+          ============================================================ */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs print:hidden">
         <div>
           <div className="flex items-center space-x-2.5">
@@ -310,81 +318,109 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
               <FileText className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-xl font-black text-slate-900 tracking-tight">
-                রিপোর্ট সেন্টার (Comprehensive Report Center)
+              <h2 className="text-xl font-black font-siliguri text-slate-900 tracking-tight">
+                রিপোর্ট সেন্টার (Report Center)
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                আর্থিক বিবরণী, ক্যাশবহি, ব্যাংকবহি, দানবাক্স ও সকল প্রশাসনিক মডিউলের মাল্টি-ডাইমেনশনাল কাস্টম রিপোর্ট
+                আর্থিক বিবরণী, ক্যাশবহি, ব্যাংক স্টেটমেন্ট ও সকল প্রশাসনিক মডিউলের প্রমিত A4 প্রিন্ট উপযোগী প্রতিবেদন
               </p>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center flex-wrap gap-2">
           {onSaveReportConfig && (
             <button
+              id="btn-save-report-config"
               onClick={() => setIsSaveModalOpen(true)}
-              className="px-3.5 py-2 border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-xl flex items-center space-x-1.5 transition-colors"
+              className="px-3.5 py-2 border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-xl flex items-center space-x-1.5 transition-colors cursor-pointer"
             >
               <Bookmark className="w-3.5 h-3.5" />
-              <span>রিপোর্ট সেভ করুন</span>
+              <span>কনফিগ সংরক্ষণ</span>
             </button>
           )}
 
           <button
+            id="btn-export-csv"
             onClick={handleExportCSV}
-            className="px-3.5 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl flex items-center space-x-1.5 transition-colors"
+            className="px-3.5 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl flex items-center space-x-1.5 transition-colors cursor-pointer"
           >
             <Download className="w-3.5 h-3.5" />
             <span>CSV এক্সপোর্ট</span>
           </button>
 
           <button
-            onClick={handlePrint}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs flex items-center space-x-1.5 transition-colors"
+            id="btn-toggle-charts"
+            onClick={() => setShowCharts((prev) => !prev)}
+            className={`px-3.5 py-2 border text-xs font-bold rounded-xl flex items-center space-x-1.5 transition-colors cursor-pointer ${
+              showCharts ? 'bg-indigo-600 text-white border-indigo-600' : 'border-slate-300 hover:bg-slate-50 text-slate-700'
+            }`}
           >
-            <Printer className="w-3.5 h-3.5" />
-            <span>রিপোর্ট প্রিন্ট করুন</span>
+            <BarChart3 className="w-3.5 h-3.5" />
+            <span>{showCharts ? 'গ্রাফ লুকান' : 'গ্রাফ দেখুন'}</span>
+          </button>
+
+          <button
+            id="btn-print-report-main"
+            onClick={handlePrint}
+            className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold font-siliguri rounded-xl shadow-xs flex items-center space-x-2 transition-all cursor-pointer"
+          >
+            <Printer className="w-4 h-4" />
+            <span>রিপোর্ট প্রিন্ট করুন (A4)</span>
           </button>
         </div>
       </div>
 
-      {/* Quick Templates Ribbon (Print Hidden) */}
+      {/* ============================================================
+          2. 1-CLICK QUICK TEMPLATES RIBBON (PRINT HIDDEN)
+          ============================================================ */}
       <div className="bg-slate-900 text-white p-3.5 rounded-2xl shadow-xs flex flex-col md:flex-row items-center justify-between gap-3 print:hidden">
         <div className="flex items-center space-x-2 text-xs">
           <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-          <span className="font-bold">১-ক্লিক দ্রুত রিপোর্ট টেমপ্লেট:</span>
+          <span className="font-bold font-siliguri">১-ক্লিক দ্রুত রিপোর্ট টেমপ্লেট:</span>
         </div>
-        <div className="flex items-center space-x-1.5 overflow-x-auto w-full md:w-auto">
+        <div className="flex items-center space-x-1.5 overflow-x-auto w-full md:w-auto pb-1 md:pb-0">
           <button
             onClick={() => applyPresetTemplate('CASHBOOK', 'THIS_MONTH', 'DAILY')}
-            className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-white text-[11px] font-semibold rounded-lg shrink-0 transition-colors"
+            className="px-3 py-1 bg-white/10 hover:bg-white/20 text-white text-[11px] font-semibold rounded-lg shrink-0 transition-colors cursor-pointer"
           >
             চলতি মাসের ক্যাশবহি
           </button>
           <button
             onClick={() => applyPresetTemplate('INCOME_EXPENSE_COMBINED', 'LAST_MONTH', 'HEAD')}
-            className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-white text-[11px] font-semibold rounded-lg shrink-0 transition-colors"
+            className="px-3 py-1 bg-white/10 hover:bg-white/20 text-white text-[11px] font-semibold rounded-lg shrink-0 transition-colors cursor-pointer"
           >
-            বিগত মাসের আয়-ব্যয়
+            বিগত মাসের আয়-ব্যয় যৌথ
           </button>
           <button
             onClick={() => applyPresetTemplate('SUMMARY', 'THIS_YEAR', 'MONTHLY')}
-            className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-white text-[11px] font-semibold rounded-lg shrink-0 transition-colors"
+            className="px-3 py-1 bg-white/10 hover:bg-white/20 text-white text-[11px] font-semibold rounded-lg shrink-0 transition-colors cursor-pointer"
           >
-            বার্ষিক অডিট সারসংক্ষেপ
+            বার্ষিক আর্থিক নিরীক্ষা
+          </button>
+          <button
+            onClick={() => applyPresetTemplate('BANKBOOK', 'THIS_MONTH', 'NONE')}
+            className="px-3 py-1 bg-white/10 hover:bg-white/20 text-white text-[11px] font-semibold rounded-lg shrink-0 transition-colors cursor-pointer"
+          >
+            ব্যাংক স্টেটমেন্ট
           </button>
           <button
             onClick={() => applyPresetTemplate('DONATION_BOX_REPORT', 'THIS_MONTH', 'NONE')}
-            className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-white text-[11px] font-semibold rounded-lg shrink-0 transition-colors"
+            className="px-3 py-1 bg-white/10 hover:bg-white/20 text-white text-[11px] font-semibold rounded-lg shrink-0 transition-colors cursor-pointer"
           >
             দানবাক্স রিপোর্ট
           </button>
           <button
             onClick={() => applyPresetTemplate('STAFF_SALARY_REPORT', 'THIS_MONTH', 'NONE')}
-            className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-white text-[11px] font-semibold rounded-lg shrink-0 transition-colors"
+            className="px-3 py-1 bg-white/10 hover:bg-white/20 text-white text-[11px] font-semibold rounded-lg shrink-0 transition-colors cursor-pointer"
           >
             স্টাফ বেতন শিট
+          </button>
+          <button
+            onClick={() => applyPresetTemplate('AUDIT_LOG_REPORT', 'THIS_MONTH', 'NONE')}
+            className="px-3 py-1 bg-white/10 hover:bg-white/20 text-white text-[11px] font-semibold rounded-lg shrink-0 transition-colors cursor-pointer"
+          >
+            অডিট ট্রেইল লগ
           </button>
         </div>
       </div>
@@ -401,13 +437,13 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
               key={cfg.id}
               className="flex items-center space-x-1 bg-slate-100 px-2.5 py-1 rounded-lg text-xs font-medium text-slate-800 shrink-0 hover:bg-blue-50 transition-colors"
             >
-              <button onClick={() => handleLoadSavedConfig(cfg)} className="hover:text-blue-700">
+              <button onClick={() => handleLoadSavedConfig(cfg)} className="hover:text-blue-700 cursor-pointer">
                 {cfg.name}
               </button>
               {onDeleteReportConfig && (
                 <button
                   onClick={() => onDeleteReportConfig(cfg.id)}
-                  className="text-slate-400 hover:text-rose-600 p-0.5"
+                  className="text-slate-400 hover:text-rose-600 p-0.5 cursor-pointer"
                 >
                   <Trash2 className="w-3 h-3" />
                 </button>
@@ -417,7 +453,9 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
         </div>
       )}
 
-      {/* Filter Matrix Configuration Bar */}
+      {/* ============================================================
+          3. FILTER MATRIX CONFIGURATION BAR (PRINT HIDDEN)
+          ============================================================ */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4 print:hidden">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
           {/* Report Type Selector */}
@@ -446,7 +484,7 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
             >
               <option value="THIS_MONTH">চলতি মাস (This Month)</option>
               <option value="LAST_MONTH">বিগত মাস (Last Month)</option>
-              <option value="TODAY">আজ (Today)</option>
+              <option value="TODAY">আজকের হিসাব (Today)</option>
               <option value="THIS_YEAR">চলতি বছর (This Year)</option>
               <option value="LAST_YEAR">বিগত বছর (Last Year)</option>
               <option value="CUSTOM">কাস্টম তারিখ সীমা (Custom Range)</option>
@@ -530,7 +568,7 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">নির্দিষ্ট ব্যাংক/ক্যাশ</label>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">নির্দিষ্ট ব্যাংক/ক্যাশ ফান্ড</label>
             <select
               value={selectedAccountId}
               onChange={(e) => setSelectedAccountId(e.target.value)}
@@ -547,335 +585,137 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
         </div>
       </div>
 
-      {/* ----------------- REPORT RENDER AREA ----------------- */}
-
-      {/* Print-Only Header */}
-      <div className="hidden print:block border-b-2 border-slate-900 pb-4 mb-4">
-        <div className="flex items-center justify-between gap-4">
-          <div className="w-16 h-16 flex items-center justify-center shrink-0">
-            {currentMosque?.logoUrl ? (
-              <img
-                src={currentMosque.logoUrl}
-                alt="Mosque Logo"
-                className="max-h-16 max-w-16 object-contain rounded"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <div className="w-14 h-14 border border-slate-300 rounded-lg bg-slate-50 flex items-center justify-center text-slate-600">
-                <Building className="w-7 h-7" />
-              </div>
-            )}
-          </div>
-          <div className="text-center flex-1">
-            <h1 className="text-2xl font-black text-slate-900">{currentMosque?.nameBn || 'মসজিদুল মামুর কমপ্লেক্স'}</h1>
-            <p className="text-xs text-slate-600">{currentMosque?.address || 'মিরপুর-১২, ঢাকা-১২১৬'}</p>
-            <div className="my-2 py-1 px-4 bg-slate-100 border border-slate-300 inline-block font-bold text-sm">
-              {REPORT_TYPES.find((r) => r.id === reportType)?.labelBn || reportType}
-            </div>
-          </div>
-          <div className="w-20 text-right text-[10px] text-slate-600 font-medium space-y-1">
-            <div>কোড: {currentMosque?.code || 'MOSQUE'}</div>
-            <div>{new Date().toLocaleDateString('bn-BD')}</div>
-          </div>
-        </div>
-        <div className="flex justify-between text-xs text-slate-600 font-medium mt-2 pt-2 border-t border-slate-200">
-          <span>সময়সীমা: {formatDate(fromDate)} হতে {formatDate(toDate)}</span>
-          <span>প্রিন্টের সময়: {new Date().toLocaleString('bn-BD')}</span>
-        </div>
-      </div>
-
-      {/* Summary KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-        <div className="bg-white p-4 rounded-2xl border border-emerald-200 shadow-xs bg-emerald-50/20">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-emerald-800">মোট অর্জিত আয় (Income)</span>
-            <TrendingUp className="w-4 h-4 text-emerald-600" />
-          </div>
-          <span className="text-2xl font-black text-emerald-800 mt-2 block font-mono">
-            ৳ {totalIncome.toLocaleString('en-IN')}
-          </span>
-          <span className="text-[11px] text-emerald-600 mt-0.5 block">
-            {filteredIncomes.length} টি অনুমোদিত ভাউচার
-          </span>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-rose-200 shadow-xs bg-rose-50/20">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-rose-800">মোট পরিশোধিত ব্যয় (Expense)</span>
-            <TrendingDown className="w-4 h-4 text-rose-600" />
-          </div>
-          <span className="text-2xl font-black text-rose-800 mt-2 block font-mono">
-            ৳ {totalExpense.toLocaleString('en-IN')}
-          </span>
-          <span className="text-[11px] text-rose-600 mt-0.5 block">
-            {filteredExpenses.length} টি অনুমোদিত ভাউচার
-          </span>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-blue-200 shadow-xs bg-blue-50/30">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-blue-900">নিট উদ্বৃত্ত / ঘাটতি (Net Balance)</span>
-            <DollarSign className="w-4 h-4 text-blue-600" />
-          </div>
-          <span
-            className={`text-2xl font-black mt-2 block font-mono ${
-              netSurplus >= 0 ? 'text-blue-900' : 'text-rose-700'
-            }`}
-          >
-            ৳ {netSurplus.toLocaleString('en-IN')}
-          </span>
-          <span className="text-[11px] text-blue-700 mt-0.5 block">
-            {netSurplus >= 0 ? 'উদ্বৃত্ত তহবিল' : 'ঘাটতি'}
-          </span>
-        </div>
-      </div>
-
-      {/* Visual Analytics Charts (Hidden on standard compact print) */}
-      {(incomeChartData.length > 0 || expenseChartData.length > 0) && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 print:hidden">
-          {incomeChartData.length > 0 && (
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-              <h4 className="text-xs font-bold text-slate-700 mb-3 flex items-center space-x-1.5">
-                <PieChart className="w-4 h-4 text-emerald-600" />
-                <span>খাতভিত্তিক আয় পাই-চার্ট</span>
-              </h4>
-              <div className="h-60">
+      {/* ============================================================
+          4. OPTIONAL SCREEN-ONLY GRAPHICAL INSIGHTS (PRINT HIDDEN)
+          ============================================================ */}
+      {showCharts && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 print:hidden animate-in fade-in duration-200">
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+            <h4 className="text-xs font-bold font-siliguri text-slate-800 mb-3 flex items-center space-x-2">
+              <PieIcon className="w-4 h-4 text-emerald-600" />
+              <span>আয়ের খাতসমূহের অনুপাত (Income Distribution)</span>
+            </h4>
+            <div className="h-56">
+              {incomeChartData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <RePieChart>
                     <Pie
                       data={incomeChartData}
-                      dataKey="value"
-                      nameKey="name"
                       cx="50%"
                       cy="50%"
-                      outerRadius={80}
-                      label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                      innerRadius={45}
+                      outerRadius={75}
+                      paddingAngle={4}
+                      dataKey="value"
                     >
-                      {incomeChartData.map((_, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      {incomeChartData.map((entry, index) => (
+                        <Cell key={`cell-inc-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(value: number) => `৳ ${value.toLocaleString('en-IN')}`} />
+                    <Tooltip formatter={(val: any) => `৳ ${Number(val).toLocaleString('en-IN')}`} />
+                    <Legend />
                   </RePieChart>
                 </ResponsiveContainer>
-              </div>
+              ) : (
+                <div className="h-full flex items-center justify-center text-xs text-slate-400">
+                  কোনো তথ্য পাওয়া যায়নি
+                </div>
+              )}
             </div>
-          )}
+          </div>
 
-          {expenseChartData.length > 0 && (
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-              <h4 className="text-xs font-bold text-slate-700 mb-3 flex items-center space-x-1.5">
-                <BarChart3 className="w-4 h-4 text-rose-600" />
-                <span>খাতভিত্তিক ব্যয় বার-চার্ট</span>
-              </h4>
-              <div className="h-60">
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+            <h4 className="text-xs font-bold font-siliguri text-slate-800 mb-3 flex items-center space-x-2">
+              <BarChart3 className="w-4 h-4 text-rose-600" />
+              <span>ব্যয়ের প্রধান খাতসমূহ (Top Expense Heads)</span>
+            </h4>
+            <div className="h-56">
+              {expenseChartData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={expenseChartData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip formatter={(value: number) => `৳ ${value.toLocaleString('en-IN')}`} />
-                    <Bar dataKey="value" fill="#dc2626" radius={[6, 6, 0, 0]} />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                    <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} />
+                    <YAxis tick={{ fontSize: 10 }} />
+                    <Tooltip formatter={(val: any) => `৳ ${Number(val).toLocaleString('en-IN')}`} />
+                    <Bar dataKey="value" name="ব্যয়" fill="#e11d48" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
-              </div>
+              ) : (
+                <div className="h-full flex items-center justify-center text-xs text-slate-400">
+                  কোনো তথ্য পাওয়া যায়নি
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       )}
 
-      {/* Main Report Data Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden print:border-none print:shadow-none">
-        {/* Head-wise Summary Breakdown Table */}
-        <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-          <h3 className="text-sm font-bold text-slate-800">
-            খাতভিত্তিক আয় ও ব্যয়ের সংকলন (Head-wise Financial Breakdown)
-          </h3>
-          <span className="text-xs font-mono text-slate-500">
-            সময়: {formatDate(fromDate)} — {formatDate(toDate)}
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-200">
-          {/* Income Breakdown */}
-          <div className="p-4 space-y-3">
-            <h4 className="text-xs font-bold text-emerald-800 uppercase tracking-wider flex items-center justify-between">
-              <span>আয়ের খাতসমূহ (Income Heads)</span>
-              <span className="font-mono">মোট: ৳ {totalIncome.toLocaleString('en-IN')}</span>
-            </h4>
-            <div className="space-y-2">
-              {Object.keys(headWiseIncome).length === 0 ? (
-                <p className="text-xs text-slate-400 italic">কোনো আয় রেকর্ড পাওয়া যায়নি</p>
-              ) : (
-                Object.values(headWiseIncome).map((h) => {
-                  const pct = totalIncome > 0 ? (h.amount / totalIncome) * 100 : 0;
-                  return (
-                    <div key={h.name} className="space-y-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-slate-800">{h.name}</span>
-                        <span className="font-mono font-bold text-emerald-700">
-                          ৳ {h.amount.toLocaleString('en-IN')} ({pct.toFixed(1)}%)
-                        </span>
-                      </div>
-                      <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                        <div
-                          className="bg-emerald-600 h-full rounded-full"
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
+      {/* ============================================================
+          5. REPORT PREVIEW CARD & PRINT DOCUMENT RENDER
+          ============================================================ */}
+      <div className="bg-slate-200/70 p-2 sm:p-6 rounded-2xl border border-slate-300 shadow-inner">
+        {/* Preview Control Bar (Print Hidden) */}
+        <div className="bg-white p-3 rounded-xl border border-slate-300 shadow-xs mb-4 flex items-center justify-between print:hidden">
+          <div className="flex items-center space-x-2">
+            <Eye className="w-4 h-4 text-blue-600" />
+            <span className="text-xs font-bold font-siliguri text-slate-800">
+              অফিসিয়াল প্রিন্ট প্রিভিউ ({currentReportMeta.isLandscape ? 'A4 ল্যান্ডস্কেপ' : 'A4 পোর্ট্রেট'})
+            </span>
+            <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full font-siliguri">
+              প্রিন্ট রেডি
+            </span>
           </div>
 
-          {/* Expense Breakdown */}
-          <div className="p-4 space-y-3">
-            <h4 className="text-xs font-bold text-rose-800 uppercase tracking-wider flex items-center justify-between">
-              <span>ব্যয়ের খাতসমূহ (Expense Heads)</span>
-              <span className="font-mono">মোট: ৳ {totalExpense.toLocaleString('en-IN')}</span>
-            </h4>
-            <div className="space-y-2">
-              {Object.keys(headWiseExpense).length === 0 ? (
-                <p className="text-xs text-slate-400 italic">কোনো ব্যয় রেকর্ড পাওয়া যায়নি</p>
-              ) : (
-                Object.values(headWiseExpense).map((h) => {
-                  const pct = totalExpense > 0 ? (h.amount / totalExpense) * 100 : 0;
-                  return (
-                    <div key={h.name} className="space-y-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-slate-800">{h.name}</span>
-                        <span className="font-mono font-bold text-rose-700">
-                          ৳ {h.amount.toLocaleString('en-IN')} ({pct.toFixed(1)}%)
-                        </span>
-                      </div>
-                      <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                        <div
-                          className="bg-rose-600 h-full rounded-full"
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={handlePrint}
+              className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold font-siliguri px-3.5 py-1.5 rounded-lg flex items-center space-x-1.5 transition-all shadow-xs cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>প্রিন্ট করুন</span>
+            </button>
           </div>
         </div>
 
-        {/* Detailed Transactions List if level === 'DETAILED' */}
-        {level === 'DETAILED' && (
-          <div className="border-t border-slate-200">
-            <div className="p-3.5 bg-slate-100 font-bold text-xs text-slate-800">
-              বিস্তারিত অনুমোদিত লেনদেন তালিকা (Approved Line Items)
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
-                <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
-                  <tr>
-                    <th className="py-2.5 px-3">তারিখ</th>
-                    <th className="py-2.5 px-3">ভাউচার নং</th>
-                    <th className="py-2.5 px-3">ধরন</th>
-                    <th className="py-2.5 px-3">খাত ও বিবরণ</th>
-                    <th className="py-2.5 px-3">দাতা / গ্রহীতা</th>
-                    <th className="py-2.5 px-3">অ্যাকাউন্ট</th>
-                    <th className="py-2.5 px-3 text-right">টাকা (৳)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-sans">
-                  {filteredIncomes.map((i) => (
-                    <tr key={i.id} className="hover:bg-slate-50">
-                      <td className="py-2.5 px-3 font-mono text-slate-600">{formatDate(i.date)}</td>
-                      <td className="py-2.5 px-3 font-mono font-bold text-slate-800">{i.voucherNumber}</td>
-                      <td className="py-2.5 px-3">
-                        <span className="bg-emerald-50 text-emerald-700 text-[10px] font-bold px-1.5 py-0.5 rounded border border-emerald-200">
-                          আয়
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <span className="font-bold text-slate-900">{i.mainHeadNameBn}</span>
-                        {i.subHeadNameBn && <span className="text-slate-500"> ({i.subHeadNameBn})</span>}
-                        {i.description && <p className="text-[10px] text-slate-400 italic truncate max-w-xs">{i.description}</p>}
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-700">{i.donorName || 'সাধারণ দানশীল'}</td>
-                      <td className="py-2.5 px-3 text-slate-600">{i.accountName}</td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-700">
-                        ৳ {i.amount.toLocaleString('en-IN')}
-                      </td>
-                    </tr>
-                  ))}
-
-                  {filteredExpenses.map((e) => (
-                    <tr key={e.id} className="hover:bg-slate-50">
-                      <td className="py-2.5 px-3 font-mono text-slate-600">{formatDate(e.date)}</td>
-                      <td className="py-2.5 px-3 font-mono font-bold text-slate-800">{e.voucherNumber}</td>
-                      <td className="py-2.5 px-3">
-                        <span className="bg-rose-50 text-rose-700 text-[10px] font-bold px-1.5 py-0.5 rounded border border-rose-200">
-                          ব্যয়
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <span className="font-bold text-slate-900">{e.mainHeadNameBn}</span>
-                        {e.subHeadNameBn && <span className="text-slate-500"> ({e.subHeadNameBn})</span>}
-                        {e.description && <p className="text-[10px] text-slate-400 italic truncate max-w-xs">{e.description}</p>}
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-700">{e.payeeName || 'ভেন্ডর'}</td>
-                      <td className="py-2.5 px-3 text-slate-600">{e.accountName}</td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-rose-700">
-                        ৳ {e.amount.toLocaleString('en-IN')}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* Print Signatures */}
-        <div className="hidden print:grid grid-cols-3 gap-8 pt-16 px-6 pb-6 text-center text-xs">
-          <div className="flex flex-col items-center justify-end">
-            <div className="h-12 w-full" />
-            <div className="border-t border-slate-400 pt-2 font-bold w-full">হিসাবরক্ষক / প্রস্তুতকারী</div>
-            <div className="text-[10px] text-slate-500">স্বাক্ষর ও তারিখ</div>
-          </div>
-          <div className="flex flex-col items-center justify-end">
-            <div className="h-12 w-full flex items-end justify-center">
-              {currentMosque?.secretarySignatureUrl ? (
-                <img
-                  src={currentMosque.secretarySignatureUrl}
-                  alt="Secretary Signature"
-                  className="max-h-12 max-w-full object-contain mb-1"
-                />
-              ) : null}
-            </div>
-            <div className="border-t border-slate-400 pt-2 font-bold w-full">সেক্রেটারি / মোতাওয়াল্লী</div>
-            <div className="text-[10px] text-slate-500">স্বাক্ষর ও সীল</div>
-          </div>
-          <div className="flex flex-col items-center justify-end">
-            <div className="h-12 w-full flex items-end justify-center">
-              {currentMosque?.presidentSignatureUrl ? (
-                <img
-                  src={currentMosque.presidentSignatureUrl}
-                  alt="President Signature"
-                  className="max-h-12 max-w-full object-contain mb-1"
-                />
-              ) : null}
-            </div>
-            <div className="border-t border-slate-400 pt-2 font-bold w-full">সভাপতি</div>
-            <div className="text-[10px] text-slate-500">স্বাক্ষর ও সীল</div>
-          </div>
+        {/* The Official Printable Document Canvas */}
+        <div className="bg-white shadow-xl rounded-none border border-slate-300 overflow-x-auto">
+          <ReportPrintDocument
+            reportType={reportType}
+            dateRangeType={dateRangeType}
+            fromDate={fromDate}
+            toDate={toDate}
+            grouping={grouping}
+            level={level}
+            selectedHeadId={selectedHeadId}
+            selectedAccountId={selectedAccountId}
+            currentMosque={currentMosque}
+            currentUser={currentUser}
+            incomes={incomes}
+            expenses={expenses}
+            accounts={accounts}
+            accountHeads={accountHeads}
+            donationBoxes={donationBoxes}
+            boxCollections={boxCollections}
+            staffList={staffList}
+            staffPayments={staffPayments}
+            assets={assets}
+            properties={properties}
+            cemeteryRecords={cemeteryRecords}
+            committeeMembers={committeeMembers}
+            meetings={meetings}
+            notices={notices}
+            auditLogs={auditLogs}
+          />
         </div>
       </div>
 
       {/* Save Config Modal */}
       {isSaveModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl border border-slate-200">
-            <h3 className="text-base font-bold text-slate-900">এই রিপোর্ট কনফিগারেশন সংরক্ষণ করুন</h3>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150 print:hidden">
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl border border-slate-200 font-baloo">
+            <h3 className="text-base font-bold font-siliguri text-slate-900">এই রিপোর্ট কনফিগারেশন সংরক্ষণ করুন</h3>
             <p className="text-xs text-slate-500">
-              পরবর্তীতে ১-ক্লিকে এই ফিল্টার ও সেটিংসের রিপোর্ট লোড করার জন্য একটি নাম দিন।
+              পরবর্তীতে ১-ক্লিকে এই ফিল্টার ও সেটিংসের রিপোর্ট লোড করার জন্য একটি পরিচিত নাম দিন।
             </p>
             <form onSubmit={handleSaveConfig} className="space-y-4">
               <input
@@ -884,19 +724,19 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
                 onChange={(e) => setConfigName(e.target.value)}
                 placeholder="যেমন: মাসিক অডিট ও ব্যালেন্স রিপোর্ট"
                 required
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs outline-hidden focus:bg-white focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs outline-hidden focus:bg-white focus:ring-2 focus:ring-blue-500 font-baloo"
               />
-              <div className="flex items-center justify-end space-x-2">
+              <div className="flex items-center justify-end space-x-2 font-siliguri">
                 <button
                   type="button"
                   onClick={() => setIsSaveModalOpen(false)}
-                  className="px-4 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                  className="px-4 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
                 >
                   বাতিল
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs"
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
                 >
                   সংরক্ষণ করুন
                 </button>

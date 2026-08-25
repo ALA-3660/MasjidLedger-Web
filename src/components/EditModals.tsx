@@ -258,6 +258,7 @@ export const EditDonationBoxModal: React.FC<EditDonationBoxModalProps> = ({
   onSave,
 }) => {
   const [boxCode, setBoxCode] = useState('');
+  const [manualName, setManualName] = useState('');
   const [location, setLocation] = useState('');
   const [shopName, setShopName] = useState('');
   const [ownerName, setOwnerName] = useState('');
@@ -268,12 +269,16 @@ export const EditDonationBoxModal: React.FC<EditDonationBoxModalProps> = ({
   const [responsiblePerson, setResponsiblePerson] = useState('');
   const [status, setStatus] = useState<DonationBox['status']>('ACTIVE');
   const [notes, setNotes] = useState('');
+  const [lastCollectedDate, setLastCollectedDate] = useState('');
+  const [installationDate, setInstallationDate] = useState('');
+  const [hasPreviousOpening, setHasPreviousOpening] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     if (box) {
       setBoxCode(box.boxCode || '');
+      setManualName(box.manualName || '');
       setLocation(box.location || '');
       setShopName(box.shopName || '');
       setOwnerName(box.ownerName || '');
@@ -284,6 +289,10 @@ export const EditDonationBoxModal: React.FC<EditDonationBoxModalProps> = ({
       setResponsiblePerson(box.responsiblePerson || '');
       setStatus(box.status || 'ACTIVE');
       setNotes(box.notes || box.description || '');
+      const prevDate = box.lastCollectedDate ? box.lastCollectedDate.split('T')[0] : '';
+      setLastCollectedDate(prevDate);
+      setHasPreviousOpening(!!prevDate);
+      setInstallationDate(box.installationDate || (box.createdAt ? box.createdAt.split('T')[0] : ''));
       setError('');
     }
   }, [box]);
@@ -297,6 +306,7 @@ export const EditDonationBoxModal: React.FC<EditDonationBoxModalProps> = ({
     try {
       await onSave(box.id, {
         boxCode,
+        manualName,
         location,
         shopName,
         ownerName,
@@ -308,6 +318,8 @@ export const EditDonationBoxModal: React.FC<EditDonationBoxModalProps> = ({
         status,
         notes,
         description: notes,
+        lastCollectedDate: hasPreviousOpening && lastCollectedDate ? lastCollectedDate : '',
+        installationDate: installationDate || undefined,
       });
       onClose();
     } catch (err: any) {
@@ -338,128 +350,213 @@ export const EditDonationBoxModal: React.FC<EditDonationBoxModalProps> = ({
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                দানবাক্স নম্বর / সিরিয়াল <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={boxCode}
-                onChange={(e) => setBoxCode(e.target.value)}
-                required
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold font-mono"
-              />
+          {/* 1. Box Info */}
+          <div className="bg-teal-50/60 p-3.5 rounded-xl border border-teal-100 space-y-3">
+            <div className="text-xs font-bold text-teal-900 flex items-center space-x-1.5">
+              <Package className="w-4 h-4 text-teal-700" />
+              <span>১. দানবাক্স পরিচিতি ও বিবরণ</span>
             </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">অবস্থা (Status)</label>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value as any)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold"
-              >
-                <option value="ACTIVE">সক্রিয় (Active)</option>
-                <option value="INACTIVE">নিষ্ক্রিয় (Inactive)</option>
-                <option value="REPLACED">প্রতিস্থাপন করা হয়েছে (Replaced)</option>
-                <option value="LOST">হারিয়ে গেছে (Lost)</option>
-                <option value="DAMAGED">ক্ষতিগ্রস্ত (Damaged)</option>
-                <option value="MAINTENANCE">মেরামতে (Maintenance)</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                স্থাপন স্থান <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                placeholder="যেমন: প্রধান ফটক / বাজার চত্বর"
-                required
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">দোকান / প্রতিষ্ঠানের নাম</label>
-              <input
-                type="text"
-                value={shopName}
-                onChange={(e) => setShopName(e.target.value)}
-                placeholder="যেমন: আল-আমিন স্টোর"
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  অটো সিরিয়াল / কোড <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={boxCode}
+                  onChange={(e) => setBoxCode(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold font-mono text-teal-800"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">ম্যানুয়াল নাম</label>
+                <input
+                  type="text"
+                  value={manualName}
+                  onChange={(e) => setManualName(e.target.value)}
+                  placeholder="যেমন: ১ নং উত্তর গেট বক্স"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">এক্টিভ অবস্থা (Status)</label>
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value as any)}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold"
+                >
+                  <option value="ACTIVE">সক্রিয় (Active)</option>
+                  <option value="INACTIVE">নিষ্ক্রিয় (Inactive)</option>
+                  <option value="REPLACED">প্রতিস্থাপন (Replaced)</option>
+                  <option value="LOST">হারিয়ে গেছে (Lost)</option>
+                  <option value="DAMAGED">ক্ষতিগ্রস্ত (Damaged)</option>
+                  <option value="MAINTENANCE">মেরামতে (Maintenance)</option>
+                </select>
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">দোকানদার / স্বত্বাধিকারীর নাম</label>
-              <input
-                type="text"
-                value={ownerName}
-                onChange={(e) => setOwnerName(e.target.value)}
-                placeholder="মালিকের নাম"
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
-              />
+          {/* 2. Location & Shop Info */}
+          <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-3">
+            <div className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
+              <MapPin className="w-4 h-4 text-slate-700" />
+              <span>২. দানবাক্সের অবস্থান ও দোকানের তথ্য</span>
             </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">মোবাইল নম্বর</label>
-              <input
-                type="tel"
-                value={ownerPhone}
-                onChange={(e) => setOwnerPhone(e.target.value)}
-                placeholder="01XXXXXXXXX"
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono"
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  স্থাপন স্থান / সাধারণ অবস্থান <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  placeholder="যেমন: প্রধান ফটক / বাজার চত্বর"
+                  required
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">দোকানের নাম</label>
+                <input
+                  type="text"
+                  value={shopName}
+                  onChange={(e) => setShopName(e.target.value)}
+                  placeholder="যেমন: বিসমিল্লাহ স্টোর / মদিনা ফার্মেসী"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs"
+                />
+              </div>
             </div>
-          </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-2">
-              <label className="block text-xs font-bold text-slate-700 mb-1">সম্পূর্ণ ঠিকানা</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">মালিকের নাম</label>
+                <input
+                  type="text"
+                  value={ownerName}
+                  onChange={(e) => setOwnerName(e.target.value)}
+                  placeholder="যেমন: মোঃ কামরুল হাসান"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">মোবাইল নং</label>
+                <input
+                  type="tel"
+                  value={ownerPhone}
+                  onChange={(e) => setOwnerPhone(e.target.value)}
+                  placeholder="01XXXXXXXXX"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">পূর্ণ ঠিকানা</label>
               <input
                 type="text"
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
-                placeholder="রোড, বাড়ি বা এলাকা"
+                placeholder="যেমন: দোকান নং ১২, নিচতলা, মসজিদ মার্কেট, রোড #৩"
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs"
+              />
+            </div>
+          </div>
+
+          {/* 3. Last Opening / History Setup */}
+          <div className="bg-amber-50/60 p-3.5 rounded-xl border border-amber-200 space-y-3">
+            <div className="text-xs font-bold text-amber-900 flex items-center justify-between">
+              <div className="flex items-center space-x-1.5">
+                <Calendar className="w-4 h-4 text-amber-700" />
+                <span>৩. সর্বশেষ খোলার তথ্য ও তারিখ (Opening History)</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-2 text-xs">
+                <label className="flex items-center space-x-1.5 bg-white px-3 py-1.5 rounded-lg border border-amber-200 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="hasPrevOpen"
+                    checked={!hasPreviousOpening}
+                    onChange={() => {
+                      setHasPreviousOpening(false);
+                      setLastCollectedDate('');
+                    }}
+                    className="text-amber-700 focus:ring-amber-500"
+                  />
+                  <span className="font-semibold text-slate-800">কখনো খোলা হয়নি (আজই স্থাপন / নতুন)</span>
+                </label>
+
+                <label className="flex items-center space-x-1.5 bg-white px-3 py-1.5 rounded-lg border border-amber-200 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="hasPrevOpen"
+                    checked={hasPreviousOpening}
+                    onChange={() => {
+                      setHasPreviousOpening(true);
+                      if (!lastCollectedDate) {
+                        setLastCollectedDate(new Date().toISOString().split('T')[0]);
+                      }
+                    }}
+                    className="text-amber-700 focus:ring-amber-500"
+                  />
+                  <span className="font-semibold text-slate-800">সফ্টওয়্যার ব্যবহারের পূর্বে খোলা হয়েছিল</span>
+                </label>
+              </div>
+
+              {hasPreviousOpening && (
+                <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-3 animate-in fade-in duration-150">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800 mb-1">
+                      সর্বশেষ খোলার তারিখ (তারিখ পিকার) *
+                    </label>
+                    <input
+                      type="date"
+                      value={lastCollectedDate}
+                      onChange={(e) => setLastCollectedDate(e.target.value)}
+                      max={new Date().toISOString().split('T')[0]}
+                      className="w-full px-3 py-2 bg-white border border-amber-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800 mb-1">
+                      স্থাপনের তারিখ (Installation Date)
+                    </label>
+                    <input
+                      type="date"
+                      value={installationDate}
+                      onChange={(e) => setInstallationDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-800 focus:outline-hidden"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">দায়িত্বপ্রাপ্ত প্রতিনিধি</label>
+              <input
+                type="text"
+                value={responsiblePerson}
+                onChange={(e) => setResponsiblePerson(e.target.value)}
+                placeholder="কমিটির প্রতিনিধি / কালেকশনকারী"
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">ওয়ার্ড / ব্লক</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">নোট / বিবরণ</label>
               <input
                 type="text"
-                value={ward}
-                onChange={(e) => setWard(e.target.value)}
-                placeholder="ওয়ার্ড নং"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="অতিরিক্ত তথ্য..."
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
               />
             </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">দায়িত্বপ্রাপ্ত ব্যক্তির নাম</label>
-            <input
-              type="text"
-              value={responsiblePerson}
-              onChange={(e) => setResponsiblePerson(e.target.value)}
-              placeholder="কমিটির প্রতিনিধি / কালেকশনকারী"
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">নোট / বিশেষ বিবরণ</label>
-            <textarea
-              rows={2}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="অতিরিক্ত তথ্য..."
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
-            />
           </div>
 
           <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-200">

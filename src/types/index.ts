@@ -253,6 +253,7 @@ export interface DonationBox {
   id: string;
   mosqueId: string;
   boxCode: string;
+  manualName?: string;
   location: string;
   shopName?: string;
   ownerName?: string;

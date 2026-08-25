@@ -41,6 +41,7 @@ import { UserManagementView } from './components/UserManagementView';
 import { PublicPortalView } from './components/PublicPortalView';
 import { AdminLoginScreen } from './components/AdminLoginScreen';
 import { MoneyReceiptModal, VoucherModal } from './components/PrintModals';
+import { ChangeCalculatorModal } from './components/ChangeCalculatorModal';
 import {
   AlertCircle,
   RefreshCw,
@@ -51,6 +52,8 @@ import {
   Smartphone,
   CheckCircle2,
   HelpCircle,
+  Banknote,
+  Calculator,
 } from 'lucide-react';
 
 export default function App() {
@@ -74,6 +77,9 @@ export default function App() {
   const [aiQuestion, setAiQuestion] = useState<string>('');
   const [aiAnswer, setAiAnswer] = useState<string>('');
   const [isAiLoading, setIsAiLoading] = useState<boolean>(false);
+
+  // Universal Calculator Global State
+  const [isGlobalCalculatorOpen, setIsGlobalCalculatorOpen] = useState<boolean>(false);
 
   // Domain Entity Collections
   const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
@@ -221,8 +227,21 @@ export default function App() {
       }
     }, 60000);
 
+    // Global Keyboard Shortcut: Alt+C to toggle calculator
+    const handleGlobalShortcuts = (e: KeyboardEvent) => {
+      if (
+        (e.altKey && (e.key === 'c' || e.key === 'C')) ||
+        (e.ctrlKey && e.altKey && (e.key === 'c' || e.key === 'C'))
+      ) {
+        e.preventDefault();
+        setIsGlobalCalculatorOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalShortcuts);
+
     return () => {
       clearInterval(pollInterval);
+      window.removeEventListener('keydown', handleGlobalShortcuts);
     };
   }, []);
 
@@ -498,6 +517,7 @@ export default function App() {
           expenses={expenses}
           accounts={accounts}
           currentMosque={mosque}
+          currentUser={currentUser}
           language={language}
         />
       )}
@@ -680,6 +700,7 @@ export default function App() {
           onViewModeChange={(mode) => setViewMode(mode)}
           onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
           onOpenAi={() => setIsAiOpen(true)}
+          onOpenCalculator={() => setIsGlobalCalculatorOpen(true)}
           onLogout={handleLogout}
           onQuickAction={(act) => {
             if (act === 'income') setCurrentTab('income');
@@ -774,6 +795,7 @@ export default function App() {
               activeTab={currentTab as NavTab}
               onSelectTab={(tab) => setCurrentTab(tab)}
               onTabChange={(tab) => setCurrentTab(tab)}
+              onOpenCalculator={() => setIsGlobalCalculatorOpen(true)}
               language={language}
               isOpen={isSidebarOpen}
               onClose={() => setIsSidebarOpen(false)}
@@ -943,6 +965,30 @@ export default function App() {
         item={activeVoucher.item}
         type={activeVoucher.type}
         mosque={mosque}
+        language={language}
+      />
+
+      {/* Floating Quick Denomination Counter Action Button (Accessible across all screens) */}
+      <button
+        id="btn-floating-calculator"
+        type="button"
+        onClick={() => setIsGlobalCalculatorOpen(true)}
+        className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-emerald-700 to-teal-800 hover:from-emerald-800 hover:to-teal-900 text-white p-3.5 sm:px-4 sm:py-3 rounded-full sm:rounded-2xl shadow-xl hover:shadow-2xl border-2 border-white/40 flex items-center space-x-2 transition-all transform hover:scale-105 active:scale-95 group print:hidden cursor-pointer"
+        title="ভাংতি টাকা ও ক্যাশ নোট গণনা (Alt+C)"
+      >
+        <Banknote className="w-5 h-5 text-emerald-200 group-hover:rotate-12 transition-transform" />
+        <span className="font-siliguri font-bold text-xs hidden sm:inline">
+          {language === 'bn' ? 'ভাংতি টাকা গণনা' : 'Cash Counter'}
+        </span>
+        <span className="hidden sm:inline text-[10px] bg-white/20 text-emerald-100 px-1.5 py-0.5 rounded font-mono font-bold">
+          Alt+C
+        </span>
+      </button>
+
+      {/* Universal Calculator & Denomination Counter Modal */}
+      <ChangeCalculatorModal
+        isOpen={isGlobalCalculatorOpen}
+        onClose={() => setIsGlobalCalculatorOpen(false)}
         language={language}
       />
     </div>

@@ -9,7 +9,9 @@ import {
   LogOut,
   ShieldCheck,
   Menu,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Banknote,
+  Calculator
 } from 'lucide-react';
 import { Mosque, User } from '../types';
 import { Language, translations } from '../lib/i18n';
@@ -26,6 +28,7 @@ interface NavbarProps {
   viewMode?: 'desktop' | 'mobile';
   onViewModeChange?: (mode: 'desktop' | 'mobile') => void;
   onOpenAi?: () => void;
+  onOpenCalculator?: () => void;
   onQuickAction?: (action: 'income' | 'expense' | 'donation') => void;
   onToggleSidebar?: () => void;
   onRoleChange?: (role: any) => void;
@@ -45,6 +48,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   viewMode = 'desktop',
   onViewModeChange,
   onOpenAi,
+  onOpenCalculator,
   onQuickAction,
   onToggleSidebar,
   onRoleChange,
@@ -79,7 +83,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm shrink-0">
+    <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm shrink-0 navbar-root print:hidden">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Left: Brand & Sidebar toggle */}
@@ -193,6 +197,17 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Sparkles className="w-3.5 h-3.5 text-blue-600" />
               <span className="hidden md:inline font-siliguri">{language === 'bn' ? 'এআই অডিটর' : 'AI Advisor'}</span>
+            </button>
+
+            {/* Denomination Counter Button */}
+            <button
+              id="btn-navbar-calculator"
+              onClick={() => onOpenCalculator?.()}
+              className="flex items-center space-x-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 px-3 py-1.5 rounded-lg text-xs font-bold font-siliguri shadow-xs transition-all cursor-pointer"
+              title="ভাংতি টাকা ও ক্যাশ নোট গণনা (Alt+C)"
+            >
+              <Banknote className="w-3.5 h-3.5 text-emerald-700" />
+              <span className="font-siliguri">{language === 'bn' ? 'ভাংতি নোট গণনা' : 'Cash Counter'}</span>
             </button>
 
             {/* View Mode Toggle: Desktop / Android Phone Simulation */}
