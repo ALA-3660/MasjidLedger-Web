@@ -89,10 +89,9 @@ const REPORT_TYPES = [
   { id: 'DONATION_BOX_REPORT', labelBn: 'দানবাক্স কালেকশন ও স্ট্যাটাস রিপোর্ট', category: 'দান ও কালেকশন' },
   { id: 'JUMA_COLLECTION_REPORT', labelBn: 'জুমার কালেকশন রেজিস্টার', category: 'দান ও কালেকশন' },
   { id: 'STAFF_SALARY_REPORT', labelBn: 'স্টাফ ও বেতন বিবরণী (Staff Salary Sheet)', category: 'প্রশাসন' },
-  { id: 'ASSET_REGISTER_REPORT', labelBn: 'সম্পদ রেজিস্ট্রি প্রতিবেদন (Asset Register)', category: 'প্রশাসন' },
+  { id: 'ASSET_REGISTER_REPORT', labelBn: 'সম্পদ রেজিস্টری প্রতিবেদন (Asset Register)', category: 'প্রশাসন' },
   { id: 'PROPERTY_REGISTER_REPORT', labelBn: 'ওয়াকফ ও সম্পত্তি রেজিস্ট্রি (Property Register)', category: 'প্রশাসন' },
   { id: 'CEMETERY_REGISTER_REPORT', labelBn: 'কবরস্থান রেজিস্ট্রি প্রতিবেদন (Cemetery)', category: 'প্রশাসন' },
-  { id: 'COMMITTEE_REPORT', labelBn: 'কমিটি ও সভার কার্যবিবরণী রিপোর্ট', category: 'প্রশাসন' },
   { id: 'AUDIT_LOG_REPORT', labelBn: 'সিস্টেম অডিট ট্রেইল ও নিরাপত্তা লগ (Audit Trail)', category: 'নিরাপত্তা' },
 ];
 

@@ -13,6 +13,7 @@ import {
   CommitteeTerm,
   CommitteeMember,
   CommitteeMeeting,
+  CommitteeMeetingNotice,
   Staff,
   StaffPayment,
   MosqueAsset,
@@ -401,6 +402,22 @@ class ApiService {
     return res.data!;
   }
 
+  async updateCommitteeTerm(id: string, data: any): Promise<CommitteeTerm> {
+    const res = await this.request<CommitteeTerm>(`/committee/terms/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to update committee term');
+    return res.data!;
+  }
+
+  async deleteCommitteeTerm(id: string): Promise<void> {
+    const res = await this.request<void>(`/committee/terms/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to delete committee term');
+  }
+
   async createCommitteeMember(data: any): Promise<CommitteeMember> {
     const res = await this.request<CommitteeMember>('/committee/members', {
       method: 'POST',
@@ -433,6 +450,50 @@ class ApiService {
     });
     if (!res.success) throw new Error(res.error?.message || 'Failed to add meeting');
     return res.data!;
+  }
+
+  async updateCommitteeMeeting(id: string, data: any): Promise<CommitteeMeeting> {
+    const res = await this.request<CommitteeMeeting>(`/committee/meetings/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to update meeting');
+    return res.data!;
+  }
+
+  async deleteCommitteeMeeting(id: string): Promise<void> {
+    const res = await this.request<void>(`/committee/meetings/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to delete meeting');
+  }
+
+  async logMeetingAudit(id: string, action: string, details?: string): Promise<void> {
+    await this.request<void>(`/committee/meetings/${id}/audit`, {
+      method: 'POST',
+      body: JSON.stringify({ action, details }),
+    });
+  }
+
+  async getCommitteeNotices(): Promise<CommitteeMeetingNotice[]> {
+    const res = await this.request<CommitteeMeetingNotice[]>('/committee/notices');
+    return res.data || [];
+  }
+
+  async createCommitteeNotice(data: any): Promise<CommitteeMeetingNotice> {
+    const res = await this.request<CommitteeMeetingNotice>('/committee/notices', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to create notice');
+    return res.data!;
+  }
+
+  async deleteCommitteeNotice(id: string): Promise<void> {
+    const res = await this.request<void>(`/committee/notices/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to delete notice');
   }
 
   // Management (Staff, Assets, Properties, Cemetery, Notices)

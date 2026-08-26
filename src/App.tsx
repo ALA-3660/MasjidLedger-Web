@@ -13,6 +13,7 @@ import {
   CommitteeTerm,
   CommitteeMember,
   CommitteeMeeting,
+  CommitteeMeetingNotice,
   Staff,
   StaffPayment,
   MosqueAsset,
@@ -92,6 +93,7 @@ export default function App() {
   const [terms, setTerms] = useState<CommitteeTerm[]>([]);
   const [members, setMembers] = useState<CommitteeMember[]>([]);
   const [meetings, setMeetings] = useState<CommitteeMeeting[]>([]);
+  const [committeeNotices, setCommitteeNotices] = useState<CommitteeMeetingNotice[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [staffPayments, setStaffPayments] = useState<StaffPayment[]>([]);
   const [assets, setAssets] = useState<MosqueAsset[]>([]);
@@ -130,6 +132,7 @@ export default function App() {
         termsRes,
         membersRes,
         meetingsRes,
+        committeeNoticesRes,
         staffRes,
         staffPaysRes,
         assetsRes,
@@ -152,6 +155,7 @@ export default function App() {
         api.getCommitteeTerms().catch(() => []),
         api.getCommitteeMembers().catch(() => []),
         api.getCommitteeMeetings().catch(() => []),
+        api.getCommitteeNotices().catch(() => []),
         api.getStaff().catch(() => []),
         api.getStaffPayments().catch(() => []),
         api.getAssets().catch(() => []),
@@ -181,6 +185,7 @@ export default function App() {
       if (termsRes) setTerms(termsRes);
       if (membersRes) setMembers(membersRes);
       if (meetingsRes) setMeetings(meetingsRes);
+      if (committeeNoticesRes) setCommitteeNotices(committeeNoticesRes);
       if (staffRes) setStaff(staffRes);
       if (staffPaysRes) setStaffPayments(staffPaysRes);
       if (assetsRes) setAssets(assetsRes);
@@ -342,6 +347,16 @@ export default function App() {
     await loadData(false);
   };
 
+  const handleUpdateCommitteeTerm = async (id: string, data: any) => {
+    await api.updateCommitteeTerm(id, data);
+    await loadData(false);
+  };
+
+  const handleDeleteCommitteeTerm = async (id: string) => {
+    await api.deleteCommitteeTerm(id);
+    await loadData(false);
+  };
+
   const handleAddCommitteeMember = async (data: any) => {
     await api.createCommitteeMember(data);
     await loadData(false);
@@ -359,6 +374,31 @@ export default function App() {
 
   const handleAddCommitteeMeeting = async (data: any) => {
     await api.createCommitteeMeeting(data);
+    await loadData(false);
+  };
+
+  const handleUpdateCommitteeMeeting = async (id: string, data: any) => {
+    await api.updateCommitteeMeeting(id, data);
+    await loadData(false);
+  };
+
+  const handleDeleteCommitteeMeeting = async (id: string) => {
+    await api.deleteCommitteeMeeting(id);
+    await loadData(false);
+  };
+
+  const handleLogMeetingAudit = async (id: string, action: string, details: string) => {
+    await api.logMeetingAudit(id, action, details);
+    await loadData(false);
+  };
+
+  const handleAddCommitteeNotice = async (data: any) => {
+    await api.createCommitteeNotice(data);
+    await loadData(false);
+  };
+
+  const handleDeleteCommitteeNotice = async (id: string) => {
+    await api.deleteCommitteeNotice(id);
     await loadData(false);
   };
 
@@ -575,12 +615,21 @@ export default function App() {
           terms={terms}
           members={members}
           meetings={meetings}
+          notices={committeeNotices}
           language={language}
+          mosque={mosque}
           onAddTerm={handleAddCommitteeTerm}
+          onUpdateTerm={handleUpdateCommitteeTerm}
+          onDeleteTerm={handleDeleteCommitteeTerm}
           onAddMember={handleAddCommitteeMember}
           onUpdateMember={handleUpdateCommitteeMember}
           onDeleteMember={handleDeleteCommitteeMember}
           onAddMeeting={handleAddCommitteeMeeting}
+          onUpdateMeeting={handleUpdateCommitteeMeeting}
+          onDeleteMeeting={handleDeleteCommitteeMeeting}
+          onLogMeetingAudit={handleLogMeetingAudit}
+          onAddNotice={handleAddCommitteeNotice}
+          onDeleteNotice={handleDeleteCommitteeNotice}
         />
       )}
 

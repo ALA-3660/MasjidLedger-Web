@@ -337,23 +337,128 @@ export interface CommitteeMember {
   createdAt: string;
 }
 
+export type MeetingStatus = 'DRAFT' | 'FINAL' | 'REVISED' | 'CANCELLED';
+
+export interface MeetingAttendee {
+  memberId?: string;
+  name: string;
+  designation: string;
+  phone: string;
+  attendanceStatus: 'PRESENT' | 'ABSENT' | 'LEAVE';
+  signatureUrl?: string;
+}
+
+export interface ResponsibleMember {
+  memberId?: string;
+  name: string;
+  designation?: string;
+  roleDescription: string;
+}
+
+export interface MeetingRevision {
+  revisionNo: number;
+  revisionDate: string;
+  revisedBy: string;
+  revisedByName: string;
+  reason: string;
+  previousDecisions?: string[];
+  createdAt: string;
+}
+
+export interface CommitteeMeetingNotice {
+  id: string;
+  mosqueId: string;
+  memoNo: string;
+  serialNumber: string;
+  noticeDate: string;
+  meetingDate: string;
+  dayName: string;
+  time: string;
+  venue: string;
+  meetingType?: string;
+  meetingTypeBn?: string;
+  agendas: string[];
+  remarks?: string;
+  status: 'ISSUED' | 'CONVERTED_TO_MINUTES' | 'CANCELLED';
+  createdBy?: string;
+  createdByName?: string;
+  createdAt: string;
+}
+
 export interface CommitteeMeeting {
   id: string;
   mosqueId: string;
-  meetingNumber: string;
-  date: string;
-  time: string;
+  documentNumber?: string; // e.g. "MM-2026-0001"
+  meetingNumber: string; // e.g. "MEET-01" or "১"
+  memoNumber?: string; // e.g. "MJMWS-26/08/26/0001"
+  meetingNoticeId?: string; // Relation to CommitteeMeetingNotice if created from one
+  noticeDate?: string;
+  date: string; // YYYY-MM-DD
+  dayName?: string; // e.g. "শুক্রবার"
+  time: string; // e.g. "বাদ মাগরিব" or "06:30 PM"
+  closingTime?: string; // e.g. "08:30 PM"
+  endTime?: string;
   location: string;
-  chairman: string;
-  secretary: string;
+  meetingType?: 'GENERAL' | 'MONTHLY' | 'EMERGENCY' | 'SPECIAL' | 'ANNUAL' | 'OTHER' | string;
+  meetingTypeBn?: string;
+  
+  // Leadership
+  conductor?: string; // মিটিং পরিচালনাকারী
+  conductorMemberId?: string;
+  chairman: string; // সভাপতিত্বকারী
+  chairmanMemberId?: string;
+  chairmanDesignation?: string;
+  secretary?: string; // মোতাওয়াল্লী / সেক্রেটারী
+  secretaryMemberId?: string;
+  duaLeader?: string; // মোনাজাত পরিচালনাকারী
+  duaLeaderMemberId?: string;
+
+  // Content
   agenda: string[];
-  membersPresent: string[];
-  membersAbsent: string[];
   decisions: string[];
   resolutions: string[];
-  notes?: string;
+  miscellaneous?: string; // বিবিধ (optional)
+
+  // Assigned Members
+  responsibleMembers?: ResponsibleMember[];
+
+  // Attendance
+  attendees?: MeetingAttendee[];
+  membersPresent: string[]; // backward compat string array
+  membersAbsent: string[]; // backward compat string array
+
+  // Signatures snapshot
+  presidentSignatureUrl?: string;
+  secretarySignatureUrl?: string;
+
+  // System & Status
+  status?: MeetingStatus;
   resolutionNumber?: string;
+  notes?: string;
+  
+  // Revisions & Audit
+  isRevised?: boolean;
+  revisionNumber?: number;
+  revisionReason?: string;
+  originalDocumentNumber?: string;
+  revisionHistory?: MeetingRevision[];
+  actionItems?: {
+    task: string;
+    assigneeName: string;
+    assigneeDesignation?: string;
+    deadline?: string;
+  }[];
+  auditLogs?: {
+    id: string;
+    action: string;
+    details?: string;
+    userName: string;
+    timestamp: string;
+  }[];
+  createdBy?: string;
+  createdByName?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Staff {

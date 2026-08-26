@@ -1046,39 +1046,7 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
         </div>
       )}
 
-      {/* --- COMMITTEE REPORT --- */}
-      {reportType === 'COMMITTEE_REPORT' && (
-        <div className="border border-slate-900 mb-4 overflow-hidden">
-          <div className="bg-slate-900 text-white px-3 py-1.5 font-siliguri font-bold text-xs flex justify-between">
-            <span>মসজিদ পরিচালনা পরিষদ সদস্য তালিকা (Committee Members List)</span>
-            <span>মোট সদস্য: {committeeMembers.length} জন</span>
-          </div>
-          <table className="w-full text-xs font-baloo border-collapse" style={{ tableLayout: 'fixed', width: '100%' }}>
-            <thead className="bg-slate-100 border-b border-slate-900 text-slate-900 font-bold">
-              <tr>
-                <th className="py-2 px-2 text-center border-r border-slate-300" style={{ width: '6%' }}>ক্রমিক</th>
-                <th className="py-2 px-2 text-left border-r border-slate-300" style={{ width: '24%' }}>সদস্যের নাম</th>
-                <th className="py-2 px-2 text-left border-r border-slate-300" style={{ width: '20%' }}>কমিটি পদবী</th>
-                <th className="py-2 px-2 text-center border-r border-slate-300" style={{ width: '16%' }}>মোবাইল নম্বর</th>
-                <th className="py-2 px-2 text-left border-r border-slate-300" style={{ width: '22%' }}>পেশা ও ঠিকানা</th>
-                <th className="py-2 px-2 text-center" style={{ width: '12%' }}>স্ট্যাটাস</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-300">
-              {committeeMembers.map((m, idx) => (
-                <tr key={m.id}>
-                  <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-600">{idx + 1}</td>
-                  <td className="py-2 px-2 text-left border-r border-slate-200 font-bold text-slate-900">{m.fullNameBn}</td>
-                  <td className="py-2 px-2 text-left border-r border-slate-200 font-bold text-slate-800">{m.designationBn}</td>
-                  <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-700">{m.phone}</td>
-                  <td className="py-2 px-2 text-left border-r border-slate-200 text-slate-700">{m.profession || '-'}</td>
-                  <td className="py-2 px-2 text-center text-slate-700 font-medium">{m.status === 'ACTIVE' ? 'সক্রিয়' : 'সাবেক'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+
 
       {/* --- F. ASSET REGISTER REPORT --- */}
       {reportType === 'ASSET_REGISTER_REPORT' && (

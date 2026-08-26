@@ -14,6 +14,7 @@ import {
   CommitteeTerm,
   CommitteeMember,
   CommitteeMeeting,
+  CommitteeMeetingNotice,
   Staff,
   StaffPayment,
   MosqueAsset,
@@ -1762,13 +1763,13 @@ app.get('/api/v1/committee', authenticate, (req: AuthRequest, res: Response) => 
 });
 
 app.post('/api/v1/committee/terms', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
-  const { termName, startDate, endDate, description } = req.body;
+  const { termName, title, startDate, endDate, description } = req.body;
   const mosqueId = req.currentMosque!.id;
 
   const term: CommitteeTerm = {
     id: `term-${Date.now()}`,
     mosqueId,
-    title: termName || 'নতুন মেয়াদকাল',
+    title: title || termName || 'নতুন মেয়াদকাল',
     startDate,
     endDate,
     status: 'ACTIVE',
@@ -1782,6 +1783,62 @@ app.post('/api/v1/committee/terms', authenticate, requirePermission('MANAGE_COMM
   realtime.broadcastToMosque(mosqueId, 'COMMITTEE_TERM_CREATED', term, { senderId: req.user!.id });
 
   res.json({ success: true, data: term, message: 'কমিটির নতুন মেয়াদকাল সফলভাবে যুক্ত হয়েছে।' });
+});
+
+app.put('/api/v1/committee/terms/:id', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const termId = req.params.id;
+  const mosqueId = req.currentMosque!.id;
+  const term = db.committeeTerms.find(t => t.id === termId && t.mosqueId === mosqueId);
+  if (!term) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'কমিটির মেয়াদকাল পাওয়া যায়নি।' } });
+  }
+
+  const { title, termName, startDate, endDate, description, status } = req.body;
+  if (title !== undefined) term.title = title;
+  if (termName !== undefined) term.title = termName;
+  if (startDate !== undefined) term.startDate = startDate;
+  if (endDate !== undefined) term.endDate = endDate;
+  if (description !== undefined) term.description = description;
+  if (status !== undefined) {
+    term.status = status;
+    if (status === 'ACTIVE') {
+      db.committeeTerms.forEach(t => {
+        if (t.mosqueId === mosqueId && t.id !== termId && t.status === 'ACTIVE') {
+          t.status = 'EXPIRED';
+        }
+      });
+    }
+  }
+
+  db.save();
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'COMMITTEE_TERM', `কমিটি মেয়াদ আপডেট: ${term.title}`);
+  realtime.broadcastToMosque(mosqueId, 'COMMITTEE_TERM_UPDATED', term, { senderId: req.user!.id });
+
+  res.json({ success: true, data: term, message: 'কমিটির মেয়াদ সফলভাবে আপডেট করা হয়েছে।' });
+});
+
+app.delete('/api/v1/committee/terms/:id', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const termId = req.params.id;
+  const mosqueId = req.currentMosque!.id;
+  const idx = db.committeeTerms.findIndex(t => t.id === termId && t.mosqueId === mosqueId);
+  if (idx === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'কমিটির মেয়াদকাল পাওয়া যায়নি।' } });
+  }
+
+  const hasMembers = db.committeeMembers.some(m => m.termId === termId && m.mosqueId === mosqueId);
+  if (hasMembers) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'HAS_MEMBERS', message: 'এই কমিটির অধীনে সদস্য রয়েছে। প্রথমে সদস্যগুলো অপসারণ বা অন্য কমিটিতে স্থানান্তর করুন।' }
+    });
+  }
+
+  const removed = db.committeeTerms.splice(idx, 1)[0];
+  db.save();
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'DELETE', 'COMMITTEE_TERM', `কমিটি মেয়াদ ডিলিট: ${removed.title}`);
+  realtime.broadcastToMosque(mosqueId, 'COMMITTEE_TERM_DELETED', { id: termId }, { senderId: req.user!.id });
+
+  res.json({ success: true, message: 'কমিটির মেয়াদ সফলভাবে মুছে ফেলা হয়েছে।' });
 });
 
 app.post('/api/v1/committee/members', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
@@ -1893,6 +1950,60 @@ app.delete('/api/v1/committee/members/:id', authenticate, requirePermission('MAN
   res.json({ success: true, message: 'সদস্য সফলভাবে অপসারণ করা হয়েছে।' });
 });
 
+app.get('/api/v1/committee/notices', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const notices = (db.committeeNotices || []).filter(n => n.mosqueId === mosqueId);
+  res.json({ success: true, data: notices });
+});
+
+app.post('/api/v1/committee/notices', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { memoNo, serialNumber, noticeDate, meetingDate, dayName, time, venue, meetingType, meetingTypeBn, agendas, remarks } = req.body;
+
+  const count = (db.committeeNotices || []).filter(n => n.mosqueId === mosqueId).length;
+  const newNotice: CommitteeMeetingNotice = {
+    id: `cnot-${Date.now()}`,
+    mosqueId,
+    memoNo: memoNo || `MJMWS-${new Date().getFullYear()}/${String(count + 1).padStart(3, '0')}`,
+    serialNumber: serialNumber || String(count + 1),
+    noticeDate: noticeDate || new Date().toISOString().split('T')[0],
+    meetingDate: meetingDate || new Date().toISOString().split('T')[0],
+    dayName: dayName || 'শুক্রবার',
+    time: time || 'বাদ আসর',
+    venue: venue || 'মসজিদ কার্যালয়',
+    meetingType: meetingType || 'GENERAL',
+    meetingTypeBn: meetingTypeBn || 'সাধারণ সভা',
+    agendas: Array.isArray(agendas) ? agendas : (agendas ? agendas.split('\n').filter(Boolean) : ['সাধারণ আলোচ্যসূচি']),
+    remarks: remarks || '',
+    status: 'ISSUED',
+    createdBy: req.user!.id,
+    createdByName: req.user!.name,
+    createdAt: new Date().toISOString(),
+  };
+
+  if (!db.committeeNotices) db.committeeNotices = [];
+  db.committeeNotices.unshift(newNotice);
+  db.save();
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'COMMITTEE_NOTICE', `মিটিং আহবান নোটিশ তৈরি: স্মারক নং ${newNotice.memoNo}`);
+  realtime.broadcastToMosque(mosqueId, 'NOTICE_CREATED', newNotice, { senderId: req.user!.id });
+
+  res.json({ success: true, data: newNotice, message: 'মিটিং নোটিশ সফলভাবে তৈরি হয়েছে।' });
+});
+
+app.delete('/api/v1/committee/notices/:id', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const idx = (db.committeeNotices || []).findIndex(n => n.id === req.params.id && n.mosqueId === mosqueId);
+  if (idx === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'নোটিশ পাওয়া যায়নি।' } });
+  }
+
+  const removed = db.committeeNotices.splice(idx, 1)[0];
+  db.save();
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'DELETE', 'COMMITTEE_NOTICE', `মিটিং নোটিশ মুছে ফেলা: স্মারক ${removed.memoNo}`);
+
+  res.json({ success: true, message: 'নোটিশ সফলভাবে অপসারিত হয়েছে।' });
+});
+
 app.get('/api/v1/committee/meetings', authenticate, (req: AuthRequest, res: Response) => {
   const mosqueId = req.currentMosque!.id;
   const meetings = db.committeeMeetings.filter(m => m.mosqueId === mosqueId);
@@ -1900,32 +2011,281 @@ app.get('/api/v1/committee/meetings', authenticate, (req: AuthRequest, res: Resp
 });
 
 app.post('/api/v1/committee/meetings', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
-  const { title, date, time, location, agendas, attendeesCount, presidedBy, recordedBy, resolutions } = req.body;
+  const {
+    documentNumber,
+    meetingNumber,
+    memoNumber,
+    meetingNoticeId,
+    noticeDate,
+    date,
+    dayName,
+    time,
+    closingTime,
+    location,
+    meetingType,
+    meetingTypeBn,
+    conductor,
+    conductorMemberId,
+    chairman,
+    chairmanMemberId,
+    chairmanDesignation,
+    secretary,
+    secretaryMemberId,
+    duaLeader,
+    duaLeaderMemberId,
+    agenda,
+    decisions,
+    resolutions,
+    miscellaneous,
+    responsibleMembers,
+    attendees,
+    status = 'FINAL',
+    notes,
+    presidentSignatureUrl,
+    secretarySignatureUrl
+  } = req.body;
+
   const mosqueId = req.currentMosque!.id;
+  const year = new Date(date || Date.now()).getFullYear();
+  const existingCount = db.committeeMeetings.filter(m => m.mosqueId === mosqueId).length;
+  const autoDocNo = documentNumber || `MM-${year}-${String(existingCount + 1).padStart(4, '0')}`;
+  const autoMeetNo = meetingNumber || `MEET-${existingCount + 1}`;
+
+  const cleanAgenda: string[] = Array.isArray(agenda)
+    ? agenda.filter((a: any) => typeof a === 'string' && a.trim() !== '')
+    : (req.body.title ? [req.body.title] : ['সাধারণ আলোচ্যসূচি']);
+
+  const cleanDecisions: string[] = Array.isArray(decisions)
+    ? decisions.filter((d: any) => typeof d === 'string' && d.trim() !== '')
+    : (Array.isArray(resolutions) ? resolutions : []);
+
+  const cleanAttendees = Array.isArray(attendees) ? attendees : [];
+  const presentNames = cleanAttendees
+    .filter((a: any) => a.attendanceStatus === 'PRESENT')
+    .map((a: any) => a.name);
+  const absentNames = cleanAttendees
+    .filter((a: any) => a.attendanceStatus !== 'PRESENT')
+    .map((a: any) => a.name);
 
   const meeting: CommitteeMeeting = {
     id: `meet-${Date.now()}`,
     mosqueId,
-    meetingNumber: `MEET-${db.committeeMeetings.filter(m => m.mosqueId === mosqueId).length + 1}`,
+    documentNumber: autoDocNo,
+    meetingNumber: autoMeetNo,
+    memoNumber: memoNumber || undefined,
+    meetingNoticeId: meetingNoticeId || undefined,
+    noticeDate: noticeDate || undefined,
     date: date || new Date().toISOString().split('T')[0],
+    dayName: dayName || 'শুক্রবার',
     time: time || 'বাদ মাগরিব',
+    closingTime: closingTime || undefined,
     location: location || 'মসজিদ অডিটোরিয়াম',
-    chairman: presidedBy || 'সভাপতি',
-    secretary: recordedBy || req.user!.name,
-    agenda: Array.isArray(agendas) ? agendas : (agendas ? agendas.split('\n') : [title || 'সাধারণ আলোচ্যসূচি']),
-    membersPresent: [`উপস্থিত সদস্য (${attendeesCount || 12} জন)`],
-    membersAbsent: [],
-    decisions: Array.isArray(resolutions) ? resolutions : (resolutions ? resolutions.split('\n') : []),
-    resolutions: Array.isArray(resolutions) ? resolutions : (resolutions ? resolutions.split('\n') : []),
-    createdAt: new Date().toISOString()
+    meetingType: meetingType || 'GENERAL',
+    meetingTypeBn: meetingTypeBn || 'সাধারণ সভা',
+    conductor: conductor || undefined,
+    conductorMemberId: conductorMemberId || undefined,
+    chairman: chairman || req.body.presidedBy || 'সভাপতি',
+    chairmanMemberId: chairmanMemberId || undefined,
+    chairmanDesignation: chairmanDesignation || 'সভাপতি',
+    secretary: secretary || req.body.recordedBy || req.user!.name,
+    secretaryMemberId: secretaryMemberId || undefined,
+    duaLeader: duaLeader || undefined,
+    duaLeaderMemberId: duaLeaderMemberId || undefined,
+    agenda: cleanAgenda.length > 0 ? cleanAgenda : ['সাধারণ আলোচ্যসূচি'],
+    decisions: cleanDecisions,
+    resolutions: cleanDecisions,
+    miscellaneous: miscellaneous || undefined,
+    responsibleMembers: Array.isArray(responsibleMembers) ? responsibleMembers : [],
+    attendees: cleanAttendees,
+    membersPresent: presentNames.length > 0 ? presentNames : [`উপস্থিত সদস্য (${cleanAttendees.length || 10} জন)`],
+    membersAbsent: absentNames,
+    presidentSignatureUrl: presidentSignatureUrl || req.currentMosque?.presidentSignatureUrl,
+    secretarySignatureUrl: secretarySignatureUrl || req.currentMosque?.secretarySignatureUrl,
+    status: status as any,
+    resolutionNumber: autoMeetNo,
+    notes: notes || undefined,
+    createdBy: req.user!.id,
+    createdByName: req.user!.name,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   };
 
   db.committeeMeetings.unshift(meeting);
   db.save();
-  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'COMMITTEE_MEETING', `নতুন সভার কার্যবিবরণী নথিবদ্ধ: ${title}`);
+
+  const auditAction = status === 'DRAFT' ? 'DRAFT_SAVED' : 'CREATE';
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    auditAction,
+    'COMMITTEE_MEETING',
+    `নতুন সভার কার্যবিবরণী সংরক্ষিত: ${meeting.documentNumber} (${meeting.meetingTypeBn || meeting.meetingType}) - স্ট্যাটাস: ${status}`
+  );
   realtime.broadcastToMosque(mosqueId, 'MEETING_CREATED', meeting, { senderId: req.user!.id });
 
-  res.json({ success: true, data: meeting, message: 'সভার কার্যবিবরণী সফলভাবে সংরক্ষিত হয়েছে।' });
+  res.json({ success: true, data: meeting, message: status === 'DRAFT' ? 'ড্রাফট হিসেবে সংরক্ষিত হয়েছে।' : 'মিটিং কার্যবিবরণী ও গৃহীত সিদ্ধান্ত সফলভাবে সংরক্ষিত হয়েছে।' });
+});
+
+app.put('/api/v1/committee/meetings/:id', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const meeting = db.committeeMeetings.find(m => m.id === req.params.id && m.mosqueId === mosqueId);
+  if (!meeting) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'মিটিং কার্যবিবরণী পাওয়া যায়নি।' } });
+  }
+
+  const {
+    isRevision,
+    revisionReason,
+    status,
+    memoNumber,
+    meetingNoticeId,
+    noticeDate,
+    date,
+    dayName,
+    time,
+    closingTime,
+    location,
+    meetingType,
+    meetingTypeBn,
+    conductor,
+    conductorMemberId,
+    chairman,
+    chairmanMemberId,
+    chairmanDesignation,
+    secretary,
+    secretaryMemberId,
+    duaLeader,
+    duaLeaderMemberId,
+    agenda,
+    decisions,
+    resolutions,
+    miscellaneous,
+    responsibleMembers,
+    attendees,
+    notes,
+    presidentSignatureUrl,
+    secretarySignatureUrl
+  } = req.body;
+
+  // Handle Revision Creation
+  if (isRevision) {
+    const revNumber = (meeting.revisionHistory?.length || 0) + 1;
+    const revEntry = {
+      revisionNo: revNumber,
+      revisionDate: new Date().toISOString(),
+      revisedBy: req.user!.id,
+      revisedByName: req.user!.name,
+      reason: revisionReason || 'সংশোধিত কার্যবিবরণী তৈরি',
+      previousDecisions: [...meeting.decisions],
+      createdAt: new Date().toISOString(),
+    };
+
+    if (!meeting.revisionHistory) meeting.revisionHistory = [];
+    meeting.revisionHistory.push(revEntry);
+    meeting.isRevised = true;
+    meeting.status = 'REVISED';
+  } else if (status) {
+    meeting.status = status;
+  }
+
+  // Update fields if provided
+  if (memoNumber !== undefined) meeting.memoNumber = memoNumber;
+  if (meetingNoticeId !== undefined) meeting.meetingNoticeId = meetingNoticeId;
+  if (noticeDate !== undefined) meeting.noticeDate = noticeDate;
+  if (date !== undefined) meeting.date = date;
+  if (dayName !== undefined) meeting.dayName = dayName;
+  if (time !== undefined) meeting.time = time;
+  if (closingTime !== undefined) meeting.closingTime = closingTime;
+  if (location !== undefined) meeting.location = location;
+  if (meetingType !== undefined) meeting.meetingType = meetingType;
+  if (meetingTypeBn !== undefined) meeting.meetingTypeBn = meetingTypeBn;
+  if (conductor !== undefined) meeting.conductor = conductor;
+  if (conductorMemberId !== undefined) meeting.conductorMemberId = conductorMemberId;
+  if (chairman !== undefined) meeting.chairman = chairman;
+  if (chairmanMemberId !== undefined) meeting.chairmanMemberId = chairmanMemberId;
+  if (chairmanDesignation !== undefined) meeting.chairmanDesignation = chairmanDesignation;
+  if (secretary !== undefined) meeting.secretary = secretary;
+  if (secretaryMemberId !== undefined) meeting.secretaryMemberId = secretaryMemberId;
+  if (duaLeader !== undefined) meeting.duaLeader = duaLeader;
+  if (duaLeaderMemberId !== undefined) meeting.duaLeaderMemberId = duaLeaderMemberId;
+  if (miscellaneous !== undefined) meeting.miscellaneous = miscellaneous;
+  if (notes !== undefined) meeting.notes = notes;
+
+  if (Array.isArray(agenda)) {
+    meeting.agenda = agenda.filter((a: any) => typeof a === 'string' && a.trim() !== '');
+  }
+  if (Array.isArray(decisions)) {
+    const cleanD = decisions.filter((d: any) => typeof d === 'string' && d.trim() !== '');
+    meeting.decisions = cleanD;
+    meeting.resolutions = cleanD;
+  } else if (Array.isArray(resolutions)) {
+    meeting.decisions = resolutions;
+    meeting.resolutions = resolutions;
+  }
+
+  if (Array.isArray(responsibleMembers)) {
+    meeting.responsibleMembers = responsibleMembers;
+  }
+  if (Array.isArray(attendees)) {
+    meeting.attendees = attendees;
+    meeting.membersPresent = attendees.filter((a: any) => a.attendanceStatus === 'PRESENT').map((a: any) => a.name);
+    meeting.membersAbsent = attendees.filter((a: any) => a.attendanceStatus !== 'PRESENT').map((a: any) => a.name);
+  }
+
+  if (presidentSignatureUrl !== undefined) meeting.presidentSignatureUrl = presidentSignatureUrl;
+  if (secretarySignatureUrl !== undefined) meeting.secretarySignatureUrl = secretarySignatureUrl;
+  meeting.updatedAt = new Date().toISOString();
+
+  db.save();
+
+  const auditAction = isRevision ? 'REVISION_CREATED' : (status === 'FINAL' ? 'FINALIZED' : 'UPDATE');
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    auditAction,
+    'COMMITTEE_MEETING',
+    `মিটিং কার্যবিবরণী আপডেট: ${meeting.documentNumber} (${meeting.status}) - ${isRevision ? `রিভিশন #${meeting.revisionHistory?.length}` : 'তথ্য হালনাগাদ'}`
+  );
+  realtime.broadcastToMosque(mosqueId, 'MEETING_UPDATED', meeting, { senderId: req.user!.id });
+
+  res.json({ success: true, data: meeting, message: 'মিটিং কার্যবিবরণী সফলভাবে আপডেট করা হয়েছে।' });
+});
+
+app.delete('/api/v1/committee/meetings/:id', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const idx = db.committeeMeetings.findIndex(m => m.id === req.params.id && m.mosqueId === mosqueId);
+  if (idx === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'মিটিং কার্যবিবরণী পাওয়া যায়নি।' } });
+  }
+
+  const removed = db.committeeMeetings.splice(idx, 1)[0];
+  db.save();
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'DELETE', 'COMMITTEE_MEETING', `মিটিং কার্যবিবরণী মুছে ফেলা: ${removed.documentNumber || removed.meetingNumber}`);
+  realtime.broadcastToMosque(mosqueId, 'MEETING_DELETED', { id: removed.id }, { senderId: req.user!.id });
+
+  res.json({ success: true, message: 'মিটিং কার্যবিবরণী সফলভাবে মুছে ফেলা হয়েছে।' });
+});
+
+app.post('/api/v1/committee/meetings/:id/audit', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { action, details } = req.body; // e.g. 'PRINT', 'PDF_DOWNLOAD'
+  const meeting = db.committeeMeetings.find(m => m.id === req.params.id && m.mosqueId === mosqueId);
+  if (meeting) {
+    db.logAudit(
+      mosqueId,
+      req.user!.id,
+      req.user!.name,
+      req.user!.role,
+      action || 'PRINT',
+      'COMMITTEE_MEETING',
+      details || `মিটিং কার্যবিবরণী ${action === 'PDF_DOWNLOAD' ? 'PDF ডাউনলোড' : 'প্রিন্ট'}: ${meeting.documentNumber}`
+    );
+  }
+  res.json({ success: true });
 });
 
 // ==========================================

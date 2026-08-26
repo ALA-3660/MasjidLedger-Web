@@ -13,6 +13,7 @@ import {
   CommitteeTerm,
   CommitteeMember,
   CommitteeMeeting,
+  CommitteeMeetingNotice,
   Staff,
   StaffPayment,
   MosqueAsset,
@@ -44,6 +45,7 @@ export class DatabaseStore {
   committeeTerms: CommitteeTerm[] = [];
   committeeMembers: CommitteeMember[] = [];
   committeeMeetings: CommitteeMeeting[] = [];
+  committeeNotices: CommitteeMeetingNotice[] = [];
   staffList: Staff[] = [];
   staffPayments: StaffPayment[] = [];
   assets: MosqueAsset[] = [];
@@ -84,6 +86,7 @@ export class DatabaseStore {
         this.committeeTerms = parsed.committeeTerms || [];
         this.committeeMembers = parsed.committeeMembers || [];
         this.committeeMeetings = parsed.committeeMeetings || [];
+        this.committeeNotices = parsed.committeeNotices || [];
         this.staffList = parsed.staffList || [];
         this.staffPayments = parsed.staffPayments || [];
         this.assets = parsed.assets || [];
@@ -124,6 +127,7 @@ export class DatabaseStore {
         committeeTerms: this.committeeTerms,
         committeeMembers: this.committeeMembers,
         committeeMeetings: this.committeeMeetings,
+        committeeNotices: this.committeeNotices,
         staffList: this.staffList,
         staffPayments: this.staffPayments,
         assets: this.assets,
@@ -788,12 +792,21 @@ export class DatabaseStore {
     this.committeeMeetings.push({
       id: 'meet-001',
       mosqueId: mosque1.id,
-      meetingNumber: 'MEET-2026-08',
+      documentNumber: 'MM-2026-0001',
+      meetingNumber: '০১',
+      memoNumber: 'MJMWS-10/08/26/0001',
       date: '2026-08-10',
-      time: 'রাত ৮:৩০ (বাদ এশা)',
+      dayName: 'সোমবার',
+      time: 'রাত ০৮:৩০ (বাদ এশা)',
+      endTime: 'রাত ১০:১৫',
       location: 'মসজিদ কনফারেন্স রুম / অফিস কক্ষ',
-      chairman: 'আলহাজ্ব মোঃ মকবুল হোসেন (সভাপতি)',
-      secretary: 'মুহাম্মদ রফিকুল ইসলাম (সাধারণ সম্পাদক)',
+      meetingType: 'MONTHLY',
+      meetingTypeBn: 'মাসিক নিয়মিত সভা',
+      conductor: 'মুহাম্মদ রফিকুল ইসলাম',
+      chairman: 'আলহাজ্ব মোঃ মকবুল হোসেন',
+      chairmanDesignation: 'সভাপতি',
+      secretary: 'মুহাম্মদ রফিকুল ইসলাম',
+      duaLeader: 'মাওলানা মুফতি আব্দুল্লাহ আল-মামুন',
       agenda: [
         '১. মসজিদের দ্বিতীয় তলার অসম্পূর্ণ টাইলস ও পেইন্ট কাজ সম্পন্নকরণ।',
         '২. আসন্ন রমজান ও বার্ষিক হিসাব নিরীক্ষা (Audit) প্রস্তুতি।',
@@ -807,6 +820,14 @@ export class DatabaseStore {
         'মাওলানা মুফতি আব্দুল্লাহ আল-মামুন'
       ],
       membersAbsent: ['ডাঃ আক্তারুজ্জামান (অসুস্থতাজনিত অনুপস্থিত)'],
+      attendees: [
+        { name: 'আলহাজ্ব মোঃ মকবুল হোসেন', designation: 'সভাপতি', phone: '01711122233', attendanceStatus: 'PRESENT' },
+        { name: 'আলহাজ্ব মোঃ শামসুল হুদা', designation: 'সহ-সভাপতি', phone: '01819234567', attendanceStatus: 'PRESENT' },
+        { name: 'মুহাম্মদ রফিকুল ইসলাম', designation: 'সাধারণ সম্পাদক', phone: '01712345678', attendanceStatus: 'PRESENT' },
+        { name: 'মোঃ জহিরুল হক', designation: 'কোষাধ্যক্ষ', phone: '01611223344', attendanceStatus: 'PRESENT' },
+        { name: 'মাওলানা মুফতি আব্দুল্লাহ আল-মামুন', designation: 'খতীব ও পেশ ইমাম', phone: '01912444555', attendanceStatus: 'PRESENT' },
+        { name: 'ডাঃ আক্তারুজ্জামান', designation: 'সদস্য', phone: '01511998877', attendanceStatus: 'ABSENT' }
+      ],
       decisions: [
         '১. দ্বিতীয় তলার জন্য ৫০,০০০ টাকার প্রাথমিক বাজেট অনুমোদন এবং ৩ সদস্যের নির্মাণ সাব-কমিটি গঠন।',
         '২. সেপ্টেম্বর মাসের মধ্যে বহিঃনিরীক্ষক নিয়োগের সিদ্ধান্ত গৃহীত হলো।',
@@ -815,9 +836,37 @@ export class DatabaseStore {
       resolutions: [
         'রেজোলিউশন নং ০১/২০২৬: মসজিদের সম্প্রসারণ তহবিলের জন্য বিশেষ জুমার আবেদন পরিচালনা করা হবে।'
       ],
+      actionItems: [
+        { task: 'দ্বিতীয় তলার টাইলস ও রঙের ব্যয় প্রাক্কলন ও মিস্ত্রি চূড়ান্ত করা', assigneeName: 'মোঃ জহিরুল হক', assigneeDesignation: 'কোষাধ্যক্ষ', deadline: '2026-08-25' },
+        { task: 'হিসাব নিরীক্ষা রিপোর্ট প্রস্তুতকরণ ও নিরীক্ষক দলের সাথে সমন্বয়', assigneeName: 'মুহাম্মদ রফিকুল ইসলাম', assigneeDesignation: 'সাধারণ সম্পাদক', deadline: '2026-08-30' }
+      ],
       resolutionNumber: 'RES-2026-012',
+      status: 'FINAL',
       notes: 'সকল সদস্যের উপস্থিতিতে আলোচনা ফলপ্রসূ হয়েছে।',
       createdAt: '2026-08-10T22:00:00.000Z'
+    });
+
+    // 9.1 Committee Notices
+    this.committeeNotices.push({
+      id: 'not-001',
+      mosqueId: mosque1.id,
+      memoNo: 'MJMWS-05/08/26/0001',
+      serialNumber: '০১',
+      noticeDate: '2026-08-05',
+      meetingDate: '2026-08-10',
+      dayName: 'সোমবার',
+      time: 'রাত ০৮:৩০ (বাদ এশা)',
+      venue: 'মসজিদ কনফারেন্স রুম / অফিস কক্ষ',
+      meetingType: 'MONTHLY',
+      meetingTypeBn: 'মাসিক নিয়মিত সভা',
+      agendas: [
+        'মসজিদের দ্বিতীয় তলার অসম্পূর্ণ টাইলস ও পেইন্ট কাজ সম্পন্নকরণ।',
+        'আসন্ন রমজান ও বার্ষিক হিসাব নিরীক্ষা (Audit) প্রস্তুতি।',
+        'ইমাম ও মুয়াজ্জিন সাহেবের বার্ষিক হাদিয়া বৃদ্ধি প্রস্তাবনা।'
+      ],
+      remarks: 'সকল সম্মানিত সদস্যকে যথাসময়ে উপস্থিত থাকার জন্য বিশেষভাবে অনুরোধ করা হলো।',
+      status: 'CONVERTED_TO_MINUTES',
+      createdAt: '2026-08-05T10:00:00.000Z'
     });
 
     // 10. Staff & Payroll
