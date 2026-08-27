@@ -1,25 +1,36 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Printer, X, Download, ShieldCheck, FileText, CheckCircle2, History, AlertCircle, Building2 } from 'lucide-react';
 import { CommitteeMeeting, CommitteeMember, Mosque } from '../types';
-import { formatDate } from '../lib/i18n';
+import { formatDate, Language } from '../lib/i18n';
 
 interface MeetingDocumentPrintProps {
-  isOpen: boolean;
+  isOpen?: boolean;
   onClose: () => void;
   meeting: CommitteeMeeting | null;
-  mosque: Mosque | null;
+  mosque?: Mosque | null;
   members?: CommitteeMember[];
+  language?: Language;
   onAuditLog?: (meetingId: string, action: string, details: string) => void;
 }
 
 export const MeetingDocumentPrint: React.FC<MeetingDocumentPrintProps> = ({
-  isOpen,
+  isOpen = true,
   onClose,
   meeting,
   mosque,
   members = [],
+  language = 'bn',
   onAuditLog,
 }) => {
+  useEffect(() => {
+    if (isOpen) {
+      document.body.classList.add('print-document-active');
+    }
+    return () => {
+      document.body.classList.remove('print-document-active');
+    };
+  }, [isOpen]);
+
   if (!isOpen || !meeting) return null;
 
   const handlePrint = () => {
@@ -37,21 +48,31 @@ export const MeetingDocumentPrint: React.FC<MeetingDocumentPrintProps> = ({
   };
 
   // Convert English numbers to Bengali numbers
-  const toBanglaNum = (n: number | string): string => {
+  const toBanglaNum = (n: number | string | undefined | null): string => {
+    if (n === undefined || n === null) return '';
     const bnDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
     return String(n).replace(/[0-9]/g, (d) => bnDigits[parseInt(d, 10)]);
   };
 
   // Determine present attendees list
-  const presentAttendees = meeting.attendees && meeting.attendees.length > 0
-    ? meeting.attendees.filter(a => a.attendanceStatus === 'PRESENT')
-    : members.filter(m => m.status === 'ACTIVE').map(m => ({
+  const rawAttendees = meeting.attendees || [];
+  const presentAttendees = rawAttendees.length > 0
+    ? rawAttendees.filter(a => a.attendanceStatus === 'PRESENT' || (a as any).isPresent !== false)
+    : (members || []).filter(m => m.status === 'ACTIVE').map(m => ({
         memberId: m.id,
         name: m.name,
         designation: m.positionCustomBn || m.position,
         phone: m.phone,
         attendanceStatus: 'PRESENT' as const,
+        isPresent: true,
+        signatureUrl: undefined,
       }));
+
+  const allDecisions = (meeting.decisions && meeting.decisions.length > 0)
+    ? meeting.decisions
+    : (meeting.resolutions && meeting.resolutions.length > 0)
+    ? meeting.resolutions
+    : [];
 
   const isDraft = meeting.status === 'DRAFT';
   const isRevised = meeting.status === 'REVISED' || (meeting.revisionHistory && meeting.revisionHistory.length > 0);
@@ -174,11 +195,11 @@ export const MeetingDocumentPrint: React.FC<MeetingDocumentPrintProps> = ({
                 <div className="w-20 h-20 flex-shrink-0 flex flex-col items-center justify-center border border-slate-200 rounded-xl bg-slate-50/80 p-1 text-center">
                   <span className="text-[10px] font-bold text-slate-500 font-baloo uppercase">ডকুমেন্ট নং</span>
                   <span className="text-xs font-extrabold text-blue-950 font-siliguri tracking-tight mt-0.5">
-                    {meeting.documentNumber || meeting.meetingNumber}
+                    {meeting.documentNumber || toBanglaNum(meeting.meetingNumber) || '০১'}
                   </span>
                   {isRevised && (
                     <span className="mt-1 px-1.5 py-0.2 bg-purple-100 text-purple-900 text-[9px] font-bold rounded font-siliguri">
-                      রিভিশন #{meeting.revisionHistory?.length || 1}
+                      রিভিশন #{toBanglaNum(meeting.revisionHistory?.length || 1)}
                     </span>
                   )}
                 </div>
@@ -193,7 +214,7 @@ export const MeetingDocumentPrint: React.FC<MeetingDocumentPrintProps> = ({
                 </div>
                 {isRevised && latestRevision && (
                   <p className="text-xs text-purple-800 font-baloo mt-1 font-semibold">
-                    [সংশোধিত কার্যবিবরণী - কারণ: {latestRevision.reason} • তারিখ: {formatDate(latestRevision.revisionDate, 'bn')}]
+                    [সংশোধিত কার্যবিবরণী - কারণ: {latestRevision.reason} • তারিখ: {formatDate(latestRevision.revisionDate, language || 'bn')}]
                   </p>
                 )}
               </div>
@@ -207,12 +228,12 @@ export const MeetingDocumentPrint: React.FC<MeetingDocumentPrintProps> = ({
                   </div>
                   <div className="p-2.5">
                     <span className="block text-[10px] font-bold text-slate-500 uppercase">মিটিং ক্রমিক নং</span>
-                    <span className="font-bold text-slate-900">{meeting.meetingNumber}</span>
+                    <span className="font-bold text-slate-900">সভা #{toBanglaNum(meeting.meetingNumber)}</span>
                   </div>
                   <div className="p-2.5">
                     <span className="block text-[10px] font-bold text-slate-500 uppercase">তারিখ ও বার</span>
                     <span className="font-bold text-slate-900">
-                      {formatDate(meeting.date, 'bn')} ({meeting.dayName || 'নির্ধারিত দিন'})
+                      {formatDate(meeting.date, language || 'bn')} ({meeting.dayName || 'নির্ধারিত দিন'})
                     </span>
                   </div>
                   <div className="p-2.5">
@@ -225,7 +246,7 @@ export const MeetingDocumentPrint: React.FC<MeetingDocumentPrintProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 divide-x divide-t divide-slate-300 bg-white">
                   <div className="p-2.5">
                     <span className="block text-[10px] font-bold text-slate-500 uppercase">স্থান / ভেন্যু</span>
-                    <span className="font-bold text-slate-900">{meeting.location}</span>
+                    <span className="font-bold text-slate-900">{meeting.location || 'মসজিদ কার্যালয়'}</span>
                   </div>
                   <div className="p-2.5">
                     <span className="block text-[10px] font-bold text-slate-500 uppercase">মিটিংয়ের ধরণ</span>
@@ -286,9 +307,9 @@ export const MeetingDocumentPrint: React.FC<MeetingDocumentPrintProps> = ({
                     সর্বসম্মত সিদ্ধান্তসমূহ
                   </span>
                 </h3>
-                {meeting.decisions && meeting.decisions.length > 0 ? (
+                {allDecisions && allDecisions.length > 0 ? (
                   <div className="space-y-3 text-xs font-baloo text-slate-900">
-                    {meeting.decisions.map((dec, idx) => (
+                    {allDecisions.map((dec, idx) => (
                       <div key={idx} className="p-2.5 bg-white border border-slate-200 rounded-md shadow-2xs">
                         <div className="font-bold text-blue-950 font-siliguri mb-1 flex items-center space-x-1.5">
                           <span className="px-1.5 py-0.2 bg-blue-100 text-blue-900 rounded text-[11px]">
@@ -386,7 +407,7 @@ export const MeetingDocumentPrint: React.FC<MeetingDocumentPrintProps> = ({
                         <td className="border border-slate-300 p-1.5 text-center text-slate-700 font-mono text-[11px]">{att.phone || '—'}</td>
                         <td className="border border-slate-300 p-1 text-center">
                           {att.signatureUrl ? (
-                            <img src={att.signatureUrl} alt="স্বাক্ষর" className="h-7 mx-auto object-contain" />
+                            <img src={att.signatureUrl} alt="স্বাক্ষর" referrerPolicy="no-referrer" className="h-7 mx-auto object-contain" />
                           ) : (
                             <div className="h-7 w-full border-b border-dashed border-slate-300" />
                           )}
@@ -408,6 +429,7 @@ export const MeetingDocumentPrint: React.FC<MeetingDocumentPrintProps> = ({
                       <img
                         src={meeting.presidentSignatureUrl || mosque?.presidentSignatureUrl}
                         alt="সভাপতি স্বাক্ষর"
+                        referrerPolicy="no-referrer"
                         className="max-h-12 max-w-full object-contain"
                       />
                     </div>
@@ -434,6 +456,7 @@ export const MeetingDocumentPrint: React.FC<MeetingDocumentPrintProps> = ({
                       <img
                         src={meeting.secretarySignatureUrl || mosque?.secretarySignatureUrl}
                         alt="সেক্রেটারী স্বাক্ষর"
+                        referrerPolicy="no-referrer"
                         className="max-h-12 max-w-full object-contain"
                       />
                     </div>
@@ -459,7 +482,7 @@ export const MeetingDocumentPrint: React.FC<MeetingDocumentPrintProps> = ({
               <div className="mt-8 pt-2 border-t border-slate-200 text-center text-[10px] text-slate-500 font-baloo flex items-center justify-between">
                 <span>স্মারক নং: {meeting.memoNumber || '—'}</span>
                 <span>MasjidLedger • অফিসিয়াল মিটিং কার্যবিবরণী ও রেজোলিউশন ডকুমেন্ট</span>
-                <span>ডকুমেন্ট আইডি: {meeting.documentNumber || meeting.meetingNumber}</span>
+                <span>ডকুমেন্ট আইডি: {meeting.documentNumber || toBanglaNum(meeting.meetingNumber)}</span>
               </div>
             </div>
 

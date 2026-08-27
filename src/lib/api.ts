@@ -14,6 +14,7 @@ import {
   CommitteeMember,
   CommitteeMeeting,
   CommitteeMeetingNotice,
+  MeetingResolution,
   Staff,
   StaffPayment,
   MosqueAsset,
@@ -68,7 +69,7 @@ class ApiService {
     }
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000);
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     try {
       const response = await fetch(`/api/v1${endpoint}`, {
@@ -78,8 +79,28 @@ class ApiService {
       });
 
       clearTimeout(timeoutId);
-      const json = await response.json();
-      return json;
+
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const json = await response.json();
+        return json;
+      }
+
+      if (!response.ok) {
+        const text = await response.text();
+        return {
+          success: false,
+          error: {
+            code: `HTTP_${response.status}`,
+            message: text || `সার্ভার অনুরোধ ব্যর্থ হয়েছে (${response.status})`,
+          },
+        };
+      }
+
+      return {
+        success: true,
+        data: undefined,
+      };
     } catch (err: any) {
       clearTimeout(timeoutId);
       console.error(`API Error on ${endpoint}:`, err);
@@ -87,7 +108,7 @@ class ApiService {
         success: false,
         error: {
           code: err.name === 'AbortError' ? 'TIMEOUT_ERROR' : 'NETWORK_ERROR',
-          message: err.name === 'AbortError' ? 'সার্ভার অনুরোধের সময়সীমা পার হয়েছে (Timeout)।' : 'সার্ভারের সাথে সংযোগ স্থাপন করা সম্ভব হয়নি।',
+          message: err.name === 'AbortError' ? 'সার্ভার অনুরোধের সময়সীমা পার হয়েছে (Timeout)।' : (err.message && !err.message.includes('fetch') ? err.message : 'সার্ভারের সাথে সংযোগ স্থাপন করা সম্ভব হয়নি।'),
         },
       };
     }
@@ -494,6 +515,84 @@ class ApiService {
       method: 'DELETE',
     });
     if (!res.success) throw new Error(res.error?.message || 'Failed to delete notice');
+  }
+
+  // Committee Resolutions (মিটিং রেজোলিউশন)
+  async getCommitteeResolutions(params?: {
+    meetingId?: string;
+    status?: string;
+    memberId?: string;
+    search?: string;
+    fromDate?: string;
+    toDate?: string;
+    month?: string;
+    year?: string;
+    priority?: string;
+  }): Promise<MeetingResolution[]> {
+    const query = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, val]) => {
+        if (val) query.append(key, val);
+      });
+    }
+    const queryString = query.toString() ? `?${query.toString()}` : '';
+    const res = await this.request<MeetingResolution[]>(`/committee/resolutions${queryString}`);
+    return res.data || [];
+  }
+
+  async getCommitteeResolution(id: string): Promise<MeetingResolution | null> {
+    const res = await this.request<MeetingResolution>(`/committee/resolutions/${id}`);
+    return res.data || null;
+  }
+
+  async createCommitteeResolution(data: any): Promise<MeetingResolution> {
+    const res = await this.request<MeetingResolution>('/committee/resolutions', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'রেজোলিউশন তৈরি করতে ব্যর্থ হয়েছে');
+    return res.data!;
+  }
+
+  async updateCommitteeResolution(id: string, data: any): Promise<MeetingResolution> {
+    const res = await this.request<MeetingResolution>(`/committee/resolutions/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'রেজোলিউশন আপডেট করতে ব্যর্থ হয়েছে');
+    return res.data!;
+  }
+
+  async updateCommitteeResolutionProgress(id: string, data: any): Promise<MeetingResolution> {
+    const res = await this.request<MeetingResolution>(`/committee/resolutions/${id}/progress`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'রেজোলিউশন অগ্রগতি আপডেট করতে ব্যর্থ হয়েছে');
+    return res.data!;
+  }
+
+  async deleteCommitteeResolution(id: string, force: boolean = false): Promise<void> {
+    const query = force ? '?force=true' : '';
+    const res = await this.request<void>(`/committee/resolutions/${id}${query}`, {
+      method: 'DELETE',
+    });
+    if (!res.success) throw new Error(res.error?.message || 'রেজোলিউশন মুছে ফেলতে ব্যর্থ হয়েছে');
+  }
+
+  async duplicateCommitteeResolution(id: string): Promise<MeetingResolution> {
+    const res = await this.request<MeetingResolution>(`/committee/resolutions/${id}/duplicate`, {
+      method: 'POST',
+    });
+    if (!res.success) throw new Error(res.error?.message || 'রেজোলিউশন ডুপ্লিকেট করতে ব্যর্থ হয়েছে');
+    return res.data!;
+  }
+
+  async logCommitteeResolutionAudit(id: string, action: string, details?: string): Promise<void> {
+    await this.request<void>(`/committee/resolutions/${id}/audit`, {
+      method: 'POST',
+      body: JSON.stringify({ action, details }),
+    });
   }
 
   // Management (Staff, Assets, Properties, Cemetery, Notices)

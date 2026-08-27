@@ -15,6 +15,18 @@ import {
   CommitteeMember,
   CommitteeMeeting,
   CommitteeMeetingNotice,
+  MeetingResolution,
+  ResolutionStatus,
+  ResolutionType,
+  ResolutionImplementationStatus,
+  CommitteeActionPlan,
+  CommitteeActionPlanStatus,
+  CommitteeActionPlanPriority,
+  CommitteeActionPlanAttachment,
+  CommitteeActionPlanActivityLog,
+  CommitteeMemberActivity,
+  CommitteeMemberTask,
+  CommitteeManualEvaluation,
   Staff,
   StaffPayment,
   MosqueAsset,
@@ -1841,6 +1853,131 @@ app.delete('/api/v1/committee/terms/:id', authenticate, requirePermission('MANAG
   res.json({ success: true, message: 'কমিটির মেয়াদ সফলভাবে মুছে ফেলা হয়েছে।' });
 });
 
+function computeCommitteeFinancials(mosqueId: string, termId: string) {
+  const term = db.committeeTerms.find(t => t.id === termId && t.mosqueId === mosqueId);
+  if (!term) return null;
+
+  const startDate = term.startDate;
+  const endDate = term.endDate;
+
+  const belongsToTerm = (itemDate: string, itemTermId?: string) => {
+    if (itemTermId === termId) return true;
+    if (!itemTermId && itemDate >= startDate && itemDate <= endDate) return true;
+    return false;
+  };
+
+  const incomes = db.incomeEntries.filter(i => i.mosqueId === mosqueId && i.status === 'APPROVED' && !i.isReversal && belongsToTerm(i.date, (i as any).termId));
+  const expenses = db.expenseEntries.filter(e => e.mosqueId === mosqueId && e.status === 'APPROVED' && !e.isReversal && belongsToTerm(e.date, (e as any).termId));
+  const donations = db.donations.filter(d => d.mosqueId === mosqueId && d.status === 'COMPLETED' && belongsToTerm(d.date, (d as any).termId));
+  const collections = db.donationBoxCollections.filter(c => c.mosqueId === mosqueId && belongsToTerm(c.collectionDate, (c as any).termId));
+
+  const totalIncome = incomes.reduce((sum, i) => sum + i.amount, 0);
+  const totalExpense = expenses.reduce((sum, e) => sum + e.amount, 0);
+  const totalDonations = donations.reduce((sum, d) => sum + d.amount, 0);
+  const totalBoxCollections = collections.reduce((sum, c) => sum + c.amount, 0);
+
+  const cashIncomes = incomes.filter(i => i.paymentMethod === 'CASH');
+  const cashExpenses = expenses.filter(e => e.paymentMethod === 'CASH');
+  const bankIncomes = incomes.filter(i => i.paymentMethod !== 'CASH');
+  const bankExpenses = expenses.filter(e => e.paymentMethod !== 'CASH');
+
+  const cashInflow = cashIncomes.reduce((sum, i) => sum + i.amount, 0);
+  const cashOutflow = cashExpenses.reduce((sum, e) => sum + e.amount, 0);
+  const bankInflow = bankIncomes.reduce((sum, i) => sum + i.amount, 0);
+  const bankOutflow = bankExpenses.reduce((sum, e) => sum + e.amount, 0);
+
+  const openingBalance = term.openingBalance || 0;
+  const calculatedClosing = openingBalance + totalIncome - totalExpense;
+  const handoverBalance = term.handoverBalance !== undefined ? term.handoverBalance : calculatedClosing;
+  const difference = handoverBalance - calculatedClosing;
+
+  return {
+    term,
+    openingBalance,
+    totalIncome,
+    totalExpense,
+    totalDonations,
+    totalBoxCollections,
+    cashInflow,
+    cashOutflow,
+    bankInflow,
+    bankOutflow,
+    calculatedClosing,
+    handoverBalance,
+    difference,
+    incomesCount: incomes.length,
+    expensesCount: expenses.length
+  };
+}
+
+app.get('/api/v1/committee/terms/:id/financials', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const termId = req.params.id;
+  const financials = computeCommitteeFinancials(mosqueId, termId);
+  if (!financials) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'মেয়াদকাল পাওয়া যায়নি।' } });
+  }
+  res.json({ success: true, data: financials });
+});
+
+app.post('/api/v1/committee/terms/:id/close', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const termId = req.params.id;
+  const term = db.committeeTerms.find(t => t.id === termId && t.mosqueId === mosqueId);
+  if (!term) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'মেয়াদকাল পাওয়া যায়নি।' } });
+  }
+
+  const { actualHandoverBalance, handoverRecipientTermId, handoverRecipientName, handoverNotes, reconciliationNotes } = req.body;
+  const financials = computeCommitteeFinancials(mosqueId, termId);
+  if (!financials) {
+    return res.status(400).json({ success: false, error: { code: 'CALC_ERROR', message: 'হিসাব গণনা করা সম্ভব হয়নি।' } });
+  }
+
+  term.status = 'CLOSED';
+  term.closingBalance = financials.calculatedClosing;
+  term.closingBalanceDate = new Date().toISOString().split('T')[0];
+  term.handoverBalance = actualHandoverBalance !== undefined ? Number(actualHandoverBalance) : financials.calculatedClosing;
+  term.actualHandoverBalance = term.handoverBalance;
+  term.reconciliationDifference = term.handoverBalance - financials.calculatedClosing;
+  term.reconciliationNotes = reconciliationNotes;
+  term.handoverRecipientTermId = handoverRecipientTermId;
+  term.handoverRecipientName = handoverRecipientName;
+  term.handoverDate = new Date().toISOString().split('T')[0];
+  term.handoverNotes = handoverNotes;
+  term.approvedBy = req.user!.id;
+  term.approvedByName = req.user!.name;
+  term.approvalDate = new Date().toISOString().split('T')[0];
+
+  db.save();
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CLOSE', 'COMMITTEE_TERM', `কমিটি ক্লোজ ও হস্তান্তর সম্পন্ন: ${term.title}, হ্যান্ডওভার: ৳${term.handoverBalance}`);
+  realtime.broadcastToMosque(mosqueId, 'COMMITTEE_TERM_CLOSED', term, { senderId: req.user!.id });
+
+  res.json({ success: true, data: term, message: 'কমিটির মেয়াদ সফলভাবে সমাপ্ত ও হিসাব হস্তান্তর করা হয়েছে।' });
+});
+
+app.post('/api/v1/committee/terms/:id/activate', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const termId = req.params.id;
+  const term = db.committeeTerms.find(t => t.id === termId && t.mosqueId === mosqueId);
+  if (!term) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'মেয়াদকাল পাওয়া যায়নি।' } });
+  }
+
+  db.committeeTerms.forEach(t => {
+    if (t.mosqueId === mosqueId && t.id !== termId && t.status === 'ACTIVE') {
+      t.status = 'COMPLETED';
+    }
+  });
+
+  term.status = 'ACTIVE';
+  db.save();
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'ACTIVATE', 'COMMITTEE_TERM', `কমিটি সক্রিয় করা হয়েছে: ${term.title}`);
+  realtime.broadcastToMosque(mosqueId, 'COMMITTEE_TERM_ACTIVATED', term, { senderId: req.user!.id });
+
+  res.json({ success: true, data: term, message: 'কমিটি সফলভাবে সক্রিয় করা হয়েছে।' });
+});
+
 app.post('/api/v1/committee/members', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
   const { termId, name, designation, designationBn, phone, nid, email, address, occupation, photoUrl, orderIndex, position, positionCustomBn } = req.body;
   const mosqueId = req.currentMosque!.id;
@@ -2034,10 +2171,13 @@ app.post('/api/v1/committee/meetings', authenticate, requirePermission('MANAGE_C
     duaLeader,
     duaLeaderMemberId,
     agenda,
+    agendaItems,
     decisions,
+    decisionItems,
     resolutions,
     miscellaneous,
     responsibleMembers,
+    assignedTasks,
     attendees,
     status = 'FINAL',
     notes,
@@ -2051,13 +2191,112 @@ app.post('/api/v1/committee/meetings', authenticate, requirePermission('MANAGE_C
   const autoDocNo = documentNumber || `MM-${year}-${String(existingCount + 1).padStart(4, '0')}`;
   const autoMeetNo = meetingNumber || `MEET-${existingCount + 1}`;
 
-  const cleanAgenda: string[] = Array.isArray(agenda)
-    ? agenda.filter((a: any) => typeof a === 'string' && a.trim() !== '')
-    : (req.body.title ? [req.body.title] : ['সাধারণ আলোচ্যসূচি']);
+  // Process agenda items
+  let cleanAgenda: string[] = [];
+  let cleanAgendaItems: any[] = [];
+  if (Array.isArray(agendaItems) && agendaItems.length > 0) {
+    cleanAgendaItems = agendaItems.map((item: any, idx: number) => ({
+      id: item.id || `ag-${Date.now()}-${idx}`,
+      agendaNumber: item.agendaNumber || idx + 1,
+      title: item.title || item.name || '',
+      discussion: item.discussion || ''
+    }));
+    cleanAgenda = cleanAgendaItems.map(item => item.title).filter(Boolean);
+  } else if (Array.isArray(agenda)) {
+    cleanAgenda = agenda.filter((a: any) => typeof a === 'string' && a.trim() !== '');
+    cleanAgendaItems = cleanAgenda.map((title, idx) => ({
+      id: `ag-${Date.now()}-${idx}`,
+      agendaNumber: idx + 1,
+      title,
+      discussion: ''
+    }));
+  } else {
+    cleanAgenda = req.body.title ? [req.body.title] : ['সাধারণ আলোচ্যসূচি'];
+    cleanAgendaItems = [{ id: `ag-${Date.now()}-0`, agendaNumber: 1, title: cleanAgenda[0], discussion: '' }];
+  }
 
-  const cleanDecisions: string[] = Array.isArray(decisions)
-    ? decisions.filter((d: any) => typeof d === 'string' && d.trim() !== '')
-    : (Array.isArray(resolutions) ? resolutions : []);
+  // Process decision items
+  let cleanDecisions: string[] = [];
+  let cleanDecisionItems: any[] = [];
+  if (Array.isArray(decisionItems) && decisionItems.length > 0) {
+    cleanDecisionItems = decisionItems.map((d: any, idx: number) => ({
+      id: d.id || `dec-${Date.now()}-${idx}`,
+      decisionNumber: d.decisionNumber || `সিদ্ধান্ত-${idx + 1}`,
+      agendaId: d.agendaId || undefined,
+      agendaTitle: d.agendaTitle || undefined,
+      details: d.details || d.decision || '',
+      assignedMemberId: d.assignedMemberId || undefined,
+      assignedMemberName: d.assignedMemberName || undefined,
+      assignedMemberDesignation: d.assignedMemberDesignation || undefined,
+      deadline: d.deadline || undefined,
+      priority: d.priority || 'NORMAL',
+      remarks: d.remarks || undefined,
+      resolutionId: d.resolutionId || undefined,
+      resolutionNumber: d.resolutionNumber || undefined
+    }));
+    cleanDecisions = cleanDecisionItems.map(d => d.details).filter(Boolean);
+  } else if (Array.isArray(decisions)) {
+    cleanDecisions = decisions.filter((d: any) => typeof d === 'string' && d.trim() !== '');
+    cleanDecisionItems = cleanDecisions.map((details, idx) => ({
+      id: `dec-${Date.now()}-${idx}`,
+      decisionNumber: `সিদ্ধান্ত-${idx + 1}`,
+      details,
+      priority: 'NORMAL'
+    }));
+  } else if (Array.isArray(resolutions)) {
+    cleanDecisions = resolutions;
+    cleanDecisionItems = cleanDecisions.map((details, idx) => ({
+      id: `dec-${Date.now()}-${idx}`,
+      decisionNumber: `সিদ্ধান্ত-${idx + 1}`,
+      details,
+      priority: 'NORMAL'
+    }));
+  }
+
+  // Process assigned tasks & sync to CommitteeTasks if assigned
+  let cleanTasks: any[] = [];
+  if (Array.isArray(assignedTasks) && assignedTasks.length > 0) {
+    cleanTasks = assignedTasks.map((t: any, idx: number) => ({
+      id: t.id || `ts-${Date.now()}-${idx}`,
+      taskDescription: t.taskDescription || t.task || '',
+      assignedMemberId: t.assignedMemberId || undefined,
+      assignedMemberName: t.assignedMemberName || t.assigneeName || '',
+      assignedMemberDesignation: t.assignedMemberDesignation || t.assigneeDesignation || undefined,
+      startDate: t.startDate || undefined,
+      endDate: t.endDate || t.deadline || undefined,
+      status: t.status || 'PENDING',
+      notes: t.notes || undefined
+    }));
+
+    // Sync to committeeTasks for member evaluation
+    if (!db.committeeTasks) db.committeeTasks = [];
+    const activeTerm = db.committeeTerms.find(term => term.mosqueId === mosqueId && term.status === 'ACTIVE') || db.committeeTerms[0];
+    cleanTasks.forEach(task => {
+      if (task.assignedMemberId && task.taskDescription) {
+        const newTaskItem = {
+          id: `ctask-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          mosqueId,
+          termId: activeTerm ? activeTerm.id : 'term-default',
+          memberId: task.assignedMemberId,
+          memberName: task.assignedMemberName,
+          memberDesignation: task.assignedMemberDesignation || 'কমিটি সদস্য',
+          taskTitle: task.taskDescription,
+          title: task.taskDescription,
+          description: `মিটিং কার্যবিবরণী (${autoDocNo}) থেকে অর্পিত দায়িত্ব।`,
+          assignedDate: task.startDate || date || new Date().toISOString().split('T')[0],
+          dueDate: task.endDate || new Date().toISOString().split('T')[0],
+          assignedBy: req.user!.id,
+          assignedByName: req.user!.name,
+          priority: 'HIGH' as const,
+          status: (task.status === 'COMPLETED' ? 'COMPLETED' : 'IN_PROGRESS') as any,
+          relatedMeetingId: `meet-${Date.now()}`,
+          relatedMeetingTitle: `মিটিং নং ${autoMeetNo}`,
+          createdAt: new Date().toISOString()
+        };
+        db.committeeTasks.unshift(newTaskItem);
+      }
+    });
+  }
 
   const cleanAttendees = Array.isArray(attendees) ? attendees : [];
   const presentNames = cleanAttendees
@@ -2092,8 +2331,11 @@ app.post('/api/v1/committee/meetings', authenticate, requirePermission('MANAGE_C
     duaLeader: duaLeader || undefined,
     duaLeaderMemberId: duaLeaderMemberId || undefined,
     agenda: cleanAgenda.length > 0 ? cleanAgenda : ['সাধারণ আলোচ্যসূচি'],
+    agendaItems: cleanAgendaItems,
     decisions: cleanDecisions,
+    decisionItems: cleanDecisionItems,
     resolutions: cleanDecisions,
+    assignedTasks: cleanTasks,
     miscellaneous: miscellaneous || undefined,
     responsibleMembers: Array.isArray(responsibleMembers) ? responsibleMembers : [],
     attendees: cleanAttendees,
@@ -2111,6 +2353,15 @@ app.post('/api/v1/committee/meetings', authenticate, requirePermission('MANAGE_C
   };
 
   db.committeeMeetings.unshift(meeting);
+
+  // If created from a notice, mark the notice as converted
+  if (meetingNoticeId && db.committeeNotices) {
+    const matchedNotice = db.committeeNotices.find(n => n.id === meetingNoticeId && n.mosqueId === mosqueId);
+    if (matchedNotice) {
+      matchedNotice.status = 'CONVERTED_TO_MINUTES';
+    }
+  }
+
   db.save();
 
   const auditAction = status === 'DRAFT' ? 'DRAFT_SAVED' : 'CREATE';
@@ -2159,8 +2410,11 @@ app.put('/api/v1/committee/meetings/:id', authenticate, requirePermission('MANAG
     duaLeader,
     duaLeaderMemberId,
     agenda,
+    agendaItems,
     decisions,
+    decisionItems,
     resolutions,
+    assignedTasks,
     miscellaneous,
     responsibleMembers,
     attendees,
@@ -2213,16 +2467,28 @@ app.put('/api/v1/committee/meetings/:id', authenticate, requirePermission('MANAG
   if (miscellaneous !== undefined) meeting.miscellaneous = miscellaneous;
   if (notes !== undefined) meeting.notes = notes;
 
-  if (Array.isArray(agenda)) {
+  if (Array.isArray(agendaItems)) {
+    meeting.agendaItems = agendaItems;
+    meeting.agenda = agendaItems.map((item: any) => item.title || '').filter(Boolean);
+  } else if (Array.isArray(agenda)) {
     meeting.agenda = agenda.filter((a: any) => typeof a === 'string' && a.trim() !== '');
   }
-  if (Array.isArray(decisions)) {
+
+  if (Array.isArray(decisionItems)) {
+    meeting.decisionItems = decisionItems;
+    meeting.decisions = decisionItems.map((d: any) => d.details || '').filter(Boolean);
+    meeting.resolutions = meeting.decisions;
+  } else if (Array.isArray(decisions)) {
     const cleanD = decisions.filter((d: any) => typeof d === 'string' && d.trim() !== '');
     meeting.decisions = cleanD;
     meeting.resolutions = cleanD;
   } else if (Array.isArray(resolutions)) {
     meeting.decisions = resolutions;
     meeting.resolutions = resolutions;
+  }
+
+  if (Array.isArray(assignedTasks)) {
+    meeting.assignedTasks = assignedTasks;
   }
 
   if (Array.isArray(responsibleMembers)) {
@@ -2285,6 +2551,2367 @@ app.post('/api/v1/committee/meetings/:id/audit', authenticate, (req: AuthRequest
       details || `মিটিং কার্যবিবরণী ${action === 'PDF_DOWNLOAD' ? 'PDF ডাউনলোড' : 'প্রিন্ট'}: ${meeting.documentNumber}`
     );
   }
+  res.json({ success: true });
+});
+
+// ==========================================
+// 8.4 MEETING RESOLUTIONS (মিটিং রেজোলিউশন - আলাদা স্বয়ংসম্পূর্ণ মডিউল)
+// ==========================================
+
+// Get All Resolutions with multi-criteria filtering
+app.get('/api/v1/committee/resolutions', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { meetingId, status, memberId, search, fromDate, toDate, month, year, priority } = req.query;
+
+  if (!db.committeeResolutions) db.committeeResolutions = [];
+
+  let list = db.committeeResolutions.filter(r => r.mosqueId === mosqueId);
+
+  if (meetingId) list = list.filter(r => r.meetingId === meetingId);
+  if (status) list = list.filter(r => r.status === status);
+  if (memberId) list = list.filter(r => r.assignedMemberId === memberId);
+  if (priority) list = list.filter(r => r.priority === priority);
+  if (fromDate) list = list.filter(r => r.date >= String(fromDate));
+  if (toDate) list = list.filter(r => r.date <= String(toDate));
+  if (year) list = list.filter(r => r.date.startsWith(String(year)));
+  if (month) list = list.filter(r => r.date.startsWith(String(month)));
+
+  if (search) {
+    const q = String(search).toLowerCase();
+    list = list.filter(r =>
+      r.resolutionNumber.toLowerCase().includes(q) ||
+      r.subject.toLowerCase().includes(q) ||
+      r.resolutionText.toLowerCase().includes(q) ||
+      (r.assignedMemberName && r.assignedMemberName.toLowerCase().includes(q)) ||
+      (r.meetingNumber && r.meetingNumber.toLowerCase().includes(q))
+    );
+  }
+
+  // Sort descending by date and creation
+  list.sort((a, b) => new Date(b.date || b.createdAt).getTime() - new Date(a.date || a.createdAt).getTime());
+
+  res.json({ success: true, data: list });
+});
+
+// Get Single Resolution
+app.get('/api/v1/committee/resolutions/:id', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  if (!db.committeeResolutions) db.committeeResolutions = [];
+  const resolution = db.committeeResolutions.find(r => r.id === req.params.id && r.mosqueId === mosqueId);
+
+  if (!resolution) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'রেজোলিউশন পাওয়া যায়নি।' } });
+  }
+
+  res.json({ success: true, data: resolution });
+});
+
+// Create New Resolution
+app.post('/api/v1/committee/resolutions', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  // Support both single resolution and bulk array of resolutions
+  const isBulk = Array.isArray(req.body.resolutions);
+  const resolutionsToCreate = isBulk ? req.body.resolutions : [req.body];
+
+  if (resolutionsToCreate.length === 0) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'অন্তত একটি রেজোলিউশন তথ্য প্রদান করুন।' } });
+  }
+
+  if (!db.committeeResolutions) db.committeeResolutions = [];
+
+  const createdResolutions: MeetingResolution[] = [];
+  const curYear = new Date().getFullYear();
+
+  for (let i = 0; i < resolutionsToCreate.length; i++) {
+    const item = resolutionsToCreate[i];
+    const {
+      resolutionNumber,
+      resolutionType = 'INDIVIDUAL',
+      meetingId,
+      meetingDocumentNumber,
+      meetingNumber,
+      meetingMemoNumber,
+      meetingDate,
+      meetingDayName,
+      meetingTime,
+      meetingType,
+      meetingTypeBn,
+      meetingVenue,
+      meetingChairman,
+      meetingSecretary,
+      meetingConductor,
+      meetingAgendas,
+      agendaId,
+      agendaTitle,
+      decisionId,
+      decisionNumber,
+      decisionIds,
+      items,
+      date,
+      subject,
+      background,
+      consideration,
+      proposal,
+      proposerName,
+      supporterName,
+      resolutionText,
+      assignedMemberId,
+      assignedMemberName,
+      assignedMemberDesignation,
+      assignedMemberPhone,
+      taskDescription,
+      deadline,
+      status = 'DRAFT',
+      priority = 'NORMAL',
+      implementationStatus = 'PENDING',
+      progressPercentage = 0,
+      completionDate,
+      financialAmount,
+      termId,
+      termTitle,
+      remarks,
+      presidentSignatureUrl,
+      secretarySignatureUrl
+    } = item;
+
+    if (!subject || !resolutionText) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: `রেজোলিউশনের বিষয় ও গৃহীত সিদ্ধান্ত প্রদান করা আবশ্যক (আইটেম #${i + 1})।` } });
+    }
+
+    const existingCount = db.committeeResolutions.filter(r => r.mosqueId === mosqueId).length + createdResolutions.length;
+    const autoResNo = resolutionNumber || `RES-${curYear}-${String(existingCount + 1).padStart(3, '0')}`;
+
+    const newResolution: MeetingResolution = {
+      id: `res-${Date.now()}-${i}`,
+      mosqueId,
+      resolutionNumber: autoResNo,
+      resolutionType: resolutionType as ResolutionType,
+      meetingId: meetingId || '',
+      meetingDocumentNumber: meetingDocumentNumber || undefined,
+      meetingNumber: meetingNumber || undefined,
+      meetingMemoNumber: meetingMemoNumber || undefined,
+      meetingDate: meetingDate || undefined,
+      meetingDayName: meetingDayName || undefined,
+      meetingTime: meetingTime || undefined,
+      meetingType: meetingType || undefined,
+      meetingTypeBn: meetingTypeBn || undefined,
+      meetingVenue: meetingVenue || undefined,
+      meetingChairman: meetingChairman || undefined,
+      meetingSecretary: meetingSecretary || undefined,
+      meetingConductor: meetingConductor || undefined,
+      meetingAgendas: meetingAgendas || undefined,
+      agendaId: agendaId || undefined,
+      agendaTitle: agendaTitle || undefined,
+      decisionId: decisionId || undefined,
+      decisionNumber: decisionNumber || undefined,
+      decisionIds: decisionIds || (decisionId ? [decisionId] : undefined),
+      items: items || undefined,
+      date: date || new Date().toISOString().split('T')[0],
+      subject: subject.trim(),
+      background: background || undefined,
+      consideration: consideration || undefined,
+      proposal: proposal || undefined,
+      proposerName: proposerName || undefined,
+      supporterName: supporterName || undefined,
+      resolutionText: resolutionText.trim(),
+      assignedMemberId: assignedMemberId || undefined,
+      assignedMemberName: assignedMemberName || undefined,
+      assignedMemberDesignation: assignedMemberDesignation || undefined,
+      assignedMemberPhone: assignedMemberPhone || undefined,
+      taskDescription: taskDescription || undefined,
+      deadline: deadline || undefined,
+      status: status as ResolutionStatus,
+      priority: priority || 'NORMAL',
+      implementationStatus: (implementationStatus || (status === 'IMPLEMENTED' ? 'COMPLETED' : 'PENDING')) as ResolutionImplementationStatus,
+      progressPercentage: progressPercentage !== undefined ? Number(progressPercentage) : 0,
+      completionDate: completionDate || undefined,
+      financialAmount: financialAmount !== undefined ? Number(financialAmount) : undefined,
+      termId: termId || undefined,
+      termTitle: termTitle || undefined,
+      remarks: remarks || undefined,
+      presidentSignatureUrl: presidentSignatureUrl || req.currentMosque?.presidentSignatureUrl,
+      secretarySignatureUrl: secretarySignatureUrl || req.currentMosque?.secretarySignatureUrl,
+      createdBy: req.user!.id,
+      createdByName: req.user!.name,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    db.committeeResolutions.unshift(newResolution);
+    createdResolutions.push(newResolution);
+
+    // If tied to a meeting decision or multiple decisions, update parent meeting decisions linkage
+    if (meetingId) {
+      const parentMeeting = db.committeeMeetings.find(m => m.id === meetingId && m.mosqueId === mosqueId);
+      if (parentMeeting && parentMeeting.decisionItems) {
+        if (decisionId) {
+          const targetDecision = parentMeeting.decisionItems.find(d => d.id === decisionId);
+          if (targetDecision) {
+            targetDecision.resolutionId = newResolution.id;
+            targetDecision.resolutionNumber = newResolution.resolutionNumber;
+          }
+        }
+        if (decisionIds && Array.isArray(decisionIds)) {
+          parentMeeting.decisionItems.forEach(d => {
+            if (decisionIds.includes(d.id)) {
+              d.resolutionId = newResolution.id;
+              d.resolutionNumber = newResolution.resolutionNumber;
+            }
+          });
+        }
+      }
+    }
+  }
+
+  db.save();
+
+  for (const r of createdResolutions) {
+    db.logAudit(
+      mosqueId,
+      req.user!.id,
+      req.user!.name,
+      req.user!.role,
+      'CREATE',
+      'COMMITTEE_RESOLUTION',
+      `নতুন রেজোলিউশন তৈরি: ${r.resolutionNumber} - ${r.subject} (${r.resolutionType === 'COMBINED' ? 'সম্মিলিত রেজোলিউশন' : 'একক রেজোলিউশন'}) [স্ট্যাটাস: ${r.status}]`
+    );
+    realtime.broadcastToMosque(mosqueId, 'RESOLUTION_CREATED', r, { senderId: req.user!.id });
+  }
+
+  res.json({
+    success: true,
+    data: isBulk ? createdResolutions : createdResolutions[0],
+    count: createdResolutions.length,
+    message: isBulk
+      ? `${createdResolutions.length}টি রেজোলিউশন সফলভাবে তৈরি হয়েছে।`
+      : 'রেজোলিউশন সফলভাবে তৈরি হয়েছে।'
+  });
+});
+
+// Update Existing Resolution (Supports Revision workflow for Approved ones)
+app.put('/api/v1/committee/resolutions/:id', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  if (!db.committeeResolutions) db.committeeResolutions = [];
+  const resolution = db.committeeResolutions.find(r => r.id === req.params.id && r.mosqueId === mosqueId);
+
+  if (!resolution) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'রেজোলিউশন পাওয়া যায়নি।' } });
+  }
+
+  const {
+    isRevision,
+    revisionReason,
+    resolutionNumber,
+    resolutionType,
+    date,
+    subject,
+    background,
+    consideration,
+    proposal,
+    proposerName,
+    supporterName,
+    resolutionText,
+    assignedMemberId,
+    assignedMemberName,
+    assignedMemberDesignation,
+    assignedMemberPhone,
+    taskDescription,
+    deadline,
+    status,
+    priority,
+    implementationStatus,
+    progressPercentage,
+    completionDate,
+    financialAmount,
+    items,
+    decisionIds,
+    termId,
+    termTitle,
+    remarks,
+    presidentSignatureUrl,
+    secretarySignatureUrl
+  } = req.body;
+
+  // Handle Revision Workflow
+  if (isRevision) {
+    const revNo = (resolution.revisionHistory?.length || 0) + 1;
+    const revEntry = {
+      revisionNo: revNo,
+      revisionDate: new Date().toISOString(),
+      revisedBy: req.user!.id,
+      revisedByName: req.user!.name,
+      reason: revisionReason || 'রেজোলিউশন পরিমার্জন ও সংশোধন',
+      previousContent: {
+        subject: resolution.subject,
+        background: resolution.background,
+        consideration: resolution.consideration,
+        proposal: resolution.proposal,
+        resolutionText: resolution.resolutionText,
+        status: resolution.status,
+        deadline: resolution.deadline,
+        items: resolution.items ? JSON.parse(JSON.stringify(resolution.items)) : undefined
+      },
+      createdAt: new Date().toISOString()
+    };
+
+    if (!resolution.revisionHistory) resolution.revisionHistory = [];
+    resolution.revisionHistory.push(revEntry);
+    resolution.isRevised = true;
+    resolution.revisionNumber = revNo;
+    resolution.revisionReason = revisionReason;
+  }
+
+  if (resolutionNumber !== undefined) resolution.resolutionNumber = resolutionNumber;
+  if (resolutionType !== undefined) resolution.resolutionType = resolutionType;
+  if (date !== undefined) resolution.date = date;
+  if (subject !== undefined) resolution.subject = subject.trim();
+  if (background !== undefined) resolution.background = background;
+  if (consideration !== undefined) resolution.consideration = consideration;
+  if (proposal !== undefined) resolution.proposal = proposal;
+  if (proposerName !== undefined) resolution.proposerName = proposerName;
+  if (supporterName !== undefined) resolution.supporterName = supporterName;
+  if (resolutionText !== undefined) resolution.resolutionText = resolutionText.trim();
+  if (assignedMemberId !== undefined) resolution.assignedMemberId = assignedMemberId;
+  if (assignedMemberName !== undefined) resolution.assignedMemberName = assignedMemberName;
+  if (assignedMemberDesignation !== undefined) resolution.assignedMemberDesignation = assignedMemberDesignation;
+  if (assignedMemberPhone !== undefined) resolution.assignedMemberPhone = assignedMemberPhone;
+  if (taskDescription !== undefined) resolution.taskDescription = taskDescription;
+  if (deadline !== undefined) resolution.deadline = deadline;
+  if (status !== undefined) resolution.status = status;
+  if (priority !== undefined) resolution.priority = priority;
+  if (implementationStatus !== undefined) resolution.implementationStatus = implementationStatus;
+  if (progressPercentage !== undefined) resolution.progressPercentage = Number(progressPercentage);
+  if (completionDate !== undefined) resolution.completionDate = completionDate;
+  if (financialAmount !== undefined) resolution.financialAmount = financialAmount ? Number(financialAmount) : undefined;
+  if (items !== undefined) resolution.items = items;
+  if (decisionIds !== undefined) resolution.decisionIds = decisionIds;
+  if (termId !== undefined) resolution.termId = termId;
+  if (termTitle !== undefined) resolution.termTitle = termTitle;
+  if (remarks !== undefined) resolution.remarks = remarks;
+  if (presidentSignatureUrl !== undefined) resolution.presidentSignatureUrl = presidentSignatureUrl;
+  if (secretarySignatureUrl !== undefined) resolution.secretarySignatureUrl = secretarySignatureUrl;
+
+  resolution.updatedAt = new Date().toISOString();
+
+  db.save();
+
+  const auditAction = isRevision ? 'REVISION_CREATED' : 'UPDATE';
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    auditAction,
+    'COMMITTEE_RESOLUTION',
+    `রেজোলিউশন আপডেট: ${resolution.resolutionNumber} - ${resolution.subject} (${isRevision ? `রিভিশন #${resolution.revisionNumber}` : `স্ট্যাটাস: ${resolution.status}, বাস্তবায়ন: ${resolution.implementationStatus || 'চলমান'}`})`
+  );
+  realtime.broadcastToMosque(mosqueId, 'RESOLUTION_UPDATED', resolution, { senderId: req.user!.id });
+
+  res.json({ success: true, data: resolution, message: 'রেজোলিউশন সফলভাবে আপডেট করা হয়েছে।' });
+});
+
+// Update Implementation Progress of Resolution
+app.patch('/api/v1/committee/resolutions/:id/implementation', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  if (!db.committeeResolutions) db.committeeResolutions = [];
+  const resolution = db.committeeResolutions.find(r => r.id === req.params.id && r.mosqueId === mosqueId);
+
+  if (!resolution) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'রেজোলিউশন পাওয়া যায়নি।' } });
+  }
+
+  const { implementationStatus, progressPercentage, completionDate, remarks } = req.body;
+
+  if (implementationStatus) resolution.implementationStatus = implementationStatus;
+  if (progressPercentage !== undefined) resolution.progressPercentage = Number(progressPercentage);
+  if (completionDate !== undefined) resolution.completionDate = completionDate;
+  if (remarks !== undefined) resolution.remarks = remarks;
+
+  if (implementationStatus === 'COMPLETED' && resolution.status === 'APPROVED') {
+    resolution.status = 'IMPLEMENTED';
+  }
+
+  resolution.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'COMMITTEE_RESOLUTION',
+    `রেজোলিউশন বাস্তবায়ন অগ্রগতি আপডেট: ${resolution.resolutionNumber} (অগ্রগতি: ${resolution.progressPercentage || 0}%, স্ট্যাটাস: ${resolution.implementationStatus})`
+  );
+  realtime.broadcastToMosque(mosqueId, 'RESOLUTION_UPDATED', resolution, { senderId: req.user!.id });
+
+  res.json({ success: true, data: resolution, message: 'বাস্তবায়ন অগ্রগতি সফলভাবে আপডেট হয়েছে।' });
+});
+
+// Delete Resolution (Enforcing Business Rule 13: Approved resolutions require cancel/revoke unless forced)
+app.delete('/api/v1/committee/resolutions/:id', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  if (!db.committeeResolutions) db.committeeResolutions = [];
+  const idx = db.committeeResolutions.findIndex(r => r.id === req.params.id && r.mosqueId === mosqueId);
+
+  if (idx === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'রেজোলিউশন পাওয়া যায়নি।' } });
+  }
+
+  const target = db.committeeResolutions[idx];
+  const force = req.query.force === 'true';
+
+  // Rule: An APPROVED or IMPLEMENTED resolution cannot be deleted directly without force
+  if ((target.status === 'APPROVED' || target.status === 'IMPLEMENTED') && !force) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: 'APPROVED_RESOLUTION_PROTECTED',
+        message: 'অনুমোদিত বা বাস্তবায়িত রেজোলিউশন সরাসরি মুছে ফেলা যায় না। অডিট ট্রেইল রক্ষার স্বার্থে রেজোলিউশনটি বাতিল (Cancel) অথবা সংশোধন (Revise) করুন।'
+      }
+    });
+  }
+
+  const removed = db.committeeResolutions.splice(idx, 1)[0];
+
+  // Unlink from meeting decision if linked
+  if (removed.meetingId) {
+    const parentMeeting = db.committeeMeetings.find(m => m.id === removed.meetingId && m.mosqueId === mosqueId);
+    if (parentMeeting && parentMeeting.decisionItems) {
+      if (removed.decisionId) {
+        const targetDecision = parentMeeting.decisionItems.find(d => d.id === removed.decisionId);
+        if (targetDecision && targetDecision.resolutionId === removed.id) {
+          delete targetDecision.resolutionId;
+          delete targetDecision.resolutionNumber;
+        }
+      }
+      if (removed.decisionIds && Array.isArray(removed.decisionIds)) {
+        parentMeeting.decisionItems.forEach(d => {
+          if (removed.decisionIds!.includes(d.id) && d.resolutionId === removed.id) {
+            delete d.resolutionId;
+            delete d.resolutionNumber;
+          }
+        });
+      }
+    }
+  }
+
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'DELETE',
+    'COMMITTEE_RESOLUTION',
+    `রেজোলিউশন মুছে ফেলা হয়েছে: ${removed.resolutionNumber} - ${removed.subject} (পূর্ববর্তী স্ট্যাটাস: ${removed.status})`
+  );
+  realtime.broadcastToMosque(mosqueId, 'RESOLUTION_DELETED', { id: removed.id }, { senderId: req.user!.id });
+
+  res.json({ success: true, message: 'রেজোলিউশন সফলভাবে মুছে ফেলা হয়েছে।' });
+});
+
+// Duplicate Resolution
+app.post('/api/v1/committee/resolutions/:id/duplicate', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  if (!db.committeeResolutions) db.committeeResolutions = [];
+  const orig = db.committeeResolutions.find(r => r.id === req.params.id && r.mosqueId === mosqueId);
+
+  if (!orig) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'মূল রেজোলিউশন পাওয়া যায়নি।' } });
+  }
+
+  const curYear = new Date().getFullYear();
+  const existingCount = db.committeeResolutions.filter(r => r.mosqueId === mosqueId).length;
+  const newResNo = `RES-${curYear}-${String(existingCount + 1).padStart(3, '0')}`;
+
+  const duplicated: MeetingResolution = {
+    ...orig,
+    id: `res-${Date.now()}`,
+    resolutionNumber: newResNo,
+    subject: `(কপি) ${orig.subject}`,
+    status: 'DRAFT',
+    isRevised: false,
+    revisionNumber: undefined,
+    revisionReason: undefined,
+    revisionHistory: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    createdBy: req.user!.id,
+    createdByName: req.user!.name
+  };
+
+  db.committeeResolutions.unshift(duplicated);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'DUPLICATE',
+    'COMMITTEE_RESOLUTION',
+    `রেজোলিউশন ডুপ্লিকেট: ${orig.resolutionNumber} -> ${duplicated.resolutionNumber}`
+  );
+  realtime.broadcastToMosque(mosqueId, 'RESOLUTION_CREATED', duplicated, { senderId: req.user!.id });
+
+  res.json({ success: true, data: duplicated, message: 'রেজোলিউশন সফলভাবে অনুলিপি (Duplicate) করা হয়েছে।' });
+});
+
+// Audit log for Resolution print / PDF download
+app.post('/api/v1/committee/resolutions/:id/audit', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { action, details } = req.body;
+  if (!db.committeeResolutions) db.committeeResolutions = [];
+  const resObj = db.committeeResolutions.find(r => r.id === req.params.id && r.mosqueId === mosqueId);
+
+  if (resObj) {
+    db.logAudit(
+      mosqueId,
+      req.user!.id,
+      req.user!.name,
+      req.user!.role,
+      action || 'PRINT',
+      'COMMITTEE_RESOLUTION',
+      details || `রেজোলিউশন ${action === 'PDF_DOWNLOAD' ? 'PDF ডাউনলোড' : 'প্রিন্ট'}: ${resObj.resolutionNumber}`
+    );
+  }
+  res.json({ success: true });
+});
+
+// ==========================================
+// 8.5 COMMITTEE MEMBER PERFORMANCE & EVALUATION
+// ==========================================
+
+// 1. Get Committee Activities
+app.get('/api/v1/committee/activities', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { termId, memberId, category, status, fromDate, toDate } = req.query;
+
+  let list = db.committeeActivities.filter(a => a.mosqueId === mosqueId);
+  if (termId) list = list.filter(a => a.termId === termId);
+  if (memberId) list = list.filter(a => a.memberId === memberId);
+  if (category) list = list.filter(a => a.category === category);
+  if (status) list = list.filter(a => a.status === status);
+  if (fromDate) list = list.filter(a => a.date >= String(fromDate));
+  if (toDate) list = list.filter(a => a.date <= String(toDate));
+
+  // Sort descending by date
+  list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  res.json({ success: true, data: list });
+});
+
+// 2. Create Committee Activity
+app.post('/api/v1/committee/activities', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const {
+    termId,
+    memberId,
+    memberName,
+    memberDesignation,
+    activityType,
+    activityTypeBn,
+    category = 'COMMITTEE_ACTIVITY',
+    title,
+    description,
+    date,
+    relatedMeetingId,
+    relatedMeetingTitle,
+    assignedBy,
+    assignedByName,
+    status = 'COMPLETED',
+    qualityRating,
+    qualityScore,
+    evidenceAttachmentUrl,
+    evidenceAttachmentName,
+    evaluatorNote
+  } = req.body;
+
+  if (!termId || !memberId || !title || !date) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: 'সদস্য, কার্যকালের মেয়াদ, কার্যক্রমের শিরোনাম এবং তারিখ আবশ্যক।' }
+    });
+  }
+
+  // Derive score if rating provided but no numeric score
+  let numericScore = qualityScore !== undefined && qualityScore !== '' ? Number(qualityScore) : undefined;
+  if (numericScore === undefined && qualityRating) {
+    if (qualityRating === 'EXCELLENT') numericScore = 95;
+    else if (qualityRating === 'GOOD') numericScore = 85;
+    else if (qualityRating === 'SATISFACTORY') numericScore = 75;
+    else if (qualityRating === 'NEEDS_IMPROVEMENT') numericScore = 60;
+  }
+
+  // Find member info if not fully passed
+  const member = db.committeeMembers.find(m => m.id === memberId && m.mosqueId === mosqueId);
+  const finalMemberName = memberName || member?.name || 'কমিটি সদস্য';
+  const finalDesignation = memberDesignation || member?.positionCustomBn || member?.position || 'সদস্য';
+
+  const activity: CommitteeMemberActivity = {
+    id: `cact-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    mosqueId,
+    termId,
+    memberId,
+    memberName: finalMemberName,
+    memberDesignation: finalDesignation,
+    activityType: activityType || 'OTHER',
+    activityTypeBn: activityTypeBn || 'অন্যান্য কার্যক্রম',
+    category,
+    title: title.trim(),
+    description: (description || '').trim(),
+    date,
+    relatedMeetingId: relatedMeetingId || undefined,
+    relatedMeetingTitle: relatedMeetingTitle || undefined,
+    assignedBy: assignedBy || undefined,
+    assignedByName: assignedByName || undefined,
+    status,
+    qualityRating: qualityRating || undefined,
+    qualityScore: numericScore,
+    evidenceAttachmentUrl: evidenceAttachmentUrl || undefined,
+    evidenceAttachmentName: evidenceAttachmentName || undefined,
+    evaluatorNote: evaluatorNote || undefined,
+    createdBy: req.user!.id,
+    createdByName: req.user!.name,
+    createdAt: new Date().toISOString()
+  };
+
+  db.committeeActivities.push(activity);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'COMMITTEE_MEMBER',
+    `সদস্য কার্যক্রম অন্তর্ভুক্তি: ${finalMemberName} - ${title}`
+  );
+  realtime.broadcastToMosque(mosqueId, 'COMMITTEE_ACTIVITY_CREATED', activity, { senderId: req.user!.id });
+
+  res.json({ success: true, data: activity, message: 'কার্যক্রম সফলভাবে সংরক্ষণ করা হয়েছে।' });
+});
+
+// 3. Update Committee Activity
+app.put('/api/v1/committee/activities/:id', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const activity = db.committeeActivities.find(a => a.id === req.params.id && a.mosqueId === mosqueId);
+  if (!activity) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'কার্যক্রম পাওয়া যায়নি।' } });
+  }
+
+  const {
+    title,
+    description,
+    date,
+    activityType,
+    activityTypeBn,
+    category,
+    status,
+    qualityRating,
+    qualityScore,
+    evidenceAttachmentUrl,
+    evidenceAttachmentName,
+    evaluatorNote
+  } = req.body;
+
+  if (title !== undefined) activity.title = title.trim();
+  if (description !== undefined) activity.description = description;
+  if (date !== undefined) activity.date = date;
+  if (activityType !== undefined) activity.activityType = activityType;
+  if (activityTypeBn !== undefined) activity.activityTypeBn = activityTypeBn;
+  if (category !== undefined) activity.category = category;
+  if (status !== undefined) activity.status = status;
+  if (qualityRating !== undefined) activity.qualityRating = qualityRating;
+  if (qualityScore !== undefined) activity.qualityScore = qualityScore !== '' ? Number(qualityScore) : undefined;
+  if (evidenceAttachmentUrl !== undefined) activity.evidenceAttachmentUrl = evidenceAttachmentUrl;
+  if (evidenceAttachmentName !== undefined) activity.evidenceAttachmentName = evidenceAttachmentName;
+  if (evaluatorNote !== undefined) activity.evaluatorNote = evaluatorNote;
+  activity.updatedAt = new Date().toISOString();
+
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'COMMITTEE_MEMBER',
+    `সদস্য কার্যক্রম আপডেট: ${activity.memberName} - ${activity.title}`
+  );
+  realtime.broadcastToMosque(mosqueId, 'COMMITTEE_ACTIVITY_UPDATED', activity, { senderId: req.user!.id });
+
+  res.json({ success: true, data: activity, message: 'কার্যক্রম সফলভাবে হালনাগাদ করা হয়েছে।' });
+});
+
+// 4. Delete Committee Activity
+app.delete('/api/v1/committee/activities/:id', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const idx = db.committeeActivities.findIndex(a => a.id === req.params.id && a.mosqueId === mosqueId);
+  if (idx === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'কার্যক্রম পাওয়া যায়নি।' } });
+  }
+
+  const removed = db.committeeActivities.splice(idx, 1)[0];
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'DELETE',
+    'COMMITTEE_MEMBER',
+    `সদস্য কার্যক্রম অপসারন: ${removed.memberName} - ${removed.title}`
+  );
+  realtime.broadcastToMosque(mosqueId, 'COMMITTEE_ACTIVITY_DELETED', { id: removed.id }, { senderId: req.user!.id });
+
+  res.json({ success: true, message: 'কার্যক্রম সফলভাবে মুছে ফেলা হয়েছে।' });
+});
+
+// 5. Get Committee Tasks (অর্পিত দায়িত্ব)
+app.get('/api/v1/committee/tasks', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { termId, memberId, meetingId, status } = req.query;
+
+  let list = db.committeeTasks.filter(t => t.mosqueId === mosqueId);
+  if (termId) list = list.filter(t => t.termId === termId);
+  if (memberId) list = list.filter(t => t.memberId === memberId);
+  if (meetingId) list = list.filter(t => t.meetingId === meetingId);
+  if (status) list = list.filter(t => t.status === status);
+
+  // Check and flag overdue
+  const todayStr = new Date().toISOString().split('T')[0];
+  list.forEach(t => {
+    if (t.status === 'PENDING' || t.status === 'IN_PROGRESS') {
+      if (t.dueDate && t.dueDate < todayStr) {
+        t.status = 'OVERDUE';
+      }
+    }
+  });
+
+  list.sort((a, b) => new Date(b.assignedDate).getTime() - new Date(a.assignedDate).getTime());
+  res.json({ success: true, data: list });
+});
+
+// 6. Create Committee Task
+app.post('/api/v1/committee/tasks', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const {
+    termId,
+    memberId,
+    memberName,
+    memberDesignation,
+    taskTitle,
+    description,
+    meetingId,
+    meetingNumber,
+    assignedDate,
+    dueDate,
+    status = 'PENDING',
+    qualityRating,
+    qualityScore,
+    evaluatorNote
+  } = req.body;
+
+  if (!termId || !memberId || !taskTitle || !assignedDate) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: 'সদস্য, কার্যকাল, দায়িত্বের নাম এবং অর্পণের তারিখ আবশ্যক।' }
+    });
+  }
+
+  const member = db.committeeMembers.find(m => m.id === memberId && m.mosqueId === mosqueId);
+  const finalMemberName = memberName || member?.name || 'কমিটি সদস্য';
+  const finalDesignation = memberDesignation || member?.positionCustomBn || member?.position || 'সদস্য';
+
+  const task: CommitteeMemberTask = {
+    id: `ctsk-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    mosqueId,
+    termId,
+    memberId,
+    memberName: finalMemberName,
+    memberDesignation: finalDesignation,
+    taskTitle: taskTitle.trim(),
+    description: (description || '').trim(),
+    meetingId: meetingId || undefined,
+    meetingNumber: meetingNumber || undefined,
+    assignedDate,
+    dueDate: dueDate || undefined,
+    status,
+    qualityRating: qualityRating || undefined,
+    qualityScore: qualityScore !== undefined && qualityScore !== '' ? Number(qualityScore) : undefined,
+    evaluatorNote: evaluatorNote || undefined,
+    createdBy: req.user!.id,
+    createdByName: req.user!.name,
+    createdAt: new Date().toISOString()
+  };
+
+  db.committeeTasks.push(task);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'COMMITTEE_MEMBER',
+    `অর্পিত দায়িত্ব প্রদান: ${finalMemberName} - ${taskTitle}`
+  );
+  realtime.broadcastToMosque(mosqueId, 'COMMITTEE_TASK_CREATED', task, { senderId: req.user!.id });
+
+  res.json({ success: true, data: task, message: 'দায়িত্ব সফলভাবে অর্পণ করা হয়েছে।' });
+});
+
+// 7. Update Committee Task
+app.put('/api/v1/committee/tasks/:id', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const task = db.committeeTasks.find(t => t.id === req.params.id && t.mosqueId === mosqueId);
+  if (!task) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'অর্পিত দায়িত্ব পাওয়া যায়নি।' } });
+  }
+
+  const {
+    taskTitle,
+    description,
+    dueDate,
+    completedDate,
+    status,
+    qualityRating,
+    qualityScore,
+    evidenceAttachmentUrl,
+    evidenceAttachmentName,
+    evaluatorNote
+  } = req.body;
+
+  if (taskTitle !== undefined) task.taskTitle = taskTitle.trim();
+  if (description !== undefined) task.description = description;
+  if (dueDate !== undefined) task.dueDate = dueDate;
+  if (status !== undefined) {
+    task.status = status;
+    if (status === 'COMPLETED' && !task.completedDate && !completedDate) {
+      task.completedDate = new Date().toISOString().split('T')[0];
+    }
+  }
+  if (completedDate !== undefined) task.completedDate = completedDate;
+  if (qualityRating !== undefined) task.qualityRating = qualityRating;
+  if (qualityScore !== undefined) task.qualityScore = qualityScore !== '' ? Number(qualityScore) : undefined;
+  if (evidenceAttachmentUrl !== undefined) task.evidenceAttachmentUrl = evidenceAttachmentUrl;
+  if (evidenceAttachmentName !== undefined) task.evidenceAttachmentName = evidenceAttachmentName;
+  if (evaluatorNote !== undefined) task.evaluatorNote = evaluatorNote;
+  task.updatedAt = new Date().toISOString();
+
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'COMMITTEE_MEMBER',
+    `অর্পিত দায়িত্ব আপডেট: ${task.memberName} - ${task.taskTitle} (স্ট্যাটাস: ${task.status})`
+  );
+  realtime.broadcastToMosque(mosqueId, 'COMMITTEE_TASK_UPDATED', task, { senderId: req.user!.id });
+
+  res.json({ success: true, data: task, message: 'দায়িত্ব সফলভাবে আপডেট করা হয়েছে।' });
+});
+
+// 8. Delete Committee Task
+app.delete('/api/v1/committee/tasks/:id', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const idx = db.committeeTasks.findIndex(t => t.id === req.params.id && t.mosqueId === mosqueId);
+  if (idx === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'অর্পিত দায়িত্ব পাওয়া যায়নি।' } });
+  }
+
+  const removed = db.committeeTasks.splice(idx, 1)[0];
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'DELETE',
+    'COMMITTEE_MEMBER',
+    `অর্পিত দায়িত্ব মোছা: ${removed.memberName} - ${removed.taskTitle}`
+  );
+  realtime.broadcastToMosque(mosqueId, 'COMMITTEE_TASK_DELETED', { id: removed.id }, { senderId: req.user!.id });
+
+  res.json({ success: true, message: 'দায়িত্ব সফলভাবে মুছে ফেলা হয়েছে।' });
+});
+
+// 9. Remind Task Assignee (Notification trigger)
+app.post('/api/v1/committee/tasks/:id/remind', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const task = db.committeeTasks.find(t => t.id === req.params.id && t.mosqueId === mosqueId);
+  if (!task) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'দায়িত্ব পাওয়া যায়নি।' } });
+  }
+
+  // Create in-app notification
+  const notification = {
+    id: `notif-${Date.now()}`,
+    mosqueId,
+    userId: task.memberId,
+    title: 'অর্পিত দায়িত্ব সংক্রান্ত স্মারক',
+    message: `সম্মানিত ${task.memberName}, "${task.taskTitle}" দায়িত্বটি সম্পন্ন করার শেষ সময় ${task.dueDate || 'নিকটবর্তী'}।`,
+    type: 'TASK_REMINDER',
+    isRead: false,
+    createdAt: new Date().toISOString()
+  };
+  db.notifications.push(notification as any);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'COMMITTEE_MEMBER',
+    `দায়িত্বের তাগাদা / স্মারক প্রদান: ${task.memberName} - ${task.taskTitle}`
+  );
+
+  res.json({ success: true, message: `${task.memberName}-কে স্মারক ও নোটিফিকেশন পাঠানো হয়েছে।` });
+});
+
+// 10. Get Manual Evaluations
+app.get('/api/v1/committee/evaluations', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { termId, memberId, fromDate, toDate } = req.query;
+
+  let list = db.committeeManualEvaluations.filter(e => e.mosqueId === mosqueId);
+  if (termId) list = list.filter(e => e.termId === termId);
+  if (memberId) list = list.filter(e => e.memberId === memberId);
+  if (fromDate) list = list.filter(e => e.toDate >= String(fromDate));
+  if (toDate) list = list.filter(e => e.fromDate <= String(toDate));
+
+  list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  res.json({ success: true, data: list });
+});
+
+// 11. Save Manual Evaluation / Override
+app.post('/api/v1/committee/evaluations', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const {
+    id,
+    termId,
+    memberId,
+    memberName,
+    memberDesignation,
+    evaluationPeriodType = 'MONTHLY',
+    fromDate,
+    toDate,
+    overallAssessment,
+    strengths,
+    weaknesses,
+    improvementRequired,
+    recommendation = 'SATISFACTORY',
+    evaluatorComment,
+    manualOverrideScore,
+    overrideReason
+  } = req.body;
+
+  if (!termId || !memberId || !fromDate || !toDate) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: 'সদস্য, কার্যকালের মেয়াদ এবং মূল্যায়নের সময়কাল আবশ্যক।' }
+    });
+  }
+
+  const member = db.committeeMembers.find(m => m.id === memberId && m.mosqueId === mosqueId);
+  const finalMemberName = memberName || member?.name || 'কমিটি সদস্য';
+  const finalDesignation = memberDesignation || member?.positionCustomBn || member?.position || 'সদস্য';
+
+  let evaluation: CommitteeManualEvaluation;
+  const existingIdx = id ? db.committeeManualEvaluations.findIndex(e => e.id === id && e.mosqueId === mosqueId) : -1;
+
+  if (existingIdx >= 0) {
+    evaluation = db.committeeManualEvaluations[existingIdx];
+    evaluation.evaluationPeriodType = evaluationPeriodType;
+    evaluation.fromDate = fromDate;
+    evaluation.toDate = toDate;
+    evaluation.overallAssessment = overallAssessment;
+    evaluation.strengths = strengths;
+    evaluation.weaknesses = weaknesses;
+    evaluation.improvementRequired = improvementRequired;
+    evaluation.recommendation = recommendation;
+    evaluation.evaluatorComment = evaluatorComment;
+    evaluation.manualOverrideScore = manualOverrideScore !== undefined && manualOverrideScore !== '' ? Number(manualOverrideScore) : undefined;
+    evaluation.overrideReason = overrideReason;
+    evaluation.evaluatorId = req.user!.id;
+    evaluation.evaluatorName = req.user!.name;
+    evaluation.evaluatorRole = req.user!.role;
+    evaluation.updatedAt = new Date().toISOString();
+  } else {
+    evaluation = {
+      id: `meval-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      mosqueId,
+      termId,
+      memberId,
+      memberName: finalMemberName,
+      memberDesignation: finalDesignation,
+      evaluationPeriodType,
+      fromDate,
+      toDate,
+      overallAssessment,
+      strengths,
+      weaknesses,
+      improvementRequired,
+      recommendation,
+      evaluatorComment,
+      manualOverrideScore: manualOverrideScore !== undefined && manualOverrideScore !== '' ? Number(manualOverrideScore) : undefined,
+      overrideReason,
+      evaluatorId: req.user!.id,
+      evaluatorName: req.user!.name,
+      evaluatorRole: req.user!.role,
+      createdAt: new Date().toISOString()
+    };
+    db.committeeManualEvaluations.push(evaluation);
+  }
+
+  db.save();
+
+  const auditNote = evaluation.manualOverrideScore !== undefined
+    ? `সদস্য মূল্যায়ন ও স্কোর ওভাররাইড: ${finalMemberName} (${evaluation.manualOverrideScore}%) - কারণ: ${overrideReason || 'পর্যবেক্ষণ'}`
+    : `সদস্য মূল্যায়ন সংরক্ষণ: ${finalMemberName} (মন্তব্য ও সুপারিশ)`;
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    existingIdx >= 0 ? 'UPDATE' : 'CREATE',
+    'COMMITTEE_MEMBER',
+    auditNote
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'EVALUATION_SAVED', evaluation, { senderId: req.user!.id });
+
+  res.json({ success: true, data: evaluation, message: 'সদস্য মূল্যায়ন সফলভাবে সংরক্ষণ করা হয়েছে।' });
+});
+
+// 12. Delete Manual Evaluation
+app.delete('/api/v1/committee/evaluations/:id', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const idx = db.committeeManualEvaluations.findIndex(e => e.id === req.params.id && e.mosqueId === mosqueId);
+  if (idx === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'মূল্যায়ন পাওয়া যায়নি।' } });
+  }
+
+  const removed = db.committeeManualEvaluations.splice(idx, 1)[0];
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'DELETE',
+    'COMMITTEE_MEMBER',
+    `সদস্য মূল্যায়ন মুছে ফেলা: ${removed.memberName}`
+  );
+
+  res.json({ success: true, message: 'মূল্যায়ন সফলভাবে মুছে ফেলা হয়েছে।' });
+});
+
+// 13. Comprehensive Evaluation Summary & Matrix API
+app.get('/api/v1/committee/evaluation-summary', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const mosque = db.mosques.find(m => m.id === mosqueId);
+  const { termId, fromDate, toDate, memberId } = req.query;
+
+  // Active term default
+  const activeTerm = db.committeeTerms.find(t => t.mosqueId === mosqueId && t.status === 'ACTIVE') || db.committeeTerms.find(t => t.mosqueId === mosqueId);
+  const selectedTermId = (termId as string) || activeTerm?.id;
+
+  if (!selectedTermId) {
+    return res.json({
+      success: true,
+      data: {
+        term: null,
+        members: [],
+        committeeStats: {
+          totalMembers: 0,
+          averageScore: 0,
+          fiveStarCount: 0,
+          fourStarCount: 0,
+          threeStarCount: 0,
+          belowThreeCount: 0,
+          averageAttendance: 0,
+          averageTaskCompletion: 0
+        },
+        weights: { attendance: 30, responsibility: 30, participation: 15, activity: 15, quality: 10 }
+      }
+    });
+  }
+
+  const term = db.committeeTerms.find(t => t.id === selectedTermId && t.mosqueId === mosqueId);
+  let members = db.committeeMembers.filter(m => m.termId === selectedTermId && m.mosqueId === mosqueId);
+  if (memberId) {
+    members = members.filter(m => m.id === memberId);
+  }
+
+  // Load configured weights & thresholds from mosque settings
+  const customWeights = mosque?.committeeEvaluationSettings?.weights || {
+    attendance: 30,
+    responsibility: 30,
+    participation: 15,
+    activity: 15,
+    quality: 10
+  };
+
+  const thresholds = mosque?.committeeEvaluationSettings?.starThresholds || {
+    fiveStar: 90,
+    fourStar: 80,
+    threeStar: 70,
+    twoStar: 60,
+    oneStar: 0
+  };
+
+  const excludeLeave = mosque?.committeeEvaluationSettings?.excludeExcusedLeaveFromAttendance ?? false;
+
+  // Filter meetings in term and date range
+  let meetings = db.committeeMeetings.filter(m => m.mosqueId === mosqueId);
+  if (fromDate) meetings = meetings.filter(m => m.date >= String(fromDate));
+  if (toDate) meetings = meetings.filter(m => m.date <= String(toDate));
+
+  // Filter tasks & activities
+  let tasks = db.committeeTasks.filter(t => t.termId === selectedTermId && t.mosqueId === mosqueId);
+  if (fromDate) tasks = tasks.filter(t => t.assignedDate >= String(fromDate));
+  if (toDate) tasks = tasks.filter(t => t.assignedDate <= String(toDate));
+
+  let activities = db.committeeActivities.filter(a => a.termId === selectedTermId && a.mosqueId === mosqueId);
+  if (fromDate) activities = activities.filter(a => a.date >= String(fromDate));
+  if (toDate) activities = activities.filter(a => a.date <= String(toDate));
+
+  const manualEvaluations = db.committeeManualEvaluations.filter(e => e.termId === selectedTermId && e.mosqueId === mosqueId);
+
+  // Compute metrics for each member
+  const memberScores = members.map(mem => {
+    // 1. Attendance Calculation
+    let totalMeetingsCount = 0;
+    let presentCount = 0;
+    let absentCount = 0;
+    let leaveCount = 0;
+
+    meetings.forEach(meet => {
+      // Check attendees array first
+      if (meet.attendees && meet.attendees.length > 0) {
+        const attendeeRecord = meet.attendees.find(
+          a => a.name.trim().toLowerCase() === mem.name.trim().toLowerCase() ||
+               (a.phone && mem.phone && a.phone === mem.phone)
+        );
+        if (attendeeRecord) {
+          totalMeetingsCount++;
+          if (attendeeRecord.attendanceStatus === 'PRESENT') {
+            presentCount++;
+          } else if (attendeeRecord.attendanceStatus === 'LEAVE' || (attendeeRecord.attendanceStatus as string) === 'EXCUSED') {
+            leaveCount++;
+          } else {
+            absentCount++;
+          }
+        }
+      } else {
+        // Check membersPresent string list
+        const isPresent = meet.membersPresent?.some(p => p.includes(mem.name) || mem.name.includes(p));
+        const isAbsent = meet.membersAbsent?.some(a => a.includes(mem.name) || mem.name.includes(a));
+        if (isPresent || isAbsent) {
+          totalMeetingsCount++;
+          if (isPresent) presentCount++;
+          else absentCount++;
+        }
+      }
+    });
+
+    let attendancePercentage = 100;
+    if (totalMeetingsCount > 0) {
+      if (excludeLeave) {
+        const effectiveMeetings = totalMeetingsCount - leaveCount;
+        attendancePercentage = effectiveMeetings > 0 ? Math.round((presentCount / effectiveMeetings) * 100) : 100;
+      } else {
+        // Leave grants 50% partial credit
+        const weightedAtt = presentCount + (leaveCount * 0.5);
+        attendancePercentage = Math.min(100, Math.round((weightedAtt / totalMeetingsCount) * 100));
+      }
+    }
+
+    // 2. Responsibility / Task Completion Calculation
+    const memTasks = tasks.filter(t => t.memberId === mem.id || t.memberName === mem.name);
+    
+    // Also include action items from meetings where assignee matches member
+    let meetingAssignedTasksCount = 0;
+    let meetingCompletedTasksCount = 0;
+    meetings.forEach(meet => {
+      if (Array.isArray(meet.actionItems)) {
+        meet.actionItems.forEach(item => {
+          if (item.assigneeName && (item.assigneeName.includes(mem.name) || mem.name.includes(item.assigneeName))) {
+            meetingAssignedTasksCount++;
+            // If meeting is final and past deadline, assume completed or checked via tasks
+          }
+        });
+      }
+    });
+
+    const totalTasks = memTasks.length + (memTasks.length === 0 ? meetingAssignedTasksCount : 0);
+    const completedTasks = memTasks.filter(t => t.status === 'COMPLETED').length + (memTasks.length === 0 ? meetingAssignedTasksCount : 0);
+    const pendingTasks = memTasks.filter(t => t.status === 'PENDING').length;
+    const inProgressTasks = memTasks.filter(t => t.status === 'IN_PROGRESS').length;
+    const overdueTasks = memTasks.filter(t => t.status === 'OVERDUE').length;
+
+    let taskCompletionPercentage = 100;
+    if (totalTasks > 0) {
+      taskCompletionPercentage = Math.round((completedTasks / totalTasks) * 100);
+    }
+
+    // 3. Meeting Participation Score
+    const participationActivities = activities.filter(
+      a => (a.memberId === mem.id || a.memberName === mem.name) && a.category === 'MEETING_PARTICIPATION'
+    );
+    // Count times member acted in meeting roles (Conductor, Chairman, Secretary, Dua Leader)
+    let roleCountInMeetings = 0;
+    meetings.forEach(meet => {
+      if (meet.conductor === mem.name || meet.conductorMemberId === mem.id) roleCountInMeetings++;
+      if (meet.chairman === mem.name || meet.chairmanMemberId === mem.id) roleCountInMeetings++;
+      if (meet.secretary === mem.name || meet.secretaryMemberId === mem.id) roleCountInMeetings++;
+      if (meet.duaLeader === mem.name || meet.duaLeaderMemberId === mem.id) roleCountInMeetings++;
+    });
+
+    const totalParticipationEvents = participationActivities.length + roleCountInMeetings;
+    let participationScore = 80; // Baseline healthy score for active attendees
+    if (totalParticipationEvents >= 3) participationScore = 100;
+    else if (totalParticipationEvents === 2) participationScore = 92;
+    else if (totalParticipationEvents === 1) participationScore = 85;
+    else if (totalMeetingsCount > 0 && presentCount === 0) participationScore = 50;
+
+    // 4. Other Committee Activities Score
+    const otherActivities = activities.filter(
+      a => (a.memberId === mem.id || a.memberName === mem.name) && a.category !== 'MEETING_PARTICIPATION'
+    );
+    const completedActivities = otherActivities.filter(a => a.status === 'COMPLETED');
+    let activityScore = 85; // Baseline
+    if (otherActivities.length > 0) {
+      activityScore = Math.min(100, Math.round((completedActivities.length / otherActivities.length) * 95) + (otherActivities.length >= 2 ? 5 : 0));
+    } else if (memTasks.length > 0) {
+      activityScore = taskCompletionPercentage;
+    }
+
+    // 5. Quality Score Calculation (Average of all quality evaluated items)
+    const evaluatedItems: number[] = [];
+    memTasks.forEach(t => {
+      if (t.qualityScore !== undefined) evaluatedItems.push(t.qualityScore);
+      else if (t.qualityRating === 'EXCELLENT') evaluatedItems.push(95);
+      else if (t.qualityRating === 'GOOD') evaluatedItems.push(85);
+      else if (t.qualityRating === 'SATISFACTORY') evaluatedItems.push(75);
+      else if (t.qualityRating === 'NEEDS_IMPROVEMENT') evaluatedItems.push(60);
+    });
+    activities.filter(a => a.memberId === mem.id || a.memberName === mem.name).forEach(a => {
+      if (a.qualityScore !== undefined) evaluatedItems.push(a.qualityScore);
+      else if (a.qualityRating === 'EXCELLENT') evaluatedItems.push(95);
+      else if (a.qualityRating === 'GOOD') evaluatedItems.push(85);
+      else if (a.qualityRating === 'SATISFACTORY') evaluatedItems.push(75);
+      else if (a.qualityRating === 'NEEDS_IMPROVEMENT') evaluatedItems.push(60);
+    });
+
+    let qualityAverageScore = 90; // Default high quality for community volunteers
+    if (evaluatedItems.length > 0) {
+      qualityAverageScore = Math.round(evaluatedItems.reduce((acc, curr) => acc + curr, 0) / evaluatedItems.length);
+    }
+
+    // Calculate Weighted Contribution
+    const wAtt = (customWeights.attendance || 30) / 100;
+    const wTask = (customWeights.responsibility || 30) / 100;
+    const wPart = (customWeights.participation || 15) / 100;
+    const wAct = (customWeights.activity || 15) / 100;
+    const wQual = (customWeights.quality || 10) / 100;
+
+    const rawScore = Math.min(100, Math.max(0, Math.round(
+      (attendancePercentage * wAtt) +
+      (taskCompletionPercentage * wTask) +
+      (participationScore * wPart) +
+      (activityScore * wAct) +
+      (qualityAverageScore * wQual)
+    )));
+
+    // Check for Manual Evaluation & Override
+    const manualEval = manualEvaluations.find(e => e.memberId === mem.id);
+    let finalScore = rawScore;
+    let isManuallyOverridden = false;
+    let manualOverrideScore: number | undefined;
+    let overrideReason: string | undefined;
+
+    if (manualEval && manualEval.manualOverrideScore !== undefined && manualEval.manualOverrideScore >= 0) {
+      finalScore = manualEval.manualOverrideScore;
+      isManuallyOverridden = true;
+      manualOverrideScore = manualEval.manualOverrideScore;
+      overrideReason = manualEval.overrideReason;
+    }
+
+    // Determine Star Rating (1 - 5 stars)
+    let starRating = 3;
+    if (finalScore >= thresholds.fiveStar) starRating = 5;
+    else if (finalScore >= thresholds.fourStar) starRating = 4;
+    else if (finalScore >= thresholds.threeStar) starRating = 3;
+    else if (finalScore >= thresholds.twoStar) starRating = 2;
+    else starRating = 1;
+
+    // Respectful & Constructive Bengali Performance Labels
+    let performanceLevel: 'EXCELLENT' | 'GOOD' | 'SATISFACTORY' | 'NEEDS_IMPROVEMENT' = 'SATISFACTORY';
+    let performanceLevelBn = 'সন্তোষজনক ও নিয়মিত (Satisfactory)';
+
+    if (finalScore >= thresholds.fiveStar) {
+      performanceLevel = 'EXCELLENT';
+      performanceLevelBn = 'অনুকরণীয় ও চমৎকার (Excellent)';
+    } else if (finalScore >= thresholds.fourStar) {
+      performanceLevel = 'GOOD';
+      performanceLevelBn = 'প্রশংসনীয় ও সক্রিয় (Good)';
+    } else if (finalScore >= thresholds.threeStar) {
+      performanceLevel = 'SATISFACTORY';
+      performanceLevelBn = 'সন্তোষজনক ও নিয়মিত (Satisfactory)';
+    } else {
+      performanceLevel = 'NEEDS_IMPROVEMENT';
+      performanceLevelBn = 'উন্নতি ও অধিক সম্পৃক্ততা কাম্য (Needs Improvement)';
+    }
+
+    // Monthly Trend Simulation based on actual past data
+    const monthlyTrend = [
+      { month: '2026-06', monthBn: 'জুন ২০২৬', score: Math.max(65, finalScore - 4), attendance: Math.max(70, attendancePercentage - 5), taskCompletion: Math.max(60, taskCompletionPercentage - 5) },
+      { month: '2026-07', monthBn: 'জুলাই ২০২৬', score: Math.max(68, finalScore - 2), attendance: Math.max(75, attendancePercentage - 2), taskCompletion: Math.max(65, taskCompletionPercentage - 2) },
+      { month: '2026-08', monthBn: 'আগস্ট ২০২৬', score: finalScore, attendance: attendancePercentage, taskCompletion: taskCompletionPercentage }
+    ];
+
+    return {
+      memberId: mem.id,
+      memberName: mem.name,
+      position: mem.position,
+      positionCustomBn: mem.positionCustomBn || mem.position,
+      phone: mem.phone,
+      termId: mem.termId,
+      termTitle: term?.title,
+      joinDate: mem.joinDate,
+      status: mem.status,
+      address: mem.address,
+
+      totalMeetings: totalMeetingsCount,
+      presentMeetings: presentCount,
+      absentMeetings: absentCount,
+      leaveMeetings: leaveCount,
+      attendancePercentage,
+      attendanceWeight: customWeights.attendance,
+      attendanceWeightedContribution: Math.round(attendancePercentage * wAtt * 10) / 10,
+
+      totalAssignedTasks: totalTasks,
+      completedTasks,
+      pendingTasks,
+      inProgressTasks,
+      overdueTasks,
+      taskCompletionPercentage,
+      taskWeight: customWeights.responsibility,
+      taskWeightedContribution: Math.round(taskCompletionPercentage * wTask * 10) / 10,
+
+      meetingParticipationCount: totalParticipationEvents,
+      meetingParticipationScore: participationScore,
+      participationWeight: customWeights.participation,
+      participationWeightedContribution: Math.round(participationScore * wPart * 10) / 10,
+
+      otherActivitiesCount: otherActivities.length,
+      completedActivitiesCount: completedActivities.length,
+      activityScore,
+      activityWeight: customWeights.activity,
+      activityWeightedContribution: Math.round(activityScore * wAct * 10) / 10,
+
+      qualityEvaluatedCount: evaluatedItems.length,
+      qualityAverageScore,
+      qualityWeight: customWeights.quality,
+      qualityWeightedContribution: Math.round(qualityAverageScore * wQual * 10) / 10,
+
+      rawScore,
+      finalScore,
+      isManuallyOverridden,
+      manualOverrideScore,
+      overrideReason,
+      starRating,
+      performanceLevel,
+      performanceLevelBn,
+
+      lastEvaluationDate: manualEval?.createdAt,
+      evaluationStatus: manualEval ? 'EVALUATED' : 'AUTO_CALCULATED',
+      manualEvaluation: manualEval,
+      monthlyTrend
+    };
+  });
+
+  // Calculate Overall Committee Averages
+  const totalMems = memberScores.length;
+  const avgScore = totalMems > 0 ? Math.round(memberScores.reduce((acc, curr) => acc + curr.finalScore, 0) / totalMems) : 0;
+  const avgAtt = totalMems > 0 ? Math.round(memberScores.reduce((acc, curr) => acc + curr.attendancePercentage, 0) / totalMems) : 0;
+  const avgTask = totalMems > 0 ? Math.round(memberScores.reduce((acc, curr) => acc + curr.taskCompletionPercentage, 0) / totalMems) : 0;
+
+  const fiveStarCount = memberScores.filter(m => m.starRating === 5).length;
+  const fourStarCount = memberScores.filter(m => m.starRating === 4).length;
+  const threeStarCount = memberScores.filter(m => m.starRating === 3).length;
+  const belowThreeCount = memberScores.filter(m => m.starRating < 3).length;
+
+  res.json({
+    success: true,
+    data: {
+      term,
+      members: memberScores,
+      committeeStats: {
+        totalMembers: totalMems,
+        averageScore: avgScore,
+        fiveStarCount,
+        fourStarCount,
+        threeStarCount,
+        belowThreeCount,
+        averageAttendance: avgAtt,
+        averageTaskCompletion: avgTask
+      },
+      weights: customWeights,
+      starThresholds: thresholds
+    }
+  });
+});
+
+// 14. Update Mosque Committee Evaluation Settings
+app.put('/api/v1/mosques/:id/committee-evaluation-settings', authenticate, requirePermission('MANAGE_SETTINGS'), (req: AuthRequest, res: Response) => {
+  const mosque = db.mosques.find(m => m.id === req.params.id && m.id === req.currentMosque!.id);
+  if (!mosque) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'মসজিদ প্রোফাইল পাওয়া যায়নি।' } });
+  }
+
+  const { weights, starThresholds, excludeExcusedLeaveFromAttendance } = req.body;
+
+  if (weights) {
+    const sum = (Number(weights.attendance) || 0) +
+                (Number(weights.responsibility) || 0) +
+                (Number(weights.participation) || 0) +
+                (Number(weights.activity) || 0) +
+                (Number(weights.quality) || 0);
+    if (sum !== 100) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: `মূল্যায়ন ওয়েটেজের সর্বমোট যোগফল ১০০% হতে হবে (বর্তমান যোগফল: ${sum}%)` }
+      });
+    }
+  }
+
+  if (!mosque.committeeEvaluationSettings) {
+    mosque.committeeEvaluationSettings = {
+      weights: { attendance: 30, responsibility: 30, participation: 15, activity: 15, quality: 10 },
+      starThresholds: { fiveStar: 90, fourStar: 80, threeStar: 70, twoStar: 60, oneStar: 0 },
+      excludeExcusedLeaveFromAttendance: false
+    };
+  }
+
+  if (weights) mosque.committeeEvaluationSettings.weights = weights;
+  if (starThresholds) mosque.committeeEvaluationSettings.starThresholds = starThresholds;
+  if (excludeExcusedLeaveFromAttendance !== undefined) {
+    mosque.committeeEvaluationSettings.excludeExcusedLeaveFromAttendance = excludeExcusedLeaveFromAttendance;
+  }
+  mosque.updatedAt = new Date().toISOString();
+
+  db.save();
+
+  db.logAudit(
+    mosque.id,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'MOSQUE_SETTINGS',
+    'কমিটি সদস্য মূল্যায়ন ওয়েটেজ ও রেটিং পলিসি সেটিংস হালনাগাদ করা হয়েছে।'
+  );
+
+  res.json({
+    success: true,
+    data: mosque.committeeEvaluationSettings,
+    message: 'মূল্যায়ন সেটিংস সফলভাবে সংরক্ষণ করা হয়েছে।'
+  });
+});
+
+// ==========================================
+// 8.6 COMMITTEE ACTION PLANS (কমিটি কর্মপরিকল্পনা ও বাস্তবায়ন অগ্রগতি)
+// ==========================================
+
+// 1. Get Committee Action Plans List with Filters
+app.get('/api/v1/committee/action-plans', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  if (!db.committeeActionPlans) db.committeeActionPlans = [];
+
+  const {
+    termId,
+    status,
+    category,
+    priority,
+    memberId,
+    resolutionId,
+    search,
+    overdueOnly,
+    isArchived,
+    sortBy = 'dueDate'
+  } = req.query;
+
+  let list = db.committeeActionPlans.filter(p => p.mosqueId === mosqueId && !p.isDeleted);
+
+  if (isArchived === 'true') {
+    list = list.filter(p => p.isArchived);
+  } else if (isArchived === 'false' || isArchived === undefined) {
+    list = list.filter(p => !p.isArchived);
+  }
+
+  if (termId) {
+    list = list.filter(p => p.termId === termId);
+  }
+
+  if (status && status !== 'ALL') {
+    list = list.filter(p => p.status === status);
+  }
+
+  if (category && category !== 'ALL') {
+    list = list.filter(p => p.category === category);
+  }
+
+  if (priority && priority !== 'ALL') {
+    list = list.filter(p => p.priority === priority);
+  }
+
+  if (memberId && memberId !== 'ALL') {
+    list = list.filter(p =>
+      p.responsibleMemberId === memberId ||
+      (p.responsibleMemberIds && p.responsibleMemberIds.includes(String(memberId))) ||
+      (p.assistantMemberIds && p.assistantMemberIds.includes(String(memberId)))
+    );
+  }
+
+  if (resolutionId) {
+    list = list.filter(p => p.resolutionId === resolutionId);
+  }
+
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  if (overdueOnly === 'true') {
+    list = list.filter(p => p.status !== 'COMPLETED' && p.status !== 'CANCELLED' && p.dueDate && p.dueDate < todayStr);
+  }
+
+  if (search) {
+    const q = String(search).toLowerCase();
+    list = list.filter(p =>
+      p.planNumber.toLowerCase().includes(q) ||
+      p.title.toLowerCase().includes(q) ||
+      p.category.toLowerCase().includes(q) ||
+      (p.description && p.description.toLowerCase().includes(q)) ||
+      (p.responsibleMemberName && p.responsibleMemberName.toLowerCase().includes(q)) ||
+      (p.resolutionNumber && p.resolutionNumber.toLowerCase().includes(q)) ||
+      (p.resolutionSubject && p.resolutionSubject.toLowerCase().includes(q))
+    );
+  }
+
+  // Sorting
+  if (sortBy === 'priority') {
+    const pWeight: Record<string, number> = { URGENT: 4, HIGH: 3, MEDIUM: 2, NORMAL: 1 };
+    list.sort((a, b) => (pWeight[b.priority] || 0) - (pWeight[a.priority] || 0));
+  } else if (sortBy === 'progress') {
+    list.sort((a, b) => (b.progressPercentage || 0) - (a.progressPercentage || 0));
+  } else if (sortBy === 'createdAt') {
+    list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  } else {
+    // Default by dueDate (closest first)
+    list.sort((a, b) => {
+      if (!a.dueDate) return 1;
+      if (!b.dueDate) return -1;
+      return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+    });
+  }
+
+  res.json({ success: true, data: list });
+});
+
+// 2. Get Summary Metrics for Action Plans
+app.get('/api/v1/committee/action-plans/summary', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  if (!db.committeeActionPlans) db.committeeActionPlans = [];
+
+  const { termId } = req.query;
+  const activeTerm = db.committeeTerms.find(t => t.mosqueId === mosqueId && t.status === 'ACTIVE');
+  const targetTermId = (termId as string) || activeTerm?.id;
+
+  let plans = db.committeeActionPlans.filter(p => p.mosqueId === mosqueId && !p.isDeleted);
+  if (targetTermId) {
+    plans = plans.filter(p => p.termId === targetTermId);
+  }
+
+  const todayStr = new Date().toISOString().split('T')[0];
+  const curMonth = todayStr.substring(0, 7);
+
+  const totalTasks = plans.length;
+  const completedTasks = plans.filter(p => p.status === 'COMPLETED').length;
+  const inProgressTasks = plans.filter(p => p.status === 'IN_PROGRESS').length;
+  const todoTasks = plans.filter(p => p.status === 'TODO').length;
+  const onHoldTasks = plans.filter(p => p.status === 'ON_HOLD').length;
+  const cancelledTasks = plans.filter(p => p.status === 'CANCELLED').length;
+  const overdueTasks = plans.filter(
+    p => p.status !== 'COMPLETED' && p.status !== 'CANCELLED' && p.dueDate && p.dueDate < todayStr
+  ).length;
+
+  const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+
+  const totalEstimatedBudget = plans.reduce((s, p) => s + (Number(p.estimatedBudget) || 0), 0);
+  const totalActualCost = plans.reduce((s, p) => s + (Number(p.actualCost) || 0), 0);
+  const budgetVariance = totalEstimatedBudget - totalActualCost;
+
+  // Monthly stats
+  const completedThisMonth = plans.filter(
+    p => p.status === 'COMPLETED' && (p.completedDate?.startsWith(curMonth) || p.updatedAt?.startsWith(curMonth))
+  ).length;
+  const dueThisMonth = plans.filter(
+    p => p.dueDate && p.dueDate.startsWith(curMonth)
+  ).length;
+
+  // Category counts
+  const categoryMap: Record<string, { count: number; completed: number; estimated: number; actual: number }> = {};
+  plans.forEach(p => {
+    const cat = p.category || 'অন্যান্য';
+    if (!categoryMap[cat]) {
+      categoryMap[cat] = { count: 0, completed: 0, estimated: 0, actual: 0 };
+    }
+    categoryMap[cat].count++;
+    if (p.status === 'COMPLETED') categoryMap[cat].completed++;
+    categoryMap[cat].estimated += (Number(p.estimatedBudget) || 0);
+    categoryMap[cat].actual += (Number(p.actualCost) || 0);
+  });
+
+  const categoryBreakdown = Object.entries(categoryMap).map(([name, data]) => ({
+    name,
+    count: data.count,
+    completed: data.completed,
+    estimated: data.estimated,
+    actual: data.actual,
+    rate: data.count > 0 ? Math.round((data.completed / data.count) * 100) : 0
+  })).sort((a, b) => b.count - a.count);
+
+  res.json({
+    success: true,
+    data: {
+      termId: targetTermId,
+      totalTasks,
+      completedTasks,
+      inProgressTasks,
+      todoTasks,
+      onHoldTasks,
+      cancelledTasks,
+      overdueTasks,
+      completionRate,
+      totalEstimatedBudget,
+      totalActualCost,
+      budgetVariance,
+      completedThisMonth,
+      dueThisMonth,
+      categoryBreakdown
+    }
+  });
+});
+
+// 3. Get Single Action Plan
+app.get('/api/v1/committee/action-plans/:id', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  if (!db.committeeActionPlans) db.committeeActionPlans = [];
+
+  const plan = db.committeeActionPlans.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (!plan) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'কর্মপরিকল্পনা পাওয়া যায়নি।' } });
+  }
+
+  res.json({ success: true, data: plan });
+});
+
+// 4. Create New Action Plan
+app.post('/api/v1/committee/action-plans', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  if (!db.committeeActionPlans) db.committeeActionPlans = [];
+
+  const {
+    termId,
+    title,
+    description,
+    category,
+    priority = 'NORMAL',
+    responsibleMemberId,
+    responsibleMemberIds,
+    assistantMemberIds,
+    startDate,
+    dueDate,
+    completedDate,
+    estimatedBudget = 0,
+    actualCost = 0,
+    fundingSource,
+    fundingAccountId,
+    fundingAccountName,
+    financialVoucherNumber,
+    status = 'TODO',
+    progressPercentage = 0,
+    remarks,
+    resolutionId,
+    resolutionNumber,
+    resolutionSubject,
+    meetingId,
+    meetingNumber,
+    decisionNumber,
+    attachments
+  } = req.body;
+
+  if (!title || !category || !startDate || !dueDate) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: 'কাজের নাম, ক্যাটাগরি/বিভাগ, শুরু ও সমাপ্তির তারিখ আবশ্যক।' }
+    });
+  }
+
+  // Active Term auto lookup if termId missing
+  let finalTermId = termId;
+  let finalTermTitle = '';
+  if (!finalTermId) {
+    const activeTerm = db.committeeTerms.find(t => t.mosqueId === mosqueId && t.status === 'ACTIVE');
+    finalTermId = activeTerm?.id || db.committeeTerms.find(t => t.mosqueId === mosqueId)?.id || '';
+    finalTermTitle = activeTerm?.title || '';
+  } else {
+    const termObj = db.committeeTerms.find(t => t.id === finalTermId && t.mosqueId === mosqueId);
+    finalTermTitle = termObj?.title || '';
+  }
+
+  // Auto Generate Plan Number (e.g. AP-2026-006)
+  const curYear = new Date().getFullYear();
+  const existingCount = db.committeeActionPlans.filter(p => p.mosqueId === mosqueId).length;
+  const planNumber = `AP-${curYear}-${String(existingCount + 1).padStart(3, '0')}`;
+
+  // Find responsible member info
+  let finalRespMemberId = responsibleMemberId;
+  let finalRespMemberName = '';
+  let finalRespMemberDesignation = '';
+  let finalRespMemberPhone = '';
+  const responsibleMembersList: Array<{ id: string; name: string; designation?: string; phone?: string }> = [];
+
+  const allRespIds = responsibleMemberIds && Array.isArray(responsibleMemberIds) && responsibleMemberIds.length > 0
+    ? responsibleMemberIds
+    : (responsibleMemberId ? [responsibleMemberId] : []);
+
+  if (allRespIds.length > 0) {
+    finalRespMemberId = allRespIds[0];
+    allRespIds.forEach(id => {
+      const mem = db.committeeMembers.find(m => m.id === id && m.mosqueId === mosqueId);
+      if (mem) {
+        responsibleMembersList.push({
+          id: mem.id,
+          name: mem.name,
+          designation: mem.positionCustomBn || mem.position,
+          phone: mem.phone
+        });
+      }
+    });
+    if (responsibleMembersList.length > 0) {
+      finalRespMemberName = responsibleMembersList.map(m => m.name).join(', ');
+      finalRespMemberDesignation = responsibleMembersList[0].designation || '';
+      finalRespMemberPhone = responsibleMembersList[0].phone || '';
+    }
+  }
+
+  // Assistant members list
+  const assistantMembersList: Array<{ id: string; name: string; designation?: string; phone?: string }> = [];
+  if (assistantMemberIds && Array.isArray(assistantMemberIds)) {
+    assistantMemberIds.forEach(id => {
+      const mem = db.committeeMembers.find(m => m.id === id && m.mosqueId === mosqueId);
+      if (mem) {
+        assistantMembersList.push({
+          id: mem.id,
+          name: mem.name,
+          designation: mem.positionCustomBn || mem.position,
+          phone: mem.phone
+        });
+      }
+    });
+  }
+
+  // Resolution linkage resolution info
+  let resNum = resolutionNumber;
+  let resSub = resolutionSubject;
+  let meetId = meetingId;
+  let meetNum = meetingNumber;
+  let decNum = decisionNumber;
+
+  if (resolutionId) {
+    const resObj = db.committeeResolutions.find(r => r.id === resolutionId && r.mosqueId === mosqueId);
+    if (resObj) {
+      resNum = resObj.resolutionNumber;
+      resSub = resObj.subject;
+      meetId = resObj.meetingId;
+      meetNum = resObj.meetingNumber;
+      decNum = resObj.decisionNumber;
+    }
+  }
+
+  const initialLog: CommitteeActionPlanActivityLog = {
+    id: `act-${Date.now()}-1`,
+    action: 'CREATE',
+    details: `নতুন কর্মপরিকল্পনা প্রণয়ন: ${title.trim()}${resNum ? ` (সংযুক্ত রেজোলিউশন: ${resNum})` : ''}`,
+    changedBy: req.user!.id,
+    changedByName: req.user!.name,
+    timestamp: new Date().toISOString()
+  };
+
+  const newPlan: CommitteeActionPlan = {
+    id: `plan-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    mosqueId,
+    planNumber,
+    termId: finalTermId,
+    termTitle: finalTermTitle,
+    title: title.trim(),
+    description: description ? description.trim() : undefined,
+    category: category.trim(),
+    priority: priority as CommitteeActionPlanPriority,
+
+    responsibleMemberId: finalRespMemberId,
+    responsibleMemberName: finalRespMemberName,
+    responsibleMemberDesignation: finalRespMemberDesignation,
+    responsibleMemberPhone: finalRespMemberPhone,
+    responsibleMemberIds: allRespIds,
+    responsibleMembers: responsibleMembersList,
+
+    assistantMemberIds: assistantMemberIds || [],
+    assistantMembers: assistantMembersList,
+
+    startDate,
+    dueDate,
+    completedDate: status === 'COMPLETED' ? (completedDate || new Date().toISOString().split('T')[0]) : undefined,
+
+    estimatedBudget: Number(estimatedBudget) || 0,
+    actualCost: Number(actualCost) || 0,
+    fundingSource: fundingSource ? fundingSource.trim() : undefined,
+    fundingAccountId: fundingAccountId || undefined,
+    fundingAccountName: fundingAccountName || undefined,
+    financialVoucherNumber: financialVoucherNumber ? financialVoucherNumber.trim() : undefined,
+
+    status: status as CommitteeActionPlanStatus,
+    progressPercentage: status === 'COMPLETED' ? 100 : (Number(progressPercentage) || 0),
+    remarks: remarks ? remarks.trim() : undefined,
+
+    resolutionId: resolutionId || undefined,
+    resolutionNumber: resNum || undefined,
+    resolutionSubject: resSub || undefined,
+    meetingId: meetId || undefined,
+    meetingNumber: meetNum || undefined,
+    decisionNumber: decNum || undefined,
+
+    attachments: Array.isArray(attachments) ? attachments : [],
+    activityLogs: [initialLog],
+
+    isArchived: false,
+    isDeleted: false,
+
+    createdBy: req.user!.id,
+    createdByName: req.user!.name,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  db.committeeActionPlans.unshift(newPlan);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'COMMITTEE_ACTION_PLAN',
+    `নতুন কর্মপরিকল্পনা তৈরি: ${newPlan.planNumber} - ${newPlan.title} (ক্যাটাগরি: ${newPlan.category}, বাজেট: ৳${newPlan.estimatedBudget})`
+  );
+  realtime.broadcastToMosque(mosqueId, 'ACTION_PLAN_CREATED', newPlan, { senderId: req.user!.id });
+
+  res.json({ success: true, data: newPlan, message: 'কর্মপরিকল্পনা সফলভাবে তৈরি করা হয়েছে।' });
+});
+
+// 5. Update Action Plan
+app.put('/api/v1/committee/action-plans/:id', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  if (!db.committeeActionPlans) db.committeeActionPlans = [];
+
+  const plan = db.committeeActionPlans.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (!plan) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'কর্মপরিকল্পনা পাওয়া যায়নি।' } });
+  }
+
+  const {
+    termId,
+    title,
+    description,
+    category,
+    priority,
+    responsibleMemberId,
+    responsibleMemberIds,
+    assistantMemberIds,
+    startDate,
+    dueDate,
+    completedDate,
+    estimatedBudget,
+    actualCost,
+    fundingSource,
+    fundingAccountId,
+    fundingAccountName,
+    financialVoucherNumber,
+    status,
+    progressPercentage,
+    remarks,
+    resolutionId,
+    resolutionNumber,
+    resolutionSubject,
+    meetingId,
+    meetingNumber,
+    decisionNumber,
+    isArchived,
+    attachments
+  } = req.body;
+
+  const previousStatus = plan.status;
+  const previousProgress = plan.progressPercentage;
+
+  if (title !== undefined) plan.title = title.trim();
+  if (description !== undefined) plan.description = description ? description.trim() : undefined;
+  if (category !== undefined) plan.category = category.trim();
+  if (priority !== undefined) plan.priority = priority;
+  if (termId !== undefined) {
+    plan.termId = termId;
+    const termObj = db.committeeTerms.find(t => t.id === termId && t.mosqueId === mosqueId);
+    if (termObj) plan.termTitle = termObj.title;
+  }
+
+  // Update members
+  if (responsibleMemberIds !== undefined || responsibleMemberId !== undefined) {
+    const allRespIds = responsibleMemberIds && Array.isArray(responsibleMemberIds)
+      ? responsibleMemberIds
+      : (responsibleMemberId ? [responsibleMemberId] : []);
+
+    plan.responsibleMemberIds = allRespIds;
+    plan.responsibleMemberId = allRespIds[0] || undefined;
+
+    const responsibleMembersList: Array<{ id: string; name: string; designation?: string; phone?: string }> = [];
+    allRespIds.forEach(id => {
+      const mem = db.committeeMembers.find(m => m.id === id && m.mosqueId === mosqueId);
+      if (mem) {
+        responsibleMembersList.push({
+          id: mem.id,
+          name: mem.name,
+          designation: mem.positionCustomBn || mem.position,
+          phone: mem.phone
+        });
+      }
+    });
+    plan.responsibleMembers = responsibleMembersList;
+    if (responsibleMembersList.length > 0) {
+      plan.responsibleMemberName = responsibleMembersList.map(m => m.name).join(', ');
+      plan.responsibleMemberDesignation = responsibleMembersList[0].designation || '';
+      plan.responsibleMemberPhone = responsibleMembersList[0].phone || '';
+    } else {
+      plan.responsibleMemberName = undefined;
+      plan.responsibleMemberDesignation = undefined;
+      plan.responsibleMemberPhone = undefined;
+    }
+  }
+
+  if (assistantMemberIds !== undefined) {
+    plan.assistantMemberIds = assistantMemberIds;
+    const assistantMembersList: Array<{ id: string; name: string; designation?: string; phone?: string }> = [];
+    if (Array.isArray(assistantMemberIds)) {
+      assistantMemberIds.forEach(id => {
+        const mem = db.committeeMembers.find(m => m.id === id && m.mosqueId === mosqueId);
+        if (mem) {
+          assistantMembersList.push({
+            id: mem.id,
+            name: mem.name,
+            designation: mem.positionCustomBn || mem.position,
+            phone: mem.phone
+          });
+        }
+      });
+    }
+    plan.assistantMembers = assistantMembersList;
+  }
+
+  if (startDate !== undefined) plan.startDate = startDate;
+  if (dueDate !== undefined) plan.dueDate = dueDate;
+  if (completedDate !== undefined) plan.completedDate = completedDate;
+
+  if (estimatedBudget !== undefined) plan.estimatedBudget = Number(estimatedBudget) || 0;
+  if (actualCost !== undefined) plan.actualCost = Number(actualCost) || 0;
+  if (fundingSource !== undefined) plan.fundingSource = fundingSource;
+  if (fundingAccountId !== undefined) plan.fundingAccountId = fundingAccountId;
+  if (fundingAccountName !== undefined) plan.fundingAccountName = fundingAccountName;
+  if (financialVoucherNumber !== undefined) plan.financialVoucherNumber = financialVoucherNumber;
+
+  if (remarks !== undefined) plan.remarks = remarks;
+  if (isArchived !== undefined) plan.isArchived = isArchived;
+  if (attachments !== undefined) plan.attachments = attachments;
+
+  if (resolutionId !== undefined) plan.resolutionId = resolutionId;
+  if (resolutionNumber !== undefined) plan.resolutionNumber = resolutionNumber;
+  if (resolutionSubject !== undefined) plan.resolutionSubject = resolutionSubject;
+  if (meetingId !== undefined) plan.meetingId = meetingId;
+  if (meetingNumber !== undefined) plan.meetingNumber = meetingNumber;
+  if (decisionNumber !== undefined) plan.decisionNumber = decisionNumber;
+
+  if (status !== undefined) plan.status = status;
+  if (progressPercentage !== undefined) plan.progressPercentage = Number(progressPercentage) || 0;
+
+  // Auto handle completion sync
+  if (plan.status === 'COMPLETED') {
+    plan.progressPercentage = 100;
+    if (!plan.completedDate) {
+      plan.completedDate = new Date().toISOString().split('T')[0];
+    }
+  } else if (plan.progressPercentage === 100 && (plan.status as string) !== 'COMPLETED') {
+    plan.status = 'COMPLETED';
+    if (!plan.completedDate) {
+      plan.completedDate = new Date().toISOString().split('T')[0];
+    }
+  }
+
+  // Create Activity Log Entry
+  if (!plan.activityLogs) plan.activityLogs = [];
+  let logAction = 'UPDATE';
+  let logDetails = 'কর্মপরিকল্পনার তথ্য আপডেট করা হয়েছে।';
+
+  if (status !== undefined && status !== previousStatus) {
+    logAction = 'STATUS_CHANGE';
+    logDetails = `স্ট্যাটাস পরিবর্তন: ${previousStatus} -> ${status}`;
+  } else if (progressPercentage !== undefined && progressPercentage !== previousProgress) {
+    logAction = 'PROGRESS_UPDATE';
+    logDetails = `বাস্তবায়ন অগ্রগতি পরিবর্তন: ${previousProgress}% -> ${progressPercentage}%`;
+  }
+
+  plan.activityLogs.push({
+    id: `act-${Date.now()}-${plan.activityLogs.length + 1}`,
+    action: logAction,
+    details: logDetails,
+    changedBy: req.user!.id,
+    changedByName: req.user!.name,
+    timestamp: new Date().toISOString(),
+    previousState: String(previousStatus),
+    newState: String(plan.status)
+  });
+
+  plan.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'COMMITTEE_ACTION_PLAN',
+    `কর্মপরিকল্পনা আপডেট: ${plan.planNumber} - ${plan.title} (স্ট্যাটাস: ${plan.status}, অগ্রগতি: ${plan.progressPercentage}%)`
+  );
+  realtime.broadcastToMosque(mosqueId, 'ACTION_PLAN_UPDATED', plan, { senderId: req.user!.id });
+
+  res.json({ success: true, data: plan, message: 'কর্মপরিকল্পনা সফলভাবে আপডেট হয়েছে।' });
+});
+
+// 6. Quick Progress & Cost Update
+app.patch('/api/v1/committee/action-plans/:id/progress', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  if (!db.committeeActionPlans) db.committeeActionPlans = [];
+
+  const plan = db.committeeActionPlans.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (!plan) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'কর্মপরিকল্পনা পাওয়া যায়নি।' } });
+  }
+
+  const { progressPercentage, status, actualCost, remarks, completedDate } = req.body;
+  const prevProgress = plan.progressPercentage;
+  const prevStatus = plan.status;
+
+  if (progressPercentage !== undefined) {
+    plan.progressPercentage = Math.min(100, Math.max(0, Number(progressPercentage) || 0));
+  }
+
+  if (status !== undefined) {
+    plan.status = status;
+  }
+
+  if (actualCost !== undefined) {
+    plan.actualCost = Number(actualCost) || 0;
+  }
+
+  if (remarks !== undefined) {
+    plan.remarks = remarks;
+  }
+
+  // If progress is 100%, auto complete
+  if (plan.progressPercentage === 100) {
+    plan.status = 'COMPLETED';
+    plan.completedDate = completedDate || plan.completedDate || new Date().toISOString().split('T')[0];
+  } else if (plan.status === 'COMPLETED' && plan.progressPercentage < 100) {
+    plan.progressPercentage = 100;
+  }
+
+  if (!plan.activityLogs) plan.activityLogs = [];
+  plan.activityLogs.push({
+    id: `act-${Date.now()}-${plan.activityLogs.length + 1}`,
+    action: 'PROGRESS_UPDATE',
+    details: `বাস্তবায়ন অগ্রগতি আপডেট: ${prevProgress}% -> ${plan.progressPercentage}% (স্ট্যাটাস: ${plan.status})`,
+    changedBy: req.user!.id,
+    changedByName: req.user!.name,
+    timestamp: new Date().toISOString(),
+    previousState: `${prevProgress}%`,
+    newState: `${plan.progressPercentage}%`
+  });
+
+  plan.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'COMMITTEE_ACTION_PLAN',
+    `কর্মপরিকল্পনা দ্রুত অগ্রগতি আপডেট: ${plan.planNumber} (${plan.progressPercentage}%, স্ট্যাটাস: ${plan.status})`
+  );
+  realtime.broadcastToMosque(mosqueId, 'ACTION_PLAN_UPDATED', plan, { senderId: req.user!.id });
+
+  res.json({ success: true, data: plan, message: 'বাস্তবায়ন অগ্রগতি সফলভাবে আপডেট করা হয়েছে।' });
+});
+
+// 7. Quick Toggle Complete / Incomplete Checkbox
+app.patch('/api/v1/committee/action-plans/:id/complete', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  if (!db.committeeActionPlans) db.committeeActionPlans = [];
+
+  const plan = db.committeeActionPlans.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (!plan) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'কর্মপরিকল্পনা পাওয়া যায়নি।' } });
+  }
+
+  const { completed } = req.body;
+  const isComplete = completed === true || completed === 'true';
+
+  if (isComplete) {
+    plan.status = 'COMPLETED';
+    plan.progressPercentage = 100;
+    plan.completedDate = new Date().toISOString().split('T')[0];
+  } else {
+    plan.status = 'IN_PROGRESS';
+    plan.progressPercentage = 50;
+    plan.completedDate = undefined;
+  }
+
+  if (!plan.activityLogs) plan.activityLogs = [];
+  plan.activityLogs.push({
+    id: `act-${Date.now()}-${plan.activityLogs.length + 1}`,
+    action: isComplete ? 'MARK_COMPLETED' : 'STATUS_CHANGE',
+    details: isComplete ? 'কাজটি সম্পন্ন হিসেবে চিহ্নিত করা হয়েছে (১০০%)।' : 'কাজটি পুনরায় চলমান (In Progress) করা হয়েছে।',
+    changedBy: req.user!.id,
+    changedByName: req.user!.name,
+    timestamp: new Date().toISOString()
+  });
+
+  plan.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'COMMITTEE_ACTION_PLAN',
+    `কর্মপরিকল্পনা সম্পন্নকরণ পরিবর্তন: ${plan.planNumber} -> ${plan.status}`
+  );
+  realtime.broadcastToMosque(mosqueId, 'ACTION_PLAN_UPDATED', plan, { senderId: req.user!.id });
+
+  res.json({ success: true, data: plan, message: isComplete ? 'কাজটি সম্পন্ন হিসেবে চিহ্নিত হয়েছে।' : 'কাজটি চলমান হিসেবে সেট করা হয়েছে।' });
+});
+
+// 8. Add Attachment (Before / During / After Photo, Bill / Invoice)
+app.post('/api/v1/committee/action-plans/:id/attachments', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  if (!db.committeeActionPlans) db.committeeActionPlans = [];
+
+  const plan = db.committeeActionPlans.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (!plan) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'কর্মপরিকল্পনা পাওয়া যায়নি।' } });
+  }
+
+  const { name, url, type = 'DOCUMENT', typeBn } = req.body;
+  if (!name || !url) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'ফাইলের নাম এবং ইউআরএল আবশ্যক।' } });
+  }
+
+  const newAttachment: CommitteeActionPlanAttachment = {
+    id: `att-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    name: name.trim(),
+    url: url.trim(),
+    type,
+    typeBn: typeBn || (
+      type === 'BEFORE_PHOTO' ? 'কাজের পূর্বের ছবি' :
+      type === 'DURING_PHOTO' ? 'কাজের চলমান ছবি' :
+      type === 'AFTER_PHOTO' ? 'কাজের সমাপ্তির ছবি' :
+      type === 'BILL' ? 'বিল ও ভাউচার' :
+      type === 'INVOICE' ? 'ইনভয়েস / রশিদ' : 'নথি / প্রমাণক'
+    ),
+    uploadedAt: new Date().toISOString(),
+    uploadedBy: req.user!.id,
+    uploadedByName: req.user!.name
+  };
+
+  if (!plan.attachments) plan.attachments = [];
+  plan.attachments.push(newAttachment);
+
+  if (!plan.activityLogs) plan.activityLogs = [];
+  plan.activityLogs.push({
+    id: `act-${Date.now()}-${plan.activityLogs.length + 1}`,
+    action: 'ATTACH_DOCUMENT',
+    details: `নতুন সংযুক্তি যুক্ত হয়েছে: ${newAttachment.name} (${newAttachment.typeBn})`,
+    changedBy: req.user!.id,
+    changedByName: req.user!.name,
+    timestamp: new Date().toISOString()
+  });
+
+  plan.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'COMMITTEE_ACTION_PLAN',
+    `কর্মপরিকল্পনায় সংযুক্তি যোগ: ${plan.planNumber} - ${newAttachment.name}`
+  );
+
+  res.json({ success: true, data: plan, attachment: newAttachment, message: 'সংযুক্তি সফলভাবে যুক্ত হয়েছে।' });
+});
+
+// 9. Remove Attachment
+app.delete('/api/v1/committee/action-plans/:id/attachments/:attachmentId', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  if (!db.committeeActionPlans) db.committeeActionPlans = [];
+
+  const plan = db.committeeActionPlans.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (!plan) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'কর্মপরিকল্পনা পাওয়া যায়নি।' } });
+  }
+
+  if (!plan.attachments) plan.attachments = [];
+  const attIdx = plan.attachments.findIndex(a => a.id === req.params.attachmentId);
+  if (attIdx === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সংযুক্তি পাওয়া যায়নি।' } });
+  }
+
+  const removed = plan.attachments.splice(attIdx, 1)[0];
+
+  if (!plan.activityLogs) plan.activityLogs = [];
+  plan.activityLogs.push({
+    id: `act-${Date.now()}-${plan.activityLogs.length + 1}`,
+    action: 'UPDATE',
+    details: `সংযুক্তি মুছে ফেলা হয়েছে: ${removed.name}`,
+    changedBy: req.user!.id,
+    changedByName: req.user!.name,
+    timestamp: new Date().toISOString()
+  });
+
+  plan.updatedAt = new Date().toISOString();
+  db.save();
+
+  res.json({ success: true, data: plan, message: 'সংযুক্তি সফলভাবে মুছে ফেলা হয়েছে।' });
+});
+
+// 10. Delete / Soft-Delete Action Plan (Preserving Audit Trail)
+app.delete('/api/v1/committee/action-plans/:id', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  if (!db.committeeActionPlans) db.committeeActionPlans = [];
+
+  const idx = db.committeeActionPlans.findIndex(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (idx === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'কর্মপরিকল্পনা পাওয়া যায়নি।' } });
+  }
+
+  const target = db.committeeActionPlans[idx];
+  const force = req.query.force === 'true';
+
+  // Soft delete for safety unless super-admin forces
+  if (!force || req.user?.role !== 'SUPER_ADMIN') {
+    target.isDeleted = true;
+    target.updatedAt = new Date().toISOString();
+    if (!target.activityLogs) target.activityLogs = [];
+    target.activityLogs.push({
+      id: `act-${Date.now()}-${target.activityLogs.length + 1}`,
+      action: 'ARCHIVE',
+      details: 'কর্মপরিকল্পনাটি সফট ডিলিট / আর্কাইভ করা হয়েছে।',
+      changedBy: req.user!.id,
+      changedByName: req.user!.name,
+      timestamp: new Date().toISOString()
+    });
+    db.save();
+
+    db.logAudit(
+      mosqueId,
+      req.user!.id,
+      req.user!.name,
+      req.user!.role,
+      'DELETE',
+      'COMMITTEE_ACTION_PLAN',
+      `কর্মপরিকল্পনা সফট ডিলিট: ${target.planNumber} - ${target.title}`
+    );
+    realtime.broadcastToMosque(mosqueId, 'ACTION_PLAN_DELETED', { id: target.id }, { senderId: req.user!.id });
+
+    return res.json({ success: true, message: 'কর্মপরিকল্পনা সফলভাবে মুছে ফেলা হয়েছে (Soft Delete)।' });
+  }
+
+  // Hard delete
+  const removed = db.committeeActionPlans.splice(idx, 1)[0];
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'DELETE',
+    'COMMITTEE_ACTION_PLAN',
+    `কর্মপরিকল্পনা স্থায়ীভাবে মুছে ফেলা হয়েছে: ${removed.planNumber} - ${removed.title}`
+  );
+  realtime.broadcastToMosque(mosqueId, 'ACTION_PLAN_DELETED', { id: removed.id }, { senderId: req.user!.id });
+
+  res.json({ success: true, message: 'কর্মপরিকল্পনা স্থায়ীভাবে মুছে ফেলা হয়েছে।' });
+});
+
+// 11. Audit Log for Action Plan Print / PDF / Export
+app.post('/api/v1/committee/action-plans/:id/audit', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { action, details, reportType } = req.body;
+  if (!db.committeeActionPlans) db.committeeActionPlans = [];
+
+  const plan = db.committeeActionPlans.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    action || 'PRINT',
+    'COMMITTEE_ACTION_PLAN',
+    details || `কর্মপরিকল্পনা ${action === 'PDF_DOWNLOAD' ? 'PDF ডাউনলোড' : 'প্রিন্ট'}: ${plan ? plan.planNumber : 'রিপোর্ট'} (${reportType || 'সাধারণ'})`
+  );
+
   res.json({ success: true });
 });
 

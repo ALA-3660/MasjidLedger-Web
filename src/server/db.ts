@@ -14,6 +14,15 @@ import {
   CommitteeMember,
   CommitteeMeeting,
   CommitteeMeetingNotice,
+  MeetingResolution,
+  CommitteeActionPlan,
+  CommitteeActionPlanStatus,
+  CommitteeActionPlanPriority,
+  CommitteeActionPlanAttachment,
+  CommitteeActionPlanActivityLog,
+  CommitteeMemberActivity,
+  CommitteeMemberTask,
+  CommitteeManualEvaluation,
   Staff,
   StaffPayment,
   MosqueAsset,
@@ -46,6 +55,11 @@ export class DatabaseStore {
   committeeMembers: CommitteeMember[] = [];
   committeeMeetings: CommitteeMeeting[] = [];
   committeeNotices: CommitteeMeetingNotice[] = [];
+  committeeResolutions: MeetingResolution[] = [];
+  committeeActionPlans: CommitteeActionPlan[] = [];
+  committeeActivities: CommitteeMemberActivity[] = [];
+  committeeTasks: CommitteeMemberTask[] = [];
+  committeeManualEvaluations: CommitteeManualEvaluation[] = [];
   staffList: Staff[] = [];
   staffPayments: StaffPayment[] = [];
   assets: MosqueAsset[] = [];
@@ -87,6 +101,11 @@ export class DatabaseStore {
         this.committeeMembers = parsed.committeeMembers || [];
         this.committeeMeetings = parsed.committeeMeetings || [];
         this.committeeNotices = parsed.committeeNotices || [];
+        this.committeeResolutions = parsed.committeeResolutions || [];
+        this.committeeActionPlans = parsed.committeeActionPlans || [];
+        this.committeeActivities = parsed.committeeActivities || [];
+        this.committeeTasks = parsed.committeeTasks || [];
+        this.committeeManualEvaluations = parsed.committeeManualEvaluations || [];
         this.staffList = parsed.staffList || [];
         this.staffPayments = parsed.staffPayments || [];
         this.assets = parsed.assets || [];
@@ -128,6 +147,11 @@ export class DatabaseStore {
         committeeMembers: this.committeeMembers,
         committeeMeetings: this.committeeMeetings,
         committeeNotices: this.committeeNotices,
+        committeeResolutions: this.committeeResolutions,
+        committeeActionPlans: this.committeeActionPlans,
+        committeeActivities: this.committeeActivities,
+        committeeTasks: this.committeeTasks,
+        committeeManualEvaluations: this.committeeManualEvaluations,
         staffList: this.staffList,
         staffPayments: this.staffPayments,
         assets: this.assets,
@@ -812,6 +836,11 @@ export class DatabaseStore {
         '২. আসন্ন রমজান ও বার্ষিক হিসাব নিরীক্ষা (Audit) প্রস্তুতি।',
         '৩. ইমাম ও মুয়াজ্জিন সাহেবের বার্ষিক হাদিয়া বৃদ্ধি প্রস্তাবনা।'
       ],
+      agendaItems: [
+        { id: 'ag-01', agendaNumber: 1, title: 'মসজিদের দ্বিতীয় তলার অসম্পূর্ণ টাইলস ও পেইন্ট কাজ সম্পন্নকরণ।', discussion: 'দ্বিতীয় তলার কাজ দীর্ঘদিন ধরে স্থগিত রয়েছে। মুসল্লীদের সুবিধার্থে অতি দ্রুত এটি শেষ করা প্রয়োজন। প্রাথমিকভাবে ৫০ হাজার টাকার বাজেট নির্ধারণ ও ৩ সদস্যের সাব-কমিটি প্রস্তাব করা হলো।' },
+        { id: 'ag-02', agendaNumber: 2, title: 'আসন্ন রমজান ও বার্ষিক হিসাব নিরীক্ষা (Audit) প্রস্তুতি।', discussion: 'অর্ধবার্ষিক ও বার্ষিক অডিটের জন্য সকল ক্যাশ মেমো, ভাউচার ও ব্যাংক বিবরণী প্রস্তুত রাখার ব্যাপারে কোষাধ্যক্ষ মহোদয় অবহিত করেন।' },
+        { id: 'ag-03', agendaNumber: 3, title: 'ইমাম ও মুয়াজ্জিন সাহেবের বার্ষিক হাদিয়া বৃদ্ধি প্রস্তাবনা।', discussion: 'দ্রব্যমূল্যের ঊর্ধ্বগতির বিষয়টি বিবেচনায় নিয়ে ইমাম ও মুয়াজ্জিন সাহেবের সম্মানি বৃদ্ধির প্রস্তাব সভাপতি মহোদয় উত্থাপন করেন এবং উপস্থিত সকলে একমত হন।' }
+      ],
       membersPresent: [
         'আলহাজ্ব মোঃ মকবুল হোসেন',
         'আলহাজ্ব মোঃ শামসুল হুদা',
@@ -821,20 +850,29 @@ export class DatabaseStore {
       ],
       membersAbsent: ['ডাঃ আক্তারুজ্জামান (অসুস্থতাজনিত অনুপস্থিত)'],
       attendees: [
-        { name: 'আলহাজ্ব মোঃ মকবুল হোসেন', designation: 'সভাপতি', phone: '01711122233', attendanceStatus: 'PRESENT' },
-        { name: 'আলহাজ্ব মোঃ শামসুল হুদা', designation: 'সহ-সভাপতি', phone: '01819234567', attendanceStatus: 'PRESENT' },
-        { name: 'মুহাম্মদ রফিকুল ইসলাম', designation: 'সাধারণ সম্পাদক', phone: '01712345678', attendanceStatus: 'PRESENT' },
-        { name: 'মোঃ জহিরুল হক', designation: 'কোষাধ্যক্ষ', phone: '01611223344', attendanceStatus: 'PRESENT' },
-        { name: 'মাওলানা মুফতি আব্দুল্লাহ আল-মামুন', designation: 'খতীব ও পেশ ইমাম', phone: '01912444555', attendanceStatus: 'PRESENT' },
-        { name: 'ডাঃ আক্তারুজ্জামান', designation: 'সদস্য', phone: '01511998877', attendanceStatus: 'ABSENT' }
+        { memberId: 'mem-01', name: 'আলহাজ্ব মোঃ মকবুল হোসেন', designation: 'সভাপতি', phone: '01711122233', attendanceStatus: 'PRESENT', arrivalTime: '০৮:২৫' },
+        { memberId: 'mem-02', name: 'আলহাজ্ব মোঃ শামসুল হুদা', designation: 'সহ-সভাপতি', phone: '01819234567', attendanceStatus: 'PRESENT', arrivalTime: '০৮:৩০' },
+        { memberId: 'mem-03', name: 'মুহাম্মদ রফিকুল ইসলাম', designation: 'সাধারণ সম্পাদক', phone: '01712345678', attendanceStatus: 'PRESENT', arrivalTime: '০৮:২০' },
+        { memberId: 'mem-04', name: 'মোঃ জহিরুল হক', designation: 'কোষাধ্যক্ষ', phone: '01611223344', attendanceStatus: 'PRESENT', arrivalTime: '০৮:২৮' },
+        { memberId: 'mem-05', name: 'মাওলানা মুফতি আব্দুল্লাহ আল-মামুন', designation: 'খতীব ও পেশ ইমাম', phone: '01912444555', attendanceStatus: 'PRESENT', arrivalTime: '০৮:২০' },
+        { memberId: 'mem-06', name: 'ডাঃ আক্তারুজ্জামান', designation: 'সদস্য', phone: '01511998877', attendanceStatus: 'ABSENT', remarks: 'অসুস্থতাজনিত অনুপস্থিত' }
       ],
       decisions: [
         '১. দ্বিতীয় তলার জন্য ৫০,০০০ টাকার প্রাথমিক বাজেট অনুমোদন এবং ৩ সদস্যের নির্মাণ সাব-কমিটি গঠন।',
         '২. সেপ্টেম্বর মাসের মধ্যে বহিঃনিরীক্ষক নিয়োগের সিদ্ধান্ত গৃহীত হলো।',
         '৩. আগামী মাস থেকে ইমাম সাহেবের হাদিয়া ৩,০০০ টাকা এবং মুয়াজ্জিনের ২,০০০ টাকা বৃদ্ধির প্রস্তাব সর্বসম্মতভাবে পাস।'
       ],
+      decisionItems: [
+        { id: 'dec-01', decisionNumber: 'সিদ্ধান্ত-১', agendaId: 'ag-01', agendaTitle: 'মসজিদের দ্বিতীয় তলার অসম্পূর্ণ টাইলস ও পেইন্ট কাজ সম্পন্নকরণ।', details: 'দ্বিতীয় তলার জন্য ৫০,০০০ টাকার প্রাথমিক বাজেট অনুমোদন এবং ৩ সদস্যের নির্মাণ সাব-কমিটি গঠন।', assignedMemberId: 'mem-04', assignedMemberName: 'মোঃ জহিরুল হক', assignedMemberDesignation: 'কোষাধ্যক্ষ', deadline: '2026-08-25', priority: 'HIGH', resolutionId: 'res-001', resolutionNumber: 'RES-2026-001' },
+        { id: 'dec-02', decisionNumber: 'সিদ্ধান্ত-২', agendaId: 'ag-02', agendaTitle: 'আসন্ন রমজান ও বার্ষিক হিসাব নিরীক্ষা (Audit) প্রস্তুতি।', details: 'সেপ্টেম্বর মাসের মধ্যে বহিঃনিরীক্ষক নিয়োগ ও যাবতীয় ভাউচার নিরীক্ষার সিদ্ধান্ত গৃহীত হলো।', assignedMemberId: 'mem-03', assignedMemberName: 'মুহাম্মদ রফিকুল ইসলাম', assignedMemberDesignation: 'সাধারণ সম্পাদক', deadline: '2026-08-30', priority: 'NORMAL', resolutionId: 'res-002', resolutionNumber: 'RES-2026-002' },
+        { id: 'dec-03', decisionNumber: 'সিদ্ধান্ত-৩', agendaId: 'ag-03', agendaTitle: 'ইমাম ও মুয়াজ্জিন সাহেবের বার্ষিক হাদিয়া বৃদ্ধি প্রস্তাবনা।', details: 'আগামী মাস থেকে ইমাম সাহেবের হাদিয়া ৩,০০০ টাকা এবং মুয়াজ্জিনের ২,০০০ টাকা বৃদ্ধির প্রস্তাব সর্বসম্মতভাবে পাস।', assignedMemberId: 'mem-04', assignedMemberName: 'মোঃ জহিরুল হক', assignedMemberDesignation: 'কোষাধ্যক্ষ', deadline: '2026-09-01', priority: 'NORMAL' }
+      ],
       resolutions: [
         'রেজোলিউশন নং ০১/২০২৬: মসজিদের সম্প্রসারণ তহবিলের জন্য বিশেষ জুমার আবেদন পরিচালনা করা হবে।'
+      ],
+      assignedTasks: [
+        { id: 'ts-01', taskDescription: 'দ্বিতীয় তলার টাইলস ও রঙের ব্যয় প্রাক্কলন ও মিস্ত্রি চূড়ান্ত করা', assignedMemberId: 'mem-04', assignedMemberName: 'মোঃ জহিরুল হক', assignedMemberDesignation: 'কোষাধ্যক্ষ', startDate: '2026-08-11', endDate: '2026-08-25', status: 'COMPLETED' },
+        { id: 'ts-02', taskDescription: 'হিসাব নিরীক্ষা রিপোর্ট প্রস্তুতকরণ ও নিরীক্ষক দলের সাথে সমন্বয়', assignedMemberId: 'mem-03', assignedMemberName: 'মুহাম্মদ রফিকুল ইসলাম', assignedMemberDesignation: 'সাধারণ সম্পাদক', startDate: '2026-08-12', endDate: '2026-08-30', status: 'IN_PROGRESS' }
       ],
       actionItems: [
         { task: 'দ্বিতীয় তলার টাইলস ও রঙের ব্যয় প্রাক্কলন ও মিস্ত্রি চূড়ান্ত করা', assigneeName: 'মোঃ জহিরুল হক', assigneeDesignation: 'কোষাধ্যক্ষ', deadline: '2026-08-25' },
@@ -846,7 +884,403 @@ export class DatabaseStore {
       createdAt: '2026-08-10T22:00:00.000Z'
     });
 
-    // 9.1 Committee Notices
+    // 9.1 Committee Resolutions (রেজোলিউশন তালিকা - আলাদা স্বয়ংসম্পূর্ণ নথি)
+    this.committeeResolutions.push(
+      {
+        id: 'res-001',
+        mosqueId: mosque1.id,
+        resolutionNumber: 'RES-2026-001',
+        meetingId: 'meet-001',
+        meetingDocumentNumber: 'MM-2026-0001',
+        meetingNumber: '০১',
+        meetingMemoNumber: 'MJMWS-10/08/26/0001',
+        meetingDate: '2026-08-10',
+        meetingType: 'MONTHLY',
+        meetingTypeBn: 'মাসিক নিয়মিত সভা',
+        meetingVenue: 'মসজিদ কনফারেন্স রুম / অফিস কক্ষ',
+        meetingChairman: 'আলহাজ্ব মোঃ মকবুল হোসেন',
+        meetingSecretary: 'মুহাম্মদ রফিকুল ইসলাম',
+        agendaId: 'ag-01',
+        agendaTitle: 'মসজিদের দ্বিতীয় তলার অসম্পূর্ণ টাইলস ও পেইন্ট কাজ সম্পন্নকরণ।',
+        decisionId: 'dec-01',
+        decisionNumber: 'সিদ্ধান্ত-১',
+        date: '2026-08-10',
+        subject: 'মসজিদের দ্বিতীয় তলার টাইলস ও রঙ কাজের বাজেট অনুমোদন এবং ৩ সদস্যের নির্মাণ সাব-কমিটি গঠন',
+        background: 'মসজিদ কমপ্লেক্সের ২য় তলায় মুসল্লীদের নামাজ আদায়ের সুবিধার্থে অসম্পূর্ণ টাইলস ও পেইন্টিং কাজ অবিলম্বে শেষ করা অপরিহার্য হয়ে পড়েছে।',
+        consideration: 'সভায় উপস্থিত সদস্যবৃন্দের পুঙ্খানুপুঙ্খ আলোচনা এবং কোষাধ্যক্ষ মহোদয়ের আর্থিক বিবরণী পর্যালোচনার প্রেক্ষিতে প্রাথমিক ৫০,০০০/- (পঞ্চাশ হাজার) টাকার ফান্ড বরাদ্দ সমীচীন বলে বিবেচিত হয়।',
+        proposal: 'সম্মানিত সাধারণ সম্পাদক মুহাম্মদ রফিকুল ইসলাম কর্তৃক প্রস্তাবিত এবং সহ-সভাপতি আলহাজ্ব মোঃ শামসুল হুদা কর্তৃক সমর্থিত।',
+        resolutionText: 'সর্বসম্মতিক্রমে সিদ্ধান্ত গৃহীত হলো যে, মসজিদ কমপ্লেক্সের ২য় তলার টাইলস ও রঙ কাজের জন্য প্রাথমিক ৫০,০০০/- টাকার বাজেট মঞ্জুর করা হলো। কাজটি সুষ্ঠু ও স্বচ্ছভাবে বাস্তবায়নের জন্য কোষাধ্যক্ষ মোঃ জহিরুল হককে আহ্বায়ক করে ৩ সদস্যের একটি নির্মাণ সাব-কমিটি গঠন করা হলো। উক্ত কমিটি আগামী ২৫ আগস্ট ২০২৬ তারিখের মধ্যে প্রয়োজনীয় মালামাল ও দরপত্র চূড়ান্ত করে কার্যক্রম সমাপ্ত করবে।',
+        assignedMemberId: 'mem-04',
+        assignedMemberName: 'মোঃ জহিরুল হক',
+        assignedMemberDesignation: 'কোষাধ্যক্ষ',
+        assignedMemberPhone: '01611223344',
+        deadline: '2026-08-25',
+        status: 'APPROVED',
+        priority: 'HIGH',
+        remarks: 'উন্নয়ন তহবিল থেকে উক্ত ব্যয় নির্বাহ করা হবে।',
+        createdAt: '2026-08-10T22:30:00.000Z'
+      },
+      {
+        id: 'res-002',
+        mosqueId: mosque1.id,
+        resolutionNumber: 'RES-2026-002',
+        meetingId: 'meet-001',
+        meetingDocumentNumber: 'MM-2026-0001',
+        meetingNumber: '০১',
+        meetingMemoNumber: 'MJMWS-10/08/26/0001',
+        meetingDate: '2026-08-10',
+        meetingType: 'MONTHLY',
+        meetingTypeBn: 'মাসিক নিয়মিত সভা',
+        meetingVenue: 'মসজিদ কনফারেন্স রুম / অফিস কক্ষ',
+        meetingChairman: 'আলহাজ্ব মোঃ মকবুল হোসেন',
+        meetingSecretary: 'মুহাম্মদ রফিকুল ইসলাম',
+        agendaId: 'ag-02',
+        agendaTitle: 'আসন্ন রমজান ও বার্ষিক হিসাব নিরীক্ষা (Audit) প্রস্তুতি।',
+        decisionId: 'dec-02',
+        decisionNumber: 'সিদ্ধান্ত-২',
+        date: '2026-08-10',
+        subject: 'মসজিদের বিগত অর্থবছরের হিসাব নিরীক্ষা (Internal & External Audit) টিম চূড়ান্তকরণ',
+        background: 'মসজিদের আর্থিক স্বচ্ছতা ও জবাবদিহিতা নিশ্চিতকরণে প্রতি অর্থবছরের আয়-ব্যয় অডিট সম্পন্ন করা আবশ্যক।',
+        consideration: 'কমিটির সকল সদস্যের উপস্থিতিতে উন্মুক্ত পর্যালোচনায় স্বচ্ছ ও নিরপেক্ষ অডিটের গুরুত্ব সর্বসম্মতভাবে প্রতিফলিত হয়।',
+        proposal: 'কোষাধ্যক্ষ মোঃ জহিরুল হক কর্তৃক প্রস্তাবিত এবং সভাপতি মহোদয় কর্তৃক অনুমোদিত।',
+        resolutionText: 'গৃহীত সিদ্ধান্ত মোতাবেক, আগামী ৩০ আগস্ট ২০২৬ তারিখের মধ্যে সাধারণ সম্পাদক মুহাম্মদ রফিকুল ইসলামের নেতৃত্বে হিসাব ও ভাউচার প্রস্তুত করে ২ সদস্যের স্বতন্ত্র নিরীক্ষক দলের নিকট হস্তান্তর করা হবে এবং আগামী সাধারণ সভায় চূড়ান্ত অডিট রিপোর্ট উপস্থাপন করা হবে।',
+        assignedMemberId: 'mem-03',
+        assignedMemberName: 'মুহাম্মদ রফিকুল ইসলাম',
+        assignedMemberDesignation: 'সাধারণ সম্পাদক',
+        assignedMemberPhone: '01712345678',
+        deadline: '2026-08-30',
+        status: 'IMPLEMENTED',
+        priority: 'NORMAL',
+        remarks: 'অডিট টিমকে পূর্ণাঙ্গ সহযোগিতা প্রদানের নির্দেশ দেওয়া হলো।',
+        createdAt: '2026-08-10T22:45:00.000Z'
+      }
+    );
+
+    // 9.1 Committee Action Plans (কমিটি কর্মপরিকল্পনা ও বাস্তবায়ন অগ্রগতি)
+    this.committeeActionPlans.push(
+      {
+        id: 'plan-001',
+        mosqueId: mosque1.id,
+        planNumber: 'AP-2026-001',
+        termId: term1.id,
+        termTitle: term1.title,
+        title: 'মসজিদের অজুখানা ও ওজুখুটির টাইলস সংস্কার ও পানি লাইন মেরামত',
+        description: 'অজুখানার পুরাতন ভাঙা টাইলস অপসারণ করে নন-স্লিপ গ্রানাইট টাইলস স্থাপন এবং পানির নতুন পাইপ ও ফ্লাশ লাইন স্থাপন। মুসল্লীদের সুবিধার্থে সার্বক্ষণিক পরিষ্কার ও দুর্গন্ধমুক্ত পরিবেশ বজায় রাখা।',
+        category: 'অজুখানা',
+        priority: 'HIGH',
+        responsibleMemberId: 'mem-04',
+        responsibleMemberName: 'মোঃ জহিরুল হক',
+        responsibleMemberDesignation: 'কোষাধ্যক্ষ (Treasurer)',
+        responsibleMemberPhone: '01611223344',
+        responsibleMembers: [
+          { id: 'mem-04', name: 'মোঃ জহিরুল হক', designation: 'কোষাধ্যক্ষ', phone: '01611223344' }
+        ],
+        assistantMemberIds: ['mem-06'],
+        assistantMembers: [
+          { id: 'mem-06', name: 'ডাঃ আক্তারুজ্জামান', designation: 'সদস্য', phone: '01511998877' }
+        ],
+        startDate: '2026-08-12',
+        dueDate: '2026-09-05',
+        estimatedBudget: 45000,
+        actualCost: 28000,
+        fundingSource: 'উন্নয়ন ও সংস্কার ফান্ড (Bank Asia)',
+        fundingAccountId: 'acc-02',
+        fundingAccountName: 'উন্নয়ন তহবিল - ব্যাংক একাউন্ট',
+        status: 'IN_PROGRESS',
+        progressPercentage: 65,
+        remarks: 'টাইলস কেনার কাজ সম্পন্ন, পাইপ ফিটিং চলমান।',
+        resolutionId: 'res-001',
+        resolutionNumber: 'RES-2026-001',
+        resolutionSubject: 'মসজিদের দ্বিতীয় তলার টাইলস ও রঙ কাজের বাজেট অনুমোদন এবং ৩ সদস্যের নির্মাণ সাব-কমিটি গঠন',
+        meetingId: 'meet-001',
+        meetingNumber: '০১',
+        decisionNumber: 'সিদ্ধান্ত-১',
+        attachments: [
+          {
+            id: 'att-1',
+            name: 'পুরাতন_অজুখানার_ছবি_সংস্কারের_পূর্বে.jpg',
+            url: 'https://images.unsplash.com/photo-1584551246679-0daf3d275d0f?w=600&auto=format&fit=crop&q=80',
+            type: 'BEFORE_PHOTO',
+            typeBn: 'কাজের পূর্বের ছবি',
+            uploadedAt: '2026-08-12T09:00:00.000Z',
+            uploadedByName: 'মোঃ জহিরুল হক'
+          },
+          {
+            id: 'att-2',
+            name: 'চলমান_টাইলস_কাজ_পরিদর্শন.jpg',
+            url: 'https://images.unsplash.com/photo-1503387762-592deb58ef4e?w=600&auto=format&fit=crop&q=80',
+            type: 'DURING_PHOTO',
+            typeBn: 'কাজের চলমান ছবি',
+            uploadedAt: '2026-08-20T14:30:00.000Z',
+            uploadedByName: 'মুহাম্মদ রফিকুল ইসলাম'
+          },
+          {
+            id: 'att-3',
+            name: 'টাইলস_ক্রয়_ভাউচার_বিল.pdf',
+            url: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=600&auto=format&fit=crop&q=80',
+            type: 'BILL',
+            typeBn: 'বিল ও ভাউচার',
+            uploadedAt: '2026-08-18T11:00:00.000Z',
+            uploadedByName: 'মোঃ জহিরুল হক'
+          }
+        ],
+        activityLogs: [
+          {
+            id: 'act-1',
+            action: 'CREATE',
+            details: 'কর্মপরিকল্পনা তৈরি করা হয়েছে। রেজোলিউশন: RES-2026-001',
+            changedBy: 'usr-admin-1',
+            changedByName: 'আলহাজ্ব মোঃ মকবুল হোসেন',
+            timestamp: '2026-08-11T10:00:00.000Z'
+          },
+          {
+            id: 'act-2',
+            action: 'PROGRESS_UPDATE',
+            details: 'অগ্রগতি ৩০% এ উন্নীত এবং টাইলস মালামাল ক্রয় সম্পন্ন।',
+            changedBy: 'usr-admin-1',
+            changedByName: 'মুহাম্মদ রফিকুল ইসলাম',
+            timestamp: '2026-08-18T16:00:00.000Z',
+            previousState: '0%',
+            newState: '30%'
+          },
+          {
+            id: 'act-3',
+            action: 'PROGRESS_UPDATE',
+            details: 'অগ্রগতি ৬৫% এ উন্নীত করা হয়েছে।',
+            changedBy: 'usr-admin-1',
+            changedByName: 'মোঃ জহিরুল হক',
+            timestamp: '2026-08-22T11:00:00.000Z',
+            previousState: '30%',
+            newState: '65%'
+          }
+        ],
+        createdBy: 'usr-admin-1',
+        createdByName: 'আলহাজ্ব মোঃ মকবুল হোসেন',
+        createdAt: '2026-08-11T10:00:00.000Z',
+        updatedAt: '2026-08-22T11:00:00.000Z'
+      },
+      {
+        id: 'plan-002',
+        mosqueId: mosque1.id,
+        planNumber: 'AP-2026-002',
+        termId: term1.id,
+        termTitle: term1.title,
+        title: 'মসজিদের প্রধান হলরুমের সাউন্ড সিস্টেম ও ডিজিটাল ওয়্যারলেস মাইক স্থাপন',
+        description: 'মিহরাব, খুতবার মিম্বর ও মহিলাদের নামাজ হলের জন্য উচ্চমানের ডিজিটাল অডিও মিক্সার ও ফিডব্যাকলেস ওয়্যারলেস মাইক্রোফোন সেটআপ সম্পন্নকরণ।',
+        category: 'সাউন্ড সিস্টেম',
+        priority: 'URGENT',
+        responsibleMemberId: 'mem-03',
+        responsibleMemberName: 'মুহাম্মদ রফিকুল ইসলাম',
+        responsibleMemberDesignation: 'সাধারণ সম্পাদক (General Secretary)',
+        responsibleMemberPhone: '01712345678',
+        responsibleMembers: [
+          { id: 'mem-03', name: 'মুহাম্মদ রফিকুল ইসলাম', designation: 'সাধারণ সম্পাদক', phone: '01712345678' }
+        ],
+        assistantMemberIds: ['mem-05'],
+        assistantMembers: [
+          { id: 'mem-05', name: 'মাওলানা মুফতি আব্দুল্লাহ আল-মামুন', designation: 'খতীব ও পেশ ইমাম', phone: '01912444555' }
+        ],
+        startDate: '2026-08-01',
+        dueDate: '2026-08-10',
+        completedDate: '2026-08-09',
+        estimatedBudget: 35000,
+        actualCost: 32500,
+        fundingSource: 'সাধারণ দান ফান্ড (ক্যাশ)',
+        fundingAccountId: 'acc-01',
+        fundingAccountName: 'প্রধান ক্যাশ তহবিল',
+        status: 'COMPLETED',
+        progressPercentage: 100,
+        remarks: 'জুমার নামাজে সফলভাবে পরীক্ষা করা হয়েছে এবং মুসল্লিরা প্রশংসা করেছেন।',
+        attachments: [
+          {
+            id: 'att-201',
+            name: 'নতুন_সাউন্ড_সিস্টেম_ইনস্টলেশন_পরবর্তী_ছবি.jpg',
+            url: 'https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?w=600&auto=format&fit=crop&q=80',
+            type: 'AFTER_PHOTO',
+            typeBn: 'কাজের সমাপ্তির ছবি',
+            uploadedAt: '2026-08-09T18:00:00.000Z',
+            uploadedByName: 'মুহাম্মদ রফিকুল ইসলাম'
+          },
+          {
+            id: 'att-202',
+            name: 'সাউন্ড_ইকুইপমেন্ট_ক্রয়_ইনভয়েস.pdf',
+            url: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=600&auto=format&fit=crop&q=80',
+            type: 'INVOICE',
+            typeBn: 'ইনভয়েস / রশিদ',
+            uploadedAt: '2026-08-09T18:30:00.000Z',
+            uploadedByName: 'মুহাম্মদ রফিকুল ইসলাম'
+          }
+        ],
+        activityLogs: [
+          {
+            id: 'act-201',
+            action: 'CREATE',
+            details: 'কর্মপরিকল্পনা তৈরি করা হয়েছে।',
+            changedBy: 'usr-admin-1',
+            changedByName: 'আলহাজ্ব মোঃ মকবুল হোসেন',
+            timestamp: '2026-08-01T09:00:00.000Z'
+          },
+          {
+            id: 'act-202',
+            action: 'MARK_COMPLETED',
+            details: 'সাউন্ড সিস্টেম ইনস্টলেশন ও টেস্টিং সফলভাবে সম্পন্ন হয়েছে। অগ্রগতি ১০০%',
+            changedBy: 'usr-admin-1',
+            changedByName: 'মুহাম্মদ রফিকুল ইসলাম',
+            timestamp: '2026-08-09T19:00:00.000Z',
+            previousState: 'IN_PROGRESS',
+            newState: 'COMPLETED'
+          }
+        ],
+        createdBy: 'usr-admin-1',
+        createdByName: 'মুহাম্মদ রফিকুল ইসলাম',
+        createdAt: '2026-08-01T09:00:00.000Z',
+        updatedAt: '2026-08-09T19:00:00.000Z'
+      },
+      {
+        id: 'plan-003',
+        mosqueId: mosque1.id,
+        planNumber: 'AP-2026-003',
+        termId: term1.id,
+        termTitle: term1.title,
+        title: 'মসজিদ চত্বর ও প্রবেশদ্বারে ৪টি নাইট ভিশন CCTV ক্যামেরা ও এনভিআর স্থাপন',
+        description: 'মসজিদের প্রধান গেট, দানবাক্স এলাকা, জুতার তাক ও গাড়ি পার্কিং জোনে সার্বক্ষণিক নিরাপত্তার জন্য ৮-চ্যানেল এনভিআরসহ ৪টি ৫ মেগাপিক্সেল আইপি ক্যামেরা সংযোগ।',
+        category: 'CCTV / নিরাপত্তা',
+        priority: 'HIGH',
+        responsibleMemberId: 'mem-02',
+        responsibleMemberName: 'আলহাজ্ব মোঃ শামসুল হুদা',
+        responsibleMemberDesignation: 'সহ-সভাপতি',
+        responsibleMemberPhone: '01819234567',
+        responsibleMembers: [
+          { id: 'mem-02', name: 'আলহাজ্ব মোঃ শামসুল হুদা', designation: 'সহ-সভাপতি', phone: '01819234567' }
+        ],
+        startDate: '2026-08-25',
+        dueDate: '2026-09-15',
+        estimatedBudget: 55000,
+        actualCost: 0,
+        fundingSource: 'নিরাপত্তা ও আইটি তহবিল',
+        fundingAccountId: 'acc-02',
+        fundingAccountName: 'উন্নয়ন তহবিল - ব্যাংক একাউন্ট',
+        status: 'TODO',
+        progressPercentage: 0,
+        remarks: 'দরপত্র যাচাই চলছে। আগামী সপ্তাহে ভেন্ডর চূড়ান্ত হবে।',
+        activityLogs: [
+          {
+            id: 'act-301',
+            action: 'CREATE',
+            details: 'নতুন নিরাপত্তা কর্মপরিকল্পনা অন্তর্ভুক্তি।',
+            changedBy: 'usr-admin-1',
+            changedByName: 'আলহাজ্ব মোঃ মকবুল হোসেন',
+            timestamp: '2026-08-20T11:00:00.000Z'
+          }
+        ],
+        createdBy: 'usr-admin-1',
+        createdByName: 'আলহাজ্ব মোঃ মকবুল হোসেন',
+        createdAt: '2026-08-20T11:00:00.000Z',
+        updatedAt: '2026-08-20T11:00:00.000Z'
+      },
+      {
+        id: 'plan-004',
+        mosqueId: mosque1.id,
+        planNumber: 'AP-2026-004',
+        termId: term1.id,
+        termTitle: term1.title,
+        title: 'মসজিদ সংলগ্ন কবরস্থানের সীমানা প্রাচীর ও সৌর বাতি স্থাপন',
+        description: 'কবরস্থানের পূর্ব পাশের ভাঙা দেয়াল পুনর্নির্মাণ, আগাছা পরিষ্কার এবং রাতে আলোর সুবিধার্থে ২টি স্বয়ংক্রিয় সৌর সড়ক বাতি (Solar Street Light) স্থাপন।',
+        category: 'কবরস্থান',
+        priority: 'MEDIUM',
+        responsibleMemberId: 'mem-04',
+        responsibleMemberName: 'মোঃ জহিরুল হক',
+        responsibleMemberDesignation: 'কোষাধ্যক্ষ (Treasurer)',
+        responsibleMemberPhone: '01611223344',
+        responsibleMembers: [
+          { id: 'mem-04', name: 'মোঃ জহিরুল হক', designation: 'কোষাধ্যক্ষ', phone: '01611223344' }
+        ],
+        startDate: '2026-07-15',
+        dueDate: '2026-08-15',
+        estimatedBudget: 75000,
+        actualCost: 18000,
+        fundingSource: 'কবরস্থান ওয়াকফ ফান্ড',
+        status: 'ON_HOLD',
+        progressPercentage: 25,
+        remarks: 'বর্ষা ও বৃষ্টির কারণে দেয়াল প্লাস্টারের কাজ সাময়িকভাবে স্থগিত আছে। আবহাওয়া স্বাভাবিক হলে শুরু হবে।',
+        activityLogs: [
+          {
+            id: 'act-401',
+            action: 'CREATE',
+            details: 'কর্মপরিকল্পনা গৃহীত হয়েছে।',
+            changedBy: 'usr-admin-1',
+            changedByName: 'মোঃ জহিরুল হক',
+            timestamp: '2026-07-15T10:00:00.000Z'
+          },
+          {
+            id: 'act-402',
+            action: 'STATUS_CHANGE',
+            details: 'বর্ষাজনিত কারণে কাজটি স্থগিত (ON_HOLD) করা হলো।',
+            changedBy: 'usr-admin-1',
+            changedByName: 'মুহাম্মদ রফিকুল ইসলাম',
+            timestamp: '2026-08-05T12:00:00.000Z',
+            previousState: 'IN_PROGRESS',
+            newState: 'ON_HOLD'
+          }
+        ],
+        createdBy: 'usr-admin-1',
+        createdByName: 'মোঃ জহিরুল হক',
+        createdAt: '2026-07-15T10:00:00.000Z',
+        updatedAt: '2026-08-05T12:00:00.000Z'
+      },
+      {
+        id: 'plan-005',
+        mosqueId: mosque1.id,
+        planNumber: 'AP-2026-005',
+        termId: term1.id,
+        termTitle: term1.title,
+        title: 'মসজিদের আইপিএস ব্যাটারি সার্ভিসিং ও বিদ্যুৎ সাশ্রয়ী LED লাইট স্থাপন',
+        description: 'লোডশেডিংকালীন সার্বক্ষণিক আলোর ব্যাকআপের জন্য ২০০ অ্যাম্পিয়ারের আইপিএস ব্যাটারি এসিড পরিবর্তন এবং মূল হলে ৫০টি এনার্জি সেভিং এলইডি প্যানেল লাইট পরিবর্তন।',
+        category: 'বিদ্যুৎ',
+        priority: 'URGENT',
+        responsibleMemberId: 'mem-03',
+        responsibleMemberName: 'মুহাম্মদ রফিকুল ইসলাম',
+        responsibleMemberDesignation: 'সাধারণ সম্পাদক (General Secretary)',
+        responsibleMemberPhone: '01712345678',
+        responsibleMembers: [
+          { id: 'mem-03', name: 'মুহাম্মদ রফিকুল ইসলাম', designation: 'সাধারণ সম্পাদক', phone: '01712345678' }
+        ],
+        startDate: '2026-08-15',
+        dueDate: '2026-08-28',
+        estimatedBudget: 22000,
+        actualCost: 19500,
+        fundingSource: 'সাধারণ বিদ্যুৎ রক্ষণাবেক্ষণ তহবিল',
+        status: 'IN_PROGRESS',
+        progressPercentage: 85,
+        remarks: 'ব্যাটারি সার্ভিসিং সম্পন্ন, লাইট ফিটিং শেষ পর্যায়ে।',
+        activityLogs: [
+          {
+            id: 'act-501',
+            action: 'CREATE',
+            details: 'কর্মপরিকল্পনা তৈরি হয়েছে।',
+            changedBy: 'usr-admin-1',
+            changedByName: 'মুহাম্মদ রফিকুল ইসলাম',
+            timestamp: '2026-08-15T08:00:00.000Z'
+          },
+          {
+            id: 'act-502',
+            action: 'PROGRESS_UPDATE',
+            details: 'অগ্রগতি ৮৫% এ উন্নীত করা হয়েছে।',
+            changedBy: 'usr-admin-1',
+            changedByName: 'মুহাম্মদ রফিকুল ইসলাম',
+            timestamp: '2026-08-24T17:00:00.000Z',
+            previousState: '0%',
+            newState: '85%'
+          }
+        ],
+        createdBy: 'usr-admin-1',
+        createdByName: 'মুহাম্মদ রফিকুল ইসলাম',
+        createdAt: '2026-08-15T08:00:00.000Z',
+        updatedAt: '2026-08-24T17:00:00.000Z'
+      }
+    );
+
+    // 9.2 Committee Notices
     this.committeeNotices.push({
       id: 'not-001',
       mosqueId: mosque1.id,
@@ -867,6 +1301,160 @@ export class DatabaseStore {
       remarks: 'সকল সম্মানিত সদস্যকে যথাসময়ে উপস্থিত থাকার জন্য বিশেষভাবে অনুরোধ করা হলো।',
       status: 'CONVERTED_TO_MINUTES',
       createdAt: '2026-08-05T10:00:00.000Z'
+    });
+
+    // 9.2 Committee Activities (সদস্য কার্যক্রম)
+    this.committeeActivities.push(
+      {
+        id: 'cact-001',
+        mosqueId: mosque1.id,
+        termId: term1.id,
+        memberId: 'mem-03',
+        memberName: 'মুহাম্মদ রফিকুল ইসলাম',
+        memberDesignation: 'সাধারণ সম্পাদক (General Secretary)',
+        activityType: 'MOSQUE_DEVELOPMENT',
+        activityTypeBn: 'মসজিদ উন্নয়ন কাজ',
+        category: 'COMMITTEE_ACTIVITY',
+        title: '২য় তলার টাইলস ও পেইন্টিং কাজের নিয়মিত তদারকি ও মিস্ত্রি চূড়ান্তকরণ',
+        description: 'মসজিদ কমপ্লেক্সের ২য় তলায় চলমান নির্মাণ ও টাইলস ফিটিংয়ের গুণগত মান পরিদর্শন ও ঠিকাদারদের সাথে সমন্বয় সভা।',
+        date: '2026-08-15',
+        relatedMeetingId: 'meet-001',
+        relatedMeetingTitle: 'মাসিক নিয়মিত সভা (০১)',
+        assignedBy: 'usr-admin-1',
+        assignedByName: 'আলহাজ্ব মোঃ মকবুল হোসেন (সভাপতি)',
+        status: 'COMPLETED',
+        qualityRating: 'EXCELLENT',
+        qualityScore: 95,
+        evaluatorNote: 'অত্যন্ত নিষ্ঠা ও দ্রুততার সাথে উন্নয়ন কাজটি সফলভাবে বাস্তবায়ন করেছেন।',
+        createdAt: '2026-08-15T12:00:00.000Z'
+      },
+      {
+        id: 'cact-002',
+        mosqueId: mosque1.id,
+        termId: term1.id,
+        memberId: 'mem-04',
+        memberName: 'মোঃ জহিরুল হক',
+        memberDesignation: 'কোষাধ্যক্ষ (Treasurer)',
+        activityType: 'ACCOUNTS_AUDIT_SUPPORT',
+        activityTypeBn: 'হিসাব/অডিট সহযোগিতা',
+        category: 'COMMITTEE_ACTIVITY',
+        title: 'অর্ধবার্ষিক আয়-ব্যয় ভাউচার নিরীক্ষা ও ব্যাংক স্টেটমেন্ট রিকনসিলিয়েশন',
+        description: 'গত ৬ মাসের যাবতীয় আয়-ব্যয় রসিদ ও ব্যাংকের লেনদেনের তালিকা নিরীক্ষকদের নিকট সুবিন্যস্তভাবে উপস্থাপন।',
+        date: '2026-08-18',
+        relatedMeetingId: 'meet-001',
+        relatedMeetingTitle: 'মাসিক নিয়মিত সভা (০১)',
+        assignedBy: 'usr-admin-1',
+        assignedByName: 'আলহাজ্ব মোঃ মকবুল হোসেন',
+        status: 'COMPLETED',
+        qualityRating: 'EXCELLENT',
+        qualityScore: 92,
+        evaluatorNote: 'হিসাবের স্বচ্ছতা বজায় রেখে সুন্দরভাবে রিপোর্ট প্রণয়ন করেছেন।',
+        createdAt: '2026-08-18T16:00:00.000Z'
+      },
+      {
+        id: 'cact-003',
+        mosqueId: mosque1.id,
+        termId: term1.id,
+        memberId: 'mem-02',
+        memberName: 'আলহাজ্ব মোঃ শামসুল হুদা',
+        memberDesignation: 'সহ-সভাপতি',
+        activityType: 'DONATION_COLLECTION',
+        activityTypeBn: 'দান সংগ্রহ',
+        category: 'COMMITTEE_ACTIVITY',
+        title: 'মসজিদ কমপ্লেক্সের জন্য প্রবাসী দাতাদের সাথে ফান্ডরাইজিং বৈঠক',
+        description: 'প্রবাসী শুভাকাঙ্ক্ষীদের সাথে যোগাযোগ করে মসজিদ উন্নয়ন ফান্ডের জন্য অনুদান সংগ্রহে বিশেষ ভূমিকা পালন।',
+        date: '2026-08-20',
+        assignedBy: 'usr-admin-1',
+        assignedByName: 'আলহাজ্ব মোঃ মকবুল হোসেন',
+        status: 'COMPLETED',
+        qualityRating: 'GOOD',
+        qualityScore: 88,
+        evaluatorNote: 'প্রবাসী দাতাদের উদ্বুদ্ধকরণে কার্যকর ভূমিকা রেখেছেন।',
+        createdAt: '2026-08-20T10:00:00.000Z'
+      },
+      {
+        id: 'cact-004',
+        mosqueId: mosque1.id,
+        termId: term1.id,
+        memberId: 'mem-03',
+        memberName: 'মুহাম্মদ রফিকুল ইসলাম',
+        memberDesignation: 'সাধারণ সম্পাদক (General Secretary)',
+        activityType: 'AGENDA_DISCUSSION',
+        activityTypeBn: 'এজেন্ডা আলোচনা',
+        category: 'MEETING_PARTICIPATION',
+        title: 'ইমাম-মুয়াজ্জিন হাদিয়া বৃদ্ধি ও বাজেট পরিকল্পনা প্রস্তাবনা উপস্থাপন',
+        description: 'মাসিক সভায় খতীব ও স্টাফদের হাদিয়া সমন্বয়ের যৌক্তিকতা তুলে ধরেন এবং সর্বসম্মতিক্রমে সিদ্ধান্ত গ্রহণে সহায়তা করেন।',
+        date: '2026-08-10',
+        relatedMeetingId: 'meet-001',
+        relatedMeetingTitle: 'মাসিক নিয়মিত সভা (০১)',
+        status: 'COMPLETED',
+        qualityRating: 'EXCELLENT',
+        qualityScore: 95,
+        createdAt: '2026-08-10T21:00:00.000Z'
+      }
+    );
+
+    // 9.3 Committee Member Tasks (অর্পিত দায়িত্ব)
+    this.committeeTasks.push(
+      {
+        id: 'ctsk-001',
+        mosqueId: mosque1.id,
+        termId: term1.id,
+        memberId: 'mem-04',
+        memberName: 'মোঃ জহিরুল হক',
+        memberDesignation: 'কোষাধ্যক্ষ',
+        taskTitle: 'দ্বিতীয় তলার টাইলস ও রঙের ব্যয় প্রাক্কলন ও মিস্ত্রি চূড়ান্ত করা',
+        description: 'কোটেশন সংগ্রহ করে নির্মাণ সাব-কমিটির সাথে চূড়ান্ত দরদাম নির্ধারণ।',
+        meetingId: 'meet-001',
+        meetingNumber: '০১',
+        assignedDate: '2026-08-10',
+        dueDate: '2026-08-25',
+        completedDate: '2026-08-24',
+        status: 'COMPLETED',
+        qualityRating: 'EXCELLENT',
+        qualityScore: 95,
+        evaluatorNote: 'নির্ধারিত তারিখের আগেই সফলভাবে সম্পন্ন।',
+        createdAt: '2026-08-10T22:00:00.000Z'
+      },
+      {
+        id: 'ctsk-002',
+        mosqueId: mosque1.id,
+        termId: term1.id,
+        memberId: 'mem-03',
+        memberName: 'মুহাম্মদ রফিকুল ইসলাম',
+        memberDesignation: 'সাধারণ সম্পাদক',
+        taskTitle: 'হিসাব নিরীক্ষা রিপোর্ট প্রস্তুতকরণ ও নিরীক্ষক দলের সাথে সমন্বয়',
+        description: 'বার্ষিক হিসাব প্রস্তুত করে নিরীক্ষকদের চূড়ান্ত তারিখ নির্ধারণ করা।',
+        meetingId: 'meet-001',
+        meetingNumber: '০১',
+        assignedDate: '2026-08-10',
+        dueDate: '2026-08-30',
+        status: 'IN_PROGRESS',
+        createdAt: '2026-08-10T22:00:00.000Z'
+      }
+    );
+
+    // 9.4 Committee Manual Evaluations (ম্যানুয়াল মূল্যায়ন)
+    this.committeeManualEvaluations.push({
+      id: 'meval-001',
+      mosqueId: mosque1.id,
+      termId: term1.id,
+      memberId: 'mem-03',
+      memberName: 'মুহাম্মদ রফিকুল ইসলাম',
+      memberDesignation: 'সাধারণ সম্পাদক (General Secretary)',
+      evaluationPeriodType: 'MONTHLY',
+      fromDate: '2026-08-01',
+      toDate: '2026-08-31',
+      overallAssessment: 'মসজিদ পরিচালনা, মিটিং পরিচালনা এবং সামগ্রিক ব্যবস্থাপনায় অত্যন্ত একনিষ্ঠ ও দায়িত্বশীল ভূমিকা পালন করে যাচ্ছেন।',
+      strengths: 'সময়ানুবর্তিতা, স্বচ্ছতা, চমৎকার যোগাযোগ দক্ষতা এবং দ্রুত সিদ্ধান্ত বাস্তবায়নের ক্ষমতা।',
+      weaknesses: 'কমিটির অন্যান্য সদস্যদের আরো বেশি সক্রিয় করার উদ্যোগ বাড়ানো যেতে পারে।',
+      improvementRequired: 'ডিজিটাল নোটিশ প্রদান ও অনলাইন অনুদান প্রক্রিয়ায় সার্বক্ষণিক তদারকি।',
+      recommendation: 'EXCELLENT',
+      evaluatorComment: 'কমিটির কার্যক্রমকে গতিশীল রাখতে তাঁর ভূমিকা প্রশংসনীয়।',
+      evaluatorId: 'usr-admin-1',
+      evaluatorName: 'আলহাজ্ব মোঃ মকবুল হোসেন',
+      evaluatorRole: 'PRESIDENT',
+      createdAt: '2026-08-25T10:00:00.000Z'
     });
 
     // 10. Staff & Payroll

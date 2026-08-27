@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Plus,
@@ -13,7 +13,7 @@ import {
   Download
 } from 'lucide-react';
 import { CommitteeMeetingNotice, Mosque, CommitteeMember } from '../types';
-import { formatDate } from '../lib/i18n';
+import { formatDate, Language } from '../lib/i18n';
 
 interface MeetingNoticeModalProps {
   isOpen: boolean;
@@ -361,23 +361,35 @@ export const MeetingNoticeModal: React.FC<MeetingNoticeModalProps> = ({
 // 2. MEETING NOTICE PRINT DOCUMENT MODAL
 // ============================================================
 interface MeetingNoticePrintModalProps {
-  isOpen: boolean;
+  isOpen?: boolean;
   onClose: () => void;
   notice: CommitteeMeetingNotice | null;
-  mosque: Mosque | null;
-  members: CommitteeMember[];
+  mosque?: Mosque | null;
+  members?: CommitteeMember[];
+  language?: Language;
 }
 
 export const MeetingNoticePrintModal: React.FC<MeetingNoticePrintModalProps> = ({
-  isOpen,
+  isOpen = true,
   onClose,
   notice,
   mosque,
-  members,
+  members = [],
+  language = 'bn',
 }) => {
+  useEffect(() => {
+    if (isOpen) {
+      document.body.classList.add('print-document-active');
+    }
+    return () => {
+      document.body.classList.remove('print-document-active');
+    };
+  }, [isOpen]);
+
   if (!isOpen || !notice) return null;
 
-  const toBanglaNum = (n: number | string): string => {
+  const toBanglaNum = (n: number | string | undefined | null): string => {
+    if (n === undefined || n === null) return '';
     const bnDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
     return String(n).replace(/[0-9]/g, (d) => bnDigits[parseInt(d, 10)]);
   };
@@ -386,8 +398,8 @@ export const MeetingNoticePrintModal: React.FC<MeetingNoticePrintModalProps> = (
     window.print();
   };
 
-  const president = members.find(m => m.position === 'PRESIDENT');
-  const secretary = members.find(m => m.position === 'SECRETARY');
+  const president = (members || []).find(m => m.position === 'PRESIDENT');
+  const secretary = (members || []).find(m => m.position === 'SECRETARY');
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto report-modal-print-wrapper">
@@ -444,7 +456,7 @@ export const MeetingNoticePrintModal: React.FC<MeetingNoticePrintModalProps> = (
               <div className="flex items-center justify-between border-b-2 border-slate-900 pb-4 mb-6">
                 <div className="w-20 h-20 flex-shrink-0 flex items-center justify-center bg-slate-50 border border-slate-200 rounded-xl overflow-hidden p-1">
                   {mosque?.logoUrl ? (
-                    <img src={mosque.logoUrl} alt={mosque.name} className="w-full h-full object-contain" />
+                    <img src={mosque.logoUrl} alt={mosque.name} referrerPolicy="no-referrer" className="w-full h-full object-contain" />
                   ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center bg-blue-900 text-white rounded-lg p-1 text-center">
                       <Building2 className="w-6 h-6 mb-0.5 opacity-80" />
@@ -469,7 +481,7 @@ export const MeetingNoticePrintModal: React.FC<MeetingNoticePrintModalProps> = (
                 <div className="w-20 h-20 flex-shrink-0 flex flex-col items-center justify-center border border-slate-200 rounded-xl bg-slate-50/80 p-1 text-center">
                   <span className="text-[9px] font-bold text-slate-500 font-baloo uppercase">নোটিশ নং</span>
                   <span className="text-xs font-extrabold text-blue-950 font-siliguri mt-0.5">
-                    {notice.serialNumber || '০১'}
+                    {toBanglaNum(notice.serialNumber || '১')}
                   </span>
                 </div>
               </div>
@@ -478,11 +490,11 @@ export const MeetingNoticePrintModal: React.FC<MeetingNoticePrintModalProps> = (
               <div className="flex items-center justify-between text-xs font-baloo text-slate-800 mb-5 border-b border-slate-200 pb-2">
                 <div>
                   <span className="font-bold text-slate-900">স্মারক নং: </span>
-                  <span>{notice.memoNo}</span>
+                  <span>{notice.memoNo || '—'}</span>
                 </div>
                 <div>
                   <span className="font-bold text-slate-900">তারিখ: </span>
-                  <span>{formatDate(notice.noticeDate, 'bn')}</span>
+                  <span>{formatDate(notice.noticeDate, language || 'bn')}</span>
                 </div>
               </div>
 
@@ -504,7 +516,7 @@ export const MeetingNoticePrintModal: React.FC<MeetingNoticePrintModalProps> = (
                   সম্মানিত সদস্যবৃন্দ,
                 </p>
                 <p className="text-justify">
-                  আসসালামু আলাইকুম ওয়া রাহমাতুল্লাহ। অত্র মসজিদ পরিচালনা কমিটির সকল সম্মানিত সদস্যবৃন্দের অবগতির জন্য জানানো যাচ্ছে যে, আগামী <span className="font-bold text-slate-950">{formatDate(notice.meetingDate, 'bn')}</span> রোজ <span className="font-bold text-slate-950">{notice.dayName}</span>, সময়: <span className="font-bold text-slate-950">{notice.time}</span> ঘটিকায় <span className="font-bold text-slate-950">{notice.venue}</span>-এ কমিটির এক গুরুত্বপূর্ণ <span className="font-bold text-slate-950">{notice.meetingTypeBn || 'সাধারণ সভা'}</span> অনুষ্ঠিত হবে, ইনশাআল্লাহ।
+                  আসসালামু আলাইকুম ওয়া রাহমাতুল্লাহ। অত্র মসজিদ পরিচালনা কমিটির সকল সম্মানিত সদস্যবৃন্দের অবগতির জন্য জানানো যাচ্ছে যে, আগামী <span className="font-bold text-slate-950">{formatDate(notice.meetingDate, language || 'bn')}</span> রোজ <span className="font-bold text-slate-950">{notice.dayName}</span>, সময়: <span className="font-bold text-slate-950">{notice.time}</span> ঘটিকায় <span className="font-bold text-slate-950">{notice.venue}</span>-এ কমিটির এক গুরুত্বপূর্ণ <span className="font-bold text-slate-950">{notice.meetingTypeBn || 'সাধারণ সভা'}</span> অনুষ্ঠিত হবে, ইনশাআল্লাহ।
                 </p>
 
                 {/* Agendas Box */}
@@ -512,16 +524,20 @@ export const MeetingNoticePrintModal: React.FC<MeetingNoticePrintModalProps> = (
                   <h3 className="text-xs font-bold font-siliguri text-slate-900 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1">
                     সভার আলোচ্যসূচি (এজেন্ডা):
                   </h3>
-                  <ol className="space-y-1.5 text-xs sm:text-sm list-none pl-0">
-                    {notice.agendas.map((ag, idx) => (
-                      <li key={idx} className="flex items-start space-x-2">
-                        <span className="font-bold text-blue-900 w-5 flex-shrink-0">
-                          {toBanglaNum(idx + 1)}.
-                        </span>
-                        <span className="flex-1">{ag}</span>
-                      </li>
-                    ))}
-                  </ol>
+                  {notice.agendas && notice.agendas.length > 0 ? (
+                    <ol className="space-y-1.5 text-xs sm:text-sm list-none pl-0">
+                      {notice.agendas.map((ag, idx) => (
+                        <li key={idx} className="flex items-start space-x-2">
+                          <span className="font-bold text-blue-900 w-5 flex-shrink-0">
+                            {toBanglaNum(idx + 1)}.
+                          </span>
+                          <span className="flex-1">{ag}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p className="text-xs text-slate-500 italic">কোনো আলোচ্যসূচি উল্লেখ করা হয়নি।</p>
+                  )}
                 </div>
 
                 {notice.remarks && (
@@ -542,7 +558,7 @@ export const MeetingNoticePrintModal: React.FC<MeetingNoticePrintModalProps> = (
                 <div className="text-center w-48">
                   {mosque?.presidentSignatureUrl ? (
                     <div className="h-12 flex items-end justify-center mb-1">
-                      <img src={mosque.presidentSignatureUrl} alt="সভাপতি" className="max-h-10 object-contain" />
+                      <img src={mosque.presidentSignatureUrl} alt="সভাপতি" referrerPolicy="no-referrer" className="max-h-10 object-contain" />
                     </div>
                   ) : (
                     <div className="h-12" />
@@ -559,7 +575,7 @@ export const MeetingNoticePrintModal: React.FC<MeetingNoticePrintModalProps> = (
                 <div className="text-center w-48">
                   {mosque?.secretarySignatureUrl ? (
                     <div className="h-12 flex items-end justify-center mb-1">
-                      <img src={mosque.secretarySignatureUrl} alt="সেক্রেটারী" className="max-h-10 object-contain" />
+                      <img src={mosque.secretarySignatureUrl} alt="সেক্রেটারী" referrerPolicy="no-referrer" className="max-h-10 object-contain" />
                     </div>
                   ) : (
                     <div className="h-12" />
@@ -576,7 +592,7 @@ export const MeetingNoticePrintModal: React.FC<MeetingNoticePrintModalProps> = (
               </div>
 
               <div className="mt-8 pt-2 border-t border-slate-200 text-center text-[10px] text-slate-400 font-baloo flex items-center justify-between">
-                <span>স্মারক নং: {notice.memoNo}</span>
+                <span>স্মারক নং: {notice.memoNo || '—'}</span>
                 <span>MasjidLedger • অফিসিয়াল মিটিং আহবান নোটিশ</span>
                 <span>নোটিশ আইডি: {notice.id}</span>
               </div>

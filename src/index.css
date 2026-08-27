@@ -272,7 +272,7 @@ aside button,
    ============================================================ */
 @page {
   size: A4 portrait;
-  margin: 10mm 12mm;
+  margin: 8mm 10mm;
 }
 
 @media print {
@@ -304,13 +304,61 @@ aside button,
     height: 0 !important;
   }
 
-  /* When an invoice/receipt modal is open, completely hide background app shell */
-  .app-shell-hidden-for-print {
+  /* When printing document/invoice, suppress background app shell & screen UI */
+  .app-shell-hidden-for-print,
+  body.print-document-active .app-shell-hidden-for-print,
+  body.print-document-active header,
+  body.print-document-active nav,
+  body.print-document-active aside,
+  body.print-document-active #app-sidebar,
+  body.print-document-active .navbar-root,
+  body.print-document-active .app-header,
+  body.print-document-active .mobile-nav-bar,
+  body.print-document-active .mobile-status-bar,
+  body.print-document-active .mobile-header-bar {
     display: none !important;
   }
 
-  /* Full Report Modals Print Reset (Donation Box Report, Box List, Juma Report) */
-  .report-modal-print-wrapper {
+  /* Committee Action Plan Direct Print Isolation */
+  body.print-action-plan-active > *:not(#root) {
+    display: none !important;
+  }
+  body.print-action-plan-active #root > *:not(.fixed.inset-0) {
+    display: none !important;
+  }
+  body.print-action-plan-active .fixed.inset-0 {
+    position: static !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+    overflow: visible !important;
+  }
+  body.print-action-plan-active .fixed.inset-0 > div {
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #ffffff !important;
+  }
+  body.print-action-plan-active .fixed.inset-0 .no-print,
+  body.print-action-plan-active .fixed.inset-0 button,
+  body.print-action-plan-active .fixed.inset-0 label {
+    display: none !important;
+  }
+  body.print-action-plan-active .report-print-root {
+    display: block !important;
+    visibility: visible !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+  .report-modal-print-wrapper,
+  .fixed.inset-0.z-50 {
     position: static !important;
     inset: auto !important;
     width: 100% !important;
@@ -351,6 +399,7 @@ aside button,
     max-height: none !important;
     padding: 0 !important;
     margin: 0 !important;
+    background: #ffffff !important;
     overflow: visible !important;
     scrollbar-width: none !important;
     -ms-overflow-style: none !important;
@@ -415,7 +464,7 @@ aside button,
   .print-controls-bar,
   .no-print,
   .print-hidden,
-  .print\\:hidden {
+  .print\:hidden {
     display: none !important;
   }
 

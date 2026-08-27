@@ -30,7 +30,13 @@ export type Permission =
   | 'MANAGE_STAFF'
   | 'MANAGE_ASSETS'
   | 'MANAGE_PROPERTY'
-  | 'MANAGE_CEMETERY';
+  | 'MANAGE_CEMETERY'
+  | 'VIEW_MEMBER_PERFORMANCE'
+  | 'CREATE_EVALUATION'
+  | 'EDIT_EVALUATION'
+  | 'ADD_MEMBER_ACTIVITY'
+  | 'UPDATE_RESPONSIBILITY_STATUS'
+  | 'PRINT_PERFORMANCE_REPORT';
 
 export interface User {
   id: string;
@@ -90,6 +96,23 @@ export interface Mosque {
     onlinePaymentUrl?: string;
     customQrImageUrl?: string;
     instructionsBn?: string;
+  };
+  committeeEvaluationSettings?: {
+    weights: {
+      attendance: number; // default 30%
+      responsibility: number; // default 30%
+      participation: number; // default 15%
+      activity: number; // default 15%
+      quality: number; // default 10%
+    };
+    starThresholds: {
+      fiveStar: number; // default 90
+      fourStar: number; // default 80
+      threeStar: number; // default 70
+      twoStar: number; // default 60
+      oneStar: number; // default 0
+    };
+    excludeExcusedLeaveFromAttendance?: boolean;
   };
   createdAt: string;
   updatedAt: string;
@@ -305,7 +328,7 @@ export interface DonationBoxCollection {
   createdAt: string;
 }
 
-export type CommitteeTermStatus = 'UPCOMING' | 'ACTIVE' | 'EXPIRED' | 'CANCELLED';
+export type CommitteeTermStatus = 'UPCOMING' | 'ACTIVE' | 'EXPIRED' | 'COMPLETED' | 'CLOSED' | 'CANCELLED';
 
 export interface CommitteeTerm {
   id: string;
@@ -316,7 +339,35 @@ export interface CommitteeTerm {
   status: CommitteeTermStatus;
   description?: string;
   membersCount?: number;
+  openingBalance?: number;
+  openingBalanceDate?: string;
+  openingBalanceSource?: 'PREVIOUS_COMMITTEE_HANDOVER' | 'MANUAL' | 'INITIAL';
+  previousTermId?: string;
+  previousTermTitle?: string;
+  closingBalance?: number;
+  closingBalanceDate?: string;
+  handoverBalance?: number;
+  handoverRecipientTermId?: string;
+  handoverRecipientName?: string;
+  handoverDate?: string;
+  handoverNotes?: string;
+  approvedBy?: string;
+  approvedByName?: string;
+  approvalDate?: string;
+  cashOpening?: number;
+  cashInflow?: number;
+  cashOutflow?: number;
+  cashClosing?: number;
+  bankOpening?: number;
+  bankDeposits?: number;
+  bankWithdrawals?: number;
+  bankTransfers?: number;
+  bankClosing?: number;
+  actualHandoverBalance?: number;
+  reconciliationDifference?: number;
+  reconciliationNotes?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface CommitteeMember {
@@ -345,6 +396,8 @@ export interface MeetingAttendee {
   designation: string;
   phone: string;
   attendanceStatus: 'PRESENT' | 'ABSENT' | 'LEAVE';
+  arrivalTime?: string;
+  remarks?: string;
   signatureUrl?: string;
 }
 
@@ -385,6 +438,265 @@ export interface CommitteeMeetingNotice {
   createdAt: string;
 }
 
+export interface MeetingAgendaItem {
+  id: string;
+  agendaNumber: number;
+  title: string;
+  discussion?: string; // বিস্তারিত আলোচনা
+}
+
+export interface MeetingDecisionItem {
+  id: string;
+  decisionNumber: string; // e.g. "সিদ্ধান্ত-১"
+  agendaId?: string;
+  agendaTitle?: string;
+  details: string; // সিদ্ধান্তের বিস্তারিত
+  assignedMemberId?: string;
+  assignedMemberName?: string;
+  assignedMemberDesignation?: string;
+  deadline?: string; // বাস্তবায়নের সময়সীমা
+  priority?: 'NORMAL' | 'HIGH' | 'URGENT';
+  remarks?: string;
+  resolutionId?: string; // Link to MeetingResolution
+  resolutionNumber?: string;
+}
+
+export interface MeetingAssignedTask {
+  id: string;
+  taskDescription: string;
+  assignedMemberId?: string;
+  assignedMemberName: string;
+  assignedMemberDesignation?: string;
+  startDate?: string;
+  endDate?: string;
+  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'NOT_COMPLETED';
+  notes?: string;
+}
+
+export type ResolutionStatus = 'DRAFT' | 'APPROVED' | 'REJECTED' | 'IMPLEMENTED' | 'CANCELLED';
+export type ResolutionType = 'INDIVIDUAL' | 'COMBINED';
+export type ResolutionImplementationStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'DELAYED' | 'CANCELLED';
+
+export type CommitteeActionPlanStatus = 'TODO' | 'IN_PROGRESS' | 'COMPLETED' | 'ON_HOLD' | 'CANCELLED';
+export type CommitteeActionPlanPriority = 'URGENT' | 'HIGH' | 'MEDIUM' | 'NORMAL';
+
+export interface CommitteeActionPlanAttachment {
+  id: string;
+  name: string;
+  url: string;
+  type: 'BEFORE_PHOTO' | 'DURING_PHOTO' | 'AFTER_PHOTO' | 'BILL' | 'INVOICE' | 'DOCUMENT' | 'OTHER';
+  typeBn?: string;
+  fileSize?: number;
+  uploadedAt: string;
+  uploadedBy?: string;
+  uploadedByName?: string;
+}
+
+export interface CommitteeActionPlanActivityLog {
+  id: string;
+  action:
+    | 'CREATE'
+    | 'UPDATE'
+    | 'STATUS_CHANGE'
+    | 'ASSIGN_MEMBER'
+    | 'PROGRESS_UPDATE'
+    | 'BUDGET_UPDATE'
+    | 'MARK_COMPLETED'
+    | 'CANCEL'
+    | 'ARCHIVE'
+    | 'ATTACH_DOCUMENT'
+    | string;
+  details: string;
+  changedBy: string;
+  changedByName: string;
+  timestamp: string;
+  previousState?: string;
+  newState?: string;
+}
+
+export interface CommitteeActionPlan {
+  id: string;
+  mosqueId: string;
+  planNumber: string; // e.g. "AP-2026-001"
+  termId: string;
+  termTitle?: string;
+  title: string; // কাজের নাম
+  description?: string; // কাজের বিস্তারিত বিবরণ
+  category: string; // কাজের বিভাগ
+  priority: CommitteeActionPlanPriority; // 'URGENT' | 'HIGH' | 'MEDIUM' | 'NORMAL'
+
+  // Responsible & Assistant Members
+  responsibleMemberId?: string;
+  responsibleMemberName?: string;
+  responsibleMemberDesignation?: string;
+  responsibleMemberPhone?: string;
+  responsibleMemberIds?: string[];
+  responsibleMembers?: Array<{
+    id: string;
+    name: string;
+    designation?: string;
+    phone?: string;
+  }>;
+  assistantMemberIds?: string[];
+  assistantMembers?: Array<{
+    id: string;
+    name: string;
+    designation?: string;
+    phone?: string;
+  }>;
+
+  // Timeline
+  startDate: string; // YYYY-MM-DD
+  dueDate: string; // YYYY-MM-DD
+  completedDate?: string; // YYYY-MM-DD
+
+  // Budget & Financials
+  estimatedBudget: number; // আনুমানিক বাজেট
+  actualCost: number; // প্রকৃত ব্যয়
+  fundingSource?: string; // অর্থের উৎস / Account
+  fundingAccountId?: string;
+  fundingAccountName?: string;
+  financialVoucherNumber?: string;
+
+  // Status & Progress
+  status: CommitteeActionPlanStatus; // 'TODO' | 'IN_PROGRESS' | 'COMPLETED' | 'ON_HOLD' | 'CANCELLED'
+  progressPercentage: number; // 0 - 100
+  remarks?: string;
+
+  // Resolution Linkage
+  resolutionId?: string;
+  resolutionNumber?: string;
+  resolutionSubject?: string;
+  meetingId?: string;
+  meetingNumber?: string;
+  decisionNumber?: string;
+
+  // Attachments & History
+  attachments?: CommitteeActionPlanAttachment[];
+  activityLogs?: CommitteeActionPlanActivityLog[];
+
+  // Soft delete & Archive
+  isArchived?: boolean;
+  isDeleted?: boolean;
+
+  createdBy: string;
+  createdByName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ResolutionDecisionEntry {
+  id: string;
+  decisionId?: string;
+  decisionNumber: string; // e.g. "সিদ্ধান্ত-১"
+  subject: string; // বিষয়
+  details: string; // বিস্তারিত
+  background?: string; // পটভূমি
+  consideration?: string; // বিবেচনা ও সভার আলোচনা
+  proposal?: string; // প্রস্তাবনা
+  proposerName?: string; // প্রস্তাবক
+  supporterName?: string; // সমর্থনকারী
+  resolutionText: string; // গৃহীত সিদ্ধান্ত / চূড়ান্ত রেজোলিউশন
+  assignedMemberId?: string; // দায়িত্বপ্রাপ্ত
+  assignedMemberName?: string;
+  assignedMemberDesignation?: string;
+  assignedMemberPhone?: string;
+  taskDescription?: string; // দায়িত্বের বিবরণ
+  deadline?: string; // বাস্তবায়নের সময়সীমা
+  priority?: 'NORMAL' | 'HIGH' | 'URGENT';
+  implementationStatus?: ResolutionImplementationStatus;
+  progressPercentage?: number; // 0 - 100
+  completionDate?: string;
+  financialAmount?: number;
+  remarks?: string;
+}
+
+export interface ResolutionRevision {
+  revisionNo: number;
+  revisionDate: string;
+  revisedBy: string;
+  revisedByName: string;
+  reason: string;
+  previousContent?: Partial<MeetingResolution>;
+  createdAt: string;
+}
+
+export interface MeetingResolution {
+  id: string;
+  mosqueId: string;
+  resolutionNumber: string; // e.g. "RES-MJMWS-2026/001" or "RES-2026-001"
+  resolutionType?: ResolutionType; // 'INDIVIDUAL' | 'COMBINED'
+  meetingId: string; // Link to CommitteeMeeting
+  meetingDocumentNumber?: string;
+  meetingNumber?: string;
+  meetingMemoNumber?: string;
+  meetingDate?: string;
+  meetingDayName?: string;
+  meetingTime?: string;
+  meetingType?: string;
+  meetingTypeBn?: string;
+  meetingVenue?: string;
+  meetingChairman?: string;
+  meetingSecretary?: string;
+  meetingConductor?: string;
+  meetingAgendas?: string[];
+
+  // Link to specific agenda or decision in meeting
+  agendaId?: string;
+  agendaTitle?: string;
+  decisionId?: string;
+  decisionNumber?: string;
+  decisionIds?: string[]; // Multiple linked decisions
+  items?: ResolutionDecisionEntry[]; // Selected decision items in combined resolution
+
+  date: string; // YYYY-MM-DD
+  subject: string; // বিষয়
+  background?: string; // প্রেক্ষাপট
+  consideration?: string; // বিবেচনা ও বিস্তারিত আলোচনা
+  proposal?: string; // প্রস্তাবনা
+  proposerName?: string; // প্রস্তাবক
+  supporterName?: string; // সমর্থনকারী
+  resolutionText: string; // গৃহীত সিদ্ধান্ত / রেজোলিউশন
+
+  assignedMemberId?: string;
+  assignedMemberName?: string;
+  assignedMemberDesignation?: string;
+  assignedMemberPhone?: string;
+  taskDescription?: string;
+  deadline?: string; // বাস্তবায়নের সময়সীমা
+
+  status: ResolutionStatus;
+  priority?: 'NORMAL' | 'HIGH' | 'URGENT';
+  implementationStatus?: ResolutionImplementationStatus;
+  progressPercentage?: number; // 0 - 100
+  completionDate?: string;
+  financialAmount?: number;
+  termId?: string;
+  termTitle?: string;
+  remarks?: string;
+
+  presidentSignatureUrl?: string;
+  secretarySignatureUrl?: string;
+
+  // Revision & Audit
+  isRevised?: boolean;
+  revisionNumber?: number;
+  revisionReason?: string;
+  revisionHistory?: ResolutionRevision[];
+  auditLogs?: {
+    id: string;
+    action: string;
+    details?: string;
+    userName: string;
+    timestamp: string;
+  }[];
+
+  createdBy?: string;
+  createdByName?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface CommitteeMeeting {
   id: string;
   mosqueId: string;
@@ -413,14 +725,17 @@ export interface CommitteeMeeting {
   duaLeader?: string; // মোনাজাত পরিচালনাকারী
   duaLeaderMemberId?: string;
 
-  // Content
+  // Content (Structured & Backward-compatible arrays)
   agenda: string[];
+  agendaItems?: MeetingAgendaItem[];
   decisions: string[];
+  decisionItems?: MeetingDecisionItem[];
   resolutions: string[];
   miscellaneous?: string; // বিবিধ (optional)
 
-  // Assigned Members
+  // Assigned Members / Tasks
   responsibleMembers?: ResponsibleMember[];
+  assignedTasks?: MeetingAssignedTask[];
 
   // Attendance
   attendees?: MeetingAttendee[];
@@ -459,6 +774,191 @@ export interface CommitteeMeeting {
   createdByName?: string;
   createdAt: string;
   updatedAt?: string;
+}
+
+export type CommitteeActivityType =
+  | 'MOSQUE_DEVELOPMENT' // মসজিদ উন্নয়ন কাজ
+  | 'DONATION_COLLECTION' // দান সংগ্রহ
+  | 'ACCOUNTS_AUDIT_SUPPORT' // হিসাব/অডিট সহযোগিতা
+  | 'SOCIAL_ACTIVITY' // সামাজিক কার্যক্রম
+  | 'CEMETERY_MANAGEMENT' // কবরস্থান ব্যবস্থাপনা
+  | 'WAQF_MANAGEMENT' // ওয়াকফ সম্পত্তি ব্যবস্থাপনা
+  | 'ADMINISTRATIVE_WORK' // কমিটির প্রশাসনিক কাজ
+  | 'MEETING_ORGANIZATION' // সভা আয়োজন
+  | 'EMERGENCY_DUTY' // জরুরি দায়িত্ব
+  | 'AGENDA_DISCUSSION' // এজেন্ডা আলোচনা
+  | 'PROPOSAL_SUBMITTED' // প্রস্তাব উপস্থাপন
+  | 'DECISION_CONTRIBUTION' // সিদ্ধান্ত বাস্তবায়নে ভূমিকা
+  | 'MEETING_PRESENTATION' // মিটিং উপস্থাপনা
+  | 'OTHER'; // অন্যান্য
+
+export type CommitteeActivityStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+
+export type EvaluationQualityRating = 'EXCELLENT' | 'GOOD' | 'SATISFACTORY' | 'NEEDS_IMPROVEMENT';
+
+export interface CommitteeMemberActivity {
+  id: string;
+  mosqueId: string;
+  termId: string;
+  memberId: string;
+  memberName: string;
+  memberDesignation?: string;
+  activityType: CommitteeActivityType;
+  activityTypeBn: string;
+  category: 'MEETING_PARTICIPATION' | 'COMMITTEE_ACTIVITY' | 'ASSIGNED_TASK';
+  title: string;
+  description: string;
+  date: string;
+  relatedMeetingId?: string;
+  relatedMeetingTitle?: string;
+  assignedBy?: string;
+  assignedByName?: string;
+  status: CommitteeActivityStatus;
+  qualityRating?: EvaluationQualityRating;
+  qualityScore?: number; // 0 - 100
+  evidenceAttachmentUrl?: string;
+  evidenceAttachmentName?: string;
+  evaluatorNote?: string;
+  createdBy?: string;
+  createdByName?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export type CommitteeTaskStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'OVERDUE' | 'CANCELLED';
+
+export interface CommitteeMemberTask {
+  id: string;
+  mosqueId: string;
+  termId: string;
+  memberId: string;
+  memberName: string;
+  memberDesignation?: string;
+  taskTitle: string;
+  description?: string;
+  meetingId?: string;
+  meetingNumber?: string;
+  assignedDate: string;
+  dueDate?: string;
+  completedDate?: string;
+  status: CommitteeTaskStatus;
+  qualityRating?: EvaluationQualityRating;
+  qualityScore?: number; // 0 - 100
+  evidenceAttachmentUrl?: string;
+  evidenceAttachmentName?: string;
+  evaluatorNote?: string;
+  createdBy?: string;
+  createdByName?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export type EvaluationRecommendation =
+  | 'EXCELLENT'
+  | 'GOOD'
+  | 'SATISFACTORY'
+  | 'NEEDS_IMPROVEMENT'
+  | 'REVIEW_REQUIRED';
+
+export interface CommitteeManualEvaluation {
+  id: string;
+  mosqueId: string;
+  termId: string;
+  memberId: string;
+  memberName: string;
+  memberDesignation?: string;
+  evaluationPeriodType: 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY' | 'CUSTOM';
+  fromDate: string;
+  toDate: string;
+  overallAssessment?: string;
+  strengths?: string;
+  weaknesses?: string;
+  improvementRequired?: string;
+  recommendation: EvaluationRecommendation;
+  evaluatorComment?: string;
+  evaluatorId: string;
+  evaluatorName: string;
+  evaluatorRole: string;
+  manualOverrideScore?: number;
+  overrideReason?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface MemberEvaluationScoreResult {
+  memberId: string;
+  memberName: string;
+  position: string;
+  positionCustomBn?: string;
+  phone: string;
+  termId: string;
+  termTitle?: string;
+  joinDate?: string;
+  status: string;
+  photoUrl?: string;
+  address?: string;
+  
+  // Attendance metrics
+  totalMeetings: number;
+  presentMeetings: number;
+  absentMeetings: number;
+  leaveMeetings: number;
+  attendancePercentage: number; // 0 - 100
+  attendanceWeight: number;
+  attendanceWeightedContribution: number;
+  
+  // Responsibility / Task metrics
+  totalAssignedTasks: number;
+  completedTasks: number;
+  pendingTasks: number;
+  inProgressTasks: number;
+  overdueTasks: number;
+  taskCompletionPercentage: number; // 0 - 100
+  taskWeight: number;
+  taskWeightedContribution: number;
+  
+  // Meeting Participation metrics
+  meetingParticipationCount: number;
+  meetingParticipationScore: number; // 0 - 100
+  participationWeight: number;
+  participationWeightedContribution: number;
+  
+  // Other Committee Activities metrics
+  otherActivitiesCount: number;
+  completedActivitiesCount: number;
+  activityScore: number; // 0 - 100
+  activityWeight: number;
+  activityWeightedContribution: number;
+  
+  // Quality metrics
+  qualityEvaluatedCount: number;
+  qualityAverageScore: number; // 0 - 100
+  qualityWeight: number;
+  qualityWeightedContribution: number;
+  
+  // Final Score & Stars
+  finalScore: number; // 0 - 100
+  rawScore: number;
+  isManuallyOverridden?: boolean;
+  manualOverrideScore?: number;
+  overrideReason?: string;
+  starRating: number; // 1 - 5
+  performanceLevel: 'EXCELLENT' | 'GOOD' | 'SATISFACTORY' | 'NEEDS_IMPROVEMENT';
+  performanceLevelBn: string;
+  
+  // Evaluation Status & Manual info
+  lastEvaluationDate?: string;
+  evaluationStatus: 'EVALUATED' | 'AUTO_CALCULATED' | 'PENDING';
+  manualEvaluation?: CommitteeManualEvaluation;
+  
+  // Breakdown history for trends
+  monthlyTrend?: {
+    month: string;
+    monthBn: string;
+    score: number;
+    attendance: number;
+    taskCompletion: number;
+  }[];
 }
 
 export interface Staff {

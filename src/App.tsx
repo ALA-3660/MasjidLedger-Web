@@ -14,6 +14,7 @@ import {
   CommitteeMember,
   CommitteeMeeting,
   CommitteeMeetingNotice,
+  MeetingResolution,
   Staff,
   StaffPayment,
   MosqueAsset,
@@ -94,6 +95,7 @@ export default function App() {
   const [members, setMembers] = useState<CommitteeMember[]>([]);
   const [meetings, setMeetings] = useState<CommitteeMeeting[]>([]);
   const [committeeNotices, setCommitteeNotices] = useState<CommitteeMeetingNotice[]>([]);
+  const [resolutions, setResolutions] = useState<MeetingResolution[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [staffPayments, setStaffPayments] = useState<StaffPayment[]>([]);
   const [assets, setAssets] = useState<MosqueAsset[]>([]);
@@ -133,6 +135,7 @@ export default function App() {
         membersRes,
         meetingsRes,
         committeeNoticesRes,
+        resolutionsRes,
         staffRes,
         staffPaysRes,
         assetsRes,
@@ -156,6 +159,7 @@ export default function App() {
         api.getCommitteeMembers().catch(() => []),
         api.getCommitteeMeetings().catch(() => []),
         api.getCommitteeNotices().catch(() => []),
+        api.getCommitteeResolutions().catch(() => []),
         api.getStaff().catch(() => []),
         api.getStaffPayments().catch(() => []),
         api.getAssets().catch(() => []),
@@ -186,6 +190,7 @@ export default function App() {
       if (membersRes) setMembers(membersRes);
       if (meetingsRes) setMeetings(meetingsRes);
       if (committeeNoticesRes) setCommitteeNotices(committeeNoticesRes);
+      if (resolutionsRes) setResolutions(resolutionsRes);
       if (staffRes) setStaff(staffRes);
       if (staffPaysRes) setStaffPayments(staffPaysRes);
       if (assetsRes) setAssets(assetsRes);
@@ -399,6 +404,31 @@ export default function App() {
 
   const handleDeleteCommitteeNotice = async (id: string) => {
     await api.deleteCommitteeNotice(id);
+    await loadData(false);
+  };
+
+  const handleAddCommitteeResolution = async (data: any) => {
+    await api.createCommitteeResolution(data);
+    await loadData(false);
+  };
+
+  const handleUpdateCommitteeResolution = async (id: string, data: any) => {
+    await api.updateCommitteeResolution(id, data);
+    await loadData(false);
+  };
+
+  const handleUpdateCommitteeResolutionProgress = async (id: string, data: any) => {
+    await api.updateCommitteeResolutionProgress(id, data);
+    await loadData(false);
+  };
+
+  const handleDeleteCommitteeResolution = async (id: string, force?: boolean) => {
+    await api.deleteCommitteeResolution(id, force);
+    await loadData(false);
+  };
+
+  const handleDuplicateCommitteeResolution = async (id: string) => {
+    await api.duplicateCommitteeResolution(id);
     await loadData(false);
   };
 
@@ -616,8 +646,13 @@ export default function App() {
           members={members}
           meetings={meetings}
           notices={committeeNotices}
+          resolutions={resolutions}
           language={language}
           mosque={mosque}
+          currentUser={currentUser}
+          onRefreshMosqueSettings={async () => {
+            await loadData(false);
+          }}
           onAddTerm={handleAddCommitteeTerm}
           onUpdateTerm={handleUpdateCommitteeTerm}
           onDeleteTerm={handleDeleteCommitteeTerm}
@@ -630,6 +665,11 @@ export default function App() {
           onLogMeetingAudit={handleLogMeetingAudit}
           onAddNotice={handleAddCommitteeNotice}
           onDeleteNotice={handleDeleteCommitteeNotice}
+          onAddResolution={handleAddCommitteeResolution}
+          onUpdateResolution={handleUpdateCommitteeResolution}
+          onUpdateResolutionProgress={handleUpdateCommitteeResolutionProgress}
+          onDeleteResolution={handleDeleteCommitteeResolution}
+          onDuplicateResolution={handleDuplicateCommitteeResolution}
         />
       )}
 

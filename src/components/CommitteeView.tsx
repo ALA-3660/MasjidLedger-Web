@@ -33,12 +33,15 @@ import {
   Award,
   Sparkles,
   Layers,
+  Stamp,
+  ClipboardList,
 } from 'lucide-react';
 import {
   CommitteeTerm,
   CommitteeMember,
   CommitteeMeeting,
   CommitteeMeetingNotice,
+  MeetingResolution,
   MeetingStatus,
   Mosque,
 } from '../types';
@@ -46,14 +49,23 @@ import { Language, translations, formatDate } from '../lib/i18n';
 import { MeetingDocumentPrint } from './MeetingDocumentPrint';
 import { MeetingMinutesModal } from './MeetingMinutesModal';
 import { MeetingNoticeModal, MeetingNoticePrintModal } from './MeetingNoticeModal';
+import { MeetingResolutionModal } from './MeetingResolutionModal';
+import { MeetingResolutionPrint } from './MeetingResolutionPrint';
+import { MeetingResolutionsListView } from './MeetingResolutionsListView';
+import { CommitteePerformanceView } from './CommitteePerformanceView';
+import { CommitteeActionPlanView } from './CommitteeActionPlanView';
+import { CommitteeFinancialHistoryView } from './CommitteeFinancialHistoryView';
 
 interface CommitteeViewProps {
   terms: CommitteeTerm[];
   members: CommitteeMember[];
   meetings: CommitteeMeeting[];
   notices?: CommitteeMeetingNotice[];
+  resolutions?: MeetingResolution[];
   language: Language;
   mosque?: Mosque | null;
+  currentUser?: any;
+  onRefreshMosqueSettings?: () => Promise<void>;
   onAddTerm: (data: any) => Promise<void>;
   onUpdateTerm?: (id: string, data: any) => Promise<void>;
   onDeleteTerm?: (id: string) => Promise<void>;
@@ -66,6 +78,11 @@ interface CommitteeViewProps {
   onLogMeetingAudit?: (id: string, action: string, details: string) => Promise<void>;
   onAddNotice?: (data: any) => Promise<void>;
   onDeleteNotice?: (id: string) => Promise<void>;
+  onAddResolution?: (data: any) => Promise<void>;
+  onUpdateResolution?: (id: string, data: any) => Promise<void>;
+  onUpdateResolutionProgress?: (id: string, data: any) => Promise<void>;
+  onDeleteResolution?: (id: string, force?: boolean) => Promise<void>;
+  onDuplicateResolution?: (id: string) => Promise<void>;
 }
 
 interface TenureCalculation {
@@ -223,8 +240,11 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
   members,
   meetings,
   notices = [],
+  resolutions = [],
   language,
   mosque,
+  currentUser,
+  onRefreshMosqueSettings,
   onAddTerm,
   onUpdateTerm,
   onDeleteTerm,
@@ -237,9 +257,14 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
   onLogMeetingAudit,
   onAddNotice,
   onDeleteNotice,
+  onAddResolution,
+  onUpdateResolution,
+  onUpdateResolutionProgress,
+  onDeleteResolution,
+  onDuplicateResolution,
 }) => {
   const t = translations[language];
-  const [activeTab, setActiveTab] = useState<'members' | 'terms' | 'meetings'>('members');
+  const [activeTab, setActiveTab] = useState<'members' | 'terms' | 'meetings' | 'action-plans' | 'performance' | 'financial-history'>('members');
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
   // Search & Filter for members
@@ -578,7 +603,7 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
   };
 
   // Enhanced Meeting & Minutes State
-  const [meetingSubTab, setMeetingSubTab] = useState<'minutes' | 'notices'>('minutes');
+  const [meetingSubTab, setMeetingSubTab] = useState<'notices' | 'minutes' | 'resolutions'>('notices');
   const [meetingSearchText, setMeetingSearchText] = useState('');
   const [meetingTypeFilter, setMeetingTypeFilter] = useState('ALL');
   const [meetingStatusFilter, setMeetingStatusFilter] = useState('ALL');
@@ -602,6 +627,20 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
   const [deletingNoticeItem, setDeletingNoticeItem] = useState<CommitteeMeetingNotice | null>(null);
   const [isDeletingNotice, setIsDeletingNotice] = useState(false);
 
+  // Meeting Resolutions Modals
+  const [isResolutionModalOpen, setIsResolutionModalOpen] = useState(false);
+  const [editingResolutionForModal, setEditingResolutionForModal] = useState<MeetingResolution | null>(null);
+  const [selectedResMeetingId, setSelectedResMeetingId] = useState<string | undefined>(undefined);
+  const [selectedResDecisionId, setSelectedResDecisionId] = useState<string | undefined>(undefined);
+  const [isResolutionRevisionMode, setIsResolutionRevisionMode] = useState(false);
+  const [activeResolutionForPrint, setActiveResolutionForPrint] = useState<MeetingResolution | null>(null);
+  const [isResolutionPrintOpen, setIsResolutionPrintOpen] = useState(false);
+  const [activeResolutionsForBookPrint, setActiveResolutionsForBookPrint] = useState<MeetingResolution[] | null>(null);
+  const [resolutionBookTitle, setResolutionBookTitle] = useState<string>('রেজোলিউশন বই');
+  const [isResolutionBookPrintOpen, setIsResolutionBookPrintOpen] = useState(false);
+  const [deletingResolutionItem, setDeletingResolutionItem] = useState<MeetingResolution | null>(null);
+  const [isDeletingResolution, setIsDeletingResolution] = useState(false);
+
   // Meeting Handlers
   const handleOpenNewMinutes = () => {
     setEditingMeetingForModal(null);
@@ -622,7 +661,7 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
   };
 
   const handleSaveMeetingMinutes = async (meetingData: any) => {
-    if (editingMeetingForModal && !isRevisionModeForModal && onUpdateMeeting) {
+    if (editingMeetingForModal?.id && onUpdateMeeting) {
       await onUpdateMeeting(editingMeetingForModal.id, meetingData);
     } else {
       await onAddMeeting(meetingData);
@@ -644,6 +683,89 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
       alert(err.message || 'মিটিং কার্যবিবরণী মুছে ফেলতে সমস্যা হয়েছে।');
     } finally {
       setIsDeletingMeeting(false);
+    }
+  };
+
+  // Resolution Handlers
+  const handleOpenCreateResolution = (meetingId?: string, decisionId?: string) => {
+    setEditingResolutionForModal(null);
+    setSelectedResMeetingId(meetingId);
+    setSelectedResDecisionId(decisionId);
+    setIsResolutionRevisionMode(false);
+    setIsResolutionModalOpen(true);
+  };
+
+  const handleOpenEditResolution = (resolution: MeetingResolution) => {
+    setEditingResolutionForModal(resolution);
+    setSelectedResMeetingId(resolution.meetingId);
+    setSelectedResDecisionId(resolution.decisionId);
+    setIsResolutionRevisionMode(false);
+    setIsResolutionModalOpen(true);
+  };
+
+  const handleOpenRevisionResolution = (resolution: MeetingResolution) => {
+    setEditingResolutionForModal(resolution);
+    setSelectedResMeetingId(resolution.meetingId);
+    setSelectedResDecisionId(resolution.decisionId);
+    setIsResolutionRevisionMode(true);
+    setIsResolutionModalOpen(true);
+  };
+
+  const handleOpenResolutionPrint = (resolution: MeetingResolution) => {
+    setActiveResolutionForPrint(resolution);
+    setIsResolutionPrintOpen(true);
+  };
+
+  const handleOpenBookPrint = (resList: MeetingResolution[], title: string) => {
+    setActiveResolutionsForBookPrint(resList);
+    setResolutionBookTitle(title);
+    setIsResolutionBookPrintOpen(true);
+  };
+
+  const handleUpdateResolutionStatus = async (id: string, newStatus: any) => {
+    if (onUpdateResolution) {
+      await onUpdateResolution(id, { status: newStatus });
+    }
+  };
+
+  const handleUpdateResolutionProgress = async (id: string, progress: any) => {
+    if (onUpdateResolutionProgress) {
+      await onUpdateResolutionProgress(id, progress);
+    } else if (onUpdateResolution) {
+      await onUpdateResolution(id, progress);
+    }
+  };
+
+  const handleDeleteResolutionDirect = async (id: string, force?: boolean) => {
+    if (onDeleteResolution) {
+      await onDeleteResolution(id, force);
+    }
+  };
+
+  const handleSaveResolution = async (resolutionData: any) => {
+    if (editingResolutionForModal?.id && onUpdateResolution) {
+      await onUpdateResolution(editingResolutionForModal.id, resolutionData);
+    } else if (onAddResolution) {
+      await onAddResolution(resolutionData);
+    }
+  };
+
+  const handleConfirmDeleteResolution = async () => {
+    if (!deletingResolutionItem || !onDeleteResolution) return;
+    setIsDeletingResolution(true);
+    try {
+      await onDeleteResolution(deletingResolutionItem.id);
+      setDeletingResolutionItem(null);
+    } catch (err: any) {
+      alert(err.message || 'রেজোলিউশন মুছে ফেলতে সমস্যা হয়েছে।');
+    } finally {
+      setIsDeletingResolution(false);
+    }
+  };
+
+  const handleDuplicateResolution = async (id: string) => {
+    if (onDuplicateResolution) {
+      await onDuplicateResolution(id);
     }
   };
 
@@ -773,9 +895,13 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
   const activeCount = members.filter((m) => m.status === 'ACTIVE').length;
   const inactiveCount = members.filter((m) => m.status !== 'ACTIVE').length;
 
+  const isAnyCommitteePrintActive = Boolean(
+    isNoticePrintModalOpen || isMeetingPrintOpen || isPrintModalOpen
+  );
+
   return (
     <>
-      <div className={`space-y-5 max-w-7xl mx-auto pb-10 ${isNoticePrintOpen || isPrintModalOpen ? 'print:hidden' : ''}`}>
+      <div className={`space-y-5 max-w-7xl mx-auto pb-10 ${isAnyCommitteePrintActive ? 'print:hidden' : ''}`}>
         {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-sm">
         <div className="flex items-center space-x-2 bg-slate-100 p-1 rounded-xl border border-slate-200">
@@ -824,6 +950,54 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
             <span>মিটিং ও রেজোলিউশন</span>
             <span className="ml-1 bg-blue-700 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
               {meetings.length}
+            </span>
+          </button>
+
+          <button
+            id="tab-btn-committee-action-plans"
+            onClick={() => setActiveTab('action-plans')}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'action-plans'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <ClipboardList className="w-4 h-4 text-emerald-300" />
+            <span>কর্মপরিকল্পনা ও অগ্রগতি</span>
+            <span className="ml-1 bg-emerald-700 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+              মূলী
+            </span>
+          </button>
+
+          <button
+            id="tab-btn-committee-performance"
+            onClick={() => setActiveTab('performance')}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'performance'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Award className="w-4 h-4 text-amber-300" />
+            <span>সদস্য মূল্যায়ন ও কার্যক্রম</span>
+            <span className="ml-1 bg-amber-500 text-slate-900 text-[10px] px-1.5 py-0.2 rounded-full font-black">
+              নতুন
+            </span>
+          </button>
+
+          <button
+            id="tab-btn-committee-financial-history"
+            onClick={() => setActiveTab('financial-history')}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'financial-history'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <History className="w-4 h-4 text-emerald-200" />
+            <span>কমিটি ভিত্তিক হিসাব</span>
+            <span className="ml-1 bg-emerald-700 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+              হিসাব
             </span>
           </button>
         </div>
@@ -1414,39 +1588,20 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
       {/* 3. COMMITTEE MEETINGS & MINUTES */}
       {activeTab === 'meetings' && (
         <div className="space-y-6">
-          {/* Subtabs for Minutes vs Notices */}
+          {/* Subtabs for Notices vs Minutes vs Resolutions */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
-            <div className="flex items-center space-x-2">
-              <button
-                type="button"
-                onClick={() => setMeetingSubTab('minutes')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
-                  meetingSubTab === 'minutes'
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-                }`}
-              >
-                <FileCheck2 className="w-4 h-4" />
-                <span>মিটিং কার্যবিবরণী ও রেজোলিউশন</span>
-                <span
-                  className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                    meetingSubTab === 'minutes' ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-600'
-                  }`}
-                >
-                  {toBanglaNumber(meetings.length)}
-                </span>
-              </button>
+            <div className="flex items-center flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => setMeetingSubTab('notices')}
                 className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
                   meetingSubTab === 'notices'
-                    ? 'bg-indigo-600 text-white shadow-sm'
+                    ? 'bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-300'
                     : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
                 }`}
               >
                 <Send className="w-4 h-4" />
-                <span>মিটিং আহবান নোটিশ</span>
+                <span>১. মিটিং আহবান (নোটিশ)</span>
                 <span
                   className={`text-[10px] px-1.5 py-0.5 rounded-full ${
                     meetingSubTab === 'notices' ? 'bg-indigo-700 text-indigo-100' : 'bg-slate-100 text-slate-600'
@@ -1455,19 +1610,50 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
                   {toBanglaNumber((notices || []).length)}
                 </span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => setMeetingSubTab('minutes')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
+                  meetingSubTab === 'minutes'
+                    ? 'bg-slate-900 text-white shadow-sm ring-2 ring-slate-400'
+                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                }`}
+              >
+                <FileCheck2 className="w-4 h-4" />
+                <span>২. মিটিং কার্যবিবরণী (Minutes)</span>
+                <span
+                  className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                    meetingSubTab === 'minutes' ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  {toBanglaNumber(meetings.length)}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setMeetingSubTab('resolutions')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
+                  meetingSubTab === 'resolutions'
+                    ? 'bg-emerald-700 text-white shadow-sm ring-2 ring-emerald-300'
+                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                }`}
+              >
+                <Stamp className="w-4 h-4" />
+                <span>৩. মিটিং রেজোলিউশন (সিদ্ধান্ত রেজিস্টার)</span>
+                <span
+                  className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                    meetingSubTab === 'resolutions' ? 'bg-emerald-800 text-emerald-100' : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  {toBanglaNumber((resolutions || []).length)}
+                </span>
+              </button>
             </div>
 
             <div className="flex items-center space-x-2">
-              {meetingSubTab === 'minutes' ? (
-                <button
-                  type="button"
-                  onClick={handleOpenNewMinutes}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-sm transition-all cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>নতুন কার্যবিবরণী এন্ট্রি</span>
-                </button>
-              ) : (
+              {meetingSubTab === 'notices' && (
                 <button
                   type="button"
                   onClick={() => setIsNewNoticeModalOpen(true)}
@@ -1477,78 +1663,101 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
                   <span>নতুন নোটিশ তৈরি</span>
                 </button>
               )}
+              {meetingSubTab === 'minutes' && (
+                <button
+                  type="button"
+                  onClick={handleOpenNewMinutes}
+                  className="bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-sm transition-all cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>নতুন কার্যবিবরণী এন্ট্রি</span>
+                </button>
+              )}
+              {meetingSubTab === 'resolutions' && (
+                <button
+                  type="button"
+                  onClick={() => handleOpenCreateResolution()}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-sm transition-all cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>নতুন রেজোলিউশন তৈরি</span>
+                </button>
+              )}
             </div>
           </div>
 
-          {/* Search & Filter Bar */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {/* Search input */}
-              <div className="relative">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="ডকুমেন্ট নং, স্মারক, আলোচ্যসূচি, সিদ্ধান্ত বা সভাপতি খুঁজুন..."
-                  value={meetingSearchText}
-                  onChange={(e) => setMeetingSearchText(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:bg-white focus:ring-2 focus:ring-slate-900/10 focus:border-slate-800 outline-none transition-all"
-                />
-              </div>
+          {/* Search & Filter Bar (for Notices & Minutes) */}
+          {meetingSubTab !== 'resolutions' && (
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {/* Search input */}
+                <div className="relative">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="ডকুমেন্ট নং, স্মারক, আলোচ্যসূচি, সিদ্ধান্ত বা সভাপতি খুঁজুন..."
+                    value={meetingSearchText}
+                    onChange={(e) => setMeetingSearchText(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:bg-white focus:ring-2 focus:ring-slate-900/10 focus:border-slate-800 outline-none transition-all"
+                  />
+                </div>
 
-              {/* Status Filter */}
-              {meetingSubTab === 'minutes' && (
+                {/* Status Filter */}
+                {meetingSubTab === 'minutes' && (
+                  <div>
+                    <select
+                      value={meetingStatusFilter}
+                      onChange={(e) => setMeetingStatusFilter(e.target.value)}
+                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:bg-white focus:ring-2 focus:ring-slate-900/10 focus:border-slate-800 outline-none transition-all cursor-pointer"
+                    >
+                      <option value="ALL">সকল স্ট্যাটাস (All Status)</option>
+                      <option value="FINAL">চূড়ান্ত অনুমোদিত (Final)</option>
+                      <option value="DRAFT">খসড়া / ড্রাফট (Draft)</option>
+                      <option value="REVISED">সংশোধিত / রিভিশন (Revised)</option>
+                    </select>
+                  </div>
+                )}
+
+                {/* Type Filter */}
                 <div>
                   <select
-                    value={meetingStatusFilter}
-                    onChange={(e) => setMeetingStatusFilter(e.target.value)}
+                    value={meetingTypeFilter}
+                    onChange={(e) => setMeetingTypeFilter(e.target.value)}
                     className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:bg-white focus:ring-2 focus:ring-slate-900/10 focus:border-slate-800 outline-none transition-all cursor-pointer"
                   >
-                    <option value="ALL">সকল স্ট্যাটাস (All Status)</option>
-                    <option value="FINAL">চূড়ান্ত অনুমোদিত (Final)</option>
-                    <option value="DRAFT">খসড়া / ড্রাফট (Draft)</option>
-                    <option value="REVISED">সংশোধিত / রিভিশন (Revised)</option>
+                    <option value="ALL">সকল ধরণের সভা</option>
+                    <option value="GENERAL">সাধারণ সভা</option>
+                    <option value="MONTHLY">মাসিক নিয়মিত সভা</option>
+                    <option value="EMERGENCY">জরুরি সভা</option>
+                    <option value="SPECIAL">বিশেষ সভা</option>
+                    <option value="ANNUAL">বার্ষিক সাধারণ সভা (AGM)</option>
+                    <option value="OTHER">অন্যান্য</option>
                   </select>
                 </div>
-              )}
 
-              {/* Type Filter */}
-              <div>
-                <select
-                  value={meetingTypeFilter}
-                  onChange={(e) => setMeetingTypeFilter(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:bg-white focus:ring-2 focus:ring-slate-900/10 focus:border-slate-800 outline-none transition-all cursor-pointer"
-                >
-                  <option value="ALL">সকল ধরণের সভা</option>
-                  <option value="GENERAL">সাধারণ সভা</option>
-                  <option value="MONTHLY">মাসিক নিয়মিত সভা</option>
-                  <option value="EMERGENCY">জরুরি সভা</option>
-                  <option value="SPECIAL">বিশেষ সভা</option>
-                  <option value="ANNUAL">বার্ষিক সাধারণ সভা (AGM)</option>
-                  <option value="OTHER">অন্যান্য</option>
-                </select>
+                {/* Reset filter button */}
+                {(meetingSearchText || meetingStatusFilter !== 'ALL' || meetingTypeFilter !== 'ALL') && (
+                  <div className="flex items-center">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMeetingSearchText('');
+                        setMeetingStatusFilter('ALL');
+                        setMeetingTypeFilter('ALL');
+                        setMeetingDateFrom('');
+                        setMeetingDateTo('');
+                      }}
+                      className="px-3 py-2 text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors cursor-pointer w-full text-center"
+                    >
+                      ফিল্টার রিসেট
+                    </button>
+                  </div>
+                )}
               </div>
-
-              {/* Reset filter button */}
-              {(meetingSearchText || meetingStatusFilter !== 'ALL' || meetingTypeFilter !== 'ALL') && (
-                <div className="flex items-center">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMeetingSearchText('');
-                      setMeetingStatusFilter('ALL');
-                      setMeetingTypeFilter('ALL');
-                    }}
-                    className="text-xs font-semibold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 px-3 py-2 rounded-xl transition-all flex items-center space-x-1 cursor-pointer"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                    <span>ফিল্টার রিসেট</span>
-                  </button>
-                </div>
-              )}
             </div>
-          </div>
+          )}
 
-          {/* SUBTAB 1: MINUTES & RESOLUTIONS */}
+          {/* SUBTAB 1: MINUTES */}
           {meetingSubTab === 'minutes' && (
             <div className="space-y-4">
               {filteredMeetings.length === 0 ? (
@@ -1804,25 +2013,119 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
                         )}
 
                         {/* Decisions & Resolutions */}
-                        {((meet.resolutions && meet.resolutions.length > 0) ||
+                        {((meet.decisionItems && meet.decisionItems.length > 0) ||
+                          (meet.resolutions && meet.resolutions.length > 0) ||
                           (meet.decisions && meet.decisions.length > 0)) && (
-                          <div className="bg-emerald-50/60 p-4 rounded-xl border border-emerald-100 space-y-2">
-                            <h4 className="font-bold text-emerald-950 uppercase tracking-wider text-[11px] flex items-center space-x-1.5">
-                              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                              <span>গৃহীত সিদ্ধান্ত ও রেজোলিউশন (Decisions & Resolutions):</span>
-                            </h4>
+                          <div className="bg-emerald-50/70 p-4 rounded-xl border border-emerald-200 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <h4 className="font-bold text-emerald-950 uppercase tracking-wider text-[11px] flex items-center space-x-1.5">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                <span>গৃহীত সিদ্ধান্তসমূহ (Meeting Decisions):</span>
+                              </h4>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenCreateResolution(meet.id)}
+                                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold flex items-center space-x-1 shadow-2xs transition-all cursor-pointer"
+                                title="এই মিটিংয়ের সিদ্ধান্ত থেকে নতুন রেজোলিউশন তৈরি করুন"
+                              >
+                                <Stamp className="w-3 h-3" />
+                                <span>+ রেজোলিউশন তৈরি</span>
+                              </button>
+                            </div>
+
                             <div className="space-y-2 pl-1">
-                              {(meet.resolutions && meet.resolutions.length > 0
-                                ? meet.resolutions
-                                : meet.decisions
-                              ).map((dec, idx) => (
-                                <div key={idx} className="flex items-start space-x-2 text-emerald-950 font-medium">
-                                  <span className="font-bold text-emerald-800 font-mono text-[11px]">
-                                    {toBanglaNumber(idx + 1)}.
-                                  </span>
-                                  <span className="leading-relaxed">{dec}</span>
-                                </div>
-                              ))}
+                              {meet.decisionItems && meet.decisionItems.length > 0 ? (
+                                meet.decisionItems.map((dec, idx) => {
+                                  const linkedRes = resolutions.find(
+                                    (r) => r.decisionId === dec.id || (r.meetingId === meet.id && r.title === dec.title)
+                                  );
+                                  return (
+                                    <div
+                                      key={dec.id || idx}
+                                      className="p-3 bg-white rounded-lg border border-emerald-100 shadow-2xs space-y-1.5"
+                                    >
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="flex items-start space-x-2 text-emerald-950 font-medium text-xs">
+                                          <span className="font-bold text-emerald-800 font-mono text-[11px]">
+                                            {toBanglaNumber(idx + 1)}.
+                                          </span>
+                                          <div>
+                                            <span className="font-bold">{dec.title}</span>
+                                            {dec.details && (
+                                              <p className="text-[11px] text-slate-600 font-normal pt-0.5 leading-relaxed">
+                                                {dec.details}
+                                              </p>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        <div className="flex items-center space-x-1.5 shrink-0">
+                                          {linkedRes ? (
+                                            <button
+                                              type="button"
+                                              onClick={() => handleOpenResolutionPrint(linkedRes)}
+                                              className="px-2 py-0.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded text-[10px] font-bold flex items-center space-x-1 border border-emerald-300 transition-colors cursor-pointer"
+                                              title="রেজোলিউশন নথি প্রিন্ট করুন"
+                                            >
+                                              <Stamp className="w-3 h-3 text-emerald-700" />
+                                              <span>রেজোলিউশন #{toBanglaNumber(linkedRes.resolutionNumber || '১')}</span>
+                                            </button>
+                                          ) : (
+                                            <button
+                                              type="button"
+                                              onClick={() => handleOpenCreateResolution(meet.id, dec.id)}
+                                              className="px-2 py-0.5 bg-slate-100 hover:bg-emerald-100 text-slate-700 hover:text-emerald-800 rounded text-[10px] font-semibold border border-slate-200 hover:border-emerald-300 transition-colors cursor-pointer"
+                                              title="এই সিদ্ধান্তের জন্য আলাদা রেজোলিউশন তৈরি করুন"
+                                            >
+                                              + রেজোলিউশন
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-500 pt-0.5">
+                                        {dec.proposerName && <span>প্রস্তাবক: <strong>{dec.proposerName}</strong></span>}
+                                        {dec.supporterName && <span>সমর্থক: <strong>{dec.supporterName}</strong></span>}
+                                        {dec.financialAmount && dec.financialAmount > 0 && (
+                                          <span className="text-emerald-700 font-bold font-mono">
+                                            বরাদ্দ: ৳{toBanglaNumber(dec.financialAmount)}
+                                          </span>
+                                        )}
+                                        {dec.status && (
+                                          <span className="px-1.5 py-0.2 bg-slate-100 text-slate-700 rounded text-[9px]">
+                                            {dec.status === 'APPROVED'
+                                              ? 'অনুমোদিত'
+                                              : dec.status === 'PENDING'
+                                              ? 'বিবেচনাধীন'
+                                              : 'বাতিল'}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })
+                              ) : (
+                                (meet.resolutions && meet.resolutions.length > 0
+                                  ? meet.resolutions
+                                  : meet.decisions
+                                ).map((dec, idx) => (
+                                  <div key={idx} className="flex items-start justify-between gap-2 text-emerald-950 font-medium bg-white p-2.5 rounded-lg border border-emerald-100">
+                                    <div className="flex items-start space-x-2">
+                                      <span className="font-bold text-emerald-800 font-mono text-[11px]">
+                                        {toBanglaNumber(idx + 1)}.
+                                      </span>
+                                      <span className="leading-relaxed text-xs">{dec}</span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenCreateResolution(meet.id)}
+                                      className="px-2 py-0.5 bg-slate-100 hover:bg-emerald-100 text-slate-700 hover:text-emerald-800 rounded text-[10px] font-semibold border border-slate-200 shrink-0 cursor-pointer"
+                                    >
+                                      + রেজোলিউশন
+                                    </button>
+                                  </div>
+                                ))
+                              )}
                             </div>
                           </div>
                         )}
@@ -2002,7 +2305,72 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
               )}
             </div>
           )}
+
+          {/* SUBTAB 3: MEETING RESOLUTIONS (DECISION REGISTER) */}
+          {meetingSubTab === 'resolutions' && (
+            <MeetingResolutionsListView
+              resolutions={resolutions || []}
+              meetings={meetings}
+              members={members}
+              mosque={mosque}
+              canManage={currentUser?.role !== 'VIEWER'}
+              onOpenCreateModal={handleOpenCreateResolution}
+              onOpenEditModal={handleOpenEditResolution}
+              onOpenPrintModal={handleOpenResolutionPrint}
+              onOpenBookPrintModal={handleOpenBookPrint}
+              onDuplicate={handleDuplicateResolution}
+              onDelete={handleDeleteResolutionDirect}
+              onUpdateStatus={handleUpdateResolutionStatus}
+              onUpdateProgress={handleUpdateResolutionProgress}
+            />
+          )}
         </div>
+      )}
+
+      {/* 4. ACTION PLANS & IMPLEMENTATION TRACKER */}
+      {activeTab === 'action-plans' && (
+        <CommitteeActionPlanView
+          terms={terms}
+          members={members}
+          meetings={meetings}
+          resolutions={resolutions || []}
+          mosque={mosque}
+          language={language}
+          currentUser={currentUser}
+          onNavigateToResolutionTab={() => setActiveTab('meetings')}
+          onOpenCreateResolution={(meetingId, decId) => {
+            setActiveTab('meetings');
+            if (handleOpenCreateResolution) {
+              handleOpenCreateResolution(meetingId, decId);
+            }
+          }}
+        />
+      )}
+
+      {/* 5. PERFORMANCE & ACTIVITIES EVALUATION */}
+      {activeTab === 'performance' && (
+        <CommitteePerformanceView
+          terms={terms}
+          members={members}
+          meetings={meetings}
+          mosque={mosque}
+          language={language}
+          currentUserId={currentUser?.id}
+          currentUserName={currentUser?.name}
+          currentUserRole={currentUser?.role}
+          onRefreshMosqueSettings={onRefreshMosqueSettings}
+        />
+      )}
+
+      {/* 6. COMMITTEE FINANCIAL HISTORY & HANDOVER */}
+      {activeTab === 'financial-history' && (
+        <CommitteeFinancialHistoryView
+          terms={terms}
+          language={language}
+          mosque={mosque}
+          currentUser={currentUser}
+          onRefreshTerms={onRefreshMosqueSettings}
+        />
       )}
       </div>
 
@@ -2697,10 +3065,10 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
 
       {/* COMMITTEE MEMBER PRINT MODAL */}
       {isPrintModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto print:p-0 print:bg-white print:inset-auto print:block print:static">
-          <div className="bg-white rounded-2xl max-w-4xl w-full shadow-2xl border border-slate-200 overflow-hidden my-auto print:shadow-none print:border-none print:rounded-none print:max-w-none">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto report-modal-print-wrapper">
+          <div className="bg-white rounded-2xl max-w-4xl w-full shadow-2xl border border-slate-200 overflow-hidden my-auto report-modal-print-card">
             {/* Modal Control Bar - hidden on print */}
-            <div className="p-3.5 bg-slate-900 text-white flex items-center justify-between print:hidden">
+            <div className="p-3.5 bg-slate-900 text-white flex items-center justify-between print:hidden print-controls-bar">
               <span className="text-xs font-bold font-siliguri flex items-center space-x-1.5">
                 <Printer className="w-4 h-4 text-blue-400" />
                 <span>কমিটি সদস্য তালিকা প্রিন্ট প্রিভিউ</span>
@@ -2827,14 +3195,17 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
           notices={notices || []}
           mosque={mosque}
           language={language}
+          onOpenCreateResolution={handleOpenCreateResolution}
         />
       )}
 
       {/* 5. MEETING DOCUMENT PRINT & PREVIEW (A4 Letterhead) */}
       {isMeetingPrintOpen && activeMeetingForPrint && (
         <MeetingDocumentPrint
+          isOpen={isMeetingPrintOpen}
           meeting={activeMeetingForPrint}
           mosque={mosque}
+          members={members}
           language={language}
           onClose={() => {
             setIsMeetingPrintOpen(false);
@@ -2867,8 +3238,104 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
           }}
           notice={activeNoticeForPrint}
           mosque={mosque}
+          members={members}
           language={language}
         />
+      )}
+
+      {/* 8. MEETING RESOLUTION ENTRY / EDIT / REVISION MODAL */}
+      {isResolutionModalOpen && (
+        <MeetingResolutionModal
+          isOpen={isResolutionModalOpen}
+          onClose={() => {
+            setIsResolutionModalOpen(false);
+            setEditingResolutionForModal(null);
+            setSelectedResMeetingId(undefined);
+            setSelectedResDecisionId(undefined);
+            setIsResolutionRevisionMode(false);
+          }}
+          onSave={handleSaveResolution}
+          initialResolution={editingResolutionForModal}
+          initialMeetingId={selectedResMeetingId}
+          initialDecisionId={selectedResDecisionId}
+          isRevisionMode={isResolutionRevisionMode}
+          meetings={meetings}
+          members={members}
+          mosque={mosque}
+          language={language}
+        />
+      )}
+
+      {/* 9. MEETING RESOLUTION PRINT PREVIEW MODAL */}
+      {isResolutionPrintOpen && activeResolutionForPrint && (
+        <MeetingResolutionPrint
+          isOpen={isResolutionPrintOpen}
+          onClose={() => {
+            setIsResolutionPrintOpen(false);
+            setActiveResolutionForPrint(null);
+          }}
+          resolution={activeResolutionForPrint}
+          meeting={meetings.find((m) => m.id === activeResolutionForPrint.meetingId)}
+          members={members}
+          mosque={mosque}
+          language={language}
+        />
+      )}
+
+      {/* 9.1 RESOLUTION BOOK (BATCH PRINT) MODAL */}
+      {isResolutionBookPrintOpen && activeResolutionsForBookPrint && (
+        <MeetingResolutionPrint
+          isOpen={isResolutionBookPrintOpen}
+          onClose={() => {
+            setIsResolutionBookPrintOpen(false);
+            setActiveResolutionsForBookPrint(null);
+          }}
+          resolutionsList={activeResolutionsForBookPrint}
+          bookTitle={resolutionBookTitle}
+          members={members}
+          mosque={mosque}
+          language={language}
+        />
+      )}
+
+      {/* 10. DELETE RESOLUTION CONFIRMATION MODAL */}
+      {deletingResolutionItem && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center space-x-3 text-rose-600">
+              <div className="p-3 bg-rose-100 rounded-xl">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-slate-900">রেজোলিউশন মুছে ফেলবেন?</h3>
+                <p className="text-xs text-slate-500 font-mono">নথি নং: {deletingResolutionItem.resolutionNumber}</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-100">
+              আপনি কি নিশ্চিত যে <strong>{deletingResolutionItem.title}</strong> রেজোলিউশনটি স্থায়ীভাবে মুছে ফেলতে চান?
+            </p>
+
+            <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={isDeletingResolution}
+                onClick={() => setDeletingResolutionItem(null)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+              >
+                {t.cancel}
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingResolution}
+                onClick={handleConfirmDeleteResolution}
+                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs transition-colors cursor-pointer"
+              >
+                {isDeletingResolution ? 'মুছে ফেলা হচ্ছে...' : 'হ্যাঁ, মুছে ফেলুন'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* 8. DELETE MEETING CONFIRMATION MODAL */}

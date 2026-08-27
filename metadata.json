@@ -1,6 +1,6 @@
 {
   "name": "MasjidLedger",
-  "description": "Smart Mosque Management & Accounting System (মসজিদলেজার — স্মার্ট মসজিদ ব্যবস্থাপনা ও হিসাবরক্ষণ)",
+  "description": "Smart Mosque Management & Accounting System with Committee Member Performance & Activity Evaluation (মসজিদলেজার — স্মার্ট মসজিদ ব্যবস্থাপনা, হিসাবরক্ষণ ও কমিটি সদস্য পারফরম্যান্স মূল্যায়ন)",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
