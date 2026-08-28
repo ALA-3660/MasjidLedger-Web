@@ -16,6 +16,7 @@ import {
   CommitteeMeetingNotice,
   MeetingResolution,
   CommitteeActionPlan,
+  SubCommittee,
   CommitteeActionPlanStatus,
   CommitteeActionPlanPriority,
   CommitteeActionPlanAttachment,
@@ -61,6 +62,7 @@ export class DatabaseStore {
   committeeActivities: CommitteeMemberActivity[] = [];
   committeeTasks: CommitteeMemberTask[] = [];
   committeeManualEvaluations: CommitteeManualEvaluation[] = [];
+  subCommittees: SubCommittee[] = [];
   staffList: Staff[] = [];
   staffPayments: StaffPayment[] = [];
   staffBankTransferLetters: StaffBankTransferLetter[] = [];
@@ -108,6 +110,7 @@ export class DatabaseStore {
         this.committeeActivities = parsed.committeeActivities || [];
         this.committeeTasks = parsed.committeeTasks || [];
         this.committeeManualEvaluations = parsed.committeeManualEvaluations || [];
+        this.subCommittees = parsed.subCommittees || [];
         this.staffList = (parsed.staffList || []).map((s: any, idx: number) => {
           const staffYear = s.joiningDate ? s.joiningDate.split('-')[0] : '2026';
           const autoCode = s.staffCode || `STF-${staffYear}-${String(idx + 1).padStart(3, '0')}`;
@@ -187,6 +190,7 @@ export class DatabaseStore {
         committeeActivities: this.committeeActivities,
         committeeTasks: this.committeeTasks,
         committeeManualEvaluations: this.committeeManualEvaluations,
+        subCommittees: this.subCommittees,
         staffList: this.staffList,
         staffPayments: this.staffPayments,
         staffBankTransferLetters: this.staffBankTransferLetters,
@@ -1781,23 +1785,670 @@ export class DatabaseStore {
     );
 
     // 12. Property & Waqf
-    this.properties.push({
-      id: 'prop-01',
-      mosqueId: mosque1.id,
-      propertyCode: 'PROP-WAQF-01',
-      type: 'COMMERCIAL_LAND',
-      description: 'মসজিদ সংলগ্ন ওয়াকফ মার্কেট (১০টি পাকা দোকান)',
-      location: 'মিরপুর-১২ মূল সড়ক সংলগ্ন',
-      area: '৬.৫ শতাংশ জমি',
-      ownershipType: 'WAQF',
-      waqfEnrollmentNo: 'EC-18452/1988',
-      currentUse: '১০টি দোকান ভাড়া দেওয়া আছে (মাসিক আয় মোট ৪৫,০০০ টাকা)',
-      monthlyIncome: 45000,
-      status: 'ACTIVE',
-      documentsCount: 4,
-      notes: 'সকল ভাড়া চুক্তি ২০২৭ সাল পর্যন্ত কার্যকর।',
-      createdAt: '2026-01-01T00:00:00.000Z'
-    });
+    this.properties.push(
+      {
+        id: 'prop-01',
+        mosqueId: mosque1.id,
+        propertyCode: 'PROP-WAQF-01',
+        name: 'মসজিদ সংলগ্ন ওয়াকফ মার্কেট (১০টি পাকা দোকান)',
+        nameBn: 'মসজিদ সংলগ্ন ওয়াকফ মার্কেট (১০টি পাকা দোকান)',
+        type: 'COMMERCIAL_LAND',
+        category: 'MARKET',
+        description: 'মসজিদ সংলগ্ন পাকা দোতলা ওয়াকফ মার্কেট ও বাণিজ্যিক দোকানঘর',
+        location: 'মিরপুর-১২ মূল সড়ক সংলগ্ন, ঢাকা',
+        fullAddress: 'হোল্ডিং নং- ১২/এ, ব্লক-ডি, মিরপুর-১২, পল্লবী, ঢাকা-১২১৬',
+        area: '৬.৫০ শতাংশ',
+        areaAmount: 6.5,
+        areaUnit: 'DECIMAL',
+        ownershipType: 'WAQF',
+        
+        // ভূমি রেকর্ড
+        csPlotNo: '৪১২',
+        saPlotNo: '৫১৮',
+        rsPlotNo: '৭২৪',
+        bsPlotNo: '১০৫২',
+        plotNo: '১০৫২',
+        csKhatianNo: '৮৫',
+        saKhatianNo: '১১৪',
+        rsKhatianNo: '২৩৬',
+        bsKhatianNo: '৪৭৫',
+        mutationKhatianNo: 'মিউটেশন-১২৮/২০১০',
+        khatianNo: '৪৭৫',
+        mouza: 'সেনপাড়া পর্বতা',
+        jlNumber: '৪৫',
+        subRegistryOffice: 'মিরপুর সাব-রেজিস্ট্রি অফিস',
+
+        // চতুঃসীমানা
+        boundaryNorth: 'মিরপুর প্রধান সড়ক ও ফুটপাত',
+        boundarySouth: 'বায়তুল আমান জামে মসজিদ চত্বর',
+        boundaryEast: 'আলহাজ্ব রফিকের বাড়ি',
+        boundaryWest: 'সরকারি রাস্তা ও ড্রেন',
+
+        // ওয়াকফ ও ওয়াকিফ
+        waqfEnrollmentNo: 'EC-18452/1988',
+        waqfDeedNo: '৪৫১২/১৯৮৮',
+        waqfYear: '১৯৮৮',
+        waqfDeedDate: '1988-04-15',
+        waqifName: 'মরহুম হাজী মোহাম্মদ আলতাফ হোসেন',
+        waqifFatherName: 'মরহুম মৌলভী আব্দুল করিম',
+        waqifAddress: 'মিরপুর-১২, পল্লবী, ঢাকা',
+        waqfPurpose: 'মসজিদের ইমাম-মুয়াজ্জিনের বেতন-ভাতা ও রক্ষণাবেক্ষণ খরচ নির্বাহ',
+        waqfEstateName: 'হাজী আলতাফ হোসেন ওয়াকফ এস্টেট',
+
+        // ব্যবহার ও দখল
+        currentUse: '১০টি দোকান ও ফার্মেসি ভাড়া দেওয়া আছে (মাসিক মোট ভাড়া ৳৪৫,০০০)',
+        possessionStatus: 'RENTED',
+        status: 'RENTED',
+        estimatedValue: 12500000,
+        monthlyIncome: 45000,
+        monthlyRent: 45000,
+        annualIncome: 540000,
+        documentsCount: 4,
+        notes: 'সকল ভাড়া চুক্তি নিয়মিত নবায়নযোগ্য এবং ২০২৭ সাল পর্যন্ত নিবন্ধিত চুক্তি বহাল আছে।',
+        
+        // ভাড়াটিয়া তথ্য (Tenants)
+        tenants: [
+          {
+            id: 'tnt-01',
+            mosqueId: mosque1.id,
+            propertyId: 'prop-01',
+            tenantCode: 'TNT-001',
+            name: 'মোঃ রফিকুল ইসলাম',
+            fatherOrSpouseName: 'মোঃ আব্দুর রশিদ',
+            mobile: '01711223344',
+            nid: '19842695841235687',
+            address: 'দোকান নং ১, বায়তুল আমান মার্কেট, মিরপুর-১২, ঢাকা',
+            unitOrShopNo: 'দোকান নং- ০১ (আল-মদিনা ফার্মেসি)',
+            businessName: 'মেসার্স আল-মদিনা ফার্মেসি',
+            businessType: 'ওষুধ ও সার্জিক্যাল পণ্য',
+            agreementNo: 'AGR-2025-01',
+            startDate: '2025-01-01',
+            endDate: '2027-12-31',
+            monthlyRent: 15000,
+            annualRent: 180000,
+            securityDeposit: 100000,
+            paymentDueDate: 10,
+            status: 'ACTIVE',
+            notes: 'অগ্রিম জামানত ৳১,০০,০০০ মসজিদের ব্যাংক অ্যাকাউন্টে জমা আছে।',
+            createdAt: '2025-01-01T00:00:00.000Z'
+          },
+          {
+            id: 'tnt-02',
+            mosqueId: mosque1.id,
+            propertyId: 'prop-01',
+            tenantCode: 'TNT-002',
+            name: 'হাফেজ মোঃ আব্দুল্লাহ আল মামুন',
+            fatherOrSpouseName: 'মাওলানা ইসমাইল হোসেন',
+            mobile: '01819887766',
+            nid: '19902695849876543',
+            address: 'দোকান নং ২, বায়তুল আমান মার্কেট, মিরপুর-১২, ঢাকা',
+            unitOrShopNo: 'দোকান নং- ০২ (মাদানি লাইব্রেরি ও বুক ডিপো)',
+            businessName: 'মাদানি লাইব্রেরি ও বুক ডিপো',
+            businessType: 'ইসলামিক বই ও স্টেশনারি',
+            agreementNo: 'AGR-2025-02',
+            startDate: '2025-01-01',
+            endDate: '2026-12-31',
+            monthlyRent: 12000,
+            annualRent: 144000,
+            securityDeposit: 80000,
+            paymentDueDate: 10,
+            status: 'ACTIVE',
+            notes: 'চুক্তি প্রতি দুই বছর পর পর নবায়নযোগ্য।',
+            createdAt: '2025-01-01T00:00:00.000Z'
+          }
+        ],
+
+        // ভাড়া কালেকশন ইতিহাস (Rent Collections)
+        rentCollections: [
+          {
+            id: 'rent-col-01',
+            mosqueId: mosque1.id,
+            propertyId: 'prop-01',
+            propertyCode: 'PROP-WAQF-01',
+            propertyName: 'বায়তুল আমান ওয়াকফ মার্কেট ও বাণিজ্যিক ভবন',
+            tenantId: 'tnt-01',
+            tenantName: 'মোঃ রফিকুল ইসলাম',
+            tenantCode: 'TNT-001',
+            shopOrUnitNo: 'দোকান নং- ০১ (আল-মদিনা ফার্মেসি)',
+            billingMonth: '2026-08',
+            monthlyRent: 15000,
+            previousDue: 0,
+            totalDue: 15000,
+            paidAmount: 15000,
+            remainingDue: 0,
+            paymentDate: '2026-08-05',
+            paymentMethod: 'CASH',
+            accountId: 'acc-cash-01',
+            accountName: 'প্রধান ক্যাশ',
+            receiptNumber: 'WQR-2026-0001',
+            incomeVoucherNumber: 'INC-2026-000045',
+            incomeEntryId: 'inc-prop-01',
+            isAccountingLinked: true,
+            collectorName: 'মুহাম্মদ রফিকুল ইসলাম',
+            collectorDesignation: 'সাধারণ সম্পাদক / ক্যাশিয়ার',
+            notes: 'আগস্ট ২০২৬ মাসের ভাড়া পূর্ণ পরিশোধিত।',
+            status: 'PAID',
+            createdAt: '2026-08-05T10:00:00.000Z'
+          },
+          {
+            id: 'rent-col-02',
+            mosqueId: mosque1.id,
+            propertyId: 'prop-01',
+            propertyCode: 'PROP-WAQF-01',
+            propertyName: 'বায়তুল আমান ওয়াকফ মার্কেট ও বাণিজ্যিক ভবন',
+            tenantId: 'tnt-02',
+            tenantName: 'হাফেজ মোঃ আব্দুল্লাহ আল মামুন',
+            tenantCode: 'TNT-002',
+            shopOrUnitNo: 'দোকান নং- ০২ (মাদানি লাইব্রেরি ও বুক ডিপো)',
+            billingMonth: '2026-08',
+            monthlyRent: 12000,
+            previousDue: 2000,
+            totalDue: 14000,
+            paidAmount: 12000,
+            remainingDue: 2000,
+            paymentDate: '2026-08-08',
+            paymentMethod: 'BANK',
+            accountId: 'acc-bank-01',
+            accountName: 'ইসলামী ব্যাংক বাংলাদেশ লিঃ (চলতি হিসাব)',
+            receiptNumber: 'WQR-2026-0002',
+            incomeVoucherNumber: 'INC-2026-000046',
+            incomeEntryId: 'inc-prop-02',
+            isAccountingLinked: true,
+            collectorName: 'মুহাম্মদ রফিকুল ইসলাম',
+            collectorDesignation: 'সাধারণ সম্পাদক',
+            notes: 'আগস্ট মাসের মূল ভাড়া ১২,০০০ জমা, পূর্বের বকেয়া ২,০০০ টাকা অবশিষ্ট রয়েছে।',
+            status: 'PARTIAL',
+            createdAt: '2026-08-08T11:30:00.000Z'
+          }
+        ],
+
+        // দলিল ও নথি আর্কাইভ (Document Archive)
+        documents: [
+          {
+            id: 'doc-prop-01',
+            mosqueId: mosque1.id,
+            propertyId: 'prop-01',
+            title: 'মূল ওয়াকফনামা দলিল (রেজিস্ট্রিকৃত)',
+            documentType: 'WAQF_DEED',
+            documentTypeBn: 'ওয়াকফ দলিল',
+            issueDate: '1988-04-15',
+            description: 'মরহুম হাজী আলতাফ হোসেন কর্তৃক সম্পাদিত ওয়াকফ দলিল নং ৪৫১২/১৯৮৮',
+            fileUrl: '/uploads/waqf-deed-4512.pdf',
+            fileName: 'waqf_deed_altaf_hossain_1988.pdf',
+            fileSize: 3450000,
+            uploadedBy: 'usr-admin-1',
+            uploadedByName: 'মুহাম্মদ রফিকুল ইসলাম',
+            createdAt: '2026-01-10T10:00:00.000Z'
+          },
+          {
+            id: 'doc-prop-02',
+            mosqueId: mosque1.id,
+            propertyId: 'prop-01',
+            title: 'বিএস চূড়ান্ত খতিয়ান ও পর্চা নং ৪৭৫',
+            documentType: 'KHATIAN',
+            documentTypeBn: 'খতিয়ান',
+            issueDate: '2010-06-20',
+            description: 'ঢাকা জেলা, পল্লবী থানা, মৌজা সেনপাড়া পর্বতা বিএস ৪৭৫ নং খতিয়ান',
+            fileUrl: '/uploads/bs-khatian-475.pdf',
+            fileName: 'bs_khatian_475_senpara.pdf',
+            fileSize: 1850000,
+            uploadedBy: 'usr-admin-1',
+            uploadedByName: 'মুহাম্মদ রফিকুল ইসলাম',
+            createdAt: '2026-01-10T10:15:00.000Z'
+          },
+          {
+            id: 'doc-prop-03',
+            mosqueId: mosque1.id,
+            propertyId: 'prop-01',
+            title: 'নামজারি ও জমাভাগ ডিসিআর (মিউটেশন)',
+            documentType: 'NAMJARI',
+            documentTypeBn: 'নামজারি / মিউটেশন',
+            issueDate: '2010-09-12',
+            description: 'সহকারী কমিশনার (ভূমি) কর্তৃক মসজিদের অনুকূলে নামজারি অনুমোদন',
+            fileUrl: '/uploads/mutation-dcr-128.pdf',
+            fileName: 'mutation_dcr_128_2010.pdf',
+            fileSize: 1250000,
+            uploadedBy: 'usr-admin-1',
+            uploadedByName: 'মুহাম্মদ রফিকুল ইসলাম',
+            createdAt: '2026-01-10T10:30:00.000Z'
+          },
+          {
+            id: 'doc-prop-04',
+            mosqueId: mosque1.id,
+            propertyId: 'prop-01',
+            title: 'দোকান ভাড়া চুক্তিপত্র - আল-মদিনা ফার্মেসি',
+            documentType: 'IJARA_AGREEMENT',
+            documentTypeBn: 'ভাড়া/ইজারা চুক্তিপত্র',
+            issueDate: '2025-01-01',
+            description: 'দোকান নং ০১ এর তিন বছর মেয়াদী স্ট্যাম্পযুক্ত ভাড়া চুক্তিপত্র',
+            fileUrl: '/uploads/agreement-shop-01.pdf',
+            fileName: 'agreement_tnt01_pharmacy.pdf',
+            fileSize: 2100000,
+            uploadedBy: 'usr-admin-1',
+            uploadedByName: 'মুহাম্মদ রফিকুল ইসলাম',
+            createdAt: '2026-01-15T12:00:00.000Z'
+          }
+        ],
+
+        // ভূমি উন্নয়ন কর ও খাজনা রেকর্ড (Khajna Records)
+        khajnaRecords: [
+          {
+            id: 'khajna-01',
+            mosqueId: mosque1.id,
+            propertyId: 'prop-01',
+            taxYear: '১৪৩১-১৪৩২ বঙ্গাব্দ / ২০২৫-২০২৬',
+            amount: 4500,
+            paymentDate: '2026-03-12',
+            receiptNumber: 'DAK-2026-9854',
+            nextDueDate: '2027-03-31',
+            holdingNo: 'হোল্ডিং নং- ৮৫২/১',
+            paidToOffice: 'মিরপুর পল্লবী ইউনিয়ন ভূমি অফিস',
+            notes: 'অনলাইন ই-নামজারি ও ই-খাজনা পোর্টালে পরিশোধিত দাখিলা সংরক্ষিত।',
+            expenseVoucherNumber: 'EXP-2026-000112',
+            expenseEntryId: 'exp-prop-khajna-01',
+            isExpenseLinked: true,
+            createdAt: '2026-03-12T14:00:00.000Z'
+          }
+        ],
+
+        // সম্পত্তি মেরামত ও পরিচালন ব্যয় (Expenses)
+        expenses: [
+          {
+            id: 'exp-prop-01',
+            mosqueId: mosque1.id,
+            propertyId: 'prop-01',
+            propertyCode: 'PROP-WAQF-01',
+            propertyName: 'বায়তুল আমান ওয়াকফ মার্কেট ও বাণিজ্যিক ভবন',
+            expenseCategory: 'REPAIR',
+            expenseCategoryBn: 'মেরামত ও সংস্কার',
+            amount: 8500,
+            date: '2026-07-20',
+            payeeName: 'মেসার্স ভাই ভাই স্যানিটারি ও প্লাম্বিং',
+            paymentMethod: 'CASH',
+            accountId: 'acc-cash-01',
+            accountName: 'প্রধান ক্যাশ',
+            voucherNumber: 'EXP-2026-000088',
+            expenseEntryId: 'exp-prop-voucher-01',
+            description: 'মার্কেট ভবনের ড্রেনেজ পাইপ পরিবর্তন ও পশ্চিম পাশের দেওয়াল প্লাস্টার মেরামত',
+            createdBy: 'usr-admin-1',
+            createdByName: 'মুহাম্মদ রফিকুল ইসলাম',
+            createdAt: '2026-07-20T16:00:00.000Z'
+          },
+          {
+            id: 'exp-prop-02',
+            mosqueId: mosque1.id,
+            propertyId: 'prop-01',
+            propertyCode: 'PROP-WAQF-01',
+            propertyName: 'বায়তুল আমান ওয়াকফ মার্কেট ও বাণিজ্যিক ভবন',
+            expenseCategory: 'TAX_KHAJNA',
+            expenseCategoryBn: 'ভূমি উন্নয়ন কর ও খাজনা',
+            amount: 4500,
+            date: '2026-03-12',
+            payeeName: 'পল্লবী ভূমি রাজস্ব অফিস',
+            paymentMethod: 'BANK',
+            accountId: 'acc-bank-01',
+            accountName: 'ইসলামী ব্যাংক বাংলাদেশ লিঃ',
+            voucherNumber: 'EXP-2026-000112',
+            expenseEntryId: 'exp-prop-voucher-02',
+            description: '১৪৩১-১৪৩২ সনের বার্ষিক ভূমি উন্নয়ন কর পরিশোধ',
+            createdBy: 'usr-admin-1',
+            createdByName: 'মুহাম্মদ রফিকুল ইসলাম',
+            createdAt: '2026-03-12T14:30:00.000Z'
+          }
+        ],
+
+        // পরিদর্শন লগ (Inspections)
+        inspections: [
+          {
+            id: 'insp-01',
+            propertyId: 'prop-01',
+            inspectionDate: '2026-02-15',
+            inspectorName: 'হাজী জহিরুল ইসলাম',
+            inspectorDesignation: 'যুগ্ম সাধারণ সম্পাদক ও ওয়াকফ সাব-কমিটি আহ্বায়ক',
+            currentCondition: 'GOOD',
+            occupancyStatus: 'সকল দোকান সুষ্ঠুভাবে পরিচালিত হচ্ছে',
+            problemsObserved: 'পশ্চিম পাশের ড্রেনে সামান্য সংস্কার প্রয়োজন',
+            requiredAction: 'বর্ষার আগে পশ্চিম দেয়ালের ড্রেন পরিষ্কার ও মেরামত',
+            nextInspectionDate: '2026-08-15',
+            notes: 'দখল সম্পূর্ণ শান্তিপূর্ণ ও নিয়মিত ভাড়া আদায় হচ্ছে।',
+            createdAt: '2026-02-15T00:00:00.000Z'
+          }
+        ],
+
+        createdAt: '2026-01-01T00:00:00.000Z'
+      },
+      {
+        id: 'prop-02',
+        mosqueId: mosque1.id,
+        propertyCode: 'PROP-WAQF-02',
+        name: 'মসজিদ সংলগ্ন বাগান ও নার্সারি জমি',
+        nameBn: 'মসজিদ সংলগ্ন বাগান ও নার্সারি জমি',
+        type: 'AGRICULTURAL_LAND',
+        category: 'LAND',
+        description: 'মসজিদের দক্ষিণ সীমানা সংলগ্ন ওয়াকফ বাগান ও উন্মুক্ত জমি',
+        location: 'মসজিদের দক্ষিণ প্রাচীর সংলগ্ন, মিরপুর-১২',
+        fullAddress: 'মিরপুর-১২, পল্লবী, ঢাকা-১২১৬',
+        area: '৮.০০ শতাংশ',
+        areaAmount: 8.0,
+        areaUnit: 'DECIMAL',
+        ownershipType: 'WAQF',
+        
+        // ভূমি রেকর্ড
+        csPlotNo: '৪১৫',
+        saPlotNo: '৫২০',
+        rsPlotNo: '৭২৮',
+        bsPlotNo: '১০৫৬',
+        plotNo: '১০৫৬',
+        csKhatianNo: '৮৫',
+        saKhatianNo: '১১৪',
+        rsKhatianNo: '২৩৬',
+        bsKhatianNo: '৪৭৮',
+        mutationKhatianNo: 'মিউটেশন-১৩০/২০১২',
+        khatianNo: '৪৭৮',
+        mouza: 'সেনপাড়া পর্বতা',
+        jlNumber: '৪৫',
+        subRegistryOffice: 'মিরপুর সাব-রেজিস্ট্রি অফিস',
+
+        // চতুঃসীমানা
+        boundaryNorth: 'মসজিদ চত্বর ও অজুখানা',
+        boundarySouth: 'আবাসিক প্লট ও সীমানা প্রাচীর',
+        boundaryEast: 'সরকারি পুকুর',
+        boundaryWest: 'মসজিদের অভ্যন্তরীণ সংযোগ সড়ক',
+
+        // ওয়াকফ ও ওয়াকিফ
+        waqfEnrollmentNo: 'EC-18452/1988',
+        waqfDeedNo: '৪৫১২/১৯৮৮',
+        waqfYear: '১৯৮৮',
+        waqfDeedDate: '1988-04-15',
+        waqifName: 'মরহুমা খাদিজা বেগম',
+        waqifFatherName: 'মরহুম আব্দুল গণি',
+        waqifAddress: 'মিরপুর, ঢাকা',
+        waqfPurpose: 'মসজিদ পরিচালনা ও হেফজখানার ছাত্রদের খাদ্য সহায়তা',
+        waqfEstateName: 'হাজী আলতাফ হোসেন ও খাদিজা বেগম ওয়াকফ এস্টেট',
+
+        // ব্যবহার ও দখল
+        currentUse: 'গাছপালা ও উন্মুক্ত বাগান (ভবিষ্যতে মাদরাসা ভবন সম্প্রসারণের জন্য নির্ধারিত)',
+        possessionStatus: 'MOSQUE_CONTROL',
+        status: 'ACTIVE',
+        estimatedValue: 9600000,
+        monthlyIncome: 0,
+        documentsCount: 2,
+        notes: 'সম্পূর্ণ সীমানা প্রাচীর দ্বারা ঘেরা ও মসজিদের প্রত্যক্ষ নিয়ন্ত্রণে রয়েছে।',
+        
+        documents: [
+          {
+            id: 'doc-prop-05',
+            mosqueId: mosque1.id,
+            propertyId: 'prop-02',
+            title: 'ওয়াকফ হেবানামা ও রেজিস্ট্রি দলিল',
+            documentType: 'WAQF_DEED',
+            documentTypeBn: 'ওয়াকফ দলিল',
+            issueDate: '1988-04-15',
+            description: 'মরহুমা খাদিজা বেগম কর্তৃক ওয়াকফকৃত জমির রেজিস্ট্রি দলিল',
+            fileUrl: '/uploads/waqf-deed-khadija.pdf',
+            fileName: 'waqf_deed_khadija_begum.pdf',
+            fileSize: 2800000,
+            uploadedBy: 'usr-admin-1',
+            uploadedByName: 'মুহাম্মদ রফিকুল ইসলাম',
+            createdAt: '2026-01-12T11:00:00.000Z'
+          },
+          {
+            id: 'doc-prop-06',
+            mosqueId: mosque1.id,
+            propertyId: 'prop-02',
+            title: 'বিএস পর্চা ও দাগের নকশা',
+            documentType: 'PORCHA',
+            documentTypeBn: 'পর্চা ও নকশা',
+            issueDate: '2012-05-10',
+            description: 'সেনপাড়া পর্বতা মৌজার দাগ নং ১০৫৬ এর সহিহ পর্চা ও সীমানা ম্যাপ',
+            fileUrl: '/uploads/porcha-plot-1056.pdf',
+            fileName: 'porcha_plot_1056_map.pdf',
+            fileSize: 1950000,
+            uploadedBy: 'usr-admin-1',
+            uploadedByName: 'মুহাম্মদ রফিকুল ইসলাম',
+            createdAt: '2026-01-12T11:20:00.000Z'
+          }
+        ],
+        khajnaRecords: [
+          {
+            id: 'khajna-02',
+            mosqueId: mosque1.id,
+            propertyId: 'prop-02',
+            taxYear: '১৪৩১-১৪৩২ বঙ্গাব্দ / ২০২৫-২০২৬',
+            amount: 2400,
+            paymentDate: '2026-03-15',
+            receiptNumber: 'DAK-2026-9890',
+            nextDueDate: '2027-03-31',
+            holdingNo: 'হোল্ডিং নং- ৮৫২/২',
+            paidToOffice: 'পল্লবী ভূমি রাজস্ব অফিস',
+            notes: '১৪৩১ সনের খাজনা পরিশোধিত।',
+            expenseVoucherNumber: 'EXP-2026-000115',
+            expenseEntryId: 'exp-prop-khajna-02',
+            isExpenseLinked: true,
+            createdAt: '2026-03-15T15:00:00.000Z'
+          }
+        ],
+        expenses: [
+          {
+            id: 'exp-prop-03',
+            mosqueId: mosque1.id,
+            propertyId: 'prop-02',
+            propertyCode: 'PROP-WAQF-02',
+            propertyName: 'মসজিদ সংলগ্ন বাগান ও নার্সারি জমি',
+            expenseCategory: 'MAINTENANCE',
+            expenseCategoryBn: 'রক্ষণাবেক্ষণ ও পরিচ্ছন্নতা',
+            amount: 3500,
+            date: '2026-06-10',
+            payeeName: 'কৃষি নার্সারি ও লেবার',
+            paymentMethod: 'CASH',
+            accountId: 'acc-cash-01',
+            accountName: 'প্রধান ক্যাশ',
+            voucherNumber: 'EXP-2026-000075',
+            description: 'বাগানের সীমানা প্রাচীর সংলগ্ন জঙ্গল পরিষ্কার ও নতুন ফলের চারা রোপণ',
+            createdBy: 'usr-admin-1',
+            createdByName: 'মুহাম্মদ রফিকুল ইসলাম',
+            createdAt: '2026-06-10T11:00:00.000Z'
+          }
+        ],
+        createdAt: '2026-01-01T00:00:00.000Z'
+      },
+      {
+        id: 'prop-03',
+        mosqueId: mosque1.id,
+        propertyCode: 'PROP-WAQF-03',
+        name: 'ওয়াকফ পুকুর ও মৎস্য ইজারা প্রকল্প',
+        nameBn: 'ওয়াকফ পুকুর ও মৎস্য ইজারা প্রকল্প',
+        type: 'POND',
+        category: 'POND',
+        description: 'মসজিদের উন্নয়ন তহবিলের সহায়তায় বার্ষিক ইজারাকৃত ওয়াকফ পুকুর',
+        location: 'পূর্বপল্লী ওয়াকফ এলাকা, মিরপুর',
+        fullAddress: 'পূর্বপল্লী, মিরপুর-১১, ঢাকা',
+        area: '১৫.০০ শতাংশ',
+        areaAmount: 15.0,
+        areaUnit: 'DECIMAL',
+        ownershipType: 'WAQF',
+
+        csPlotNo: '৩১৮',
+        saPlotNo: '৪২২',
+        rsPlotNo: '৬৫৪',
+        bsPlotNo: '৯৮০',
+        plotNo: '৯৮০',
+        csKhatianNo: '৬২',
+        saKhatianNo: '৮৮',
+        rsKhatianNo: '১৮২',
+        bsKhatianNo: '৩৫৫',
+        khatianNo: '৩৫৫',
+        mouza: 'সেনপাড়া পর্বতা',
+        jlNumber: '৪৫',
+        subRegistryOffice: 'মিরপুর সাব-রেজিস্ট্রি অফিস',
+
+        boundaryNorth: 'সরকারি ড্রেন ও রাস্তা',
+        boundarySouth: 'আলহাজ্ব নূরুল হকের বসতবাড়ি',
+        boundaryEast: 'উন্মুক্ত ফসলি জমি',
+        boundaryWest: 'মসজিদের ওয়াকফ বাগান',
+
+        waqfEnrollmentNo: 'EC-18452/1988',
+        waqfDeedNo: '৪৫১২/১৯৮৮',
+        waqfYear: '১৯৮৮',
+        waqfDeedDate: '1988-04-15',
+        waqifName: 'মরহুম মৌলভী শফিউদ্দিন আহমেদ',
+        waqifFatherName: 'মরহুম হাজী ইয়াসিন আলী',
+        waqifAddress: 'মিরপুর, ঢাকা',
+        waqfPurpose: 'মসজিদের বিদ্যুৎ বিল ও এতিম ছাত্রদের সহায়তায় পুকুরের আয় ব্যবহার',
+        waqfEstateName: 'হাজী শফিউদ্দিন ওয়াকফ এস্টেট',
+
+        currentUse: 'মৎস্য চাষের জন্য বার্ষিক ইজারা প্রদান (মাসিক কিস্তি হিসেবে আয়)',
+        possessionStatus: 'LEASED',
+        status: 'LEASED',
+        estimatedValue: 7500000,
+        monthlyIncome: 18000,
+        monthlyRent: 18000,
+        annualIncome: 216000,
+        documentsCount: 2,
+        notes: '২০২৬ সালের জন্য মেসার্স রুপালী ফিশারিজের অনুকূলে ইজারা চুক্তি সম্পাদিত হয়েছে।',
+
+        tenants: [
+          {
+            id: 'tnt-03',
+            mosqueId: mosque1.id,
+            propertyId: 'prop-03',
+            tenantCode: 'TNT-003',
+            name: 'মোঃ সাইদুর রহমান (ইজারাদার)',
+            fatherOrSpouseName: 'মোঃ আমজাদ হোসেন',
+            mobile: '01715998877',
+            nid: '19792695843322114',
+            address: 'পূর্বপল্লী, মিরপুর-১১, ঢাকা',
+            unitOrShopNo: 'পুকুর ইজারা ব্লক-০১',
+            businessName: 'মেসার্স রুপালী ফিশারিজ ও নার্সারি',
+            businessType: 'মৎস্য চাষ ও পোনা উৎপাদন',
+            agreementNo: 'IJARA-2026-01',
+            startDate: '2026-01-01',
+            endDate: '2026-12-31',
+            monthlyRent: 18000,
+            annualRent: 216000,
+            securityDeposit: 150000,
+            paymentDueDate: 5,
+            status: 'ACTIVE',
+            notes: 'বার্ষিক চুক্তি অনুযায়ী প্রতি মাসের ৫ তারিখের মধ্যে কিস্তি পরিশোধযোগ্য।',
+            createdAt: '2026-01-01T00:00:00.000Z'
+          }
+        ],
+
+        rentCollections: [
+          {
+            id: 'rent-col-03',
+            mosqueId: mosque1.id,
+            propertyId: 'prop-03',
+            propertyCode: 'PROP-WAQF-03',
+            propertyName: 'ওয়াকফ পুকুর ও মৎস্য ইজারা প্রকল্প',
+            tenantId: 'tnt-03',
+            tenantName: 'মোঃ সাইদুর রহমান (ইজারাদার)',
+            tenantCode: 'TNT-003',
+            shopOrUnitNo: 'পুকুর ইজারা ব্লক-০১',
+            billingMonth: '2026-08',
+            monthlyRent: 18000,
+            previousDue: 0,
+            totalDue: 18000,
+            paidAmount: 18000,
+            remainingDue: 0,
+            paymentDate: '2026-08-04',
+            paymentMethod: 'BANK',
+            accountId: 'acc-bank-01',
+            accountName: 'ইসলামী ব্যাংক বাংলাদেশ লিঃ (চলতি হিসাব)',
+            receiptNumber: 'WQR-2026-0003',
+            incomeVoucherNumber: 'INC-2026-000047',
+            incomeEntryId: 'inc-prop-03',
+            isAccountingLinked: true,
+            collectorName: 'মুহাম্মদ রফিকুল ইসলাম',
+            collectorDesignation: 'সাধারণ সম্পাদক',
+            notes: 'আগস্ট ২০২৬ মাসের ইজারা কিস্তি পূর্ণ পরিশোধিত।',
+            status: 'PAID',
+            createdAt: '2026-08-04T10:00:00.000Z'
+          }
+        ],
+
+        documents: [
+          {
+            id: 'doc-prop-07',
+            mosqueId: mosque1.id,
+            propertyId: 'prop-03',
+            title: 'মৎস্য ইজারা চুক্তিপত্র ২০২৬',
+            documentType: 'IJARA_AGREEMENT',
+            documentTypeBn: 'ইজারা চুক্তিপত্র',
+            issueDate: '2026-01-01',
+            description: 'এক বছর মেয়াদী ৩০০ টাকার নন-জুডিশিয়াল স্ট্যাম্পে স্বাক্ষরিত চুক্তি',
+            fileUrl: '/uploads/ijara-agreement-pond.pdf',
+            fileName: 'ijara_agreement_rupali_fisheries.pdf',
+            fileSize: 2200000,
+            uploadedBy: 'usr-admin-1',
+            uploadedByName: 'মুহাম্মদ রফিকুল ইসলাম',
+            createdAt: '2026-01-05T10:00:00.000Z'
+          }
+        ],
+
+        khajnaRecords: [
+          {
+            id: 'khajna-03',
+            mosqueId: mosque1.id,
+            propertyId: 'prop-03',
+            taxYear: '১৪৩১-১৪৩২ বঙ্গাব্দ / ২০২৫-২০২৬',
+            amount: 3200,
+            paymentDate: '2026-03-18',
+            receiptNumber: 'DAK-2026-9912',
+            nextDueDate: '2027-03-31',
+            holdingNo: 'হোল্ডিং নং- ৮৫২/৩',
+            paidToOffice: 'পল্লবী ভূমি রাজস্ব অফিস',
+            notes: 'পুকুর শ্রেণির জমির কর পরিশোধিত।',
+            expenseVoucherNumber: 'EXP-2026-000118',
+            expenseEntryId: 'exp-prop-khajna-03',
+            isExpenseLinked: true,
+            createdAt: '2026-03-18T12:00:00.000Z'
+          }
+        ],
+
+        expenses: [
+          {
+            id: 'exp-prop-04',
+            mosqueId: mosque1.id,
+            propertyId: 'prop-03',
+            propertyCode: 'PROP-WAQF-03',
+            propertyName: 'ওয়াকফ পুকুর ও মৎস্য ইজারা প্রকল্প',
+            expenseCategory: 'MAINTENANCE',
+            expenseCategoryBn: 'পুকুর পাড় সংস্কার ও বাঁধাই',
+            amount: 6000,
+            date: '2026-05-18',
+            payeeName: 'দেশ বিল্ডার্স ও মাটি কাটার দল',
+            paymentMethod: 'CASH',
+            accountId: 'acc-cash-01',
+            accountName: 'প্রধান ক্যাশ',
+            voucherNumber: 'EXP-2026-000062',
+            description: 'পুকুরের উত্তর পাড়ের মাটি ভরাট ও বাঁশের পাইলিং সুরক্ষা',
+            createdBy: 'usr-admin-1',
+            createdByName: 'মুহাম্মদ রফিকুল ইসলাম',
+            createdAt: '2026-05-18T16:00:00.000Z'
+          }
+        ],
+
+        inspections: [
+          {
+            id: 'insp-02',
+            propertyId: 'prop-03',
+            inspectionDate: '2026-04-10',
+            inspectorName: 'হাজী জহিরুল ইসলাম',
+            inspectorDesignation: 'যুগ্ম সাধারণ সম্পাদক',
+            currentCondition: 'GOOD',
+            occupancyStatus: 'ইজারাদার সাইদুর রহমান কর্তৃক পরিচালিত হচ্ছে',
+            problemsObserved: 'কোনো বিরোধ নেই, পাড়ের সামান্য মাটি ভরাট করা প্রয়োজন ছিল যা সম্পন্ন হয়েছে',
+            requiredAction: 'বর্ষার পর পানির গুণমান ও পাড়ের স্থায়িত্ব পরিদর্শন',
+            nextInspectionDate: '2026-10-10',
+            notes: 'নিয়মিত কিস্তি পরিশোধ চলমান।',
+            createdAt: '2026-04-10T11:00:00.000Z'
+          }
+        ],
+
+        createdAt: '2026-01-01T00:00:00.000Z'
+      }
+    );
 
     // 13. Cemetery Records
     this.cemeteryRecords.push(

@@ -33,6 +33,15 @@ import {
   SalaryHistoryEntry,
   MosqueAsset,
   AssetServiceRecord,
+  MosqueProperty,
+  PropertyTenant,
+  PropertyInspectionRecord,
+  PropertyLegalCase,
+  PropertyRentCollection,
+  PropertyExpenseRecord,
+  PropertyDocument,
+  PropertyKhajnaRecord,
+  SubCommittee,
   PublicDocumentToken,
   SmsLog
 } from './src/types';
@@ -3276,6 +3285,411 @@ app.delete('/api/v1/committee/activities/:id', authenticate, (req: AuthRequest, 
   res.json({ success: true, message: 'কার্যক্রম সফলভাবে মুছে ফেলা হয়েছে।' });
 });
 
+// ==========================================
+// 8.6 SUB-COMMITTEE MANAGEMENT
+// ==========================================
+
+// 1. Get Sub-Committees
+app.get('/api/v1/sub-committees', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { termId, category, status, search } = req.query;
+
+  if (!db.subCommittees) db.subCommittees = [];
+  let list = db.subCommittees.filter(sc => sc.mosqueId === mosqueId && !sc.isArchived);
+
+  if (termId) list = list.filter(sc => sc.termId === termId);
+  if (category) list = list.filter(sc => sc.category === category);
+  if (status) list = list.filter(sc => sc.status === status);
+  if (search) {
+    const q = String(search).toLowerCase();
+    list = list.filter(sc => 
+      sc.name.toLowerCase().includes(q) ||
+      sc.subCommitteeCode.toLowerCase().includes(q) ||
+      sc.convenerName.toLowerCase().includes(q) ||
+      (sc.secretaryName && sc.secretaryName.toLowerCase().includes(q))
+    );
+  }
+
+  list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  res.json({ success: true, data: list });
+});
+
+// 2. Create Sub-Committee
+app.post('/api/v1/sub-committees', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  if (!db.subCommittees) db.subCommittees = [];
+
+  const {
+    name,
+    category,
+    termId,
+    formationDate,
+    startDate,
+    endDate,
+    convenerId,
+    convenerName,
+    convenerPhone,
+    secretaryId,
+    secretaryName,
+    secretaryPhone,
+    memberIds = [],
+    members: customMembers,
+    minMembers,
+    maxMembers,
+    scopeOfWork,
+    duties,
+    notes,
+    resolutionId,
+    resolutionNumber,
+    resolutionSubject,
+    progressPercentage = 0,
+    targetDeliverables,
+    status = 'ACTIVE'
+  } = req.body;
+
+  if (!name || !category || !termId || !startDate || !convenerName) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: 'সাব-কমিটির নাম, ক্যাটাগরি, কার্যকালের মেয়াদ, শুরুর তারিখ এবং আহ্বায়ক/সভাপতি এর নাম আবশ্যক।' }
+    });
+  }
+
+  const parsedMemberIds = Array.isArray(memberIds) ? memberIds : [];
+  if (minMembers && parsedMemberIds.length < Number(minMembers)) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: `ন্যূনতম সদস্য সংখ্যা ${minMembers} জন হতে হবে (বর্তমানে নির্বাচিত: ${parsedMemberIds.length} জন)।` }
+    });
+  }
+  if (maxMembers && parsedMemberIds.length > Number(maxMembers)) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: `সর্বোচ্চ সদস্য সংখ্যা ${maxMembers} জন হতে পারে (বর্তমানে নির্বাচিত: ${parsedMemberIds.length} জন)।` }
+    });
+  }
+
+  const curYear = new Date().getFullYear();
+  const existingCount = db.subCommittees.filter(sc => sc.mosqueId === mosqueId).length;
+  const subCommitteeCode = `SC-${curYear}-${String(existingCount + 1).padStart(3, '0')}`;
+  const term = db.committeeTerms.find(t => t.id === termId);
+
+  // Link Resolution details if resolutionId provided but number/subject missing
+  let finalResNumber = resolutionNumber;
+  let finalResSubject = resolutionSubject;
+  if (resolutionId && (!finalResNumber || !finalResSubject)) {
+    const resObj = (db.committeeResolutions || []).find(r => r.id === resolutionId && r.mosqueId === mosqueId);
+    if (resObj) {
+      finalResNumber = resObj.resolutionNumber;
+      finalResSubject = resObj.subject;
+    }
+  }
+
+  // Build members list with roles and responsibilities
+  const nowIso = new Date().toISOString();
+  const membersDetail = parsedMemberIds.map((mId: string) => {
+    const mem = db.committeeMembers.find(m => m.id === mId);
+    const existingCustom = Array.isArray(customMembers) ? customMembers.find((cm: any) => cm.id === mId) : null;
+    return {
+      id: mId,
+      name: mem?.name || existingCustom?.name || 'সদস্য',
+      designation: mem?.positionCustomBn || mem?.position || existingCustom?.designation || 'সদস্য',
+      phone: mem?.phone || existingCustom?.phone || '',
+      role: existingCustom?.role || 'MEMBER',
+      responsibility: existingCustom?.responsibility || '',
+      joinedDate: existingCustom?.joinedDate || startDate || nowIso.split('T')[0]
+    };
+  });
+
+  const memberHistory = membersDetail.map(m => ({
+    id: `smh-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    memberId: m.id,
+    memberName: m.name,
+    role: m.role || 'MEMBER',
+    joinedDate: m.joinedDate || startDate || nowIso.split('T')[0]
+  }));
+
+  const initialActivityLogs = [
+    {
+      id: `act-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      action: 'CREATE',
+      details: `সাব-কমিটি গঠন করা হয়েছে (কোড: ${subCommitteeCode}, সদস্য: ${membersDetail.length} জন)`,
+      changedBy: req.user!.id,
+      changedByName: req.user!.name,
+      timestamp: nowIso
+    }
+  ];
+
+  const subCommittee: SubCommittee = {
+    id: `sc-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    mosqueId,
+    subCommitteeCode,
+    name: name.trim(),
+    category: category.trim(),
+    termId,
+    termTitle: term?.title || '',
+    formationDate: formationDate || startDate,
+    startDate,
+    endDate: endDate || undefined,
+    status,
+    convenerId: convenerId || undefined,
+    convenerName: convenerName.trim(),
+    convenerPhone: convenerPhone || undefined,
+    secretaryId: secretaryId || undefined,
+    secretaryName: secretaryName ? secretaryName.trim() : undefined,
+    secretaryPhone: secretaryPhone || undefined,
+    memberIds: parsedMemberIds,
+    members: membersDetail,
+    minMembers: minMembers ? Number(minMembers) : undefined,
+    maxMembers: maxMembers ? Number(maxMembers) : undefined,
+    scopeOfWork: scopeOfWork || '',
+    duties: duties || '',
+    notes: notes || '',
+    resolutionId: resolutionId || undefined,
+    resolutionNumber: finalResNumber || undefined,
+    resolutionSubject: finalResSubject || undefined,
+    progressPercentage: Number(progressPercentage) || 0,
+    targetDeliverables: targetDeliverables || '',
+    activityLogs: initialActivityLogs,
+    memberHistory,
+    isArchived: false,
+    createdBy: req.user!.id,
+    createdByName: req.user!.name,
+    createdAt: nowIso
+  };
+
+  db.subCommittees.unshift(subCommittee);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'SUB_COMMITTEE',
+    `সাব-কমিটি গঠন করা হয়েছে: ${subCommittee.subCommitteeCode} - ${subCommittee.name}`
+  );
+  realtime.broadcastToMosque(mosqueId, 'SUB_COMMITTEE_CREATED', subCommittee, { senderId: req.user!.id });
+
+  res.json({ success: true, data: subCommittee, message: 'সাব-কমিটি সফলভাবে তৈরি করা হয়েছে।' });
+});
+
+// 3. Update Sub-Committee
+app.put('/api/v1/sub-committees/:id', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  if (!db.subCommittees) db.subCommittees = [];
+  const subCommittee = db.subCommittees.find(sc => sc.id === req.params.id && sc.mosqueId === mosqueId);
+
+  if (!subCommittee) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সাব-কমিটি পাওয়া যায়নি।' } });
+  }
+
+  const {
+    name,
+    category,
+    termId,
+    formationDate,
+    startDate,
+    endDate,
+    convenerId,
+    convenerName,
+    convenerPhone,
+    secretaryId,
+    secretaryName,
+    secretaryPhone,
+    memberIds,
+    members: customMembers,
+    minMembers,
+    maxMembers,
+    scopeOfWork,
+    duties,
+    notes,
+    resolutionId,
+    resolutionNumber,
+    resolutionSubject,
+    progressPercentage,
+    targetDeliverables,
+    status
+  } = req.body;
+
+  const nowIso = new Date().toISOString();
+  const changes: string[] = [];
+
+  if (name !== undefined && name.trim() !== subCommittee.name) {
+    changes.push(`নাম: ${subCommittee.name} -> ${name.trim()}`);
+    subCommittee.name = name.trim();
+  }
+  if (category !== undefined && category.trim() !== subCommittee.category) {
+    changes.push(`ক্যাটাগরি: ${subCommittee.category} -> ${category.trim()}`);
+    subCommittee.category = category.trim();
+  }
+  if (termId !== undefined && termId !== subCommittee.termId) {
+    subCommittee.termId = termId;
+    const term = db.committeeTerms.find(t => t.id === termId);
+    subCommittee.termTitle = term?.title || '';
+    changes.push(`কমিটি মেয়াদ পরিবর্তিত`);
+  }
+  if (formationDate !== undefined) subCommittee.formationDate = formationDate;
+  if (startDate !== undefined) subCommittee.startDate = startDate;
+  if (endDate !== undefined) subCommittee.endDate = endDate || undefined;
+  if (status !== undefined && status !== subCommittee.status) {
+    changes.push(`স্ট্যাটাস: ${subCommittee.status} -> ${status}`);
+    subCommittee.status = status;
+  }
+  if (convenerId !== undefined) subCommittee.convenerId = convenerId || undefined;
+  if (convenerName !== undefined) subCommittee.convenerName = convenerName.trim();
+  if (convenerPhone !== undefined) subCommittee.convenerPhone = convenerPhone || undefined;
+  if (secretaryId !== undefined) subCommittee.secretaryId = secretaryId || undefined;
+  if (secretaryName !== undefined) subCommittee.secretaryName = secretaryName ? secretaryName.trim() : undefined;
+  if (secretaryPhone !== undefined) subCommittee.secretaryPhone = secretaryPhone || undefined;
+
+  if (resolutionId !== undefined) subCommittee.resolutionId = resolutionId || undefined;
+  if (resolutionNumber !== undefined) subCommittee.resolutionNumber = resolutionNumber || undefined;
+  if (resolutionSubject !== undefined) subCommittee.resolutionSubject = resolutionSubject || undefined;
+  if (progressPercentage !== undefined) subCommittee.progressPercentage = Math.min(100, Math.max(0, Number(progressPercentage) || 0));
+  if (targetDeliverables !== undefined) subCommittee.targetDeliverables = targetDeliverables;
+
+  if (memberIds !== undefined) {
+    const parsedMemberIds = Array.isArray(memberIds) ? memberIds : [];
+    if (minMembers && parsedMemberIds.length < Number(minMembers)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: `ন্যূনতম সদস্য সংখ্যা ${minMembers} জন হতে হবে (বর্তমানে নির্বাচিত: ${parsedMemberIds.length} জন)।` }
+      });
+    }
+    if (maxMembers && parsedMemberIds.length > Number(maxMembers)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: `সর্বোচ্চ সদস্য সংখ্যা ${maxMembers} জন হতে পারে (বর্তমানে নির্বাচিত: ${parsedMemberIds.length} জন)।` }
+      });
+    }
+
+    // Check member diff for history tracking
+    const oldMemberIds = subCommittee.memberIds || [];
+    const addedIds = parsedMemberIds.filter(id => !oldMemberIds.includes(id));
+    const removedIds = oldMemberIds.filter(id => !parsedMemberIds.includes(id));
+
+    if (addedIds.length > 0 || removedIds.length > 0) {
+      changes.push(`সদস্য পুনর্বিন্যাস (নতুন: +${addedIds.length}, অপসারিত: -${removedIds.length})`);
+    }
+
+    if (!subCommittee.memberHistory) subCommittee.memberHistory = [];
+
+    // Mark removed in member history
+    removedIds.forEach(remId => {
+      const existingHistory = subCommittee.memberHistory?.find(h => h.memberId === remId && !h.leftDate);
+      if (existingHistory) {
+        existingHistory.leftDate = nowIso.split('T')[0];
+        existingHistory.reason = 'কমিটি সদস্য পুনর্বিন্যাস';
+      }
+    });
+
+    // Build new members list
+    subCommittee.memberIds = parsedMemberIds;
+    subCommittee.members = parsedMemberIds.map((mId: string) => {
+      const mem = db.committeeMembers.find(m => m.id === mId);
+      const existingCustom = Array.isArray(customMembers) ? customMembers.find((cm: any) => cm.id === mId) : null;
+      const prevMemberObj = (subCommittee.members || []).find(m => m.id === mId);
+
+      // Add to memberHistory if newly joined
+      if (addedIds.includes(mId)) {
+        subCommittee.memberHistory?.push({
+          id: `smh-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          memberId: mId,
+          memberName: mem?.name || existingCustom?.name || 'সদস্য',
+          role: existingCustom?.role || 'MEMBER',
+          joinedDate: nowIso.split('T')[0]
+        });
+      }
+
+      return {
+        id: mId,
+        name: mem?.name || existingCustom?.name || prevMemberObj?.name || 'সদস্য',
+        designation: mem?.positionCustomBn || mem?.position || existingCustom?.designation || prevMemberObj?.designation || 'সদস্য',
+        phone: mem?.phone || existingCustom?.phone || prevMemberObj?.phone || '',
+        role: existingCustom?.role || prevMemberObj?.role || 'MEMBER',
+        responsibility: existingCustom?.responsibility || prevMemberObj?.responsibility || '',
+        joinedDate: existingCustom?.joinedDate || prevMemberObj?.joinedDate || nowIso.split('T')[0]
+      };
+    });
+  }
+
+  if (minMembers !== undefined) subCommittee.minMembers = minMembers ? Number(minMembers) : undefined;
+  if (maxMembers !== undefined) subCommittee.maxMembers = maxMembers ? Number(maxMembers) : undefined;
+  if (scopeOfWork !== undefined) subCommittee.scopeOfWork = scopeOfWork;
+  if (duties !== undefined) subCommittee.duties = duties;
+  if (notes !== undefined) subCommittee.notes = notes;
+  subCommittee.updatedAt = nowIso;
+
+  if (!subCommittee.activityLogs) subCommittee.activityLogs = [];
+  if (changes.length > 0) {
+    subCommittee.activityLogs.unshift({
+      id: `act-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      action: 'UPDATE',
+      details: `সাব-কমিটি হালনাগাদ: ${changes.join(', ')}`,
+      changedBy: req.user!.id,
+      changedByName: req.user!.name,
+      timestamp: nowIso
+    });
+  }
+
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'SUB_COMMITTEE',
+    `সাব-কমিটি হালনাগাদ: ${subCommittee.subCommitteeCode} - ${subCommittee.name}`
+  );
+  realtime.broadcastToMosque(mosqueId, 'SUB_COMMITTEE_UPDATED', subCommittee, { senderId: req.user!.id });
+
+  res.json({ success: true, data: subCommittee, message: 'সাব-কমিটি সফলভাবে হালনাগাদ করা হয়েছে।' });
+});
+
+// 4. Archive / Soft Delete Sub-Committee
+app.delete('/api/v1/sub-committees/:id', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  if (!db.subCommittees) db.subCommittees = [];
+  const subCommittee = db.subCommittees.find(sc => sc.id === req.params.id && sc.mosqueId === mosqueId);
+
+  if (!subCommittee) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সাব-কমিটি পাওয়া যায়নি।' } });
+  }
+
+  const nowIso = new Date().toISOString();
+  subCommittee.isArchived = true;
+  subCommittee.status = 'ARCHIVED';
+  subCommittee.updatedAt = nowIso;
+
+  if (!subCommittee.activityLogs) subCommittee.activityLogs = [];
+  subCommittee.activityLogs.unshift({
+    id: `act-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    action: 'ARCHIVE',
+    details: 'সাব-কমিটি সংরক্ষণ ও আর্কাইভ করা হয়েছে',
+    changedBy: req.user!.id,
+    changedByName: req.user!.name,
+    timestamp: nowIso
+  });
+
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'ARCHIVE',
+    'SUB_COMMITTEE',
+    `সাব-কমিটি আর্কাইভ করা হয়েছে: ${subCommittee.subCommitteeCode} - ${subCommittee.name}`
+  );
+  realtime.broadcastToMosque(mosqueId, 'SUB_COMMITTEE_ARCHIVED', { id: subCommittee.id }, { senderId: req.user!.id });
+
+  res.json({ success: true, message: 'সাব-কমিটি সফলভাবে আর্কাইভ করা হয়েছে।' });
+});
+
 // 5. Get Committee Tasks (অর্পিত দায়িত্ব)
 app.get('/api/v1/committee/tasks', authenticate, (req: AuthRequest, res: Response) => {
   const mosqueId = req.currentMosque!.id;
@@ -6505,47 +6919,893 @@ app.get('/api/v1/properties', authenticate, (req: AuthRequest, res: Response) =>
 });
 
 app.post('/api/v1/properties', authenticate, requirePermission('MANAGE_PROPERTY'), (req: AuthRequest, res: Response) => {
-  const { type, description, location, area, ownershipType, waqfEnrollmentNo, currentUse, monthlyIncome, notes } = req.body;
   const mosqueId = req.currentMosque!.id;
-
+  const year = new Date().getFullYear();
   const count = db.properties.filter(p => p.mosqueId === mosqueId).length + 1;
-  const propertyCode = `PROP-${String(count).padStart(4, '0')}`;
+  const propertyCode = req.body.propertyCode || `PROP-${year}-${String(count).padStart(3, '0')}`;
 
-  const property = {
-    id: `prop-${Date.now()}`,
+  const property: MosqueProperty = {
+    id: `prop-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
     mosqueId,
     propertyCode,
-    type: type || 'COMMERCIAL_LAND',
-    description: description || 'মসজিদ মার্কেট ও জমি',
-    location: location || 'মসজিদ সংলগ্ন',
-    area: area || '০.৫ একর',
-    ownershipType: ownershipType || 'WAQF',
-    waqfEnrollmentNo,
-    currentUse: currentUse || 'দোকান ভাড়া',
-    monthlyIncome: Number(monthlyIncome) || 0,
-    status: 'ACTIVE' as const,
-    notes,
-    createdAt: new Date().toISOString()
+    name: req.body.name || req.body.description || 'ওয়াকফ সম্পত্তি',
+    nameBn: req.body.nameBn || req.body.name || req.body.description || 'ওয়াকফ সম্পত্তি',
+    type: req.body.type || 'COMMERCIAL_LAND',
+    propertyType: req.body.propertyType || req.body.type || 'COMMERCIAL_LAND',
+    category: req.body.category || 'LAND',
+    description: req.body.description || req.body.name || 'ওয়াকফ সম্পত্তি ও জমি',
+    location: req.body.location || 'মসজিদ সংলগ্ন',
+    fullAddress: req.body.fullAddress || req.body.location || '',
+    area: req.body.area || '০ শতাংশ',
+    areaAmount: Number(req.body.areaAmount) || 0,
+    areaUnit: req.body.areaUnit || 'DECIMAL',
+    ownershipType: req.body.ownershipType || 'WAQF',
+    
+    // Land Records
+    csPlotNo: req.body.csPlotNo || '',
+    saPlotNo: req.body.saPlotNo || '',
+    rsPlotNo: req.body.rsPlotNo || '',
+    bsPlotNo: req.body.bsPlotNo || '',
+    plotNo: req.body.plotNo || req.body.bsPlotNo || req.body.rsPlotNo || '',
+    csKhatianNo: req.body.csKhatianNo || '',
+    saKhatianNo: req.body.saKhatianNo || '',
+    rsKhatianNo: req.body.rsKhatianNo || '',
+    bsKhatianNo: req.body.bsKhatianNo || '',
+    mutationKhatianNo: req.body.mutationKhatianNo || '',
+    khatianNo: req.body.khatianNo || req.body.bsKhatianNo || req.body.rsKhatianNo || '',
+    mouza: req.body.mouza || '',
+    jlNumber: req.body.jlNumber || '',
+    subRegistryOffice: req.body.subRegistryOffice || '',
+
+    // Boundaries
+    boundaryNorth: req.body.boundaryNorth || '',
+    boundarySouth: req.body.boundarySouth || '',
+    boundaryEast: req.body.boundaryEast || '',
+    boundaryWest: req.body.boundaryWest || '',
+
+    // Waqf & Waqif
+    waqfEnrollmentNo: req.body.waqfEnrollmentNo || '',
+    waqfDeedNo: req.body.waqfDeedNo || '',
+    waqfYear: req.body.waqfYear || '',
+    waqfDeedDate: req.body.waqfDeedDate || '',
+    waqifName: req.body.waqifName || '',
+    waqifFatherName: req.body.waqifFatherName || '',
+    waqifAddress: req.body.waqifAddress || '',
+    waqfPurpose: req.body.waqfPurpose || '',
+    waqfEstateName: req.body.waqfEstateName || '',
+
+    // Use & Possession
+    currentUse: req.body.currentUse || 'মসজিদের ওয়াকফ সম্পত্তি',
+    possessionStatus: req.body.possessionStatus || 'MOSQUE_CONTROL',
+    status: req.body.status || 'ACTIVE',
+    estimatedValue: Number(req.body.estimatedValue) || 0,
+    monthlyIncome: Number(req.body.monthlyIncome) || Number(req.body.monthlyRent) || 0,
+    monthlyRent: Number(req.body.monthlyRent) || Number(req.body.monthlyIncome) || 0,
+    annualIncome: Number(req.body.annualIncome) || 0,
+    photoUrl: req.body.photoUrl || '',
+    documentsCount: Number(req.body.documentsCount) || 0,
+    isArchived: false,
+    notes: req.body.notes || '',
+
+    tenants: Array.isArray(req.body.tenants) ? req.body.tenants : [],
+    inspections: Array.isArray(req.body.inspections) ? req.body.inspections : [],
+    legalCases: Array.isArray(req.body.legalCases) ? req.body.legalCases : [],
+
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   };
 
   db.properties.unshift(property);
   db.save();
-  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'PROPERTY', `নতুন সম্পত্তি অন্তর্ভুক্তি: ${description} (${propertyCode})`);
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'PROPERTY', `নতুন ওয়াকফ সম্পত্তি অন্তর্ভুক্তি: ${property.name || property.description} (${propertyCode})`);
   realtime.broadcastToMosque(mosqueId, 'PROPERTY_CREATED', property, { senderId: req.user!.id });
 
-  res.json({ success: true, data: property, message: 'সম্পত্তির তথ্য সফলভাবে সংরক্ষিত হয়েছে।' });
+  res.json({ success: true, data: property, message: 'ওয়াকফ সম্পত্তির তথ্য সফলভাবে সংরক্ষিত হয়েছে।' });
 });
 
 app.put('/api/v1/properties/:id', authenticate, requirePermission('MANAGE_PROPERTY'), (req: AuthRequest, res: Response) => {
   const property = db.properties.find(p => p.id === req.params.id && p.mosqueId === req.currentMosque!.id);
   if (!property) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সম্পত্তি পাওয়া যায়নি।' } });
 
-  Object.assign(property, req.body);
+  const prevName = property.name || property.description;
+  Object.assign(property, req.body, { updatedAt: new Date().toISOString() });
+  
+  // Re-sync monthlyRent / monthlyIncome
+  if (req.body.monthlyIncome !== undefined) {
+    property.monthlyRent = Number(req.body.monthlyIncome);
+  } else if (req.body.monthlyRent !== undefined) {
+    property.monthlyIncome = Number(req.body.monthlyRent);
+  }
+
   db.save();
-  db.logAudit(req.currentMosque!.id, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'PROPERTY', `সম্পত্তি আপডেট: ${property.description}`);
+  db.logAudit(req.currentMosque!.id, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'PROPERTY', `সম্পত্তির বিবরণ আপডেট: ${property.name || property.description || prevName} (${property.propertyCode})`);
   realtime.broadcastToMosque(req.currentMosque!.id, 'PROPERTY_UPDATED', property, { senderId: req.user!.id });
 
   res.json({ success: true, data: property, message: 'সম্পত্তির বিবরণ সফলভাবে আপডেট হয়েছে।' });
+});
+
+// Archive / Unarchive Property
+app.post('/api/v1/properties/:id/archive', authenticate, requirePermission('MANAGE_PROPERTY'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const property = db.properties.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (!property) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সম্পত্তি পাওয়া যায়নি।' } });
+
+  const isArchived = req.body.isArchived !== undefined ? Boolean(req.body.isArchived) : !property.isArchived;
+  property.isArchived = isArchived;
+  property.updatedAt = new Date().toISOString();
+
+  db.save();
+  const actionText = isArchived ? 'আর্কাইভ' : 'সক্রিয়করণ';
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'PROPERTY', `সম্পত্তি ${actionText}: ${property.name || property.description} (${property.propertyCode})`);
+  realtime.broadcastToMosque(mosqueId, 'PROPERTY_UPDATED', property, { senderId: req.user!.id });
+
+  res.json({
+    success: true,
+    data: property,
+    message: isArchived ? 'সম্পত্তিটি সফলভাবে আর্কাইভ করা হয়েছে।' : 'সম্পত্তিটি পুনরায় সক্রিয় তালিকায় ফিরিয়ে আনা হয়েছে।'
+  });
+});
+
+// Safe Delete / Soft-Delete Property
+app.delete('/api/v1/properties/:id', authenticate, requirePermission('MANAGE_PROPERTY'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const idx = db.properties.findIndex(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (idx === -1) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সম্পত্তি পাওয়া যায়নি।' } });
+
+  const property = db.properties[idx];
+  const hasHistory = Boolean((property.tenants && property.tenants.length > 0) || (property.inspections && property.inspections.length > 0) || (property.legalCases && property.legalCases.length > 0));
+
+  if (hasHistory || !req.query.force) {
+    // Soft-archive to preserve master permanent record
+    property.isArchived = true;
+    property.updatedAt = new Date().toISOString();
+    db.save();
+    db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'PROPERTY', `সম্পত্তি আর্কাইভ (স্থায়ী রেকর্ড সংরক্ষণের স্বার্থে সফট-ডিলিট): ${property.name || property.description} (${property.propertyCode})`);
+    realtime.broadcastToMosque(mosqueId, 'PROPERTY_UPDATED', property, { senderId: req.user!.id });
+    return res.json({ success: true, message: 'ওয়াকফ সম্পত্তির ঐতিহাসিক রেকর্ড বজায় রেখে এটি আর্কাইভ তালিকায় স্থানান্তরিত করা হয়েছে।' });
+  }
+
+  const removed = db.properties.splice(idx, 1)[0];
+  db.save();
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'DELETE', 'PROPERTY', `সম্পত্তি মুছে ফেলা: ${removed.name || removed.description} (${removed.propertyCode})`);
+  realtime.broadcastToMosque(mosqueId, 'PROPERTY_DELETED', { id: removed.id }, { senderId: req.user!.id });
+
+  res.json({ success: true, message: 'সম্পত্তির রেকর্ড সফলভাবে অপসারিত হয়েছে।' });
+});
+
+// Add / Update Tenant in Property
+app.post('/api/v1/properties/:id/tenants', authenticate, requirePermission('MANAGE_PROPERTY'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const property = db.properties.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (!property) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সম্পত্তি পাওয়া যায়নি।' } });
+
+  if (!property.tenants) property.tenants = [];
+
+  const tenantData = req.body;
+  let tenant: PropertyTenant;
+
+  if (tenantData.id) {
+    const tIdx = property.tenants.findIndex(t => t.id === tenantData.id);
+    if (tIdx !== -1) {
+      property.tenants[tIdx] = {
+        ...property.tenants[tIdx],
+        ...tenantData,
+        updatedAt: new Date().toISOString()
+      };
+      tenant = property.tenants[tIdx];
+    } else {
+      tenant = {
+        id: tenantData.id,
+        mosqueId,
+        propertyId: property.id,
+        tenantCode: tenantData.tenantCode || `TNT-${String(property.tenants.length + 1).padStart(3, '0')}`,
+        name: tenantData.name,
+        fatherOrSpouseName: tenantData.fatherOrSpouseName,
+        mobile: tenantData.mobile,
+        nid: tenantData.nid,
+        address: tenantData.address,
+        photoUrl: tenantData.photoUrl,
+        unitOrShopNo: tenantData.unitOrShopNo,
+        businessName: tenantData.businessName,
+        businessType: tenantData.businessType,
+        agreementNo: tenantData.agreementNo,
+        startDate: tenantData.startDate,
+        endDate: tenantData.endDate,
+        monthlyRent: Number(tenantData.monthlyRent) || 0,
+        annualRent: Number(tenantData.annualRent) || (Number(tenantData.monthlyRent) || 0) * 12,
+        securityDeposit: Number(tenantData.securityDeposit) || 0,
+        paymentDueDate: Number(tenantData.paymentDueDate) || 10,
+        status: tenantData.status || 'ACTIVE',
+        notes: tenantData.notes,
+        createdAt: new Date().toISOString()
+      };
+      property.tenants.unshift(tenant);
+    }
+  } else {
+    const tCode = `TNT-${String(property.tenants.length + 1).padStart(3, '0')}`;
+    tenant = {
+      id: `tnt-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      mosqueId,
+      propertyId: property.id,
+      tenantCode: tenantData.tenantCode || tCode,
+      name: tenantData.name,
+      fatherOrSpouseName: tenantData.fatherOrSpouseName,
+      mobile: tenantData.mobile,
+      nid: tenantData.nid,
+      address: tenantData.address,
+      photoUrl: tenantData.photoUrl,
+      unitOrShopNo: tenantData.unitOrShopNo,
+      businessName: tenantData.businessName,
+      businessType: tenantData.businessType,
+      agreementNo: tenantData.agreementNo || `AGR-${new Date().getFullYear()}-${String(property.tenants.length + 1).padStart(2, '0')}`,
+      startDate: tenantData.startDate || new Date().toISOString().split('T')[0],
+      endDate: tenantData.endDate || new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().split('T')[0],
+      monthlyRent: Number(tenantData.monthlyRent) || 0,
+      annualRent: Number(tenantData.annualRent) || (Number(tenantData.monthlyRent) || 0) * 12,
+      securityDeposit: Number(tenantData.securityDeposit) || 0,
+      paymentDueDate: Number(tenantData.paymentDueDate) || 10,
+      status: tenantData.status || 'ACTIVE',
+      notes: tenantData.notes,
+      createdAt: new Date().toISOString()
+    };
+    property.tenants.unshift(tenant);
+  }
+
+  // Update total monthly income of property based on active tenants
+  const totalRent = property.tenants
+    .filter(t => t.status === 'ACTIVE' || t.status === 'EXPIRING_SOON')
+    .reduce((sum, t) => sum + (t.monthlyRent || 0), 0);
+  
+  if (totalRent > 0) {
+    property.monthlyIncome = totalRent;
+    property.monthlyRent = totalRent;
+    if (property.status === 'VACANT' || property.status === 'ACTIVE') {
+      property.status = 'RENTED';
+    }
+  }
+
+  property.updatedAt = new Date().toISOString();
+  db.save();
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'PROPERTY', `ভাড়াটিয়া চুক্তি সংযোজন/আপডেট: ${tenant.name} (${tenant.unitOrShopNo || ''}) - ${property.name || property.propertyCode}`);
+  realtime.broadcastToMosque(mosqueId, 'PROPERTY_UPDATED', property, { senderId: req.user!.id });
+
+  res.json({ success: true, data: property, tenant, message: 'ভাড়াটিয়া ও ইজারা তথ্য সফলভাবে সংরক্ষিত হয়েছে।' });
+});
+
+// Terminate / Delete Tenant
+app.delete('/api/v1/properties/:id/tenants/:tenantId', authenticate, requirePermission('MANAGE_PROPERTY'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const property = db.properties.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (!property || !property.tenants) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সম্পত্তি বা ভাড়াটিয়া পাওয়া যায়নি।' } });
+
+  const tenant = property.tenants.find(t => t.id === req.params.tenantId);
+  if (!tenant) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ভাড়াটিয়া পাওয়া যায়নি।' } });
+
+  tenant.status = 'TERMINATED';
+  tenant.updatedAt = new Date().toISOString();
+
+  // Recalculate rent
+  const totalRent = property.tenants
+    .filter(t => t.status === 'ACTIVE' || t.status === 'EXPIRING_SOON')
+    .reduce((sum, t) => sum + (t.monthlyRent || 0), 0);
+  property.monthlyIncome = totalRent;
+  property.monthlyRent = totalRent;
+
+  property.updatedAt = new Date().toISOString();
+  db.save();
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'PROPERTY', `ভাড়াটিয়া চুক্তি সমাপ্ত/টার্মিনেট: ${tenant.name} (${property.propertyCode})`);
+  realtime.broadcastToMosque(mosqueId, 'PROPERTY_UPDATED', property, { senderId: req.user!.id });
+
+  res.json({ success: true, data: property, message: 'ভাড়া চুক্তি সফলভাবে সমাপ্ত করা হয়েছে।' });
+});
+
+// Add Inspection Log
+app.post('/api/v1/properties/:id/inspections', authenticate, requirePermission('MANAGE_PROPERTY'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const property = db.properties.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (!property) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সম্পত্তি পাওয়া যায়নি।' } });
+
+  if (!property.inspections) property.inspections = [];
+
+  const inspection: PropertyInspectionRecord = {
+    id: `insp-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+    propertyId: property.id,
+    inspectionDate: req.body.inspectionDate || new Date().toISOString().split('T')[0],
+    inspectorName: req.body.inspectorName || req.user!.name,
+    inspectorDesignation: req.body.inspectorDesignation || '',
+    currentCondition: req.body.currentCondition || 'GOOD',
+    occupancyStatus: req.body.occupancyStatus || '',
+    problemsObserved: req.body.problemsObserved || '',
+    requiredAction: req.body.requiredAction || '',
+    nextInspectionDate: req.body.nextInspectionDate || '',
+    notes: req.body.notes || '',
+    createdAt: new Date().toISOString()
+  };
+
+  property.inspections.unshift(inspection);
+  property.updatedAt = new Date().toISOString();
+  db.save();
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'PROPERTY', `সম্পত্তি পরিদর্শন রিপোর্ট যুক্ত: ${property.name || property.propertyCode} - পরিদর্শক: ${inspection.inspectorName}`);
+  realtime.broadcastToMosque(mosqueId, 'PROPERTY_UPDATED', property, { senderId: req.user!.id });
+
+  res.json({ success: true, data: property, inspection, message: 'পরিদর্শন রিপোর্ট সফলভাবে সংরক্ষিত হয়েছে।' });
+});
+
+// Add / Update Legal Case
+app.post('/api/v1/properties/:id/cases', authenticate, requirePermission('MANAGE_PROPERTY'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const property = db.properties.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (!property) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সম্পত্তি পাওয়া যায়নি।' } });
+
+  if (!property.legalCases) property.legalCases = [];
+
+  const caseData = req.body;
+  let legalCase: PropertyLegalCase;
+
+  if (caseData.id) {
+    const cIdx = property.legalCases.findIndex(c => c.id === caseData.id);
+    if (cIdx !== -1) {
+      property.legalCases[cIdx] = {
+        ...property.legalCases[cIdx],
+        ...caseData,
+        updatedAt: new Date().toISOString()
+      };
+      legalCase = property.legalCases[cIdx];
+    } else {
+      legalCase = {
+        id: caseData.id,
+        propertyId: property.id,
+        caseNumber: caseData.caseNumber,
+        courtName: caseData.courtName,
+        parties: caseData.parties,
+        caseSubject: caseData.caseSubject,
+        lawyerName: caseData.lawyerName,
+        lawyerContact: caseData.lawyerContact,
+        filingDate: caseData.filingDate,
+        nextHearingDate: caseData.nextHearingDate,
+        status: caseData.status || 'RUNNING',
+        courtOrders: caseData.courtOrders,
+        notes: caseData.notes,
+        createdAt: new Date().toISOString()
+      };
+      property.legalCases.unshift(legalCase);
+    }
+  } else {
+    legalCase = {
+      id: `case-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      propertyId: property.id,
+      caseNumber: caseData.caseNumber,
+      courtName: caseData.courtName,
+      parties: caseData.parties,
+      caseSubject: caseData.caseSubject,
+      lawyerName: caseData.lawyerName,
+      lawyerContact: caseData.lawyerContact,
+      filingDate: caseData.filingDate || new Date().toISOString().split('T')[0],
+      nextHearingDate: caseData.nextHearingDate,
+      status: caseData.status || 'RUNNING',
+      courtOrders: caseData.courtOrders,
+      notes: caseData.notes,
+      createdAt: new Date().toISOString()
+    };
+    property.legalCases.unshift(legalCase);
+  }
+
+  if (legalCase.status === 'RUNNING' || legalCase.status === 'STAY_ORDER') {
+    property.status = 'LEGAL_CASE';
+  }
+
+  property.updatedAt = new Date().toISOString();
+  db.save();
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'PROPERTY', `সম্পত্তি আইনি মামলা রেকর্ড সংরক্ষণ: ${legalCase.caseNumber} (${property.propertyCode})`);
+  realtime.broadcastToMosque(mosqueId, 'PROPERTY_UPDATED', property, { senderId: req.user!.id });
+
+  res.json({ success: true, data: property, legalCase, message: 'মামলা সংক্রান্ত তথ্য সফলভাবে সংরক্ষিত হয়েছে।' });
+});
+
+// Add / Record Rent Collection (Linked to Income Voucher & Accounting Ledger)
+app.post('/api/v1/properties/:id/rent-collections', authenticate, requirePermission('MANAGE_PROPERTY'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const property = db.properties.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (!property) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সম্পত্তি পাওয়া যায়নি।' } });
+
+  const {
+    tenantId,
+    billingMonth,
+    monthlyRent,
+    previousDue,
+    paidAmount,
+    paymentDate,
+    paymentMethod,
+    accountId,
+    notes,
+    isAccountingLinked = true
+  } = req.body;
+
+  const tenant = (property.tenants || []).find(t => t.id === tenantId);
+  if (!tenant) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'ভাড়াটিয়া বা ইজাদার নির্বাচন আবশ্যক।' } });
+  }
+
+  const numPaid = Number(paidAmount);
+  if (isNaN(numPaid) || numPaid < 0) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_AMOUNT', message: 'পরিশোধের সঠিক পরিমাণ প্রদান করুন।' } });
+  }
+
+  if (!property.rentCollections) property.rentCollections = [];
+
+  const numMonthlyRent = Number(monthlyRent) || tenant.monthlyRent || 0;
+  const numPrevDue = Number(previousDue) || 0;
+  const totalDue = numMonthlyRent + numPrevDue;
+  const remainingDue = Math.max(0, totalDue - numPaid);
+
+  const year = new Date().getFullYear();
+  const allMosqueRentCols = db.properties
+    .filter(p => p.mosqueId === mosqueId)
+    .flatMap(p => p.rentCollections || []);
+  const receiptNumber = `WQR-${year}-${String(allMosqueRentCols.length + 1).padStart(4, '0')}`;
+
+  const account = db.accounts.find(a => a.id === accountId) || db.accounts.find(a => a.mosqueId === mosqueId) || db.accounts[0];
+
+  let incomeVoucherNumber = '';
+  let incomeEntryId = '';
+
+  // Link to Accounting & Income Entry (Safely without double entry)
+  if (isAccountingLinked && numPaid > 0) {
+    const mainHead = db.accountHeads.find(h => (h.nameBn?.includes('ভাড়া') || h.nameBn?.includes('ওয়াকফ')) && h.type === 'INCOME') ||
+      db.accountHeads.find(h => h.type === 'INCOME') || db.accountHeads[0];
+
+    const incCount = db.incomeEntries.filter(e => e.mosqueId === mosqueId).length + 1;
+    incomeVoucherNumber = `INC-${year}-${String(incCount).padStart(6, '0')}`;
+    incomeEntryId = `inc-prop-${Date.now()}`;
+
+    const incomeEntry: any = {
+      id: incomeEntryId,
+      mosqueId,
+      voucherNumber: incomeVoucherNumber,
+      date: paymentDate || new Date().toISOString().split('T')[0],
+      mainHeadId: mainHead?.id || 'head-inc-02',
+      mainHeadNameBn: mainHead?.nameBn || 'ওয়াকফ ও দোকান ভাড়া আয়',
+      amount: numPaid,
+      paymentMethod: paymentMethod || 'CASH',
+      accountId: account?.id || 'acc-cash-01',
+      accountName: account?.nameBn || 'প্রধান ক্যাশ',
+      donorName: `${tenant.name} (${property.name || property.propertyCode})`,
+      donorPhone: tenant.mobile,
+      reference: receiptNumber,
+      description: `ওয়াকফ সম্পত্তি ভাড়া আদায়: ${property.name || property.propertyCode} - ইউনিট/দোকান: ${tenant.unitOrShopNo || ''} (মাস: ${billingMonth || ''})`,
+      createdBy: req.user!.id,
+      createdByName: req.user!.name,
+      status: 'APPROVED' as const,
+      approvedBy: req.user!.id,
+      approvedByName: req.user!.name,
+      approvedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    if (account) {
+      account.currentBalance += numPaid;
+    }
+
+    db.incomeEntries.unshift(incomeEntry);
+    realtime.broadcastToMosque(mosqueId, 'INCOME_CREATED', incomeEntry, { senderId: req.user!.id });
+  }
+
+  const collectionRecord: PropertyRentCollection = {
+    id: `rent-col-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+    mosqueId,
+    propertyId: property.id,
+    propertyCode: property.propertyCode,
+    propertyName: property.name || property.nameBn || property.description,
+    tenantId: tenant.id,
+    tenantName: tenant.name,
+    tenantCode: tenant.tenantCode,
+    shopOrUnitNo: tenant.unitOrShopNo,
+    billingMonth: billingMonth || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`,
+    monthlyRent: numMonthlyRent,
+    previousDue: numPrevDue,
+    totalDue,
+    paidAmount: numPaid,
+    remainingDue,
+    paymentDate: paymentDate || new Date().toISOString().split('T')[0],
+    paymentMethod: paymentMethod || 'CASH',
+    accountId: account?.id,
+    accountName: account?.nameBn,
+    receiptNumber,
+    incomeVoucherNumber: incomeVoucherNumber || undefined,
+    incomeEntryId: incomeEntryId || undefined,
+    isAccountingLinked: Boolean(isAccountingLinked),
+    collectorName: req.user!.name,
+    collectorDesignation: req.user!.role === 'MOSQUE_ADMIN' ? 'অ্যাডমিন / মোতাওয়াল্লি' : 'হিসাবরক্ষক',
+    notes,
+    status: remainingDue === 0 ? 'PAID' : 'PARTIAL',
+    createdAt: new Date().toISOString()
+  };
+
+  property.rentCollections.unshift(collectionRecord);
+  property.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'PROPERTY', `ওয়াকফ সম্পত্তি ভাড়া আদায়: ৳${numPaid.toLocaleString('en-IN')} (রসিদ: ${receiptNumber}, ভাড়াটিয়া: ${tenant.name})`);
+  realtime.broadcastToMosque(mosqueId, 'PROPERTY_UPDATED', property, { senderId: req.user!.id });
+  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+  res.json({ success: true, data: property, rentCollection: collectionRecord, message: 'ভাড়া আদায় সফলভাবে সম্পন্ন হয়েছে ও রসিদ তৈরি হয়েছে।' });
+});
+
+// Delete / Reverse Rent Collection
+app.delete('/api/v1/properties/:id/rent-collections/:collectionId', authenticate, requirePermission('MANAGE_PROPERTY'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const property = db.properties.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (!property || !property.rentCollections) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সম্পত্তি বা ভাড়া রেকর্ড পাওয়া যায়নি।' } });
+
+  const colIdx = property.rentCollections.findIndex(c => c.id === req.params.collectionId);
+  if (colIdx === -1) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ভাড়া কালেকশন রেকর্ড পাওয়া যায়নি।' } });
+
+  const record = property.rentCollections[colIdx];
+
+  // If accounting linked, cancel the income entry and deduct from balance
+  if (record.incomeEntryId) {
+    const inc = db.incomeEntries.find(i => i.id === record.incomeEntryId && i.mosqueId === mosqueId);
+    if (inc && inc.status === 'APPROVED') {
+      const account = db.accounts.find(a => a.id === inc.accountId);
+      if (account) {
+        account.currentBalance -= inc.amount;
+      }
+      inc.status = 'CANCELLED';
+      inc.rejectionReason = 'ওয়াকফ ভাড়া কালেকশন বাতিল';
+      inc.updatedAt = new Date().toISOString();
+      realtime.broadcastToMosque(mosqueId, 'INCOME_REVERSED', inc, { senderId: req.user!.id });
+    }
+  }
+
+  property.rentCollections.splice(colIdx, 1);
+  property.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'DELETE', 'PROPERTY', `ওয়াকফ ভাড়া কালেকশন বাতিল: ${record.receiptNumber} - ৳${record.paidAmount}`);
+  realtime.broadcastToMosque(mosqueId, 'PROPERTY_UPDATED', property, { senderId: req.user!.id });
+  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+  res.json({ success: true, data: property, message: 'ভাড়া কালেকশন রেকর্ড সফলভাবে বাতিল করা হয়েছে।' });
+});
+
+// Add Property Expense (Linked to Expense Voucher)
+app.post('/api/v1/properties/:id/expenses', authenticate, requirePermission('MANAGE_PROPERTY'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const property = db.properties.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (!property) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সম্পত্তি পাওয়া যায়নি।' } });
+
+  const {
+    expenseCategory,
+    expenseCategoryBn,
+    amount,
+    date,
+    payeeName,
+    paymentMethod,
+    accountId,
+    description,
+    attachmentUrl
+  } = req.body;
+
+  const numAmount = Number(amount);
+  if (!numAmount || numAmount <= 0) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_AMOUNT', message: 'ব্যয়ের পরিমাণ শূন্যের চেয়ে বেশি হতে হবে।' } });
+  }
+
+  if (!property.expenses) property.expenses = [];
+
+  const account = db.accounts.find(a => a.id === accountId) || db.accounts.find(a => a.mosqueId === mosqueId) || db.accounts[0];
+  const year = new Date().getFullYear();
+  const expCount = db.expenseEntries.filter(e => e.mosqueId === mosqueId).length + 1;
+  const voucherNumber = `EXP-${year}-${String(expCount).padStart(6, '0')}`;
+  const expenseEntryId = `exp-prop-${Date.now()}`;
+
+  const mainHead = db.accountHeads.find(h => (h.nameBn?.includes('মেরামত') || h.nameBn?.includes('সম্পত্তি') || h.nameBn?.includes('রক্ষণাবেক্ষণ')) && h.type === 'EXPENSE') ||
+    db.accountHeads.find(h => h.type === 'EXPENSE') || db.accountHeads[0];
+
+  const expenseEntry: any = {
+    id: expenseEntryId,
+    mosqueId,
+    voucherNumber,
+    date: date || new Date().toISOString().split('T')[0],
+    mainHeadId: mainHead?.id || 'head-exp-03',
+    mainHeadNameBn: mainHead?.nameBn || 'সম্পত্তি মেরামত ও রক্ষণাবেক্ষণ',
+    amount: numAmount,
+    paymentMethod: paymentMethod || 'CASH',
+    accountId: account?.id || 'acc-cash-01',
+    accountName: account?.nameBn || 'প্রধান ক্যাশ',
+    payeeName: payeeName || 'সরবরাহকারী/কারিগর',
+    reference: property.propertyCode,
+    description: `ওয়াকফ সম্পত্তি ব্যয় (${expenseCategoryBn || expenseCategory}): ${property.name || property.propertyCode} - ${description || ''}`,
+    attachmentUrl,
+    createdBy: req.user!.id,
+    createdByName: req.user!.name,
+    status: 'APPROVED' as const,
+    approvedBy: req.user!.id,
+    approvedByName: req.user!.name,
+    approvedAt: new Date().toISOString(),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  if (account) {
+    account.currentBalance -= numAmount;
+  }
+
+  db.expenseEntries.unshift(expenseEntry);
+  realtime.broadcastToMosque(mosqueId, 'EXPENSE_CREATED', expenseEntry, { senderId: req.user!.id });
+
+  const expRecord: PropertyExpenseRecord = {
+    id: `exp-prop-rec-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+    mosqueId,
+    propertyId: property.id,
+    propertyCode: property.propertyCode,
+    propertyName: property.name || property.nameBn || property.description,
+    expenseCategory: expenseCategory || 'REPAIR',
+    expenseCategoryBn: expenseCategoryBn || 'মেরামত ও রক্ষণাবেক্ষণ',
+    amount: numAmount,
+    date: date || new Date().toISOString().split('T')[0],
+    payeeName: payeeName || 'সরবরাহকারী/কারিগর',
+    paymentMethod: paymentMethod || 'CASH',
+    accountId: account?.id,
+    accountName: account?.nameBn,
+    voucherNumber,
+    expenseEntryId,
+    description,
+    attachmentUrl,
+    createdBy: req.user!.id,
+    createdByName: req.user!.name,
+    createdAt: new Date().toISOString()
+  };
+
+  property.expenses.unshift(expRecord);
+  property.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'PROPERTY', `ওয়াকফ সম্পত্তি বাবদ ব্যয়: ৳${numAmount.toLocaleString('en-IN')} (${property.propertyCode}, ভাউচার: ${voucherNumber})`);
+  realtime.broadcastToMosque(mosqueId, 'PROPERTY_UPDATED', property, { senderId: req.user!.id });
+  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+  res.json({ success: true, data: property, expense: expRecord, message: 'সম্পত্তি ব্যয় ও ভাউচার সফলভাবে সংরক্ষিত হয়েছে।' });
+});
+
+// Delete Property Expense
+app.delete('/api/v1/properties/:id/expenses/:expenseId', authenticate, requirePermission('MANAGE_PROPERTY'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const property = db.properties.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (!property || !property.expenses) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সম্পত্তি বা ব্যয় রেকর্ড পাওয়া যায়নি।' } });
+
+  const expIdx = property.expenses.findIndex(e => e.id === req.params.expenseId);
+  if (expIdx === -1) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ব্যয় রেকর্ড পাওয়া যায়নি।' } });
+
+  const record = property.expenses[expIdx];
+
+  if (record.expenseEntryId) {
+    const exp = db.expenseEntries.find(e => e.id === record.expenseEntryId && e.mosqueId === mosqueId);
+    if (exp && exp.status === 'APPROVED') {
+      const account = db.accounts.find(a => a.id === exp.accountId);
+      if (account) {
+        account.currentBalance += exp.amount;
+      }
+      exp.status = 'CANCELLED';
+      exp.rejectionReason = 'ওয়াকফ সম্পত্তি ব্যয় রেকর্ড বাতিল';
+      exp.updatedAt = new Date().toISOString();
+      realtime.broadcastToMosque(mosqueId, 'EXPENSE_REVERSED', exp, { senderId: req.user!.id });
+    }
+  }
+
+  property.expenses.splice(expIdx, 1);
+  property.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'DELETE', 'PROPERTY', `ওয়াকফ সম্পত্তি ব্যয় বাতিল: ${record.voucherNumber} - ৳${record.amount}`);
+  realtime.broadcastToMosque(mosqueId, 'PROPERTY_UPDATED', property, { senderId: req.user!.id });
+  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+  res.json({ success: true, data: property, message: 'সম্পত্তি ব্যয় রেকর্ড সফলভাবে বাতিল করা হয়েছে।' });
+});
+
+// Add / Archive Document
+app.post('/api/v1/properties/:id/documents', authenticate, requirePermission('MANAGE_PROPERTY'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const property = db.properties.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (!property) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সম্পত্তি পাওয়া যায়নি।' } });
+
+  const { title, documentType, documentTypeBn, issueDate, description, fileUrl, fileName, fileSize } = req.body;
+  if (!title || !documentType) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'দলিল বা নথির শিরোনাম ও ধরন নির্বাচন আবশ্যক।' } });
+  }
+
+  if (!property.documents) property.documents = [];
+
+  const doc: PropertyDocument = {
+    id: `doc-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+    mosqueId,
+    propertyId: property.id,
+    title,
+    documentType,
+    documentTypeBn: documentTypeBn || 'অন্যান্য দলিল',
+    issueDate,
+    description,
+    fileUrl: fileUrl || '/uploads/sample-document.pdf',
+    fileName: fileName || `${title}.pdf`,
+    fileSize: fileSize || 1500000,
+    uploadedBy: req.user!.id,
+    uploadedByName: req.user!.name,
+    createdAt: new Date().toISOString()
+  };
+
+  property.documents.unshift(doc);
+  property.documentsCount = property.documents.length;
+  property.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'PROPERTY', `ওয়াকফ সম্পত্তি দলিল/নথি আপলোড: ${doc.title} (${property.propertyCode})`);
+  realtime.broadcastToMosque(mosqueId, 'PROPERTY_UPDATED', property, { senderId: req.user!.id });
+
+  res.json({ success: true, data: property, document: doc, message: 'দলিল সফলভাবে আর্কাইভে সংরক্ষিত হয়েছে।' });
+});
+
+// Delete Document
+app.delete('/api/v1/properties/:id/documents/:docId', authenticate, requirePermission('MANAGE_PROPERTY'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const property = db.properties.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (!property || !property.documents) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সম্পত্তি বা দলিল পাওয়া যায়নি।' } });
+
+  const docIdx = property.documents.findIndex(d => d.id === req.params.docId);
+  if (docIdx === -1) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'দলিল রেকর্ড পাওয়া যায়নি।' } });
+
+  const doc = property.documents[docIdx];
+  property.documents.splice(docIdx, 1);
+  property.documentsCount = property.documents.length;
+  property.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'DELETE', 'PROPERTY', `ওয়াকফ দলিল মুছে ফেলা হয়েছে: ${doc.title} (${property.propertyCode})`);
+  realtime.broadcastToMosque(mosqueId, 'PROPERTY_UPDATED', property, { senderId: req.user!.id });
+
+  res.json({ success: true, data: property, message: 'দলিল সফলভাবে মুছে ফেলা হয়েছে।' });
+});
+
+// Add Khajna / Land Tax Record
+app.post('/api/v1/properties/:id/khajna', authenticate, requirePermission('MANAGE_PROPERTY'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const property = db.properties.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (!property) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সম্পত্তি পাওয়া যায়নি।' } });
+
+  const {
+    taxYear,
+    amount,
+    paymentDate,
+    receiptNumber,
+    nextDueDate,
+    holdingNo,
+    paidToOffice,
+    documentUrl,
+    notes,
+    isExpenseLinked = true,
+    accountId,
+    paymentMethod
+  } = req.body;
+
+  const numAmount = Number(amount);
+  if (!taxYear || isNaN(numAmount) || numAmount < 0) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'কর বছর ও সঠিক টাকার পরিমাণ আবশ্যক।' } });
+  }
+
+  if (!property.khajnaRecords) property.khajnaRecords = [];
+
+  let expenseVoucherNumber = '';
+  let expenseEntryId = '';
+
+  if (isExpenseLinked && numAmount > 0) {
+    const account = db.accounts.find(a => a.id === accountId) || db.accounts.find(a => a.mosqueId === mosqueId) || db.accounts[0];
+    const year = new Date().getFullYear();
+    const expCount = db.expenseEntries.filter(e => e.mosqueId === mosqueId).length + 1;
+    expenseVoucherNumber = `EXP-${year}-${String(expCount).padStart(6, '0')}`;
+    expenseEntryId = `exp-prop-khajna-${Date.now()}`;
+
+    const mainHead = db.accountHeads.find(h => (h.nameBn?.includes('খাজনা') || h.nameBn?.includes('কর') || h.nameBn?.includes('সম্পত্তি')) && h.type === 'EXPENSE') ||
+      db.accountHeads.find(h => h.type === 'EXPENSE') || db.accountHeads[0];
+
+    const expenseEntry: any = {
+      id: expenseEntryId,
+      mosqueId,
+      voucherNumber: expenseVoucherNumber,
+      date: paymentDate || new Date().toISOString().split('T')[0],
+      mainHeadId: mainHead?.id || 'head-exp-03',
+      mainHeadNameBn: mainHead?.nameBn || 'ভূমি উন্নয়ন কর ও খাজনা',
+      amount: numAmount,
+      paymentMethod: paymentMethod || 'CASH',
+      accountId: account?.id || 'acc-cash-01',
+      accountName: account?.nameBn || 'প্রধান ক্যাশ',
+      payeeName: paidToOffice || 'ভূমি রাজস্ব অফিস',
+      reference: receiptNumber || property.propertyCode,
+      description: `ভূমি উন্নয়ন কর ও খাজনা পরিশোধ (${taxYear}): ${property.name || property.propertyCode} - দাখিলা নং: ${receiptNumber || ''}`,
+      attachmentUrl: documentUrl,
+      createdBy: req.user!.id,
+      createdByName: req.user!.name,
+      status: 'APPROVED' as const,
+      approvedBy: req.user!.id,
+      approvedByName: req.user!.name,
+      approvedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    if (account) {
+      account.currentBalance -= numAmount;
+    }
+
+    db.expenseEntries.unshift(expenseEntry);
+    realtime.broadcastToMosque(mosqueId, 'EXPENSE_CREATED', expenseEntry, { senderId: req.user!.id });
+  }
+
+  const khajnaRec: PropertyKhajnaRecord = {
+    id: `khajna-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+    mosqueId,
+    propertyId: property.id,
+    taxYear,
+    amount: numAmount,
+    paymentDate: paymentDate || new Date().toISOString().split('T')[0],
+    receiptNumber: receiptNumber || `DAK-${new Date().getFullYear()}-${String(property.khajnaRecords.length + 1).padStart(4, '0')}`,
+    nextDueDate,
+    holdingNo,
+    paidToOffice,
+    documentUrl,
+    notes,
+    expenseVoucherNumber: expenseVoucherNumber || undefined,
+    expenseEntryId: expenseEntryId || undefined,
+    isExpenseLinked: Boolean(isExpenseLinked),
+    createdAt: new Date().toISOString()
+  };
+
+  property.khajnaRecords.unshift(khajnaRec);
+  property.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'PROPERTY', `ভূমি কর ও খাজনা রেকর্ড সংযোজন: ৳${numAmount.toLocaleString('en-IN')} (${taxYear}, ${property.propertyCode})`);
+  realtime.broadcastToMosque(mosqueId, 'PROPERTY_UPDATED', property, { senderId: req.user!.id });
+  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+  res.json({ success: true, data: property, khajnaRecord: khajnaRec, message: 'ভূমি উন্নয়ন কর ও খাজনা তথ্য সংরক্ষিত হয়েছে।' });
+});
+
+// Delete Khajna Record
+app.delete('/api/v1/properties/:id/khajna/:khajnaId', authenticate, requirePermission('MANAGE_PROPERTY'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const property = db.properties.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (!property || !property.khajnaRecords) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সম্পত্তি বা খাজনা রেকর্ড পাওয়া যায়নি।' } });
+
+  const kIdx = property.khajnaRecords.findIndex(k => k.id === req.params.khajnaId);
+  if (kIdx === -1) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'খাজনা রেকর্ড পাওয়া যায়নি।' } });
+
+  const record = property.khajnaRecords[kIdx];
+
+  if (record.expenseEntryId) {
+    const exp = db.expenseEntries.find(e => e.id === record.expenseEntryId && e.mosqueId === mosqueId);
+    if (exp && exp.status === 'APPROVED') {
+      const account = db.accounts.find(a => a.id === exp.accountId);
+      if (account) {
+        account.currentBalance += exp.amount;
+      }
+      exp.status = 'CANCELLED';
+      exp.rejectionReason = 'খাজনা রেকর্ড বাতিল';
+      exp.updatedAt = new Date().toISOString();
+      realtime.broadcastToMosque(mosqueId, 'EXPENSE_REVERSED', exp, { senderId: req.user!.id });
+    }
+  }
+
+  property.khajnaRecords.splice(kIdx, 1);
+  property.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'DELETE', 'PROPERTY', `খাজনা রেকর্ড বাতিল: ${record.taxYear} - ৳${record.amount}`);
+  realtime.broadcastToMosque(mosqueId, 'PROPERTY_UPDATED', property, { senderId: req.user!.id });
+  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+  res.json({ success: true, data: property, message: 'খাজনা রেকর্ড সফলভাবে বাতিল করা হয়েছে।' });
 });
 
 // ==========================================

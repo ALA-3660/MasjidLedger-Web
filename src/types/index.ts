@@ -518,6 +518,76 @@ export interface CommitteeActionPlanActivityLog {
   newState?: string;
 }
 
+export type SubCommitteeStatus = 'ACTIVE' | 'EXPIRED' | 'SUSPENDED' | 'DISSOLVED' | 'INACTIVE' | 'ARCHIVED';
+
+export interface SubCommitteeMemberItem {
+  id: string;
+  name: string;
+  designation?: string;
+  phone?: string;
+  role?: 'CONVENER' | 'SECRETARY' | 'MEMBER'; // আহ্বায়ক / সচিব / সদস্য
+  responsibility?: string; // নির্দিষ্ট দায়িত্ব
+  joinedDate?: string;
+}
+
+export interface SubCommitteeActivityLog {
+  id: string;
+  action: string;
+  details: string;
+  changedBy: string;
+  changedByName: string;
+  timestamp: string;
+}
+
+export interface SubCommitteeMemberHistory {
+  id: string;
+  memberId: string;
+  memberName: string;
+  role: string;
+  joinedDate: string;
+  leftDate?: string;
+  reason?: string;
+}
+
+export interface SubCommittee {
+  id: string;
+  mosqueId: string;
+  subCommitteeCode: string; // e.g. "SC-2026-001"
+  name: string; // Sub-Committee Name
+  category: string; // Category/Type
+  termId: string; // Committee Term linkage
+  termTitle?: string;
+  formationDate: string; // YYYY-MM-DD
+  startDate: string; // YYYY-MM-DD
+  endDate?: string; // YYYY-MM-DD
+  status: SubCommitteeStatus;
+  convenerId?: string;
+  convenerName: string; // Convener/Chairperson
+  convenerPhone?: string;
+  secretaryId?: string;
+  secretaryName?: string; // Secretary/Coordinator (optional)
+  secretaryPhone?: string;
+  memberIds: string[]; // multi-select from current Committee Members
+  members?: SubCommitteeMemberItem[];
+  minMembers?: number;
+  maxMembers?: number;
+  scopeOfWork: string; // Detailed Scope of Work
+  duties: string; // Duties and Responsibilities
+  notes?: string; // Special Instructions/Notes
+  resolutionId?: string; // Link to MeetingResolution
+  resolutionNumber?: string;
+  resolutionSubject?: string;
+  progressPercentage?: number; // 0-100%
+  targetDeliverables?: string; // লক্ষ্যমাত্রা / ডেলিভারেবলস
+  activityLogs?: SubCommitteeActivityLog[];
+  memberHistory?: SubCommitteeMemberHistory[];
+  isArchived?: boolean;
+  createdBy?: string;
+  createdByName?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface CommitteeActionPlan {
   id: string;
   mosqueId: string;
@@ -548,6 +618,10 @@ export interface CommitteeActionPlan {
     designation?: string;
     phone?: string;
   }>;
+
+  // Sub-Committee Linkage
+  subCommitteeId?: string;
+  subCommitteeName?: string;
 
   // Timeline
   startDate: string; // YYYY-MM-DD
@@ -1213,22 +1287,256 @@ export interface MosqueAsset {
   updatedAt?: string;
 }
 
+export interface PropertyTenant {
+  id: string;
+  mosqueId: string;
+  propertyId: string;
+  tenantCode: string;
+  name: string;
+  fatherOrSpouseName?: string;
+  mobile: string;
+  nid?: string;
+  address?: string;
+  photoUrl?: string;
+  unitOrShopNo?: string;
+  businessName?: string;
+  businessType?: string;
+  agreementNo?: string;
+  startDate: string;
+  endDate: string;
+  monthlyRent: number;
+  annualRent?: number;
+  securityDeposit: number;
+  paymentDueDate?: number;
+  status: 'ACTIVE' | 'EXPIRING_SOON' | 'EXPIRED' | 'TERMINATED';
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface PropertyInspectionRecord {
+  id: string;
+  propertyId: string;
+  inspectionDate: string;
+  inspectorName: string;
+  inspectorDesignation?: string;
+  currentCondition: 'GOOD' | 'NEEDS_REPAIR' | 'DAMAGED' | 'DISPUTED' | 'UNDER_CONSTRUCTION';
+  occupancyStatus: string;
+  problemsObserved?: string;
+  requiredAction?: string;
+  nextInspectionDate?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface PropertyRentCollection {
+  id: string;
+  mosqueId: string;
+  propertyId: string;
+  propertyCode?: string;
+  propertyName?: string;
+  tenantId: string;
+  tenantName: string;
+  tenantCode?: string;
+  shopOrUnitNo?: string;
+  billingMonth: string; // e.g. "2026-08"
+  monthlyRent: number;
+  previousDue: number;
+  totalDue: number; // previousDue + monthlyRent
+  paidAmount: number;
+  remainingDue: number; // totalDue - paidAmount
+  paymentDate: string; // YYYY-MM-DD
+  paymentMethod: PaymentMethod;
+  accountId?: string;
+  accountName?: string;
+  receiptNumber: string;
+  incomeVoucherNumber?: string;
+  incomeEntryId?: string;
+  isAccountingLinked?: boolean;
+  collectorName?: string;
+  collectorDesignation?: string;
+  notes?: string;
+  status: 'PAID' | 'PARTIAL' | 'CANCELLED';
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export type PropertyDocumentType =
+  | 'WAQF_DEED'
+  | 'KHATIAN'
+  | 'PORCHA'
+  | 'NAMJARI'
+  | 'KHAJNA_RECEIPT'
+  | 'IJARA_AGREEMENT'
+  | 'RENT_DOCUMENT'
+  | 'COURT_DOCUMENT'
+  | 'OTHER';
+
+export interface PropertyDocument {
+  id: string;
+  mosqueId: string;
+  propertyId: string;
+  title: string;
+  documentType: PropertyDocumentType;
+  documentTypeBn?: string;
+  issueDate?: string;
+  description?: string;
+  fileUrl: string;
+  fileName?: string;
+  fileSize?: number;
+  uploadedBy?: string;
+  uploadedByName?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface PropertyKhajnaRecord {
+  id: string;
+  mosqueId: string;
+  propertyId: string;
+  taxYear: string; // e.g. "১৪৩১-১৪৩২ সন / ২০২৬"
+  amount: number;
+  paymentDate: string;
+  receiptNumber: string; // দাখিলা নং / Dakhila No
+  nextDueDate?: string;
+  holdingNo?: string;
+  paidToOffice?: string;
+  documentUrl?: string;
+  notes?: string;
+  expenseVoucherNumber?: string;
+  expenseEntryId?: string;
+  isExpenseLinked?: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export type PropertyExpenseCategory =
+  | 'REPAIR'
+  | 'MAINTENANCE'
+  | 'LEGAL_EXPENSE'
+  | 'TAX_KHAJNA'
+  | 'UTILITY'
+  | 'DEVELOPMENT'
+  | 'OTHER';
+
+export interface PropertyExpenseRecord {
+  id: string;
+  mosqueId: string;
+  propertyId: string;
+  propertyCode?: string;
+  propertyName?: string;
+  expenseCategory: PropertyExpenseCategory;
+  expenseCategoryBn?: string;
+  amount: number;
+  date: string;
+  payeeName?: string;
+  paymentMethod: PaymentMethod;
+  accountId?: string;
+  accountName?: string;
+  voucherNumber?: string;
+  expenseEntryId?: string;
+  description?: string;
+  attachmentUrl?: string;
+  createdBy?: string;
+  createdByName?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface PropertyLegalCase {
+  id: string;
+  propertyId: string;
+  caseNumber: string;
+  courtName: string;
+  parties: string;
+  caseSubject: string;
+  lawyerName?: string;
+  lawyerContact?: string;
+  filingDate: string;
+  nextHearingDate?: string;
+  status: 'RUNNING' | 'STAY_ORDER' | 'DISPOSED' | 'WON' | 'LOST' | 'APPEAL';
+  courtOrders?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface MosqueProperty {
   id: string;
   mosqueId: string;
   propertyCode: string;
-  type: 'AGRICULTURAL_LAND' | 'COMMERCIAL_LAND' | 'RESIDENTIAL_PLOT' | 'SHOP' | 'BUILDING' | 'POND' | 'OTHER';
+  name?: string; // বাংলা নাম (e.g. মসজিদ ওয়াকফ মার্কেট ও জমি)
+  nameBn?: string;
+  type: 'AGRICULTURAL_LAND' | 'COMMERCIAL_LAND' | 'RESIDENTIAL_PLOT' | 'SHOP' | 'MARKET' | 'BUILDING' | 'POND' | 'GARDEN' | 'GRAVEYARD_ADJACENT' | 'OTHER';
+  propertyType?: string;
+  category?: 'LAND' | 'MARKET' | 'SHOP' | 'BUILDING' | 'POND' | 'GARDEN' | 'OTHER';
   description: string;
   location: string;
-  area: string; // e.g. "12 শতাংশ" or "0.5 একর"
+  fullAddress?: string;
+  area: string; // e.g. "১২.৫০ শতাংশ"
+  areaAmount?: number;
+  areaUnit?: 'DECIMAL' | 'BIGHA' | 'KATHA' | 'ACRE' | 'SQFT' | 'SHOTOK' | 'OTHER';
   ownershipType: 'WAQF' | 'PURCHASED' | 'DONATED' | 'LEASED';
+  
+  // ভূমি রেকর্ড (Land Schedule)
+  csPlotNo?: string;
+  saPlotNo?: string;
+  rsPlotNo?: string;
+  bsPlotNo?: string;
+  plotNo?: string;
+  csKhatianNo?: string;
+  saKhatianNo?: string;
+  rsKhatianNo?: string;
+  bsKhatianNo?: string;
+  mutationKhatianNo?: string;
+  khatianNo?: string;
+  mouza?: string;
+  jlNumber?: string;
+  subRegistryOffice?: string;
+
+  // চতুঃসীমানা (Boundaries)
+  boundaryNorth?: string;
+  boundarySouth?: string;
+  boundaryEast?: string;
+  boundaryWest?: string;
+
+  // ওয়াকফ দলিল ও ওয়াকিফ (Waqf Deed & Waqif)
   waqfEnrollmentNo?: string;
+  waqfDeedNo?: string;
+  waqfYear?: string;
+  waqfDeedDate?: string;
+  waqfECNumber?: string;
+  waqifName?: string;
+  waqifFatherName?: string;
+  waqifAddress?: string;
+  waqfPurpose?: string;
+  waqfEstateName?: string;
+
+  // ব্যবহার ও দখল (Possession & Use)
   currentUse: string;
+  possessionStatus?: 'MOSQUE_CONTROL' | 'RENTED' | 'LEASED' | 'ILLEGAL_OCCUPIED' | 'DISPUTED' | 'VACANT' | 'PARTIAL';
+  status: 'ACTIVE' | 'VACANT' | 'RENTED' | 'LEASED' | 'UNDER_CONSTRUCTION' | 'UNDER_MAINTENANCE' | 'DISPUTED' | 'LEGAL_CASE' | 'LEASED_OUT' | 'OTHER';
+  estimatedValue?: number;
   monthlyIncome?: number;
-  status: 'ACTIVE' | 'DISPUTED' | 'LEASED_OUT' | 'VACANT';
+  monthlyRent?: number;
+  annualIncome?: number;
+  photoUrl?: string;
   documentsCount?: number;
+  isArchived?: boolean;
   notes?: string;
+
+  // সাব-কালেকশনস
+  tenants?: PropertyTenant[];
+  tenantName?: string;
+  inspections?: PropertyInspectionRecord[];
+  legalCases?: PropertyLegalCase[];
+  rentCollections?: PropertyRentCollection[];
+  documents?: PropertyDocument[];
+  khajnaRecords?: PropertyKhajnaRecord[];
+  expenses?: PropertyExpenseRecord[];
+
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface CemeteryRecord {

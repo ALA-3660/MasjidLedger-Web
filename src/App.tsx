@@ -25,6 +25,7 @@ import {
   SavedReportConfig,
   UserStatus,
   DashboardStats,
+  SubCommittee,
 } from './types';
 import { Language, translations } from './lib/i18n';
 import { Navbar } from './components/Navbar';
@@ -96,6 +97,7 @@ export default function App() {
   const [meetings, setMeetings] = useState<CommitteeMeeting[]>([]);
   const [committeeNotices, setCommitteeNotices] = useState<CommitteeMeetingNotice[]>([]);
   const [resolutions, setResolutions] = useState<MeetingResolution[]>([]);
+  const [subCommittees, setSubCommittees] = useState<SubCommittee[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [staffPayments, setStaffPayments] = useState<StaffPayment[]>([]);
   const [assets, setAssets] = useState<MosqueAsset[]>([]);
@@ -136,6 +138,7 @@ export default function App() {
         meetingsRes,
         committeeNoticesRes,
         resolutionsRes,
+        subCommitteesRes,
         staffRes,
         staffPaysRes,
         assetsRes,
@@ -160,6 +163,7 @@ export default function App() {
         api.getCommitteeMeetings().catch(() => []),
         api.getCommitteeNotices().catch(() => []),
         api.getCommitteeResolutions().catch(() => []),
+        api.getSubCommittees().catch(() => []),
         api.getStaff().catch(() => []),
         api.getStaffPayments().catch(() => []),
         api.getAssets().catch(() => []),
@@ -191,6 +195,7 @@ export default function App() {
       if (meetingsRes) setMeetings(meetingsRes);
       if (committeeNoticesRes) setCommitteeNotices(committeeNoticesRes);
       if (resolutionsRes) setResolutions(resolutionsRes);
+      if (subCommitteesRes) setSubCommittees(subCommitteesRes);
       if (staffRes) setStaff(staffRes);
       if (staffPaysRes) setStaffPayments(staffPaysRes);
       if (assetsRes) {
@@ -440,6 +445,21 @@ export default function App() {
     await loadData(false);
   };
 
+  const handleAddSubCommittee = async (data: any) => {
+    await api.createSubCommittee(data);
+    await loadData(false);
+  };
+
+  const handleUpdateSubCommittee = async (id: string, data: any) => {
+    await api.updateSubCommittee(id, data);
+    await loadData(false);
+  };
+
+  const handleArchiveSubCommittee = async (id: string) => {
+    await api.archiveSubCommittee(id);
+    await loadData(false);
+  };
+
   const handleAddStaff = async (data: any) => {
     await api.createStaff(data);
     await loadData(false);
@@ -519,6 +539,46 @@ export default function App() {
     const res = await api.clearDemoAssets();
     await loadData(false);
     return res;
+  };
+
+  const handleAddProperty = async (data: any) => {
+    await api.createProperty(data);
+    await loadData(false);
+  };
+
+  const handleUpdateProperty = async (id: string, data: any) => {
+    await api.updateProperty(id, data);
+    await loadData(false);
+  };
+
+  const handleArchiveProperty = async (id: string, isArchived: boolean) => {
+    await api.archiveProperty(id, isArchived);
+    await loadData(false);
+  };
+
+  const handleDeleteProperty = async (id: string, force?: boolean) => {
+    await api.deleteProperty(id, force);
+    await loadData(false);
+  };
+
+  const handleAddPropertyTenant = async (propertyId: string, data: any) => {
+    await api.addPropertyTenant(propertyId, data);
+    await loadData(false);
+  };
+
+  const handleTerminatePropertyTenant = async (propertyId: string, tenantId: string) => {
+    await api.terminatePropertyTenant(propertyId, tenantId);
+    await loadData(false);
+  };
+
+  const handleAddPropertyInspection = async (propertyId: string, data: any) => {
+    await api.addPropertyInspection(propertyId, data);
+    await loadData(false);
+  };
+
+  const handleAddPropertyLegalCase = async (propertyId: string, data: any) => {
+    await api.addPropertyLegalCase(propertyId, data);
+    await loadData(false);
   };
 
   const handleAddUser = async (data: any) => {
@@ -744,6 +804,10 @@ export default function App() {
           onUpdateResolutionProgress={handleUpdateCommitteeResolutionProgress}
           onDeleteResolution={handleDeleteCommitteeResolution}
           onDuplicateResolution={handleDuplicateCommitteeResolution}
+          subCommittees={subCommittees}
+          onAddSubCommittee={handleAddSubCommittee}
+          onUpdateSubCommittee={handleUpdateSubCommittee}
+          onArchiveSubCommittee={handleArchiveSubCommittee}
         />
       )}
 
@@ -781,6 +845,14 @@ export default function App() {
           onArchiveAsset={handleArchiveAsset}
           onAddAssetService={handleAddAssetService}
           onClearDemoAssets={handleClearDemoAssets}
+          onAddProperty={handleAddProperty}
+          onUpdateProperty={handleUpdateProperty}
+          onDeleteProperty={handleDeleteProperty}
+          onArchiveProperty={handleArchiveProperty}
+          onAddPropertyTenant={handleAddPropertyTenant}
+          onTerminatePropertyTenant={handleTerminatePropertyTenant}
+          onAddPropertyInspection={handleAddPropertyInspection}
+          onAddPropertyLegalCase={handleAddPropertyLegalCase}
           onAddCemeteryRecord={handleAddCemetery}
           onAddNotice={handleAddNotice}
         />

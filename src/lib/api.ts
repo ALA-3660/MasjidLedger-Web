@@ -24,6 +24,7 @@ import {
   MosqueNotice,
   AuditLog,
   UserStatus,
+  SubCommittee,
 } from '../types';
 
 class ApiService {
@@ -658,6 +659,37 @@ class ApiService {
     });
   }
 
+  // Sub-Committees Management (সাব-কমিটি ব্যবস্থাপনা)
+  async getSubCommittees(): Promise<SubCommittee[]> {
+    const res = await this.request<SubCommittee[]>('/sub-committees');
+    return res.data || [];
+  }
+
+  async createSubCommittee(data: any): Promise<SubCommittee> {
+    const res = await this.request<SubCommittee>('/sub-committees', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'সাব-কমিটি তৈরি করতে ব্যর্থ হয়েছে');
+    return res.data!;
+  }
+
+  async updateSubCommittee(id: string, data: any): Promise<SubCommittee> {
+    const res = await this.request<SubCommittee>(`/sub-committees/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'সাব-কমিটি আপডেট করতে ব্যর্থ হয়েছে');
+    return res.data!;
+  }
+
+  async archiveSubCommittee(id: string): Promise<void> {
+    const res = await this.request<void>(`/sub-committees/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.success) throw new Error(res.error?.message || 'সাব-কমিটি আর্কাইভ করতে ব্যর্থ হয়েছে');
+  }
+
   // Management (Staff, Assets, Properties, Cemetery, Notices)
   async getStaff(): Promise<Staff[]> {
     const res = await this.request<Staff[]>('/staff');
@@ -880,6 +912,77 @@ class ApiService {
   async getProperties(): Promise<MosqueProperty[]> {
     const res = await this.request<MosqueProperty[]>('/properties');
     return res.data || [];
+  }
+
+  async createProperty(data: any): Promise<MosqueProperty> {
+    const res = await this.request<MosqueProperty>('/properties', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to create property');
+    return res.data!;
+  }
+
+  async updateProperty(id: string, data: any): Promise<MosqueProperty> {
+    const res = await this.request<MosqueProperty>(`/properties/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to update property');
+    return res.data!;
+  }
+
+  async archiveProperty(id: string, isArchived: boolean): Promise<MosqueProperty> {
+    const res = await this.request<MosqueProperty>(`/properties/${id}/archive`, {
+      method: 'POST',
+      body: JSON.stringify({ isArchived }),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to archive property');
+    return res.data!;
+  }
+
+  async deleteProperty(id: string, force?: boolean): Promise<{ success: boolean; message?: string }> {
+    const query = force ? '?force=true' : '';
+    const res = await this.request<any>(`/properties/${id}${query}`, {
+      method: 'DELETE',
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to delete property');
+    return { success: true, message: (res as any).message };
+  }
+
+  async addPropertyTenant(propertyId: string, data: any): Promise<any> {
+    const res = await this.request<any>(`/properties/${propertyId}/tenants`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to add/update tenant');
+    return res.data!;
+  }
+
+  async terminatePropertyTenant(propertyId: string, tenantId: string): Promise<any> {
+    const res = await this.request<any>(`/properties/${propertyId}/tenants/${tenantId}`, {
+      method: 'DELETE',
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to terminate tenant');
+    return res.data!;
+  }
+
+  async addPropertyInspection(propertyId: string, data: any): Promise<any> {
+    const res = await this.request<any>(`/properties/${propertyId}/inspections`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to add inspection report');
+    return res.data!;
+  }
+
+  async addPropertyLegalCase(propertyId: string, data: any): Promise<any> {
+    const res = await this.request<any>(`/properties/${propertyId}/cases`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to add legal case');
+    return res.data!;
   }
 
   async getCemeteryRecords(): Promise<CemeteryRecord[]> {

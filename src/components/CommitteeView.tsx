@@ -44,6 +44,7 @@ import {
   MeetingResolution,
   MeetingStatus,
   Mosque,
+  SubCommittee,
 } from '../types';
 import { Language, translations, formatDate } from '../lib/i18n';
 import { MeetingDocumentPrint } from './MeetingDocumentPrint';
@@ -55,6 +56,7 @@ import { MeetingResolutionsListView } from './MeetingResolutionsListView';
 import { CommitteePerformanceView } from './CommitteePerformanceView';
 import { CommitteeActionPlanView } from './CommitteeActionPlanView';
 import { CommitteeFinancialHistoryView } from './CommitteeFinancialHistoryView';
+import { SubCommitteesView } from './SubCommitteesView';
 
 interface CommitteeViewProps {
   terms: CommitteeTerm[];
@@ -83,6 +85,10 @@ interface CommitteeViewProps {
   onUpdateResolutionProgress?: (id: string, data: any) => Promise<void>;
   onDeleteResolution?: (id: string, force?: boolean) => Promise<void>;
   onDuplicateResolution?: (id: string) => Promise<void>;
+  subCommittees?: SubCommittee[];
+  onAddSubCommittee?: (data: any) => Promise<void>;
+  onUpdateSubCommittee?: (id: string, data: any) => Promise<void>;
+  onArchiveSubCommittee?: (id: string) => Promise<void>;
 }
 
 interface TenureCalculation {
@@ -262,9 +268,13 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
   onUpdateResolutionProgress,
   onDeleteResolution,
   onDuplicateResolution,
+  subCommittees = [],
+  onAddSubCommittee,
+  onUpdateSubCommittee,
+  onArchiveSubCommittee,
 }) => {
   const t = translations[language];
-  const [activeTab, setActiveTab] = useState<'members' | 'terms' | 'meetings' | 'action-plans' | 'performance' | 'financial-history'>('members');
+  const [activeTab, setActiveTab] = useState<'members' | 'terms' | 'meetings' | 'action-plans' | 'performance' | 'financial-history' | 'sub-committees'>('members');
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
   // Search & Filter for members
@@ -998,6 +1008,22 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
             <span>কমিটি ভিত্তিক হিসাব</span>
             <span className="ml-1 bg-emerald-700 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
               হিসাব
+            </span>
+          </button>
+
+          <button
+            id="tab-btn-sub-committees"
+            onClick={() => setActiveTab('sub-committees')}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'sub-committees'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Layers className="w-4 h-4 text-emerald-200" />
+            <span>সাব-কমিটি ব্যবস্থাপনা</span>
+            <span className="ml-1 bg-emerald-700 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+              {subCommittees.filter(sc => !sc.isArchived).length}
             </span>
           </button>
         </div>
@@ -2370,6 +2396,26 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
           mosque={mosque}
           currentUser={currentUser}
           onRefreshTerms={onRefreshMosqueSettings}
+        />
+      )}
+
+      {/* 7. SUB-COMMITTEES MANAGEMENT */}
+      {activeTab === 'sub-committees' && (
+        <SubCommitteesView
+          subCommittees={subCommittees}
+          terms={terms}
+          members={members}
+          meetings={meetings}
+          resolutions={resolutions || []}
+          mosque={mosque}
+          language={language}
+          currentUser={currentUser}
+          onAdd={onAddSubCommittee}
+          onUpdate={onUpdateSubCommittee}
+          onArchive={onArchiveSubCommittee}
+          onAddSubCommittee={onAddSubCommittee}
+          onUpdateSubCommittee={onUpdateSubCommittee}
+          onArchiveSubCommittee={onArchiveSubCommittee}
         />
       )}
       </div>

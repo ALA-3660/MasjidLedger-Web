@@ -34,7 +34,12 @@ import {
   Link as LinkIcon,
   Layers,
   LayoutGrid,
-  List
+  List,
+  Landmark,
+  TrendingUp,
+  Scale,
+  AlertTriangle,
+  Grid
 } from 'lucide-react';
 import {
   Staff,
@@ -65,6 +70,13 @@ import { AssetFormModal, ASSET_CATEGORIES, ASSET_CONDITIONS } from './AssetFormM
 import { AssetDetailsModal } from './AssetDetailsModal';
 import { AssetServiceModal } from './AssetServiceModal';
 import { AssetRegisterModal } from './AssetRegisterModal';
+import { PropertyFormModal, PROPERTY_CATEGORIES, POSSESSION_STATUSES, PROPERTY_STATUSES } from './PropertyFormModal';
+import { PropertyTenantModal } from './PropertyTenantModal';
+import { PropertyInspectionModal } from './PropertyInspectionModal';
+import { PropertyLegalCaseModal } from './PropertyLegalCaseModal';
+import { PropertyDetailsDrawer } from './PropertyDetailsDrawer';
+import { PropertyCertificatePrint } from './PropertyCertificatePrint';
+import { PropertyReportsModal } from './PropertyReportsModal';
 
 interface ManagementViewProps {
   initialTab?: 'staff' | 'assets' | 'property' | 'cemetery' | 'notices';
@@ -94,6 +106,14 @@ interface ManagementViewProps {
   onArchiveAsset?: (id: string, isArchived: boolean, reason?: string) => Promise<void>;
   onAddAssetService?: (id: string, data: any) => Promise<void>;
   onClearDemoAssets?: () => Promise<{ count: number; message: string }>;
+  onAddProperty?: (data: any) => Promise<void>;
+  onUpdateProperty?: (id: string, data: any) => Promise<void>;
+  onDeleteProperty?: (id: string, force?: boolean) => Promise<void>;
+  onArchiveProperty?: (id: string, isArchived: boolean) => Promise<void>;
+  onAddPropertyTenant?: (propertyId: string, data: any) => Promise<void>;
+  onTerminatePropertyTenant?: (propertyId: string, tenantId: string) => Promise<void>;
+  onAddPropertyInspection?: (propertyId: string, data: any) => Promise<void>;
+  onAddPropertyLegalCase?: (propertyId: string, data: any) => Promise<void>;
   onAddCemeteryRecord: (data: any) => Promise<void>;
   onAddNotice: (data: any) => Promise<void>;
 }
@@ -126,6 +146,14 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
   onArchiveAsset,
   onAddAssetService,
   onClearDemoAssets,
+  onAddProperty,
+  onUpdateProperty,
+  onDeleteProperty,
+  onArchiveProperty,
+  onAddPropertyTenant,
+  onTerminatePropertyTenant,
+  onAddPropertyInspection,
+  onAddPropertyLegalCase,
   onAddCemeteryRecord,
   onAddNotice,
 }) => {
@@ -176,6 +204,24 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
   const [assetLocationFilter, setAssetLocationFilter] = useState<string>('ALL');
   const [showArchivedAssets, setShowArchivedAssets] = useState(false);
   const [assetViewMode, setAssetViewMode] = useState<'GRID' | 'TABLE'>('GRID');
+
+  // ==========================================
+  // Waqf Property Module State
+  // ==========================================
+  const [isAddPropertyOpen, setIsAddPropertyOpen] = useState(false);
+  const [editingProperty, setEditingProperty] = useState<MosqueProperty | null>(null);
+  const [selectedPropertyForDetails, setSelectedPropertyForDetails] = useState<MosqueProperty | null>(null);
+  const [selectedPropertyForPrint, setSelectedPropertyForPrint] = useState<MosqueProperty | null>(null);
+  const [selectedPropertyForTenant, setSelectedPropertyForTenant] = useState<MosqueProperty | null>(null);
+  const [selectedPropertyForInspection, setSelectedPropertyForInspection] = useState<MosqueProperty | null>(null);
+  const [selectedPropertyForLegalCase, setSelectedPropertyForLegalCase] = useState<MosqueProperty | null>(null);
+  const [isPropertyReportsOpen, setIsPropertyReportsOpen] = useState(false);
+
+  const [propertySearchQuery, setPropertySearchQuery] = useState('');
+  const [propertyCategoryFilter, setPropertyCategoryFilter] = useState<string>('ALL');
+  const [propertyPossessionFilter, setPropertyPossessionFilter] = useState<string>('ALL');
+  const [showArchivedProperties, setShowArchivedProperties] = useState(false);
+  const [propertyViewMode, setPropertyViewMode] = useState<'GRID' | 'TABLE'>('GRID');
 
   // Cemetery Modal State
   const [isCemeteryModalOpen, setIsCemeteryModalOpen] = useState(false);
@@ -323,6 +369,126 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
   const handleSaveAssetService = async (assetId: string, serviceData: any) => {
     if (onAddAssetService) {
       await onAddAssetService(assetId, serviceData);
+    }
+  };
+
+  // ==========================================
+  // Waqf Property Computations & Filters
+  // ==========================================
+  const activeProperties = safeProperties.filter((p) => !p.isArchived);
+  const archivedProperties = safeProperties.filter((p) => p.isArchived);
+  const totalPropertiesCount = activeProperties.length;
+  const totalEstimatedPropertyValue = activeProperties.reduce(
+    (sum, p) => sum + (Number(p.estimatedValue) || 0),
+    0
+  );
+  const totalPropertyAreaDecimal = activeProperties.reduce(
+    (sum, p) => sum + (Number(p.areaAmount) || 0),
+    0
+  );
+
+  const allTenants = activeProperties.flatMap((p) => p.tenants || []);
+  const activeTenantsCount = allTenants.filter(
+    (t) => t.status === 'ACTIVE' || t.status === 'EXPIRING_SOON'
+  ).length;
+
+  const totalMonthlyRentIncome = activeProperties.reduce((sum, p) => {
+    const rentFromTenants = (p.tenants || [])
+      .filter((t) => t.status === 'ACTIVE' || t.status === 'EXPIRING_SOON')
+      .reduce((s, t) => s + (Number(t.monthlyRent) || 0), 0);
+    return sum + (rentFromTenants || Number(p.monthlyIncome) || Number(p.monthlyRent) || 0);
+  }, 0);
+
+  const allLegalCases = activeProperties.flatMap((p) => p.legalCases || []);
+  const activeLegalCasesCount = allLegalCases.filter(
+    (c) => c.status === 'RUNNING' || c.status === 'STAY_ORDER'
+  ).length;
+
+  const expiringAgreementsList = allTenants.filter((t) => {
+    if (t.status === 'EXPIRING_SOON') return true;
+    if (!t.endDate) return false;
+    const diff = (new Date(t.endDate).getTime() - Date.now()) / (1000 * 3600 * 24);
+    return diff >= 0 && diff <= 45;
+  });
+
+  const upcomingHearingsList = allLegalCases.filter((c) => {
+    if (!c.nextHearingDate) return false;
+    const diff = (new Date(c.nextHearingDate).getTime() - Date.now()) / (1000 * 3600 * 24);
+    return diff >= -1 && diff <= 30;
+  });
+
+  // Filtered Properties
+  const filteredProperties = safeProperties.filter((prop) => {
+    if (!showArchivedProperties && prop.isArchived) return false;
+    if (showArchivedProperties && !prop.isArchived) return false;
+
+    if (propertyCategoryFilter !== 'ALL' && prop.category !== propertyCategoryFilter) return false;
+    if (propertyPossessionFilter !== 'ALL' && prop.possessionStatus !== propertyPossessionFilter) return false;
+
+    if (propertySearchQuery.trim()) {
+      const q = propertySearchQuery.trim().toLowerCase();
+      const matchName = (prop.name || prop.description || '').toLowerCase().includes(q);
+      const matchCode = (prop.propertyCode || '').toLowerCase().includes(q);
+      const matchLoc = (prop.location || prop.fullAddress || '').toLowerCase().includes(q);
+      const matchMouza = (prop.mouza || '').toLowerCase().includes(q);
+      const matchWaqif = (prop.waqifName || '').toLowerCase().includes(q);
+      const matchPlot = (prop.bsPlotNo || prop.rsPlotNo || prop.csPlotNo || prop.plotNo || '').toLowerCase().includes(q);
+      const matchKhatian = (prop.bsKhatianNo || prop.rsKhatianNo || prop.csKhatianNo || prop.khatianNo || '').toLowerCase().includes(q);
+
+      if (!matchName && !matchCode && !matchLoc && !matchMouza && !matchWaqif && !matchPlot && !matchKhatian) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  // Handlers for Property Actions
+  const handleSaveProperty = async (data: Partial<MosqueProperty>) => {
+    if (editingProperty) {
+      if (onUpdateProperty) {
+        await onUpdateProperty(editingProperty.id, data);
+      }
+    } else {
+      if (onAddProperty) {
+        await onAddProperty(data);
+      }
+    }
+  };
+
+  const handleArchivePropertyToggle = async (prop: MosqueProperty) => {
+    if (onArchiveProperty) {
+      await onArchiveProperty(prop.id, !prop.isArchived);
+      if (selectedPropertyForDetails && selectedPropertyForDetails.id === prop.id) {
+        setSelectedPropertyForDetails({ ...selectedPropertyForDetails, isArchived: !prop.isArchived });
+      }
+    }
+  };
+
+  const handleSavePropertyTenant = async (tenantData: any) => {
+    if (!selectedPropertyForTenant) return;
+    if (onAddPropertyTenant) {
+      await onAddPropertyTenant(selectedPropertyForTenant.id, tenantData);
+    }
+  };
+
+  const handleTerminatePropertyTenantAction = async (prop: MosqueProperty, tenantId: string) => {
+    if (onTerminatePropertyTenant) {
+      await onTerminatePropertyTenant(prop.id, tenantId);
+    }
+  };
+
+  const handleSavePropertyInspection = async (inspData: any) => {
+    if (!selectedPropertyForInspection) return;
+    if (onAddPropertyInspection) {
+      await onAddPropertyInspection(selectedPropertyForInspection.id, inspData);
+    }
+  };
+
+  const handleSavePropertyLegalCase = async (caseData: any) => {
+    if (!selectedPropertyForLegalCase) return;
+    if (onAddPropertyLegalCase) {
+      await onAddPropertyLegalCase(selectedPropertyForLegalCase.id, caseData);
     }
   };
 
@@ -593,6 +759,29 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
                 <span>নতুন সম্পদ যোগ করুন</span>
               </button>
             </>
+          )}
+
+          {activeTab === 'property' && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsPropertyReportsOpen(true)}
+                className="bg-slate-800 hover:bg-slate-900 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs hover:shadow-md transition-all cursor-pointer"
+              >
+                <Printer className="w-4 h-4 text-blue-400" />
+                <span>প্রিন্ট ও রিপোর্ট সেন্টার</span>
+              </button>
+              <button
+                id="btn-open-add-property"
+                onClick={() => {
+                  setEditingProperty(null);
+                  setIsAddPropertyOpen(true);
+                }}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs hover:shadow-md transition-all cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>নতুন ওয়াকফ সম্পত্তি এন্ট্রি</span>
+              </button>
+            </div>
           )}
 
           {activeTab === 'cemetery' && (
@@ -1382,37 +1571,579 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
       {/* 3. WAQF PROPERTY SECTION                   */}
       {/* ========================================== */}
       {activeTab === 'property' && (
-        <div className="space-y-4">
-          {properties.map((prop) => (
-            <div
-              key={prop.id}
-              className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3"
-            >
+        <div className="space-y-6">
+          {/* Summary Stat Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-1">
               <div className="flex items-center justify-between">
-                <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
-                  {prop.propertyCode}
-                </span>
-                <span className="text-xs text-blue-800 font-semibold bg-blue-100 px-2.5 py-0.5 rounded-full">
-                  {prop.ownershipType} ({prop.waqfEnrollmentNo})
+                <span className="text-[11px] font-bold text-slate-500">ওয়াকফ সম্পত্তি</span>
+                <Building className="w-4 h-4 text-blue-600" />
+              </div>
+              <div className="text-xl font-black text-slate-900 font-siliguri">
+                {totalPropertiesCount} টি
+              </div>
+              <div className="text-[10px] text-slate-400 font-medium">নিবন্ধিত রেকর্ড</div>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-500">মোট জমির পরিমাণ</span>
+                <Landmark className="w-4 h-4 text-emerald-600" />
+              </div>
+              <div className="text-xl font-black text-emerald-700 font-siliguri">
+                {totalPropertyAreaDecimal > 0 ? `${totalPropertyAreaDecimal.toLocaleString('en-IN')} শতক` : '—'}
+              </div>
+              <div className="text-[10px] text-slate-400 font-medium">ওয়াকফ এস্টেট</div>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-500">আনুমানিক মূল্য</span>
+                <DollarSign className="w-4 h-4 text-amber-600" />
+              </div>
+              <div className="text-lg font-black text-slate-900 font-siliguri truncate">
+                ৳{totalEstimatedPropertyValue.toLocaleString('en-IN')}
+              </div>
+              <div className="text-[10px] text-slate-400 font-medium">বর্তমান বাজারমূল্য</div>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-500">মাসিক ভাড়া আয়</span>
+                <TrendingUp className="w-4 h-4 text-indigo-600" />
+              </div>
+              <div className="text-lg font-black text-indigo-700 font-siliguri truncate">
+                ৳{totalMonthlyRentIncome.toLocaleString('en-IN')}
+              </div>
+              <div className="text-[10px] text-slate-400 font-medium">ইজারা ও দোকান ভাড়া</div>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-500">সক্রিয় ভাড়াটিয়া</span>
+                <Users className="w-4 h-4 text-teal-600" />
+              </div>
+              <div className="text-xl font-black text-slate-900 font-siliguri">
+                {activeTenantsCount} জন
+              </div>
+              <div className="text-[10px] text-slate-400 font-medium">চলমান চুক্তি</div>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-500">মামলা ও বিরোধ</span>
+                <Scale className="w-4 h-4 text-rose-600" />
+              </div>
+              <div className="text-xl font-black text-rose-700 font-siliguri">
+                {activeLegalCasesCount} টি
+              </div>
+              <div className="text-[10px] text-slate-400 font-medium">চলমান কেস</div>
+            </div>
+          </div>
+
+          {/* Expiry & Due Date Alerts Banner */}
+          {(expiringAgreementsList.length > 0 || upcomingHearingsList.length > 0) && (
+            <div className="bg-amber-50/90 border border-amber-200 rounded-2xl p-4 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2 text-amber-900 font-bold text-xs">
+                  <AlertTriangle className="w-4 h-4 text-amber-600" />
+                  <span>জরুরি সতর্কতা ও সময়সীমা বিজ্ঞপ্তি</span>
+                </div>
+                <span className="text-[11px] font-bold bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full">
+                  {expiringAgreementsList.length + upcomingHearingsList.length} টি নোটিফিকেশন
                 </span>
               </div>
-              <div>
-                <h3 className="font-bold text-slate-900 text-base">{prop.description}</h3>
-                <p className="text-xs text-slate-600 mt-1">
-                  অবস্থান: {prop.location} | আয়তন: <strong>{prop.area}</strong>
-                </p>
-                <p className="text-xs text-slate-700 mt-1 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
-                  বর্তমান ব্যবহার: {prop.currentUse}
-                </p>
-              </div>
-              <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-                <span className="text-slate-500">দলিল ও নথিপত্র: {prop.documentsCount || 0} টি সংরক্ষিত</span>
-                <span className="font-bold text-emerald-700">
-                  মাসিক ভাড়া আয়: {formatCurrency(prop.monthlyIncome || 0, language)}
-                </span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                {expiringAgreementsList.map((tnt) => {
+                  const prop = safeProperties.find((p) => (p.tenants || []).some((t) => t.id === tnt.id));
+                  return (
+                    <div
+                      key={tnt.id}
+                      className="bg-white p-2.5 rounded-xl border border-amber-200 flex items-center justify-between"
+                    >
+                      <div>
+                        <div className="font-bold text-slate-900">
+                          {tnt.tenantName} ({tnt.shopOrUnitNo || 'ইউনিট'})
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                          সম্পত্তি: {prop?.name || prop?.description || 'ওয়াকফ সম্পত্তি'} | মেয়াদের শেষ:{' '}
+                          <span className="font-bold text-rose-600 font-mono">{tnt.endDate}</span>
+                        </div>
+                      </div>
+                      {prop && (
+                        <button
+                          onClick={() => {
+                            setSelectedPropertyForDetails(prop);
+                          }}
+                          className="px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-[11px] rounded-lg transition-colors"
+                        >
+                          চুক্তি দেখুন
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {upcomingHearingsList.map((cs) => {
+                  const prop = safeProperties.find((p) => (p.legalCases || []).some((c) => c.id === cs.id));
+                  return (
+                    <div
+                      key={cs.id}
+                      className="bg-white p-2.5 rounded-xl border border-rose-200 flex items-center justify-between"
+                    >
+                      <div>
+                        <div className="font-bold text-slate-900">
+                          মামলা নং {cs.caseNumber} ({cs.courtName || 'আদালত'})
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                          সম্পত্তি: {prop?.name || prop?.description || 'ওয়াকফ সম্পত্তি'} | শুনানির তারিখ:{' '}
+                          <span className="font-bold text-rose-600 font-mono">{cs.nextHearingDate}</span>
+                        </div>
+                      </div>
+                      {prop && (
+                        <button
+                          onClick={() => {
+                            setSelectedPropertyForDetails(prop);
+                          }}
+                          className="px-2.5 py-1 bg-rose-100 hover:bg-rose-200 text-rose-900 font-bold text-[11px] rounded-lg transition-colors"
+                        >
+                          কেস ফাইল
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
-          ))}
+          )}
+
+          {/* Filter, Search & Layout Control Toolbar */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
+            <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+              {/* Search Box */}
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="সম্পত্তির নাম, কোড, মৌজা, খতিয়ান, দাগ বা ওয়াকিফের নাম খুঁজুন..."
+                  value={propertySearchQuery}
+                  onChange={(e) => setPropertySearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:border-blue-500 focus:outline-hidden transition-all"
+                />
+                {propertySearchQuery && (
+                  <button
+                    onClick={() => setPropertySearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              {/* Filters & View Mode */}
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Category Filter */}
+                <select
+                  value={propertyCategoryFilter}
+                  onChange={(e) => setPropertyCategoryFilter(e.target.value)}
+                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:bg-white focus:outline-hidden cursor-pointer"
+                >
+                  <option value="ALL">সকল ক্যাটাগরি</option>
+                  {PROPERTY_CATEGORIES.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.labelBn}
+                    </option>
+                  ))}
+                </select>
+
+                {/* Possession Filter */}
+                <select
+                  value={propertyPossessionFilter}
+                  onChange={(e) => setPropertyPossessionFilter(e.target.value)}
+                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:bg-white focus:outline-hidden cursor-pointer"
+                >
+                  <option value="ALL">সকল দখল অবস্থা</option>
+                  {POSSESSION_STATUSES.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.labelBn}
+                    </option>
+                  ))}
+                </select>
+
+                {/* Toggle Archive */}
+                <button
+                  onClick={() => setShowArchivedProperties(!showArchivedProperties)}
+                  className={`px-3 py-2 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
+                    showArchivedProperties
+                      ? 'bg-amber-100 border-amber-300 text-amber-900'
+                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  {showArchivedProperties ? 'আর্কাইভকৃত তালিকা' : 'সক্রিয় তালিকা'}
+                </button>
+
+                {/* View Switcher */}
+                <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+                  <button
+                    onClick={() => setPropertyViewMode('GRID')}
+                    className={`p-1.5 rounded-lg transition-colors ${
+                      propertyViewMode === 'GRID' ? 'bg-white shadow-xs text-blue-600' : 'text-slate-500'
+                    }`}
+                    title="গ্রিড কার্ড ভিউ"
+                  >
+                    <Grid className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => setPropertyViewMode('TABLE')}
+                    className={`p-1.5 rounded-lg transition-colors ${
+                      propertyViewMode === 'TABLE' ? 'bg-white shadow-xs text-blue-600' : 'text-slate-500'
+                    }`}
+                    title="মাস্টার টেবিল রেজিস্টার"
+                  >
+                    <List className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Properties Grid View */}
+          {propertyViewMode === 'GRID' && filteredProperties.length > 0 && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {filteredProperties.map((prop) => {
+                const catObj = PROPERTY_CATEGORIES.find((c) => c.id === prop.category);
+                const possObj = POSSESSION_STATUSES.find((p) => p.id === prop.possessionStatus);
+                const statObj = PROPERTY_STATUSES.find((s) => s.id === prop.status);
+
+                const activeTenants = (prop.tenants || []).filter(
+                  (t) => t.status === 'ACTIVE' || t.status === 'EXPIRING_SOON'
+                );
+                const runningCases = (prop.legalCases || []).filter(
+                  (c) => c.status === 'RUNNING' || c.status === 'STAY_ORDER'
+                );
+
+                const propertyRentSum = activeTenants.reduce((s, t) => s + (t.monthlyRent || 0), 0);
+                const displayMonthlyRent = propertyRentSum || prop.monthlyIncome || prop.monthlyRent || 0;
+
+                return (
+                  <div
+                    key={prop.id}
+                    className="bg-white rounded-2xl border border-slate-200 shadow-2xs hover:shadow-md transition-all overflow-hidden flex flex-col justify-between"
+                  >
+                    <div className="p-5 space-y-3.5">
+                      {/* Top Badges */}
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center space-x-1.5">
+                          <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200">
+                            {prop.propertyCode}
+                          </span>
+                          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                            {catObj?.labelBn || prop.category || 'ওয়াকফ সম্পত্তি'}
+                          </span>
+                        </div>
+                        <div className="flex items-center space-x-1.5">
+                          <span
+                            className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
+                              possObj?.color || 'bg-slate-100 text-slate-700 border-slate-200'
+                            }`}
+                          >
+                            {possObj?.labelBn || prop.possessionStatus || 'দখলে'}
+                          </span>
+                          {prop.isArchived && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                              আর্কাইভড
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Title & Waqif Info */}
+                      <div>
+                        <h3 className="font-bold text-slate-900 text-base leading-snug">
+                          {prop.name || prop.description || 'ওয়াকফ জমি ও সম্পত্তি'}
+                        </h3>
+                        <div className="text-xs text-slate-600 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                          {prop.waqifName && (
+                            <span>
+                              ওয়াকিফ:{' '}
+                              <strong className="text-slate-800">{prop.waqifName}</strong>
+                            </span>
+                          )}
+                          {prop.waqfEnrollmentNo && (
+                            <span>
+                              ওয়াকফ ইসি নং:{' '}
+                              <strong className="text-blue-700 font-mono">{prop.waqfEnrollmentNo}</strong>
+                            </span>
+                          )}
+                          {prop.location && (
+                            <span>
+                              অবস্থান:{' '}
+                              <strong className="text-slate-700">{prop.location}</strong>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Land Survey & Plot Identification Strip */}
+                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                        <div>
+                          <span className="text-[10px] text-slate-500 block">মৌজা ও জেএল</span>
+                          <strong className="text-slate-800 font-medium">
+                            {prop.mouza || '—'} {prop.jlNumber ? `(JL-${prop.jlNumber})` : ''}
+                          </strong>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-500 block">খতিয়ান নং</span>
+                          <strong className="text-slate-800 font-medium">
+                            {prop.bsKhatianNo ? `BS: ${prop.bsKhatianNo}` : prop.khatianNo || '—'}
+                          </strong>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-500 block">দাগ নং</span>
+                          <strong className="text-slate-800 font-medium">
+                            {prop.bsPlotNo ? `BS: ${prop.bsPlotNo}` : prop.plotNo || '—'}
+                          </strong>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-500 block">জমির পরিমাণ</span>
+                          <strong className="text-emerald-700 font-bold">
+                            {prop.area || (prop.areaAmount ? `${prop.areaAmount} ${prop.areaUnit || 'শতক'}` : '—')}
+                          </strong>
+                        </div>
+                      </div>
+
+                      {/* Valuation & Financial Info */}
+                      <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                        <div className="bg-blue-50/60 p-2.5 rounded-xl border border-blue-100 flex items-center justify-between">
+                          <div>
+                            <span className="text-[10px] text-blue-700 block">মাসিক ভাড়া আয়</span>
+                            <strong className="text-sm text-blue-900 font-siliguri">
+                              ৳{displayMonthlyRent.toLocaleString('en-IN')}
+                            </strong>
+                          </div>
+                          <DollarSign className="w-4 h-4 text-blue-500 opacity-60" />
+                        </div>
+
+                        <div className="bg-amber-50/60 p-2.5 rounded-xl border border-amber-100 flex items-center justify-between">
+                          <div>
+                            <span className="text-[10px] text-amber-800 block">আনুমানিক মূল্য</span>
+                            <strong className="text-sm text-amber-950 font-siliguri">
+                              ৳{(prop.estimatedValue || 0).toLocaleString('en-IN')}
+                            </strong>
+                          </div>
+                          <Landmark className="w-4 h-4 text-amber-600 opacity-60" />
+                        </div>
+                      </div>
+
+                      {/* Sub-Collection Stats Indicators */}
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] pt-1">
+                        <div
+                          className={`px-2.5 py-1 rounded-lg font-bold flex items-center space-x-1 ${
+                            activeTenants.length > 0
+                              ? 'bg-teal-50 text-teal-800 border border-teal-200'
+                              : 'bg-slate-100 text-slate-500'
+                          }`}
+                        >
+                          <Users className="w-3 h-3" />
+                          <span>ভাড়াটিয়া: {activeTenants.length} জন</span>
+                        </div>
+
+                        <div
+                          className={`px-2.5 py-1 rounded-lg font-bold flex items-center space-x-1 ${
+                            (prop.inspections || []).length > 0
+                              ? 'bg-indigo-50 text-indigo-800 border border-indigo-200'
+                              : 'bg-slate-100 text-slate-500'
+                          }`}
+                        >
+                          <CheckCircle2 className="w-3 h-3" />
+                          <span>পরিদর্শন: {(prop.inspections || []).length} টি</span>
+                        </div>
+
+                        {runningCases.length > 0 && (
+                          <div className="px-2.5 py-1 rounded-lg font-bold flex items-center space-x-1 bg-rose-50 text-rose-800 border border-rose-200 animate-pulse">
+                            <Scale className="w-3 h-3 text-rose-600" />
+                            <span>মামলা: {runningCases.length} টি সক্রিয়</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Action Buttons Bar */}
+                    <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center space-x-1.5">
+                        <button
+                          onClick={() => setSelectedPropertyForDetails(prop)}
+                          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shadow-2xs transition-colors flex items-center space-x-1 cursor-pointer"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>বিস্তারিত ও দখল লগ</span>
+                        </button>
+                        <button
+                          onClick={() => setSelectedPropertyForPrint(prop)}
+                          className="p-1.5 text-slate-700 hover:bg-slate-200 rounded-lg transition-colors"
+                          title="ওয়াকফ প্রত্যয়নপত্র প্রিন্ট করুন"
+                        >
+                          <Printer className="w-4 h-4 text-slate-700" />
+                        </button>
+                      </div>
+
+                      <div className="flex items-center space-x-1">
+                        <button
+                          onClick={() => {
+                            setSelectedPropertyForTenant(prop);
+                          }}
+                          className="px-2 py-1 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 rounded-lg text-[11px] font-bold flex items-center space-x-1 cursor-pointer"
+                          title="নতুন ভাড়াটিয়া ও দোকান বরাদ্দ"
+                        >
+                          <Users className="w-3 h-3" />
+                          <span>+ভাড়াটিয়া</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedPropertyForInspection(prop);
+                          }}
+                          className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 rounded-lg text-[11px] font-bold flex items-center space-x-1 cursor-pointer"
+                          title="দখল ও পরিদর্শন লগ এন্ট্রি"
+                        >
+                          <CheckCircle2 className="w-3 h-3" />
+                          <span>+পরিদর্শন</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingProperty(prop);
+                            setIsAddPropertyOpen(true);
+                          }}
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                          title="সম্পত্তি সম্পাদনা করুন"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Properties Table View (Full Register) */}
+          {propertyViewMode === 'TABLE' && filteredProperties.length > 0 && (
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                    <tr>
+                      <th className="py-3 px-4">কোড</th>
+                      <th className="py-3 px-4">সম্পত্তির বিবরণ ও ওয়াকিফ</th>
+                      <th className="py-3 px-4">শ্রেণি</th>
+                      <th className="py-3 px-4">মৌজা ও দাগ/খতিয়ান</th>
+                      <th className="py-3 px-4">জমির পরিমাণ</th>
+                      <th className="py-3 px-4">দখল অবস্থা</th>
+                      <th className="py-3 px-4">মাসিক ভাড়া</th>
+                      <th className="py-3 px-4">আনুমানিক মূল্য</th>
+                      <th className="py-3 px-4 text-center">অ্যাকশন</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                    {filteredProperties.map((prop) => {
+                      const catObj = PROPERTY_CATEGORIES.find((c) => c.id === prop.category);
+                      const possObj = POSSESSION_STATUSES.find((p) => p.id === prop.possessionStatus);
+                      const activeTenants = (prop.tenants || []).filter((t) => t.status === 'ACTIVE');
+                      const propertyRentSum = activeTenants.reduce((s, t) => s + (t.monthlyRent || 0), 0);
+                      const displayMonthlyRent = propertyRentSum || prop.monthlyIncome || prop.monthlyRent || 0;
+
+                      return (
+                        <tr key={prop.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-3 px-4 font-mono font-bold text-blue-700">{prop.propertyCode}</td>
+                          <td className="py-3 px-4">
+                            <strong className="text-slate-900 block">{prop.name || prop.description}</strong>
+                            <div className="text-[10px] text-slate-500">
+                              {prop.waqifName ? `ওয়াকিফ: ${prop.waqifName}` : ''}{' '}
+                              {prop.location ? `| ${prop.location}` : ''}
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 text-slate-700">{catObj?.labelBn || prop.category}</td>
+                          <td className="py-3 px-4">
+                            <span className="text-slate-800 block">
+                              {prop.mouza || '—'} {prop.jlNumber ? `(JL-${prop.jlNumber})` : ''}
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-mono">
+                              দাগ: {prop.bsPlotNo || prop.plotNo || '—'} | খতিয়ান: {prop.bsKhatianNo || prop.khatianNo || '—'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 font-bold text-emerald-700 font-siliguri">
+                            {prop.area || (prop.areaAmount ? `${prop.areaAmount} ${prop.areaUnit || 'শতক'}` : '—')}
+                          </td>
+                          <td className="py-3 px-4">
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                possObj?.color || 'bg-slate-100 text-slate-700 border-slate-200'
+                              }`}
+                            >
+                              {possObj?.labelBn || prop.possessionStatus}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 font-bold text-blue-800 font-siliguri">
+                            ৳{displayMonthlyRent.toLocaleString('en-IN')}
+                          </td>
+                          <td className="py-3 px-4 font-bold text-slate-900 font-siliguri">
+                            ৳{(prop.estimatedValue || 0).toLocaleString('en-IN')}
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <div className="flex items-center justify-center space-x-1">
+                              <button
+                                onClick={() => setSelectedPropertyForDetails(prop)}
+                                className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md font-bold text-[11px]"
+                              >
+                                বিস্তারিত
+                              </button>
+                              <button
+                                onClick={() => setSelectedPropertyForPrint(prop)}
+                                className="p-1 text-slate-600 hover:bg-slate-100 rounded"
+                                title="প্রত্যয়ন প্রিন্ট"
+                              >
+                                <Printer className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setEditingProperty(prop);
+                                  setIsAddPropertyOpen(true);
+                                }}
+                                className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                                title="সম্পাদনা"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Empty State */}
+          {filteredProperties.length === 0 && (
+            <div className="p-12 text-center bg-white rounded-2xl border border-dashed border-slate-300 space-y-3">
+              <Building className="w-12 h-12 text-slate-400 mx-auto" />
+              <h3 className="text-sm font-bold text-slate-800">কোনো ওয়াকফ সম্পত্তি পাওয়া যায়নি</h3>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                আপনার দেওয়া সার্চ বা ফিল্টারের সাথে মিলে এমন কোনো সম্পত্তি নেই। নতুন সম্পত্তি যোগ করতে নিচের বাটনে ক্লিক করুন।
+              </p>
+              <button
+                onClick={() => {
+                  setEditingProperty(null);
+                  setIsAddPropertyOpen(true);
+                }}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-sm transition-colors cursor-pointer"
+              >
+                নতুন ওয়াকফ সম্পত্তি যোগ করুন
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -1513,6 +2244,7 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
             setEditingStaff(null);
           }}
           staff={editingStaff}
+          staffList={staff}
           onSubmit={async (staffData) => {
             if (editingStaff) {
               if (onUpdateStaff) await onUpdateStaff(editingStaff.id, staffData);
@@ -1520,7 +2252,6 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
               if (onAddStaff) await onAddStaff(staffData);
             }
           }}
-          currentMosque={currentMosque as any}
           language={language}
         />
       )}
@@ -1565,7 +2296,7 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
           onClose={() => setIsFestivalAllowanceOpen(false)}
           staffList={staff}
           accounts={accounts}
-          currentMosque={currentMosque as any}
+          onDisburse={onDisburseFestivalAllowance || (async () => {})}
           language={language}
         />
       )}
@@ -1577,7 +2308,7 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
           onClose={() => setIsStaffReportsOpen(false)}
           staffList={staff}
           staffPayments={staffPayments}
-          accounts={accounts}
+          accounts={accounts as any}
           currentMosque={currentMosque as any}
           initialReportType={staffReportsInitialTab}
           language={language}
@@ -1593,9 +2324,10 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
             setPrefilledStaffId(undefined);
           }}
           staffList={staff}
+          staffPayments={staffPayments}
           accounts={accounts}
-          prefilledStaffId={prefilledStaffId}
-          onPaySalary={onPayStaff}
+          initialStaffId={prefilledStaffId}
+          onPayStaff={onPayStaff}
           language={language}
         />
       )}
@@ -1940,6 +2672,101 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
             </form>
           </div>
         </div>
+      )}
+
+      {/* ========================================== */}
+      {/* 14. WAQF PROPERTY MODALS & DRAWERS         */}
+      {/* ========================================== */}
+      {/* Property Form Modal (Add / Edit) */}
+      <PropertyFormModal
+        isOpen={isAddPropertyOpen}
+        onClose={() => {
+          setIsAddPropertyOpen(false);
+          setEditingProperty(null);
+        }}
+        property={editingProperty}
+        onSubmit={handleSaveProperty}
+        language={language}
+      />
+
+      {/* Property Details Drawer */}
+      <PropertyDetailsDrawer
+        property={selectedPropertyForDetails}
+        isOpen={!!selectedPropertyForDetails}
+        onClose={() => setSelectedPropertyForDetails(null)}
+        onEdit={(prop) => {
+          setSelectedPropertyForDetails(null);
+          setEditingProperty(prop);
+          setIsAddPropertyOpen(true);
+        }}
+        onArchiveToggle={handleArchivePropertyToggle}
+        onPrint={(prop) => {
+          setSelectedPropertyForPrint(prop);
+        }}
+        onAddTenant={(prop) => {
+          setSelectedPropertyForTenant(prop);
+        }}
+        onTerminateTenant={handleTerminatePropertyTenantAction}
+        onAddInspection={(prop) => {
+          setSelectedPropertyForInspection(prop);
+        }}
+        onAddLegalCase={(prop) => {
+          setSelectedPropertyForLegalCase(prop);
+        }}
+        language={language}
+      />
+
+      {/* Property Certificate Print View */}
+      <PropertyCertificatePrint
+        property={selectedPropertyForPrint}
+        mosque={(currentMosque as any) || null}
+        isOpen={!!selectedPropertyForPrint}
+        onClose={() => setSelectedPropertyForPrint(null)}
+        language={language}
+      />
+
+      {/* Property Tenant Modal */}
+      {selectedPropertyForTenant && (
+        <PropertyTenantModal
+          isOpen={!!selectedPropertyForTenant}
+          onClose={() => setSelectedPropertyForTenant(null)}
+          property={selectedPropertyForTenant}
+          onSubmit={handleSavePropertyTenant}
+          language={language}
+        />
+      )}
+
+      {/* Property Inspection Modal */}
+      {selectedPropertyForInspection && (
+        <PropertyInspectionModal
+          isOpen={!!selectedPropertyForInspection}
+          onClose={() => setSelectedPropertyForInspection(null)}
+          property={selectedPropertyForInspection}
+          onSubmit={handleSavePropertyInspection}
+          language={language}
+        />
+      )}
+
+      {/* Property Legal Case Modal */}
+      {selectedPropertyForLegalCase && (
+        <PropertyLegalCaseModal
+          isOpen={!!selectedPropertyForLegalCase}
+          onClose={() => setSelectedPropertyForLegalCase(null)}
+          property={selectedPropertyForLegalCase}
+          onSubmit={handleSavePropertyLegalCase}
+          language={language}
+        />
+      )}
+
+      {/* Property Reports & Print Center Modal */}
+      {isPropertyReportsOpen && (
+        <PropertyReportsModal
+          isOpen={isPropertyReportsOpen}
+          onClose={() => setIsPropertyReportsOpen(false)}
+          properties={safeProperties}
+          mosque={currentMosque}
+          language={language}
+        />
       )}
     </div>
   );
