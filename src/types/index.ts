@@ -118,6 +118,8 @@ export interface Mosque {
   updatedAt: string;
 }
 
+export type MosqueProfile = Mosque;
+
 export type AccountType = 'ASSET' | 'LIABILITY' | 'INCOME' | 'EXPENSE' | 'EQUITY';
 
 export interface AccountHead {
@@ -164,6 +166,7 @@ export type TransactionStatus = 'DRAFT' | 'PENDING' | 'APPROVED' | 'REJECTED' | 
 export interface IncomeEntry {
   id: string;
   mosqueId: string;
+  termId?: string;
   voucherNumber: string;
   date: string;
   mainHeadId: string;
@@ -195,6 +198,7 @@ export interface IncomeEntry {
 export interface ExpenseEntry {
   id: string;
   mosqueId: string;
+  termId?: string;
   voucherNumber: string;
   date: string;
   mainHeadId: string;
@@ -961,22 +965,118 @@ export interface MemberEvaluationScoreResult {
   }[];
 }
 
+export interface SalaryHistoryEntry {
+  id: string;
+  effectiveDate: string; // YYYY-MM-DD
+  previousSalary?: number;
+  newSalary: number;
+  allowance?: number;
+  incrementAmount?: number;
+  reason?: string;
+  changedBy?: string;
+  changedByName?: string;
+  revisedBy?: string;
+  revisedByName?: string;
+  revisedAt?: string;
+  createdAt: string;
+}
+
+export type StaffEmploymentType = 'PERMANENT' | 'CONTRACTUAL' | 'PART_TIME' | 'TEMPORARY';
+
 export interface Staff {
   id: string;
   mosqueId: string;
   name: string;
+  fullNameBn?: string;
+  staffCode?: string;
   nid: string;
   phone: string;
   designation: 'IMAM' | 'MUEZZIN' | 'KHATIB' | 'TEACHER' | 'CLEANER' | 'SECURITY' | 'OTHER';
   designationBn: string;
+  employmentType?: StaffEmploymentType;
+  employmentTypeBn?: string;
   address?: string;
+  presentAddress?: string;
+  permanentAddress?: string;
   joiningDate: string;
+  resignationDate?: string;
+  terminationDate?: string;
+  educationQualification?: string;
   monthlySalary: number;
   allowance: number;
+  salaryEffectiveDate?: string;
+  salaryHistory?: SalaryHistoryEntry[];
   status: 'ACTIVE' | 'INACTIVE' | 'ON_LEAVE' | 'TERMINATED';
   notes?: string;
   photoUrl?: string;
+  signatureUrl?: string;
+  // Bank Account Information
+  bankName?: string;
+  branchName?: string;
+  accountHolderName?: string;
+  accountNumber?: string;
+  routingNumber?: string;
+  accountType?: 'SAVINGS' | 'CURRENT' | 'SALARY' | string;
+  bankStatus?: 'ACTIVE' | 'INACTIVE' | 'VERIFIED' | 'PENDING';
   createdAt: string;
+  updatedAt?: string;
+}
+
+export type StaffBankPaymentType = 'SALARY' | 'FESTIVAL_ALLOWANCE' | 'BONUS' | 'SPECIAL_ALLOWANCE' | 'OTHER';
+
+export interface StaffBankTransferLetterItem {
+  staffId: string;
+  staffName: string;
+  designation?: string;
+  designationBn: string;
+  bankName: string;
+  branchName: string;
+  accountHolderName?: string;
+  accountNumber: string;
+  routingNumber?: string;
+  basicSalary?: number;
+  bonus?: number;
+  allowance?: number;
+  deduction?: number;
+  netPayable: number;
+  paymentId?: string;
+  notes?: string;
+}
+
+export interface StaffBankTransferLetter {
+  id: string;
+  mosqueId: string;
+  memoNumber: string;
+  runningSerial: number;
+  letterDate: string; // YYYY-MM-DD
+  paymentType: StaffBankPaymentType;
+  paymentTypeCustomBn?: string;
+  paymentMonth: string; // e.g. "2026-08" or "আগস্ট-২০২৬"
+  paymentYear: number;
+  selectionScope: 'ALL' | 'SELECTED';
+  staffCount: number;
+  totalAmount: number;
+  totalAmountInWordsBn: string;
+  bankName: string;
+  branchName: string;
+  bankAddress?: string;
+  mosqueBankAccountId?: string;
+  mosqueBankAccountName: string;
+  mosqueBankAccountNumber: string;
+  subject: string;
+  bodyParagraph: string;
+  declarationText: string;
+  items: StaffBankTransferLetterItem[];
+  relatedPaymentIds?: string[];
+  termId?: string;
+  termTitle?: string;
+  status: 'FINAL' | 'CANCELLED';
+  showLetterhead?: boolean;
+  notes?: string;
+  createdBy: string;
+  createdByName: string;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface StaffPayment {
@@ -987,15 +1087,82 @@ export interface StaffPayment {
   designationBn: string;
   month: string; // YYYY-MM
   paymentDate: string;
+  paymentType?: 'REGULAR_SALARY' | 'BONUS' | 'FESTIVAL_ALLOWANCE' | 'SPECIAL_ALLOWANCE' | 'OTHER';
+  festivalName?: string;
   basicSalary: number;
-  allowance: number;
+  bonus?: number;
+  otherAllowance?: number;
+  allowance: number; // backward compatibility (bonus + otherAllowance)
   deduction: number;
+  advanceDeduction?: number;
+  totalPayable?: number; // basicSalary + bonus + otherAllowance
   netPaid: number;
   paymentMethod: PaymentMethod;
   accountId: string;
+  accountNameBn?: string;
   expenseVoucherNumber?: string;
+  expenseEntryId?: string;
   notes?: string;
+  status?: 'PAID' | 'CANCELLED';
+  termId?: string;
+  staffSignatureUrl?: string;
+  receivedByConfirmation?: boolean;
   createdAt: string;
+  updatedAt?: string;
+}
+
+export type AssetCategory =
+  | 'GENERATOR'
+  | 'FAN'
+  | 'AC'
+  | 'REFRIGERATOR'
+  | 'DEEP_FREEZER'
+  | 'SOUND_SYSTEM'
+  | 'CCTV'
+  | 'COMPUTER_ICT'
+  | 'FURNITURE'
+  | 'ELECTRICAL'
+  | 'WATER_WUDU'
+  | 'CONSTRUCTION'
+  | 'RELIGIOUS'
+  | 'BUILDING'
+  | 'LAND'
+  | 'ELECTRONICS'
+  | 'OTHER'
+  | string;
+
+export type AssetCondition =
+  | 'GOOD'
+  | 'NEEDS_REPAIR'
+  | 'OUT_OF_ORDER'
+  | 'LOST'
+  | 'DISPOSED'
+  | 'FAIR'
+  | 'POOR'
+  | 'DAMAGED';
+
+export interface AssetServiceRecord {
+  id: string;
+  serviceDate: string;
+  serviceType: 'REGULAR_MAINTENANCE' | 'REPAIR' | 'PARTS_REPLACEMENT' | 'INSPECTION' | 'OTHER';
+  serviceTypeBn?: string;
+  servicedBy?: string;
+  cost: number;
+  expenseVoucherNumber?: string;
+  expenseEntryId?: string;
+  description: string;
+  nextServiceDate?: string;
+  performedBy?: string;
+  createdAt: string;
+}
+
+export interface AssetAttachment {
+  id: string;
+  name: string;
+  url: string;
+  type: 'PHOTO' | 'INVOICE' | 'WARRANTY_CARD' | 'MANUAL' | 'DOCUMENT' | 'OTHER';
+  fileSize?: number;
+  uploadedAt: string;
 }
 
 export interface MosqueAsset {
@@ -1003,17 +1170,47 @@ export interface MosqueAsset {
   mosqueId: string;
   assetCode: string;
   name: string;
-  category: 'BUILDING' | 'LAND' | 'ELECTRICAL' | 'ELECTRONICS' | 'SOUND_SYSTEM' | 'GENERATOR' | 'FURNITURE' | 'CCTV' | 'OTHER';
+  category: AssetCategory;
+  categoryBn?: string;
+  brand?: string;
+  model?: string;
+  serialNumber?: string;
   purchaseDate: string;
   purchaseValue: number;
   currentValue: number;
   location: string;
-  condition: 'GOOD' | 'FAIR' | 'POOR' | 'DAMAGED' | 'DISPOSED';
   responsiblePerson?: string;
+  responsiblePersonPhone?: string;
+  condition: AssetCondition;
+  conditionBn?: string;
+  nextServiceDate?: string;
   warrantyInfo?: string;
+  supplier?: string;
+  sourceOfPurchase?: string;
   notes?: string;
+  description?: string;
   photoUrl?: string;
+  attachments?: AssetAttachment[];
+  serviceHistory?: AssetServiceRecord[];
+  
+  // Accounting & Expense Linkage
+  expenseVoucherNumber?: string;
+  expenseEntryId?: string;
+  isExpenseLinked?: boolean;
+
+  // Committee Term Linkage
+  termId?: string;
+  termTitle?: string;
+
+  // Lifecycle & Status
+  isArchived?: boolean;
+  isDeleted?: boolean;
+  isDemo?: boolean;
+
+  createdBy?: string;
+  createdByName?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface MosqueProperty {

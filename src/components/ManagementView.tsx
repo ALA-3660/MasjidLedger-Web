@@ -10,7 +10,31 @@ import {
   Phone,
   Calendar,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Users,
+  Search,
+  Filter,
+  Eye,
+  Edit2,
+  Printer,
+  FileSpreadsheet,
+  UserPlus,
+  ShieldCheck,
+  Briefcase,
+  History,
+  Gift,
+  Receipt,
+  Wrench,
+  Archive,
+  Trash2,
+  Tag,
+  MapPin,
+  Clock,
+  Sparkles,
+  Link as LinkIcon,
+  Layers,
+  LayoutGrid,
+  List
 } from 'lucide-react';
 import {
   Staff,
@@ -19,9 +43,28 @@ import {
   MosqueProperty,
   CemeteryRecord,
   MosqueNotice,
-  FinancialAccount
+  FinancialAccount,
+  AccountHead,
+  CommitteeTerm,
+  ExpenseEntry,
+  MosqueProfile,
+  Mosque
 } from '../types';
 import { Language, translations, formatCurrency, formatDate } from '../lib/i18n';
+import { StaffFormModal } from './StaffFormModal';
+import { StaffPaymentModal } from './StaffPaymentModal';
+import { StaffProfileDrawer } from './StaffProfileDrawer';
+import { StaffSalarySlipModal } from './StaffSalarySlipModal';
+import { StaffMasterRegisterModal } from './StaffMasterRegisterModal';
+import { StaffPaymentRegisterModal } from './StaffPaymentRegisterModal';
+import { StaffAnnualStatementModal } from './StaffAnnualStatementModal';
+import { BankTransferLetterModal } from './BankTransferLetterModal';
+import { StaffFestivalAllowanceModal } from './StaffFestivalAllowanceModal';
+import { StaffReportsModal, StaffReportType } from './StaffReportsModal';
+import { AssetFormModal, ASSET_CATEGORIES, ASSET_CONDITIONS } from './AssetFormModal';
+import { AssetDetailsModal } from './AssetDetailsModal';
+import { AssetServiceModal } from './AssetServiceModal';
+import { AssetRegisterModal } from './AssetRegisterModal';
 
 interface ManagementViewProps {
   initialTab?: 'staff' | 'assets' | 'property' | 'cemetery' | 'notices';
@@ -32,37 +75,109 @@ interface ManagementViewProps {
   cemetery: CemeteryRecord[];
   notices: MosqueNotice[];
   accounts: FinancialAccount[];
+  accountHeads?: AccountHead[];
+  committeeTerms?: CommitteeTerm[];
+  expenseEntries?: ExpenseEntry[];
+  currentMosque?: Mosque | MosqueProfile | null;
   language: Language;
+  onAddStaff?: (data: any) => Promise<void>;
+  onUpdateStaff?: (id: string, data: any) => Promise<void>;
+  onDeleteStaff?: (id: string) => Promise<void>;
   onPayStaff: (data: any) => Promise<void>;
+  onReviseStaffSalary?: (id: string, data: any) => Promise<void>;
+  onDisburseFestivalAllowance?: (data: any) => Promise<void>;
+  onUpdateStaffPayment?: (id: string, data: any) => Promise<void>;
+  onCancelStaffPayment?: (id: string, reason?: string) => Promise<void>;
+  onAddAsset?: (data: any) => Promise<void>;
+  onUpdateAsset?: (id: string, data: any) => Promise<void>;
+  onDeleteAsset?: (id: string, force?: boolean) => Promise<void>;
+  onArchiveAsset?: (id: string, isArchived: boolean, reason?: string) => Promise<void>;
+  onAddAssetService?: (id: string, data: any) => Promise<void>;
+  onClearDemoAssets?: () => Promise<{ count: number; message: string }>;
   onAddCemeteryRecord: (data: any) => Promise<void>;
   onAddNotice: (data: any) => Promise<void>;
 }
 
 export const ManagementView: React.FC<ManagementViewProps> = ({
   initialTab = 'staff',
-  staff,
-  staffPayments,
-  assets,
-  properties,
-  cemetery,
-  notices,
-  accounts,
+  staff = [],
+  staffPayments = [],
+  assets = [],
+  properties = [],
+  cemetery = [],
+  notices = [],
+  accounts = [],
+  accountHeads = [],
+  committeeTerms = [],
+  expenseEntries = [],
+  currentMosque,
   language,
+  onAddStaff,
+  onUpdateStaff,
+  onDeleteStaff,
   onPayStaff,
+  onReviseStaffSalary,
+  onDisburseFestivalAllowance,
+  onUpdateStaffPayment,
+  onCancelStaffPayment,
+  onAddAsset,
+  onUpdateAsset,
+  onDeleteAsset,
+  onArchiveAsset,
+  onAddAssetService,
+  onClearDemoAssets,
   onAddCemeteryRecord,
   onAddNotice,
 }) => {
   const t = translations[language];
   const [activeTab, setActiveTab] = useState<'staff' | 'assets' | 'property' | 'cemetery' | 'notices'>(initialTab);
 
-  // Pay Salary Modal
-  const [isPaySalaryOpen, setIsPaySalaryOpen] = useState(false);
-  const [selectedStaffId, setSelectedStaffId] = useState(staff[0]?.id || '');
-  const [salaryMonth, setSalaryMonth] = useState('2026-08');
-  const [payAccountId, setPayAccountId] = useState(accounts[0]?.id || '');
-  const [payNotes, setPayNotes] = useState('');
+  // Staff Filters & Search
+  const [staffSearchQuery, setStaffSearchQuery] = useState('');
+  const [staffStatusFilter, setStaffStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ACTIVE');
+  const [staffCategoryFilter, setStaffCategoryFilter] = useState<string>('ALL');
 
-  // Cemetery Modal
+  // Staff Modals State
+  const [isAddStaffOpen, setIsAddStaffOpen] = useState(false);
+  const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
+  const [selectedStaffForHistory, setSelectedStaffForHistory] = useState<Staff | null>(null);
+
+  // Pay Salary Modal State
+  const [isPaySalaryOpen, setIsPaySalaryOpen] = useState(false);
+  const [prefilledStaffId, setPrefilledStaffId] = useState<string | undefined>(undefined);
+
+  // Print Modals State
+  const [slipModalOpen, setSlipModalOpen] = useState(false);
+  const [slipStaff, setSlipStaff] = useState<Staff | null>(null);
+  const [slipPayment, setSlipPayment] = useState<StaffPayment | null>(null);
+
+  const [isMasterRegisterOpen, setIsMasterRegisterOpen] = useState(false);
+  const [isPaymentRegisterOpen, setIsPaymentRegisterOpen] = useState(false);
+  const [isAnnualStatementOpen, setIsAnnualStatementOpen] = useState(false);
+  const [annualStatementStaffId, setAnnualStatementStaffId] = useState<string | undefined>(undefined);
+  const [isBankTransferLetterOpen, setIsBankTransferLetterOpen] = useState(false);
+  const [selectedBankTransferMonth, setSelectedBankTransferMonth] = useState<string | undefined>(undefined);
+  const [isFestivalAllowanceOpen, setIsFestivalAllowanceOpen] = useState(false);
+  const [isStaffReportsOpen, setIsStaffReportsOpen] = useState(false);
+  const [staffReportsInitialTab, setStaffReportsInitialTab] = useState<StaffReportType>('REGISTER');
+
+  // ==========================================
+  // Asset Module State
+  // ==========================================
+  const [isAddAssetOpen, setIsAddAssetOpen] = useState(false);
+  const [editingAsset, setEditingAsset] = useState<MosqueAsset | null>(null);
+  const [selectedAssetForDetails, setSelectedAssetForDetails] = useState<MosqueAsset | null>(null);
+  const [selectedAssetForService, setSelectedAssetForService] = useState<MosqueAsset | null>(null);
+  const [isAssetRegisterOpen, setIsAssetRegisterOpen] = useState(false);
+
+  const [assetSearchQuery, setAssetSearchQuery] = useState('');
+  const [assetCategoryFilter, setAssetCategoryFilter] = useState<string>('ALL');
+  const [assetConditionFilter, setAssetConditionFilter] = useState<string>('ALL');
+  const [assetLocationFilter, setAssetLocationFilter] = useState<string>('ALL');
+  const [showArchivedAssets, setShowArchivedAssets] = useState(false);
+  const [assetViewMode, setAssetViewMode] = useState<'GRID' | 'TABLE'>('GRID');
+
+  // Cemetery Modal State
   const [isCemeteryModalOpen, setIsCemeteryModalOpen] = useState(false);
   const [plotNumber, setPlotNumber] = useState('');
   const [deceasedName, setDeceasedName] = useState('');
@@ -73,27 +188,202 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
   const [contactPhone, setContactPhone] = useState('');
   const [cemeteryNotes, setCemeteryNotes] = useState('');
 
-  // Notice Modal
+  // Notice Modal State
   const [isNoticeModalOpen, setIsNoticeModalOpen] = useState(false);
   const [noticeTitle, setNoticeTitle] = useState('');
   const [noticeDesc, setNoticeDesc] = useState('');
   const [noticePriority, setNoticePriority] = useState<MosqueNotice['priority']>('NORMAL');
   const [isPublicNotice, setIsPublicNotice] = useState(true);
 
-  const handlePaySubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await onPayStaff({
-        staffId: selectedStaffId || staff[0]?.id,
-        month: salaryMonth,
-        accountId: payAccountId || accounts[0]?.id,
-        paymentMethod: 'BANK',
-        notes: payNotes,
-      });
-      setIsPaySalaryOpen(false);
-      setPayNotes('');
-    } catch (err) {
-      console.error(err);
+  // ==========================================
+  // Safe Array Fallbacks
+  // ==========================================
+  const safeStaff = Array.isArray(staff) ? staff : [];
+  const safeStaffPayments = Array.isArray(staffPayments) ? staffPayments : [];
+  const safeAssets = Array.isArray(assets) ? assets : (assets && Array.isArray((assets as any).assets) ? (assets as any).assets : []);
+  const safeProperties = Array.isArray(properties) ? properties : [];
+  const safeCemetery = Array.isArray(cemetery) ? cemetery : [];
+  const safeNotices = Array.isArray(notices) ? notices : [];
+  const safeAccounts = Array.isArray(accounts) ? accounts : [];
+
+  // ==========================================
+  // Asset Computations & Filters
+  // ==========================================
+  const activeAssets = safeAssets.filter((a) => !a.isArchived && !a.isDeleted);
+  const archivedAssets = safeAssets.filter((a) => a.isArchived && !a.isDeleted);
+  const demoAssets = safeAssets.filter((a) => a.isDemo && !a.isDeleted);
+
+  const totalAssetPurchaseValue = activeAssets.reduce((sum, a) => sum + (Number(a.purchaseValue) || 0), 0);
+  const totalAssetCurrentValue = activeAssets.reduce(
+    (sum, a) => sum + (Number(a.currentValue ?? a.purchaseValue) || 0),
+    0
+  );
+  const goodAssetsCount = activeAssets.filter((a) => a.condition === 'GOOD').length;
+  const needsRepairCount = activeAssets.filter(
+    (a) => a.condition === 'NEEDS_REPAIR' || a.condition === 'FAIR' || a.condition === 'POOR'
+  ).length;
+  const outOfOrderCount = activeAssets.filter(
+    (a) => a.condition === 'OUT_OF_ORDER' || a.condition === 'DAMAGED'
+  ).length;
+
+  const todayStr = new Date().toISOString().split('T')[0];
+  const upcomingServiceAssets = activeAssets.filter(
+    (a) => a.nextServiceDate && a.nextServiceDate >= todayStr
+  );
+
+  // Unique locations from assets
+  const assetLocations = Array.from(new Set(safeAssets.map((a) => a.location).filter(Boolean)));
+
+  // Filtered Assets
+  const filteredAssets = safeAssets.filter((ast) => {
+    if (!showArchivedAssets && ast.isArchived) return false;
+    if (showArchivedAssets && !ast.isArchived) return false;
+    if (ast.isDeleted) return false;
+
+    if (assetCategoryFilter !== 'ALL' && ast.category !== assetCategoryFilter) return false;
+    if (assetConditionFilter !== 'ALL' && ast.condition !== assetConditionFilter) return false;
+    if (assetLocationFilter !== 'ALL' && ast.location !== assetLocationFilter) return false;
+
+    if (assetSearchQuery.trim()) {
+      const q = assetSearchQuery.trim().toLowerCase();
+      const matchName = ast.name?.toLowerCase().includes(q);
+      const matchCode = ast.assetCode?.toLowerCase().includes(q);
+      const matchBrand = ast.brand?.toLowerCase().includes(q);
+      const matchModel = ast.model?.toLowerCase().includes(q);
+      const matchSerial = ast.serialNumber?.toLowerCase().includes(q);
+      const matchLocation = ast.location?.toLowerCase().includes(q);
+      const matchPerson = ast.responsiblePerson?.toLowerCase().includes(q);
+      const matchSupplier = ast.supplier?.toLowerCase().includes(q);
+
+      if (
+        !matchName &&
+        !matchCode &&
+        !matchBrand &&
+        !matchModel &&
+        !matchSerial &&
+        !matchLocation &&
+        !matchPerson &&
+        !matchSupplier
+      ) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  // Handlers for Asset Actions
+  const handleSaveAsset = async (assetData: any) => {
+    if (editingAsset) {
+      if (onUpdateAsset) {
+        await onUpdateAsset(editingAsset.id, assetData);
+      }
+    } else {
+      if (onAddAsset) {
+        await onAddAsset(assetData);
+      }
+    }
+    setEditingAsset(null);
+  };
+
+  const handleArchiveAsset = async (ast: MosqueAsset) => {
+    if (onArchiveAsset) {
+      await onArchiveAsset(ast.id, !ast.isArchived);
+    }
+  };
+
+  const handleDeleteAsset = async (ast: MosqueAsset) => {
+    const confirmMsg = ast.expenseVoucherNumber || (ast.serviceHistory && ast.serviceHistory.length > 0)
+      ? `"${ast.name}" সম্পদটির সাথে আর্থিক ভাউচার ও ইতিহাস সংযুক্ত রয়েছে। এটি স্থায়ীভাবে না মুছে নিরাপদে আর্কাইভ তালিকায় সরানো হবে। আপনি কি নিশ্চিত?`
+      : `আপনি কি নিশ্চিত যে "${ast.name} (${ast.assetCode})" সম্পদটি তালিকা থেকে মুছে ফেলতে চান?`;
+
+    if (window.confirm(confirmMsg)) {
+      if (onDeleteAsset) {
+        await onDeleteAsset(ast.id);
+      }
+      if (selectedAssetForDetails?.id === ast.id) {
+        setSelectedAssetForDetails(null);
+      }
+    }
+  };
+
+  const handleClearDemoAssets = async () => {
+    if (
+      window.confirm(
+        'আপনি কি নিশ্চিত যে সকল ডেমো সম্পদ রেকর্ড পরিচ্ছন্ন করতে চান? আপনার নিজস্ব এন্ট্রিগুলো অক্ষুণ্ণ থাকবে।'
+      )
+    ) {
+      if (onClearDemoAssets) {
+        const res = await onClearDemoAssets();
+        alert(res.message || 'ডেমো সম্পদ সফলভাবে পরিচ্ছন্ন করা হয়েছে।');
+      }
+    }
+  };
+
+  const handleSaveAssetService = async (assetId: string, serviceData: any) => {
+    if (onAddAssetService) {
+      await onAddAssetService(assetId, serviceData);
+    }
+  };
+
+  // Staff Statistics Computation
+  const totalStaffCount = staff.length;
+  const activeStaffCount = staff.filter((s) => s.status === 'ACTIVE').length;
+  const inactiveStaffCount = staff.filter((s) => s.status === 'INACTIVE' || s.status === 'TERMINATED').length;
+  const imamCount = staff.filter((s) => s.designation === 'IMAM' || s.designation === 'KHATIB').length;
+  const muezzinCount = staff.filter((s) => s.designation === 'MUEZZIN').length;
+  const cleanerCount = staff.filter((s) => s.designation === 'CLEANER' || s.designation === 'SECURITY').length;
+  const teacherCount = staff.filter((s) => s.designation === 'TEACHER').length;
+
+  const totalMonthlyPayrollLiability = staff
+    .filter((s) => s.status === 'ACTIVE')
+    .reduce((sum, s) => sum + (s.monthlySalary || 0), 0);
+
+  const currentYearMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+  const thisMonthPaid = staffPayments
+    .filter((p) => p.month === currentYearMonth && p.status !== 'CANCELLED')
+    .reduce((sum, p) => sum + (p.netPaid || 0), 0);
+
+  // Filtered Staff List
+  const filteredStaff = staff.filter((stf) => {
+    if (staffStatusFilter === 'ACTIVE' && stf.status !== 'ACTIVE') return false;
+    if (staffStatusFilter === 'INACTIVE' && stf.status === 'ACTIVE') return false;
+
+    if (staffCategoryFilter !== 'ALL') {
+      if (staffCategoryFilter === 'IMAM_KHATIB' && stf.designation !== 'IMAM' && stf.designation !== 'KHATIB') return false;
+      if (staffCategoryFilter === 'MUEZZIN' && stf.designation !== 'MUEZZIN') return false;
+      if (staffCategoryFilter === 'TEACHER' && stf.designation !== 'TEACHER') return false;
+      if (staffCategoryFilter === 'CLEANER' && stf.designation !== 'CLEANER' && stf.designation !== 'SECURITY') return false;
+    }
+
+    if (staffSearchQuery.trim()) {
+      const q = staffSearchQuery.toLowerCase();
+      const matchName = stf.name?.toLowerCase().includes(q);
+      const matchPhone = stf.phone?.includes(q);
+      const matchDesig = stf.designationBn?.toLowerCase().includes(q);
+      if (!matchName && !matchPhone && !matchDesig) return false;
+    }
+
+    return true;
+  });
+
+  // Handlers for Staff Actions
+  const handleOpenPayForStaff = (staffId?: string) => {
+    setPrefilledStaffId(staffId);
+    setIsPaySalaryOpen(true);
+  };
+
+  const handleOpenSlip = (payment: StaffPayment, stf?: Staff) => {
+    const targetStaff = stf || staff.find((s) => s.id === payment.staffId) || null;
+    setSlipStaff(targetStaff);
+    setSlipPayment(payment);
+    setSlipModalOpen(true);
+  };
+
+  const handleToggleStatus = async (stf: Staff) => {
+    const newStatus = stf.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    if (onUpdateStaff) {
+      await onUpdateStaff(stf.id, { status: newStatus });
     }
   };
 
@@ -143,9 +433,9 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
   };
 
   return (
-    <div className="space-y-5 max-w-7xl mx-auto pb-10">
-      {/* Navigation Switcher */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-sm">
+    <div className="space-y-6 max-w-7xl mx-auto pb-12">
+      {/* Navigation Switcher Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs">
         <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
           <button
             id="tab-btn-staff"
@@ -155,12 +445,8 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
             }`}
           >
             <UserCheck className="w-3.5 h-3.5" />
-            <span>ইমাম ও স্টাফ</span>
-            <span className="ml-1 bg-blue-700 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
-              {staff.length}
-            </span>
+            <span>ইমাম ও স্টাফ ({totalStaffCount})</span>
           </button>
-
           <button
             id="tab-btn-assets"
             onClick={() => setActiveTab('assets')}
@@ -169,9 +455,8 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
             }`}
           >
             <Package className="w-3.5 h-3.5" />
-            <span>সম্পদ ও সরঞ্জাম</span>
+            <span>সম্পদ ও সরঞ্জাম ({assets.length})</span>
           </button>
-
           <button
             id="tab-btn-property"
             onClick={() => setActiveTab('property')}
@@ -180,9 +465,8 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
             }`}
           >
             <Building className="w-3.5 h-3.5" />
-            <span>ওয়াকফ ও জমিজমা</span>
+            <span>ওয়াকফ সম্পত্তি ({properties.length})</span>
           </button>
-
           <button
             id="tab-btn-cemetery"
             onClick={() => setActiveTab('cemetery')}
@@ -191,9 +475,8 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
             }`}
           >
             <Crosshair className="w-3.5 h-3.5" />
-            <span>কবরস্থান রেজিস্টার</span>
+            <span>কবরস্থান রেজিস্টার ({cemetery.length})</span>
           </button>
-
           <button
             id="tab-btn-notices"
             onClick={() => setActiveTab('notices')}
@@ -202,150 +485,902 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
             }`}
           >
             <Bell className="w-3.5 h-3.5" />
-            <span>নোটিশ বোর্ড</span>
+            <span>নোটিশ বোর্ড ({notices.length})</span>
           </button>
         </div>
 
-        <div>
+        {/* Action Buttons for Active Tab */}
+        <div className="flex flex-wrap items-center gap-2">
           {activeTab === 'staff' && (
-            <button
-              id="btn-open-pay-salary"
-              onClick={() => setIsPaySalaryOpen(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center space-x-1.5 shadow-sm transition-all"
-            >
-              <DollarSign className="w-4 h-4" />
-              <span>মাসিক বেতন/হাদিয়া পরিশোধ</span>
-            </button>
+            <>
+              {/* Staff Master Register Print */}
+              <button
+                id="btn-open-master-register"
+                onClick={() => setIsMasterRegisterOpen(true)}
+                className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 px-3 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-2xs transition-all cursor-pointer"
+                title="সকল ইমাম ও স্টাফদের A4 মাস্টার রেজিস্টার প্রিন্ট করুন"
+              >
+                <Printer className="w-4 h-4 text-blue-600" />
+                <span>মাস্টার রেজিস্টার</span>
+              </button>
+
+              {/* Staff Reports & Registers Hub */}
+              <button
+                id="btn-open-staff-reports"
+                onClick={() => {
+                  setStaffReportsInitialTab('REGISTER');
+                  setIsStaffReportsOpen(true);
+                }}
+                className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-950 px-3 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-2xs transition-all cursor-pointer"
+                title="ইমাম ও স্টাফ সম্পর্কিত সকল অফিশিয়াল রিপোর্ট, রেজিস্টার ও স্বাক্ষর শিট"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+                <span>রিপোর্ট ও রেজিস্টার</span>
+              </button>
+
+              {/* Bulk Festival Allowance Disbursement */}
+              <button
+                id="btn-open-festival-allowance"
+                onClick={() => setIsFestivalAllowanceOpen(true)}
+                className="bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-950 px-3 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-2xs transition-all cursor-pointer"
+                title="ঈদুল ফিতর বা ঈদুল আজহার বিশেষ উৎসব বোনাস একসাথে প্রদান করুন"
+              >
+                <Gift className="w-4 h-4 text-amber-700" />
+                <span>উৎসব ভাতা প্রদান</span>
+              </button>
+
+              {/* Staff Bank Transfer Letter Generator & Print */}
+              <button
+                id="btn-open-bank-transfer-letter"
+                onClick={() => {
+                  setSelectedBankTransferMonth(undefined);
+                  setIsBankTransferLetterOpen(true);
+                }}
+                className="bg-white hover:bg-slate-50 border border-indigo-300 text-indigo-950 px-3 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-2xs transition-all cursor-pointer"
+                title="ইমাম ও কর্মচারীদের বেতন/ভাতা ব্যাংক ট্রান্সফার অফিশিয়াল চিঠি তৈরি ও প্রিন্ট করুন"
+              >
+                <Building className="w-4 h-4 text-indigo-600" />
+                <span>ব্যাংক ট্রান্সফার লেটার</span>
+              </button>
+
+              <button
+                id="btn-open-add-staff"
+                onClick={() => setIsAddStaffOpen(true)}
+                className="bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs transition-all cursor-pointer"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>নতুন স্টাফ যুক্ত করুন</span>
+              </button>
+            </>
           )}
+
+          {activeTab === 'assets' && (
+            <>
+              {/* Asset Register Print */}
+              <button
+                id="btn-open-asset-register"
+                onClick={() => setIsAssetRegisterOpen(true)}
+                className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 px-3 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-2xs transition-all cursor-pointer"
+                title="মসজিদের পূর্ণাঙ্গ সম্পদ রেজিস্ট্রি ও নিরীক্ষা বই প্রিন্ট করুন"
+              >
+                <Printer className="w-4 h-4 text-blue-600" />
+                <span>রেজিস্ট্রি বই প্রিন্ট</span>
+              </button>
+
+              {/* Clear Demo Assets */}
+              {demoAssets.length > 0 && (
+                <button
+                  id="btn-clear-demo-assets"
+                  onClick={handleClearDemoAssets}
+                  className="bg-purple-50 hover:bg-purple-100 border border-purple-300 text-purple-800 px-3 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer"
+                  title="ডেমো সম্পদ রেকর্ড পরিচ্ছন্ন করুন"
+                >
+                  <Sparkles className="w-4 h-4 text-purple-600" />
+                  <span>ডেমো ডাটা মুছুন ({demoAssets.length})</span>
+                </button>
+              )}
+
+              {/* Add New Asset */}
+              <button
+                id="btn-open-add-asset"
+                onClick={() => {
+                  setEditingAsset(null);
+                  setIsAddAssetOpen(true);
+                }}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs hover:shadow-md transition-all cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>নতুন সম্পদ যোগ করুন</span>
+              </button>
+            </>
+          )}
+
           {activeTab === 'cemetery' && (
             <button
-              id="btn-open-add-cemetery"
               onClick={() => setIsCemeteryModalOpen(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center space-x-1.5 shadow-sm transition-all"
+              className="bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>নতুন দাফন রেকর্ড সংযোজন</span>
+              <span>নতুন দাফন রেকর্ড</span>
             </button>
           )}
+
           {activeTab === 'notices' && (
             <button
-              id="btn-open-add-notice"
               onClick={() => setIsNoticeModalOpen(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center space-x-1.5 shadow-sm transition-all"
+              className="bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>নতুন নোটিশ প্রকাশ</span>
+              <span>নতুন নোটিশ লিখুন</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* 1. STAFF SECTION */}
+      {/* ========================================== */}
+      {/* 1. STAFF SECTION                           */}
+      {/* ========================================== */}
       {activeTab === 'staff' && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {staff.map((stf) => (
-              <div
-                key={stf.id}
-                className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3"
-              >
-                <div className="flex items-center space-x-3">
-                  <div className="w-11 h-11 rounded-full bg-blue-100 text-blue-900 font-bold text-sm flex items-center justify-center border-2 border-blue-200">
-                    {stf.name.charAt(0)}
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-slate-900 text-sm">{stf.name}</h3>
-                    <span className="text-xs text-blue-700 font-semibold">{stf.designationBn}</span>
-                  </div>
-                </div>
-
-                <div className="text-xs text-slate-600 space-y-1 pt-2 border-t border-slate-100">
-                  <div>মোবাইল: <strong>{stf.phone}</strong></div>
-                  <div>যোগদানের তারিখ: {formatDate(stf.joiningDate, language)}</div>
-                </div>
-
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-                  <span className="text-slate-500">মাসিক হাদিয়া/বেতন:</span>
-                  <span className="font-bold text-slate-900 text-sm">
-                    {formatCurrency(stf.monthlySalary + (stf.allowance || 0), language)}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Salary History Table */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-slate-100">
-              <h2 className="text-sm font-bold text-slate-900">সাম্প্রতিক বেতন ও হাদিয়া পরিশোধের রেকর্ড</h2>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                  <tr>
-                    <th className="py-3 px-4">ভাউচার নং</th>
-                    <th className="py-3 px-4">পরিশোধের তারিখ</th>
-                    <th className="py-3 px-4">স্টাফের নাম ও পদবি</th>
-                    <th className="py-3 px-4">মাস</th>
-                    <th className="py-3 px-4 text-right">পরিশোধিত টাকা</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {staffPayments.map((pay) => (
-                    <tr key={pay.id} className="hover:bg-slate-50/80">
-                      <td className="py-3 px-4 font-mono font-bold text-rose-700">{pay.expenseVoucherNumber}</td>
-                      <td className="py-3 px-4 text-slate-600">{formatDate(pay.paymentDate, language)}</td>
-                      <td className="py-3 px-4 font-semibold text-slate-900">
-                        {pay.staffName} ({pay.designationBn})
-                      </td>
-                      <td className="py-3 px-4 text-slate-600">{pay.month}</td>
-                      <td className="py-3 px-4 text-right font-bold text-rose-700">
-                        {formatCurrency(pay.netPaid, language)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 2. ASSETS SECTION */}
-      {activeTab === 'assets' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {assets.map((ast) => (
-            <div
-              key={ast.id}
-              className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3"
-            >
+          {/* Top KPI Cards for Staff */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* 1. Total Staff & Active */}
+            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
               <div className="flex items-center justify-between">
-                <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
-                  {ast.assetCode}
-                </span>
-                <span className="text-[11px] font-semibold text-blue-800 bg-blue-100 px-2 py-0.5 rounded-full">
-                  {ast.condition}
+                <span className="text-xs font-bold text-slate-500">মোট জনবল ও কর্মরত</span>
+                <span className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-100">
+                  <Users className="w-4 h-4" />
                 </span>
               </div>
-              <div>
-                <h3 className="font-bold text-slate-900 text-sm">{ast.name}</h3>
-                <p className="text-xs text-slate-500 mt-0.5">অবস্থান: {ast.location}</p>
-                {ast.warrantyInfo && (
-                  <p className="text-[11px] text-amber-700 font-medium mt-1">{ast.warrantyInfo}</p>
+              <div className="flex items-baseline space-x-2">
+                <span className="text-2xl font-black text-slate-900 font-siliguri">{totalStaffCount}</span>
+                <span className="text-xs text-slate-500">জন</span>
+              </div>
+              <div className="flex items-center space-x-2 text-[11px] pt-1 border-t border-slate-100 font-medium">
+                <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md font-bold">
+                  সক্রিয়: {activeStaffCount}
+                </span>
+                <span className="text-slate-500">নিষ্ক্রিয়: {inactiveStaffCount}</span>
+              </div>
+            </div>
+
+            {/* 2. Designation Breakdown */}
+            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-500">পদবী বণ্টন</span>
+                <span className="p-2 rounded-xl bg-purple-50 text-purple-600 border border-purple-100">
+                  <Briefcase className="w-4 h-4" />
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="px-2 py-0.5 bg-blue-50 text-blue-800 rounded-md text-xs font-bold">
+                  ইমাম/খতিব: {imamCount}
+                </span>
+                <span className="px-2 py-0.5 bg-emerald-50 text-emerald-800 rounded-md text-xs font-bold">
+                  মুয়াজ্জিন: {muezzinCount}
+                </span>
+                <span className="px-2 py-0.5 bg-amber-50 text-amber-800 rounded-md text-xs font-bold">
+                  খাদেম: {cleanerCount}
+                </span>
+                {teacherCount > 0 && (
+                  <span className="px-2 py-0.5 bg-purple-50 text-purple-800 rounded-md text-xs font-bold">
+                    শিক্ষক: {teacherCount}
+                  </span>
                 )}
               </div>
-              <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-                <span className="text-slate-500">ক্রয়মূল্য: {formatCurrency(ast.purchaseValue, language)}</span>
-                <span className="font-bold text-slate-900">
-                  বর্তমান মূল্য: {formatCurrency(ast.currentValue, language)}
+              <p className="text-[11px] text-slate-400 pt-1 border-t border-slate-100">
+                মসজিদ ও মক্তব পরিচালনায় সার্বক্ষণিক টিম
+              </p>
+            </div>
+
+            {/* 3. Monthly Payroll Liability */}
+            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-500">মাসিক মোট বেতন বাজেট</span>
+                <span className="p-2 rounded-xl bg-amber-50 text-amber-600 border border-amber-100">
+                  <DollarSign className="w-4 h-4" />
                 </span>
               </div>
+              <div className="flex items-baseline space-x-2">
+                <span className="text-2xl font-black text-slate-900 font-siliguri">
+                  ৳{totalMonthlyPayrollLiability.toLocaleString('en-IN')}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 pt-1 border-t border-slate-100">
+                চলতি মাসের প্রদেয় নিয়মিত সম্মানী
+              </p>
             </div>
-          ))}
+
+            {/* 4. Current Month Paid */}
+            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-500">চলতি মাসে পরিশোধিত</span>
+                <span className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100">
+                  <CheckCircle2 className="w-4 h-4" />
+                </span>
+              </div>
+              <div className="flex items-baseline space-x-2">
+                <span className="text-2xl font-black text-emerald-700 font-siliguri">
+                  ৳{thisMonthPaid.toLocaleString('en-IN')}
+                </span>
+              </div>
+              <p className="text-[11px] text-emerald-700 font-medium pt-1 border-t border-slate-100">
+                অ্যাকাউন্টিং লেজারে স্বয়ংক্রিয়ভাবে সিঙ্কড
+              </p>
+            </div>
+          </div>
+
+          {/* Search, Category Filter & Status Bar */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+            {/* Search Input */}
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+              <input
+                type="text"
+                placeholder="নাম, মোবাইল নম্বর বা পদবী দিয়ে ইমাম ও স্টাফ খুঁজুন..."
+                value={staffSearchQuery}
+                onChange={(e) => setStaffSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium"
+              />
+            </div>
+
+            {/* Category Filter */}
+            <div className="flex items-center space-x-2">
+              <Filter className="w-4 h-4 text-slate-400 shrink-0" />
+              <select
+                value={staffCategoryFilter}
+                onChange={(e) => setStaffCategoryFilter(e.target.value)}
+                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:bg-white focus:ring-2 focus:ring-blue-500 cursor-pointer"
+              >
+                <option value="ALL">সকল পদবী</option>
+                <option value="IMAM_KHATIB">ইমাম ও খতিব</option>
+                <option value="MUEZZIN">মুয়াজ্জিন</option>
+                <option value="CLEANER">খাদেম / পরিচ্ছন্নতাকর্মী</option>
+                <option value="TEACHER">মক্তব / হিফজ শিক্ষক</option>
+              </select>
+
+              {/* Status Switcher */}
+              <select
+                value={staffStatusFilter}
+                onChange={(e) => setStaffStatusFilter(e.target.value as any)}
+                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:bg-white focus:ring-2 focus:ring-blue-500 cursor-pointer"
+              >
+                <option value="ACTIVE">কেবলমাত্র সক্রিয় ({activeStaffCount})</option>
+                <option value="INACTIVE">নিষ্ক্রিয় / সাবেক ({inactiveStaffCount})</option>
+                <option value="ALL">সকল স্টাফ ({totalStaffCount})</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Staff Grid Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredStaff.map((stf) => {
+              const staffPays = staffPayments.filter((p) => p.staffId === stf.id && p.status !== 'CANCELLED');
+              const totalPaidToThisStaff = staffPays.reduce((sum, p) => sum + p.netPaid, 0);
+              const lastPayment = staffPays[0];
+
+              return (
+                <div
+                  key={stf.id}
+                  className="bg-white rounded-2xl border border-slate-200 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between overflow-hidden group"
+                >
+                  <div className="p-5 space-y-4">
+                    {/* Card Top: Code & Status */}
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                        {stf.staffCode}
+                      </span>
+                      <div className="flex items-center space-x-1.5">
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                            stf.status === 'ACTIVE'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-rose-50 text-rose-700 border-rose-200'
+                          }`}
+                        >
+                          {stf.status === 'ACTIVE' ? 'সক্রিয়' : 'নিষ্ক্রিয়'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Staff Name & Designation */}
+                    <div>
+                      <h3 className="font-bold text-slate-900 text-base group-hover:text-blue-600 transition-colors">
+                        {stf.name}
+                      </h3>
+                      <p className="text-xs font-semibold text-blue-800 mt-0.5">{stf.designationBn}</p>
+                    </div>
+
+                    {/* Key Attributes */}
+                    <div className="space-y-1.5 text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500 font-medium">মোবাইল:</span>
+                        <span className="font-bold text-slate-900 font-mono flex items-center space-x-1">
+                          <Phone className="w-3 h-3 text-slate-400" />
+                          <span>{stf.phone}</span>
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500 font-medium">মাসিক মূল বেতন:</span>
+                        <span className="font-black text-slate-900 font-siliguri">
+                          ৳{stf.monthlySalary.toLocaleString('en-IN')}
+                        </span>
+                      </div>
+                      {stf.bankAccountNumber && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-500 font-medium">ব্যাংক একাউন্ট:</span>
+                          <span className="font-mono text-[11px] font-bold text-slate-700">
+                            {stf.bankName} - {stf.bankAccountNumber}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 text-[11px]">
+                        <span className="text-slate-500">যোগদানের তারিখ:</span>
+                        <span className="font-semibold text-slate-700">{stf.joiningDate || 'N/A'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card Bottom: Action Buttons */}
+                  <div className="px-5 py-3.5 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <button
+                      onClick={() => setSelectedStaffForHistory(stf)}
+                      className="px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold rounded-lg text-xs flex items-center space-x-1 transition-colors cursor-pointer"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-blue-600" />
+                      <span>প্রোফাইল</span>
+                    </button>
+
+                    <div className="flex items-center space-x-1.5">
+                      <button
+                        onClick={() => {
+                          setEditingStaff(stf);
+                          setIsAddStaffOpen(true);
+                        }}
+                        className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                        title="তথ্য এডিট করুন"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
+                        onClick={() => handleOpenPayForStaff(stf.id)}
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs flex items-center space-x-1 shadow-2xs transition-colors cursor-pointer"
+                      >
+                        <DollarSign className="w-3.5 h-3.5" />
+                        <span>বেতন দিন</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Payment History List */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+            <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">সাম্প্রতিক বেতন ও হাদিয়া পেমেন্ট ইতিহাস</h2>
+                <p className="text-xs text-slate-500">
+                  ইমাম ও স্টাফদের ব্যাংক/ক্যাশ পরিশোধ এবং ভাউচার রেজিস্ট্রি
+                </p>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <button
+                  id="btn-open-bank-letter-from-history"
+                  onClick={() => setIsBankTransferLetterOpen(true)}
+                  className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-900 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-colors cursor-pointer"
+                  title="এই মাসের ব্যাংক ট্রান্সফার অফিশিয়াল দরখাস্ত তৈরি ও প্রিন্ট করুন"
+                >
+                  <Building className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>ব্যাংক ট্রান্সফার লেটার প্রিন্ট</span>
+                </button>
+              </div>
+            </div>
+
+            {staffPayments.length === 0 ? (
+              <div className="p-8 text-center text-slate-500 text-xs">
+                কোনো বেতন পেমেন্ট রেকর্ড পাওয়া যায়নি।
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                    <tr>
+                      <th className="py-3 px-4">রসিদ নং</th>
+                      <th className="py-3 px-4">তারিখ ও মাস</th>
+                      <th className="py-3 px-4">স্টাফের নাম</th>
+                      <th className="py-3 px-4">পদবী</th>
+                      <th className="py-3 px-4">মূল বেতন</th>
+                      <th className="py-3 px-4">বোনাস/হাদিয়া</th>
+                      <th className="py-3 px-4">কর্তন</th>
+                      <th className="py-3 px-4">মোট পরিশোধ</th>
+                      <th className="py-3 px-4">পরিশোধের মাধ্যম</th>
+                      <th className="py-3 px-4 text-center">একশন</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                    {staffPayments.slice(0, 15).map((pay) => {
+                      const stf = staff.find((s) => s.id === pay.staffId);
+                      return (
+                        <tr key={pay.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-3 px-4 font-mono font-bold text-blue-700">{pay.receiptNumber}</td>
+                          <td className="py-3 px-4">
+                            <span className="font-bold text-slate-900">{pay.month}</span>
+                            <span className="text-[10px] text-slate-400 block">{pay.paymentDate}</span>
+                          </td>
+                          <td className="py-3 px-4 font-bold text-slate-900">{pay.staffName}</td>
+                          <td className="py-3 px-4 text-blue-800 font-semibold">{stf?.designationBn || 'স্টাফ'}</td>
+                          <td className="py-3 px-4 font-siliguri">৳{pay.baseSalary.toLocaleString('en-IN')}</td>
+                          <td className="py-3 px-4 text-emerald-700 font-siliguri">
+                            +{pay.bonusOrHonorarium.toLocaleString('en-IN')}
+                          </td>
+                          <td className="py-3 px-4 text-rose-700 font-siliguri">
+                            -{pay.deduction.toLocaleString('en-IN')}
+                          </td>
+                          <td className="py-3 px-4 font-bold text-slate-900 font-siliguri">
+                            ৳{pay.netPaid.toLocaleString('en-IN')}
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className="px-2 py-0.5 bg-slate-100 text-slate-800 rounded font-semibold text-[11px]">
+                              {pay.paymentMethod === 'BANK' ? 'ব্যাংক ট্রান্সফার' : 'নগদ ক্যাশ'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <button
+                              onClick={() => handleOpenSlip(pay, stf)}
+                              className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-lg text-[11px] inline-flex items-center space-x-1 transition-colors"
+                            >
+                              <Printer className="w-3 h-3" />
+                              <span>রসিদ</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {/* 3. PROPERTY SECTION */}
+      {/* ========================================== */}
+      {/* 2. ASSETS & EQUIPMENT SECTION (ENHANCED)   */}
+      {/* ========================================== */}
+      {activeTab === 'assets' && (
+        <div className="space-y-6">
+          {/* Top KPI Cards for Assets */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* 1. Total Assets Count & Active */}
+            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-500">মোট সক্রিয় সম্পদ</span>
+                <span className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-100">
+                  <Package className="w-4 h-4" />
+                </span>
+              </div>
+              <div className="flex items-baseline space-x-2">
+                <span className="text-2xl font-black text-slate-900 font-siliguri">{activeAssets.length}</span>
+                <span className="text-xs text-slate-500">টি আইটেম</span>
+              </div>
+              <div className="flex items-center space-x-2 text-[11px] pt-1 border-t border-slate-100 font-medium">
+                <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md font-bold">
+                  সচল: {goodAssetsCount}
+                </span>
+                {archivedAssets.length > 0 && (
+                  <span className="text-slate-500">আর্কাইভকৃত: {archivedAssets.length}</span>
+                )}
+              </div>
+            </div>
+
+            {/* 2. Total Purchase Value vs Valuation */}
+            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-500">মোট ক্রয়মূল্য</span>
+                <span className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100">
+                  <DollarSign className="w-4 h-4" />
+                </span>
+              </div>
+              <div className="flex items-baseline space-x-2">
+                <span className="text-2xl font-black text-slate-900 font-siliguri">
+                  ৳{totalAssetPurchaseValue.toLocaleString('en-IN')}
+                </span>
+              </div>
+              <p className="text-[11px] text-blue-700 font-medium pt-1 border-t border-slate-100">
+                বর্তমান নেট ভ্যালু: ৳{totalAssetCurrentValue.toLocaleString('en-IN')}
+              </p>
+            </div>
+
+            {/* 3. Operational Condition */}
+            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-500">কার্যক্ষমতা ও স্বাস্থ্য</span>
+                <span className="p-2 rounded-xl bg-purple-50 text-purple-600 border border-purple-100">
+                  <ShieldCheck className="w-4 h-4" />
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="px-2 py-0.5 bg-emerald-50 text-emerald-800 rounded-md text-xs font-bold">
+                  ভালো: {goodAssetsCount}
+                </span>
+                {needsRepairCount > 0 && (
+                  <span className="px-2 py-0.5 bg-amber-50 text-amber-800 rounded-md text-xs font-bold">
+                    মেরামত: {needsRepairCount}
+                  </span>
+                )}
+                {outOfOrderCount > 0 && (
+                  <span className="px-2 py-0.5 bg-rose-50 text-rose-800 rounded-md text-xs font-bold">
+                    অচল: {outOfOrderCount}
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400 pt-1 border-t border-slate-100">
+                সার্বক্ষণিক নামাজ ও ওজুর সচলতা নিশ্চিত
+              </p>
+            </div>
+
+            {/* 4. Upcoming Maintenance & Service */}
+            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-500">আসন্ন সার্ভিসিং শিডিউল</span>
+                <span className="p-2 rounded-xl bg-amber-50 text-amber-600 border border-amber-100">
+                  <Wrench className="w-4 h-4" />
+                </span>
+              </div>
+              <div className="flex items-baseline space-x-2">
+                <span className="text-2xl font-black text-amber-700 font-siliguri">
+                  {upcomingServiceAssets.length}
+                </span>
+                <span className="text-xs text-slate-500">টি সরঞ্জামে সার্ভিসিং আবশ্যক</span>
+              </div>
+              <p className="text-[11px] text-slate-500 pt-1 border-t border-slate-100">
+                জেনারেটর, এসি ও সাউন্ড সিস্টেম অডিট
+              </p>
+            </div>
+          </div>
+
+          {/* Search, Filter & View Controls */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+            {/* Search Input */}
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+              <input
+                type="text"
+                placeholder="সম্পদের নাম, আইডি কোড, ব্র্যান্ড, মডেল, সিরিয়াল বা অবস্থান খুঁজুন..."
+                value={assetSearchQuery}
+                onChange={(e) => setAssetSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium"
+              />
+            </div>
+
+            {/* Category Filter */}
+            <div className="flex items-center space-x-2 flex-wrap">
+              <Filter className="w-4 h-4 text-slate-400 shrink-0" />
+              <select
+                value={assetCategoryFilter}
+                onChange={(e) => setAssetCategoryFilter(e.target.value)}
+                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:bg-white focus:ring-2 focus:ring-blue-500 cursor-pointer"
+              >
+                <option value="ALL">সকল ক্যাটাগরি ({assets.length})</option>
+                {ASSET_CATEGORIES.map((cat) => (
+                  <option key={cat.key} value={cat.key}>
+                    {cat.icon} {cat.labelBn}
+                  </option>
+                ))}
+              </select>
+
+              {/* Condition Filter */}
+              <select
+                value={assetConditionFilter}
+                onChange={(e) => setAssetConditionFilter(e.target.value)}
+                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:bg-white focus:ring-2 focus:ring-blue-500 cursor-pointer"
+              >
+                <option value="ALL">সকল অবস্থা</option>
+                {ASSET_CONDITIONS.map((cond) => (
+                  <option key={cond.key} value={cond.key}>
+                    {cond.labelBn}
+                  </option>
+                ))}
+              </select>
+
+              {/* Location Filter */}
+              {assetLocations.length > 0 && (
+                <select
+                  value={assetLocationFilter}
+                  onChange={(e) => setAssetLocationFilter(e.target.value)}
+                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:bg-white focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                >
+                  <option value="ALL">সকল অবস্থান</option>
+                  {assetLocations.map((loc, idx) => (
+                    <option key={idx} value={loc}>
+                      {loc}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {/* Archive Toggle */}
+              <label className="flex items-center space-x-1.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 cursor-pointer hover:bg-slate-100 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={showArchivedAssets}
+                  onChange={(e) => setShowArchivedAssets(e.target.checked)}
+                  className="rounded text-blue-600 focus:ring-blue-500"
+                />
+                <span>আর্কাইভকৃত ({archivedAssets.length})</span>
+              </label>
+
+              {/* View Mode Toggle */}
+              <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+                <button
+                  onClick={() => setAssetViewMode('GRID')}
+                  className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                    assetViewMode === 'GRID' ? 'bg-white text-blue-600 shadow-2xs' : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                  title="গ্রিড ভিউ"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => setAssetViewMode('TABLE')}
+                  className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                    assetViewMode === 'TABLE' ? 'bg-white text-blue-600 shadow-2xs' : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                  title="টেবিল ভিউ"
+                >
+                  <List className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Asset List: Grid Mode */}
+          {assetViewMode === 'GRID' ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredAssets.map((ast) => {
+                const catObj = ASSET_CATEGORIES.find((c) => c.key === ast.category);
+                const condObj = ASSET_CONDITIONS.find((c) => c.key === ast.condition);
+
+                return (
+                  <div
+                    key={ast.id}
+                    className="bg-white rounded-2xl border border-slate-200 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between overflow-hidden group"
+                  >
+                    <div className="p-5 space-y-4">
+                      {/* Top Badges */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <span className="font-mono text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                            {ast.assetCode}
+                          </span>
+                          <span className="text-[11px] text-slate-500 flex items-center space-x-1">
+                            <span>{catObj?.icon || '📦'}</span>
+                            <span>{catObj?.labelBn || ast.category}</span>
+                          </span>
+                        </div>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                            condObj?.color || 'bg-slate-100 text-slate-700 border-slate-200'
+                          }`}
+                        >
+                          {condObj?.labelBn || ast.condition}
+                        </span>
+                      </div>
+
+                      {/* Name, Brand & Spec */}
+                      <div>
+                        <h3 className="font-bold text-slate-900 text-base group-hover:text-blue-600 transition-colors">
+                          {ast.name}
+                        </h3>
+                        {(ast.brand || ast.model) && (
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            {ast.brand} {ast.model ? `• ${ast.model}` : ''}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Specs & Attributes Box */}
+                      <div className="space-y-1.5 text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-500 font-medium">অবস্থান:</span>
+                          <span className="font-bold text-slate-900 flex items-center space-x-1">
+                            <MapPin className="w-3 h-3 text-amber-600" />
+                            <span>{ast.location || 'মূল ভবন'}</span>
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-500 font-medium">ক্রয়মূল্য ও তারিখ:</span>
+                          <span className="font-bold text-slate-900 font-siliguri">
+                            ৳{(ast.purchaseValue || 0).toLocaleString('en-IN')}{' '}
+                            <span className="text-[10px] font-normal text-slate-500 font-sans">
+                              ({ast.purchaseDate || 'N/A'})
+                            </span>
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-500 font-medium">বর্তমান মূল্য:</span>
+                          <span className="font-bold text-blue-700 font-siliguri">
+                            ৳{(ast.currentValue ?? ast.purchaseValue ?? 0).toLocaleString('en-IN')}
+                          </span>
+                        </div>
+
+                        {ast.responsiblePerson && (
+                          <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 text-[11px]">
+                            <span className="text-slate-500">দায়িত্বপ্রাপ্ত:</span>
+                            <span className="font-semibold text-slate-800">{ast.responsiblePerson}</span>
+                          </div>
+                        )}
+
+                        {ast.expenseVoucherNumber && (
+                          <div className="flex items-center justify-between text-[10px] text-blue-700 pt-1">
+                            <span className="flex items-center space-x-1">
+                              <LinkIcon className="w-2.5 h-2.5" />
+                              <span>ব্যয় ভাউচার:</span>
+                            </span>
+                            <span className="font-mono font-bold">{ast.expenseVoucherNumber}</span>
+                          </div>
+                        )}
+
+                        {ast.nextServiceDate && (
+                          <div className="flex items-center justify-between text-[10px] text-amber-700 pt-1">
+                            <span>পরবর্তী সার্ভিস:</span>
+                            <span className="font-bold">{ast.nextServiceDate}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Card Bottom Actions */}
+                    <div className="px-5 py-3 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between gap-2">
+                      <button
+                        onClick={() => setSelectedAssetForDetails(ast)}
+                        className="px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold rounded-lg text-xs flex items-center space-x-1 transition-colors cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-blue-600" />
+                        <span>বিস্তারিত</span>
+                      </button>
+
+                      <div className="flex items-center space-x-1">
+                        <button
+                          onClick={() => setSelectedAssetForService(ast)}
+                          className="p-1.5 text-amber-700 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                          title="সার্ভিসিং ও মেরামত রেকর্ড যোগ করুন"
+                        >
+                          <Wrench className="w-3.5 h-3.5" />
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setEditingAsset(ast);
+                            setIsAddAssetOpen(true);
+                          }}
+                          className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                          title="সম্পাদনা করুন"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+
+                        <button
+                          onClick={() => handleDeleteAsset(ast)}
+                          className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                          title="মুছুন / আর্কাইভ"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            /* Table View Mode */
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                    <tr>
+                      <th className="py-3 px-4">আইডি কোড</th>
+                      <th className="py-3 px-4">সম্পদের নাম ও স্পেসিফিকেশন</th>
+                      <th className="py-3 px-4">ক্যাটাগরি</th>
+                      <th className="py-3 px-4">ক্রয়ের তারিখ</th>
+                      <th className="py-3 px-4">ক্রয়মূল্য</th>
+                      <th className="py-3 px-4">বর্তমান মূল্য</th>
+                      <th className="py-3 px-4">অবস্থান</th>
+                      <th className="py-3 px-4">অবস্থা</th>
+                      <th className="py-3 px-4">দায়িত্বপ্রাপ্ত</th>
+                      <th className="py-3 px-4 text-center">একশন</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                    {filteredAssets.map((ast) => {
+                      const catObj = ASSET_CATEGORIES.find((c) => c.key === ast.category);
+                      const condObj = ASSET_CONDITIONS.find((c) => c.key === ast.condition);
+                      return (
+                        <tr key={ast.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-3 px-4 font-mono font-bold text-blue-700">{ast.assetCode}</td>
+                          <td className="py-3 px-4">
+                            <strong className="text-slate-900 block">{ast.name}</strong>
+                            {ast.brand && <span className="text-[10px] text-slate-500">{ast.brand}</span>}
+                          </td>
+                          <td className="py-3 px-4 text-slate-700">{catObj?.labelBn || ast.category}</td>
+                          <td className="py-3 px-4 font-mono text-slate-600">{ast.purchaseDate || 'N/A'}</td>
+                          <td className="py-3 px-4 font-bold text-slate-900 font-siliguri">
+                            ৳{(ast.purchaseValue || 0).toLocaleString('en-IN')}
+                          </td>
+                          <td className="py-3 px-4 font-bold text-blue-700 font-siliguri">
+                            ৳{(ast.currentValue ?? ast.purchaseValue ?? 0).toLocaleString('en-IN')}
+                          </td>
+                          <td className="py-3 px-4 text-slate-700">{ast.location || 'মূল ভবন'}</td>
+                          <td className="py-3 px-4">
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                condObj?.color || 'bg-slate-100 text-slate-700 border-slate-200'
+                              }`}
+                            >
+                              {condObj?.labelBn || ast.condition}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-slate-700">{ast.responsiblePerson || 'মসজিদ কর্তৃপক্ষ'}</td>
+                          <td className="py-3 px-4 text-center">
+                            <div className="flex items-center justify-center space-x-1.5">
+                              <button
+                                onClick={() => setSelectedAssetForDetails(ast)}
+                                className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md font-bold text-[11px]"
+                              >
+                                বিস্তারিত
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setEditingAsset(ast);
+                                  setIsAddAssetOpen(true);
+                                }}
+                                className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Empty State */}
+          {filteredAssets.length === 0 && (
+            <div className="p-12 text-center bg-white rounded-2xl border border-dashed border-slate-300 space-y-3">
+              <Package className="w-12 h-12 text-slate-400 mx-auto" />
+              <h3 className="text-sm font-bold text-slate-800">কোনো সম্পদ পাওয়া যায়নি</h3>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                আপনার দেওয়া সার্চ বা ফিল্টারের সাথে মিলে এমন কোনো সম্পদ নেই। নতুন সম্পদ যোগ করতে উপরের বাটনে ক্লিক করুন।
+              </p>
+              <button
+                onClick={() => {
+                  setEditingAsset(null);
+                  setIsAddAssetOpen(true);
+                }}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-sm transition-colors cursor-pointer"
+              >
+                নতুন সম্পদ যোগ করুন
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================== */}
+      {/* 3. WAQF PROPERTY SECTION                   */}
+      {/* ========================================== */}
       {activeTab === 'property' && (
         <div className="space-y-4">
           {properties.map((prop) => (
@@ -363,7 +1398,9 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
               </div>
               <div>
                 <h3 className="font-bold text-slate-900 text-base">{prop.description}</h3>
-                <p className="text-xs text-slate-600 mt-1">অবস্থান: {prop.location} | আয়তন: <strong>{prop.area}</strong></p>
+                <p className="text-xs text-slate-600 mt-1">
+                  অবস্থান: {prop.location} | আয়তন: <strong>{prop.area}</strong>
+                </p>
                 <p className="text-xs text-slate-700 mt-1 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
                   বর্তমান ব্যবহার: {prop.currentUse}
                 </p>
@@ -379,7 +1416,9 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
         </div>
       )}
 
-      {/* 4. CEMETERY SECTION */}
+      {/* ========================================== */}
+      {/* 4. CEMETERY SECTION                        */}
+      {/* ========================================== */}
       {activeTab === 'cemetery' && (
         <div className="space-y-4">
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -398,23 +1437,22 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
                   <tr>
                     <th className="py-3 px-4">প্লট নং</th>
                     <th className="py-3 px-4">মরহুমের নাম</th>
-                    <th className="py-3 px-4">পিতা / স্বামী</th>
+                    <th className="py-3 px-4">পিতা/স্বামীর নাম</th>
                     <th className="py-3 px-4">দাফনের তারিখ</th>
                     <th className="py-3 px-4">কবরের অবস্থান</th>
-                    <th className="py-3 px-4">পরিবারের যোগাযোগ</th>
+                    <th className="py-3 px-4">যোগাযোগের ব্যক্তি</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                   {cemetery.map((cem) => (
-                    <tr key={cem.id} className="hover:bg-slate-50/80">
-                      <td className="py-3 px-4 font-mono font-bold text-blue-900">{cem.plotNumber}</td>
+                    <tr key={cem.id} className="hover:bg-slate-50">
+                      <td className="py-3 px-4 font-mono font-bold text-blue-700">{cem.plotNumber}</td>
                       <td className="py-3 px-4 font-bold text-slate-900">{cem.deceasedName}</td>
                       <td className="py-3 px-4 text-slate-600">{cem.fatherOrSpouseName}</td>
-                      <td className="py-3 px-4 text-slate-600">{formatDate(cem.burialDate, language)}</td>
-                      <td className="py-3 px-4 text-slate-700">{cem.graveLocation}</td>
+                      <td className="py-3 px-4">{cem.burialDate}</td>
+                      <td className="py-3 px-4">{cem.graveLocation}</td>
                       <td className="py-3 px-4">
-                        <div className="font-semibold text-slate-900">{cem.contactPersonName}</div>
-                        <div className="text-[11px] text-slate-500">{cem.contactPersonPhone}</div>
+                        {cem.contactPersonName} ({cem.contactPersonPhone})
                       </td>
                     </tr>
                   ))}
@@ -425,223 +1463,398 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
         </div>
       )}
 
-      {/* 5. NOTICES SECTION */}
+      {/* ========================================== */}
+      {/* 5. NOTICE BOARD SECTION                    */}
+      {/* ========================================== */}
       {activeTab === 'notices' && (
         <div className="space-y-4">
-          {notices.map((not) => (
+          {notices.map((notice) => (
             <div
-              key={not.id}
+              key={notice.id}
               className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3"
             >
               <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    not.priority === 'HIGH' ? 'bg-rose-100 text-rose-800' : 'bg-blue-100 text-blue-800'
-                  }`}>
-                    {not.priority === 'HIGH' ? 'জরুরি নোটিশ' : 'সাধারণ নোটিশ'}
-                  </span>
-                  {not.isPublic && (
-                    <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full border border-slate-200 font-semibold">
-                      পাবলিক পেজে প্রকাশিত
-                    </span>
-                  )}
-                </div>
-                <span className="text-xs text-slate-500">{formatDate(not.publishDate, language)}</span>
+                <span
+                  className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${
+                    notice.priority === 'URGENT'
+                      ? 'bg-rose-100 text-rose-800'
+                      : 'bg-blue-100 text-blue-800'
+                  }`}
+                >
+                  {notice.priority === 'URGENT' ? 'জরুরি নোটিশ' : 'সাধারণ বিজ্ঞপ্তি'}
+                </span>
+                <span className="text-xs text-slate-400">
+                  {notice.publishedAt ? new Date(notice.publishedAt).toLocaleDateString('bn-BD') : ''}
+                </span>
               </div>
-
               <div>
-                <h3 className="font-bold text-slate-900 text-base">{not.title}</h3>
-                <p className="text-xs text-slate-700 mt-2 leading-relaxed whitespace-pre-line">
-                  {not.description}
-                </p>
+                <h3 className="font-bold text-slate-900 text-base">{notice.title}</h3>
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed">{notice.description}</p>
               </div>
-
-              <div className="pt-2 border-t border-slate-100 text-[11px] text-slate-500">
-                প্রকাশক: <strong>{not.publishedByName}</strong>
+              <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+                <span>প্রচারকারী: {notice.publishedBy}</span>
+                <span>{notice.isPublic ? 'মুসুল্লিদের জন্য উন্মুক্ত' : 'অভ্যন্তরীণ নোটিশ'}</span>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* PAY SALARY MODAL */}
-      {isPaySalaryOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <h3 className="font-bold text-base text-slate-900">ইমাম ও স্টাফ মাসিক হাদিয়া/বেতন পরিশোধ</h3>
-            <form onSubmit={handlePaySubmit} className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">স্টাফ নির্বাচন *</label>
-                <select
-                  id="select-staff-id"
-                  value={selectedStaffId}
-                  onChange={(e) => setSelectedStaffId(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-white focus:ring-1 focus:ring-blue-500 font-medium"
-                >
-                  {staff.map((st) => (
-                    <option key={st.id} value={st.id}>
-                      {st.name} ({st.designationBn} - {formatCurrency(st.monthlySalary + (st.allowance || 0), language)})
-                    </option>
-                  ))}
-                </select>
-              </div>
+      {/* ========================================== */}
+      {/* ALL MODALS                                 */}
+      {/* ========================================== */}
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">মাস (YYYY-MM) *</label>
-                <input
-                  id="input-salary-month"
-                  type="month"
-                  value={salaryMonth}
-                  onChange={(e) => setSalaryMonth(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">পরিশোধের হিসাব *</label>
-                <select
-                  id="select-salary-account"
-                  value={payAccountId}
-                  onChange={(e) => setPayAccountId(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-white focus:ring-1 focus:ring-blue-500 font-medium"
-                >
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.nameBn} (স্থিতি: {formatCurrency(a.currentBalance, language)})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">মন্তব্য</label>
-                <input
-                  id="input-salary-notes"
-                  type="text"
-                  placeholder="e.g. ব্যাংক চেকের মাধ্যমে পরিশোধ"
-                  value={payNotes}
-                  onChange={(e) => setPayNotes(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
-
-              <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsPaySalaryOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
-                >
-                  {t.cancel}
-                </button>
-                <button
-                  id="btn-confirm-salary-pay"
-                  type="submit"
-                  className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm"
-                >
-                  বেতন পরিশোধ নিশ্চিত করুন
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {/* 1. Add/Edit Staff Modal */}
+      {isAddStaffOpen && (
+        <StaffFormModal
+          isOpen={isAddStaffOpen}
+          onClose={() => {
+            setIsAddStaffOpen(false);
+            setEditingStaff(null);
+          }}
+          staff={editingStaff}
+          onSubmit={async (staffData) => {
+            if (editingStaff) {
+              if (onUpdateStaff) await onUpdateStaff(editingStaff.id, staffData);
+            } else {
+              if (onAddStaff) await onAddStaff(staffData);
+            }
+          }}
+          currentMosque={currentMosque as any}
+          language={language}
+        />
       )}
 
-      {/* CEMETERY RECORD MODAL */}
+      {/* 2. Staff Profile & History Drawer */}
+      {selectedStaffForHistory && (
+        <StaffProfileDrawer
+          isOpen={Boolean(selectedStaffForHistory)}
+          onClose={() => setSelectedStaffForHistory(null)}
+          staff={selectedStaffForHistory}
+          payments={staffPayments.filter((p) => p.staffId === selectedStaffForHistory.id)}
+          accounts={accounts}
+          language={language}
+          onOpenPayModal={(sid) => {
+            setSelectedStaffForHistory(null);
+            handleOpenPayForStaff(sid);
+          }}
+          onEditStaff={(target) => {
+            setSelectedStaffForHistory(null);
+            setEditingStaff(target);
+            setIsAddStaffOpen(true);
+          }}
+          onReviseSalary={async (staffId, data) => {
+            if (onReviseStaffSalary) {
+              await onReviseStaffSalary(staffId, data);
+            }
+          }}
+          onUpdatePayment={onUpdateStaffPayment}
+          onCancelPayment={onCancelStaffPayment}
+          onPrintSlip={(payment, s) => handleOpenSlip(payment, s)}
+          onPrintAnnualStatement={(s) => {
+            setAnnualStatementStaffId(s.id);
+            setIsAnnualStatementOpen(true);
+          }}
+        />
+      )}
+
+      {/* 2.1 Staff Festival Allowance Modal */}
+      {isFestivalAllowanceOpen && (
+        <StaffFestivalAllowanceModal
+          isOpen={isFestivalAllowanceOpen}
+          onClose={() => setIsFestivalAllowanceOpen(false)}
+          staffList={staff}
+          accounts={accounts}
+          currentMosque={currentMosque as any}
+          language={language}
+        />
+      )}
+
+      {/* 2.2 Comprehensive Staff Reports & Registers Modal */}
+      {isStaffReportsOpen && (
+        <StaffReportsModal
+          isOpen={isStaffReportsOpen}
+          onClose={() => setIsStaffReportsOpen(false)}
+          staffList={staff}
+          staffPayments={staffPayments}
+          accounts={accounts}
+          currentMosque={currentMosque as any}
+          initialReportType={staffReportsInitialTab}
+          language={language}
+        />
+      )}
+
+      {/* 3. Pay Salary Modal */}
+      {isPaySalaryOpen && (
+        <StaffPaymentModal
+          isOpen={isPaySalaryOpen}
+          onClose={() => {
+            setIsPaySalaryOpen(false);
+            setPrefilledStaffId(undefined);
+          }}
+          staffList={staff}
+          accounts={accounts}
+          prefilledStaffId={prefilledStaffId}
+          onPaySalary={onPayStaff}
+          language={language}
+        />
+      )}
+
+      {/* 4. Salary Slip Modal */}
+      {slipModalOpen && slipStaff && slipPayment && (
+        <StaffSalarySlipModal
+          isOpen={slipModalOpen}
+          onClose={() => {
+            setSlipModalOpen(false);
+            setSlipStaff(null);
+            setSlipPayment(null);
+          }}
+          staff={slipStaff}
+          payment={slipPayment}
+          currentMosque={currentMosque as any}
+          language={language}
+        />
+      )}
+
+      {/* 5. Master Register Modal */}
+      {isMasterRegisterOpen && (
+        <StaffMasterRegisterModal
+          isOpen={isMasterRegisterOpen}
+          onClose={() => setIsMasterRegisterOpen(false)}
+          staffList={staff}
+          currentMosque={currentMosque as any}
+          language={language}
+        />
+      )}
+
+      {/* 6. Payment Register Modal */}
+      {isPaymentRegisterOpen && (
+        <StaffPaymentRegisterModal
+          isOpen={isPaymentRegisterOpen}
+          onClose={() => setIsPaymentRegisterOpen(false)}
+          payments={staffPayments}
+          staffList={staff}
+          currentMosque={currentMosque as any}
+          language={language}
+        />
+      )}
+
+      {/* 7. Annual Statement Modal */}
+      {isAnnualStatementOpen && (
+        <StaffAnnualStatementModal
+          isOpen={isAnnualStatementOpen}
+          onClose={() => {
+            setIsAnnualStatementOpen(false);
+            setAnnualStatementStaffId(undefined);
+          }}
+          staffList={staff}
+          payments={staffPayments}
+          currentMosque={currentMosque as any}
+          preselectedStaffId={annualStatementStaffId}
+          language={language}
+        />
+      )}
+
+      {/* 7.1 Bank Transfer Request Letter Modal */}
+      {isBankTransferLetterOpen && (
+        <BankTransferLetterModal
+          isOpen={isBankTransferLetterOpen}
+          onClose={() => {
+            setIsBankTransferLetterOpen(false);
+            setSelectedBankTransferMonth(undefined);
+          }}
+          staffList={staff}
+          staffPayments={staffPayments}
+          accounts={accounts}
+          currentMosque={currentMosque as any}
+          committeeTerms={committeeTerms}
+          language={language}
+          initialSelectedMonth={selectedBankTransferMonth}
+        />
+      )}
+
+      {/* 8. Asset Form Modal (Add / Edit) */}
+      {isAddAssetOpen && (
+        <AssetFormModal
+          isOpen={isAddAssetOpen}
+          onClose={() => {
+            setIsAddAssetOpen(false);
+            setEditingAsset(null);
+          }}
+          onSave={handleSaveAsset}
+          editingAsset={editingAsset}
+          committeeTerms={committeeTerms}
+          expenseEntries={expenseEntries}
+          accounts={accounts}
+          accountHeads={accountHeads}
+          language={language}
+        />
+      )}
+
+      {/* 9. Asset Details Modal (View, specs, history timeline) */}
+      {selectedAssetForDetails && (
+        <AssetDetailsModal
+          isOpen={Boolean(selectedAssetForDetails)}
+          onClose={() => setSelectedAssetForDetails(null)}
+          asset={selectedAssetForDetails}
+          currentMosque={currentMosque as any}
+          onEdit={(ast) => {
+            setSelectedAssetForDetails(null);
+            setEditingAsset(ast);
+            setIsAddAssetOpen(true);
+          }}
+          onArchive={handleArchiveAsset}
+          onDelete={handleDeleteAsset}
+          onAddServiceRecord={handleSaveAssetService}
+          accounts={accounts}
+          accountHeads={accountHeads}
+          language={language}
+        />
+      )}
+
+      {/* 10. Asset Service Modal (Log maintenance) */}
+      {selectedAssetForService && (
+        <AssetServiceModal
+          isOpen={Boolean(selectedAssetForService)}
+          onClose={() => setSelectedAssetForService(null)}
+          asset={selectedAssetForService}
+          onSaveService={handleSaveAssetService}
+          accounts={accounts}
+          accountHeads={accountHeads}
+          language={language}
+        />
+      )}
+
+      {/* 11. Asset Register Print Modal */}
+      {isAssetRegisterOpen && (
+        <AssetRegisterModal
+          isOpen={isAssetRegisterOpen}
+          onClose={() => setIsAssetRegisterOpen(false)}
+          assets={filteredAssets}
+          currentMosque={currentMosque as any}
+          language={language}
+        />
+      )}
+
+      {/* 12. Add Cemetery Modal */}
       {isCemeteryModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <h3 className="font-bold text-base text-slate-900">কবরস্থানে নতুন দাফন রেকর্ড</h3>
-            <form onSubmit={handleCemeterySubmit} className="space-y-3">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white w-full max-w-lg rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="font-bold text-slate-900">নতুন দাফন রেকর্ড অন্তর্ভুক্ত করুন</h3>
+              <button
+                onClick={() => setIsCemeteryModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleCemeterySubmit} className="p-5 space-y-4 text-xs">
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">প্লট নম্বর *</label>
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700">প্লট নং *</label>
                   <input
-                    id="input-cemetery-plot"
                     type="text"
-                    placeholder="e.g. PLOT-C-04"
+                    required
+                    placeholder="যেমন: P-102"
                     value={plotNumber}
                     onChange={(e) => setPlotNumber(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold text-slate-900 focus:bg-white focus:ring-1 focus:ring-blue-500"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">দাফনের তারিখ *</label>
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700">দাফনের তারিখ *</label>
                   <input
-                    id="input-cemetery-burial-date"
                     type="date"
+                    required
                     value={burialDate}
                     onChange={(e) => setBurialDate(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-1 focus:ring-blue-500"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl"
                   />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">মরহুমের পূর্ণ নাম *</label>
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700">মরহুমের নাম *</label>
                 <input
-                  id="input-cemetery-deceased"
                   type="text"
-                  placeholder="মরহুম..."
+                  required
+                  placeholder="মরহুমের পূর্ণ নাম"
                   value={deceasedName}
                   onChange={(e) => setDeceasedName(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-1 focus:ring-blue-500"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl"
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">পিতা বা স্বামীর নাম</label>
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700">পিতা বা স্বামীর নাম</label>
                 <input
-                  id="input-cemetery-father"
                   type="text"
+                  placeholder="পিতা / স্বামী"
                   value={fatherOrSpouse}
                   onChange={(e) => setFatherOrSpouse(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-1 focus:ring-blue-500"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700">কবরস্থানের অবস্থান / ব্লক</label>
+                <input
+                  type="text"
+                  placeholder="যেমন: ব্লক-বি, ৩য় সারি"
+                  value={graveLoc}
+                  onChange={(e) => setGraveLoc(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">পরিবারের অভিভাবক</label>
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700">ওয়ারিশের নাম</label>
                   <input
-                    id="input-cemetery-contact-name"
                     type="text"
-                    placeholder="ওয়ারিশের নাম"
+                    placeholder="যোগাযোগের ব্যক্তি"
                     value={contactName}
                     onChange={(e) => setContactName(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-1 focus:ring-blue-500"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">মোবাইল নম্বর</label>
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700">ওয়ারিশের ফোন</label>
                   <input
-                    id="input-cemetery-contact-phone"
                     type="tel"
                     placeholder="017XXXXXXXX"
                     value={contactPhone}
                     onChange={(e) => setContactPhone(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-1 focus:ring-blue-500"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700">মন্তব্য</label>
+                <textarea
+                  rows={2}
+                  placeholder="অতিরিক্ত তথ্য..."
+                  value={cemeteryNotes}
+                  onChange={(e) => setCemeteryNotes(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end space-x-2">
                 <button
                   type="button"
                   onClick={() => setIsCemeteryModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+                  className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl"
                 >
-                  {t.cancel}
+                  বাতিল
                 </button>
                 <button
-                  id="btn-save-cemetery-record"
                   type="submit"
-                  className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm"
+                  className="px-4 py-2 bg-blue-600 text-white font-bold rounded-xl"
                 >
-                  সংরক্ষণ করুন
+                  রেকর্ড সংরক্ষণ
                 </button>
               </div>
             </form>
@@ -649,63 +1862,79 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
         </div>
       )}
 
-      {/* NOTICE MODAL */}
+      {/* 13. Add Notice Modal */}
       {isNoticeModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <h3 className="font-bold text-base text-slate-900">নতুন নোটিশ প্রকাশ</h3>
-            <form onSubmit={handleNoticeSubmit} className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">নোটিশের শিরোনাম *</label>
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white w-full max-w-lg rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="font-bold text-slate-900">নতুন নোটিশ প্রচার করুন</h3>
+              <button
+                onClick={() => setIsNoticeModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleNoticeSubmit} className="p-5 space-y-4 text-xs">
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700">নোটিশের শিরোনাম *</label>
                 <input
-                  id="input-notice-title"
                   type="text"
-                  placeholder="e.g. আগামী জুমার বিশেষ ঘোষণা"
+                  required
+                  placeholder="যেমন: আগামী শুক্রবারের বিশেষ খুতবা ও দোয়া মাহফিল"
                   value={noticeTitle}
                   onChange={(e) => setNoticeTitle(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-1 focus:ring-blue-500"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl"
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">বিস্তারিত ঘোষণা *</label>
-                <textarea
-                  id="input-notice-desc"
-                  rows={4}
-                  placeholder="সম্মানিত মুসল্লিবৃন্দের সদয় অবগতির জন্য..."
-                  value={noticeDesc}
-                  onChange={(e) => setNoticeDesc(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-1 focus:ring-blue-500"
-                ></textarea>
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700">গুরুত্বপূর্ণতা / Priority</label>
+                <select
+                  value={noticePriority}
+                  onChange={(e) => setNoticePriority(e.target.value as any)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl"
+                >
+                  <option value="NORMAL">সাধারণ নোটিশ</option>
+                  <option value="URGENT">জরুরি বিজ্ঞপ্তি</option>
+                </select>
               </div>
 
-              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
-                <span className="text-xs font-semibold text-slate-700">পাবলিক ওয়েবসাইটে প্রকাশ করুন</span>
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700">বিস্তারিত বিবরণ *</label>
+                <textarea
+                  rows={4}
+                  required
+                  placeholder="নোটিশের পূর্ণাঙ্গ বিবরণ লিখুন..."
+                  value={noticeDesc}
+                  onChange={(e) => setNoticeDesc(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl"
+                />
+              </div>
+
+              <label className="flex items-center space-x-2 font-semibold text-slate-700 cursor-pointer">
                 <input
-                  id="chk-notice-public"
                   type="checkbox"
                   checked={isPublicNotice}
                   onChange={(e) => setIsPublicNotice(e.target.checked)}
-                  className="w-4 h-4 text-blue-600 rounded"
+                  className="rounded text-blue-600"
                 />
-              </div>
+                <span>সাধারণ মুসুল্লিদের অ্যাপ ভিউতে দৃশ্যমান হবে</span>
+              </label>
 
-              <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
+              <div className="pt-2 flex items-center justify-end space-x-2">
                 <button
                   type="button"
                   onClick={() => setIsNoticeModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+                  className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl"
                 >
-                  {t.cancel}
+                  বাতিল
                 </button>
                 <button
-                  id="btn-save-notice"
                   type="submit"
-                  className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm"
+                  className="px-4 py-2 bg-blue-600 text-white font-bold rounded-xl"
                 >
-                  প্রকাশ করুন
+                  নোটিশ প্রকাশ করুন
                 </button>
               </div>
             </form>

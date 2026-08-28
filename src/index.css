@@ -319,6 +319,72 @@ aside button,
     display: none !important;
   }
 
+  /* Universal Modal Print Isolation (Hides main root when printing any modal) */
+  body.print-modal-active #root,
+  body.print-document-active #root,
+  body.print-action-plan-active #root,
+  body:has(.print-modal-portal) #root {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    max-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .print-modal-portal {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #ffffff !important;
+    backdrop-filter: none !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    z-index: auto !important;
+  }
+
+  .print-modal-portal .print-modal-card {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    overflow: visible !important;
+  }
+
+  .print-modal-portal .print-modal-paper {
+    display: block !important;
+    visibility: visible !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    overflow: visible !important;
+  }
+
+  .print-modal-portal .print-controls-bar,
+  .print-modal-portal .no-print,
+  .print-modal-portal .print\:hidden {
+    display: none !important;
+  }
+
   /* Committee Action Plan Direct Print Isolation */
   body.print-action-plan-active > *:not(#root) {
     display: none !important;

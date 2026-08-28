@@ -811,22 +811,32 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-300">
-              {staffList.map((st, idx) => (
-                <tr key={st.id}>
-                  <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-600">{idx + 1}</td>
-                  <td className="py-2 px-2 text-left border-r border-slate-200 font-bold text-slate-900">{st.fullNameBn}</td>
-                  <td className="py-2 px-2 text-left border-r border-slate-200 font-medium text-slate-700">{st.designationBn}</td>
-                  <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-600">{st.phone}</td>
-                  <td className="py-2 px-2 text-right border-r border-slate-200 font-siliguri font-bold text-slate-900">
-                    ৳ {st.monthlySalary.toLocaleString('en-IN')}
-                  </td>
-                  <td className="py-2 px-2 text-right border-r border-slate-200 font-siliguri font-bold text-slate-700">৳ ০</td>
-                  <td className="py-2 px-2 text-right border-r border-slate-200 font-siliguri font-bold text-slate-950">
-                    ৳ {st.monthlySalary.toLocaleString('en-IN')}
-                  </td>
-                  <td className="py-2 px-2 text-center text-slate-500 font-medium">{st.status === 'ACTIVE' ? 'সক্রিয়' : 'ছুটি/অন্যান্য'}</td>
-                </tr>
-              ))}
+              {staffList.map((st, idx) => {
+                const displayName = st.fullNameBn || st.name;
+                const relevantPayments = staffPayments.filter(p => p.staffId === st.id && p.status !== 'CANCELLED');
+                const lastPayment = relevantPayments[0];
+                const bonusAmount = lastPayment ? (lastPayment.bonus || 0) + (lastPayment.otherAllowance || 0) : (st.allowance || 0);
+                const totalAmount = lastPayment ? (lastPayment.netPaid || (lastPayment.basicSalary + bonusAmount - (lastPayment.deduction || 0))) : (st.monthlySalary + bonusAmount);
+
+                return (
+                  <tr key={st.id}>
+                    <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-600">{idx + 1}</td>
+                    <td className="py-2 px-2 text-left border-r border-slate-200 font-bold text-slate-900">{displayName}</td>
+                    <td className="py-2 px-2 text-left border-r border-slate-200 font-medium text-slate-700">{st.designationBn}</td>
+                    <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-600">{st.phone}</td>
+                    <td className="py-2 px-2 text-right border-r border-slate-200 font-siliguri font-bold text-slate-900">
+                      ৳ {st.monthlySalary.toLocaleString('en-IN')}
+                    </td>
+                    <td className="py-2 px-2 text-right border-r border-slate-200 font-siliguri font-bold text-slate-700">
+                      ৳ {bonusAmount.toLocaleString('en-IN')}
+                    </td>
+                    <td className="py-2 px-2 text-right border-r border-slate-200 font-siliguri font-bold text-slate-950">
+                      ৳ {totalAmount.toLocaleString('en-IN')}
+                    </td>
+                    <td className="py-2 px-2 text-center text-slate-500 font-medium">{st.status === 'ACTIVE' ? 'সক্রিয়' : 'নিষ্ক্রিয়/ছুটি'}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

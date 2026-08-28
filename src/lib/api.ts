@@ -17,6 +17,7 @@ import {
   MeetingResolution,
   Staff,
   StaffPayment,
+  StaffBankTransferLetter,
   MosqueAsset,
   MosqueProperty,
   CemeteryRecord,
@@ -29,6 +30,7 @@ class ApiService {
   private token: string | null = null;
   private currentUserId: string = 'usr-admin-1';
   private currentMosqueId: string = 'mosque-mamun-001';
+  private inFlightRequests = new Map<string, Promise<ApiResponse<any>>>();
 
   constructor() {
     const savedUser = localStorage.getItem('ml_user_id');
@@ -54,9 +56,31 @@ class ApiService {
     this.token = null;
     localStorage.removeItem('ml_token');
     localStorage.removeItem('ml_user_id');
+    this.inFlightRequests.clear();
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
+    const isGet = !options.method || options.method.toUpperCase() === 'GET';
+    const cacheKey = isGet ? `${endpoint}:${this.currentUserId}:${this.currentMosqueId}` : null;
+
+    if (cacheKey && this.inFlightRequests.has(cacheKey)) {
+      return this.inFlightRequests.get(cacheKey) as Promise<ApiResponse<T>>;
+    }
+
+    const promise = this.executeRequest<T>(endpoint, options).finally(() => {
+      if (cacheKey) {
+        this.inFlightRequests.delete(cacheKey);
+      }
+    });
+
+    if (cacheKey) {
+      this.inFlightRequests.set(cacheKey, promise);
+    }
+
+    return promise;
+  }
+
+  private async executeRequest<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'x-user-id': this.currentUserId,
@@ -69,7 +93,36 @@ class ApiService {
     }
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const timeoutMs = options.method && options.method.toUpperCase() !== 'GET' ? 30000 : 25000;
+    const timeoutId = setTimeout(() => {
+      try {
+        controller.abort(new DOMException('Request timeout', 'TimeoutError'));
+      } catch {
+        controller.abort();
+      }
+    }, timeoutMs);
+
+    if (options.signal) {
+      if (options.signal.aborted) {
+        try {
+          controller.abort(options.signal.reason);
+        } catch {
+          controller.abort();
+        }
+      } else {
+        options.signal.addEventListener(
+          'abort',
+          () => {
+            try {
+              controller.abort(options.signal?.reason);
+            } catch {
+              controller.abort();
+            }
+          },
+          { once: true }
+        );
+      }
+    }
 
     try {
       const response = await fetch(`/api/v1${endpoint}`, {
@@ -103,12 +156,22 @@ class ApiService {
       };
     } catch (err: any) {
       clearTimeout(timeoutId);
-      console.error(`API Error on ${endpoint}:`, err);
+      const isAbort =
+        err.name === 'AbortError' ||
+        err.name === 'TimeoutError' ||
+        (err.message && err.message.includes('aborted'));
+
+      if (!isAbort) {
+        console.error(`API Error on ${endpoint}:`, err);
+      }
+
       return {
         success: false,
         error: {
-          code: err.name === 'AbortError' ? 'TIMEOUT_ERROR' : 'NETWORK_ERROR',
-          message: err.name === 'AbortError' ? 'সার্ভার অনুরোধের সময়সীমা পার হয়েছে (Timeout)।' : (err.message && !err.message.includes('fetch') ? err.message : 'সার্ভারের সাথে সংযোগ স্থাপন করা সম্ভব হয়নি।'),
+          code: isAbort ? 'TIMEOUT_ERROR' : 'NETWORK_ERROR',
+          message: isAbort
+            ? 'সার্ভার অনুরোধের সময়সীমা পার হয়েছে বা বাতিল হয়েছে।'
+            : (err.message && !err.message.includes('fetch') ? err.message : 'সার্ভারের সাথে সংযোগ স্থাপন করা সম্ভব হয়নি।'),
         },
       };
     }
@@ -597,33 +660,39 @@ class ApiService {
 
   // Management (Staff, Assets, Properties, Cemetery, Notices)
   async getStaff(): Promise<Staff[]> {
-    const res = await this.request<any>('/management/all');
-    return res.data?.staff || [];
+    const res = await this.request<Staff[]>('/staff');
+    return res.data || [];
+  }
+
+  async createStaff(data: Partial<Staff>): Promise<Staff> {
+    const res = await this.request<Staff>('/staff', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to create staff');
+    return res.data!;
+  }
+
+  async updateStaff(id: string, data: Partial<Staff>): Promise<Staff> {
+    const res = await this.request<Staff>(`/staff/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to update staff');
+    return res.data!;
+  }
+
+  async deleteStaff(id: string): Promise<boolean> {
+    const res = await this.request<any>(`/staff/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to delete staff');
+    return true;
   }
 
   async getStaffPayments(): Promise<StaffPayment[]> {
-    const res = await this.request<any>('/management/all');
-    return res.data?.staffPayments || [];
-  }
-
-  async getAssets(): Promise<MosqueAsset[]> {
-    const res = await this.request<any>('/management/all');
-    return res.data?.assets || [];
-  }
-
-  async getProperties(): Promise<MosqueProperty[]> {
-    const res = await this.request<any>('/management/all');
-    return res.data?.properties || [];
-  }
-
-  async getCemeteryRecords(): Promise<CemeteryRecord[]> {
-    const res = await this.request<any>('/management/all');
-    return res.data?.cemetery || [];
-  }
-
-  async getNotices(): Promise<MosqueNotice[]> {
-    const res = await this.request<any>('/management/all');
-    return res.data?.notices || [];
+    const res = await this.request<StaffPayment[]>('/staff/payments');
+    return res.data || [];
   }
 
   async payStaffSalary(data: any): Promise<StaffPayment> {
@@ -633,6 +702,194 @@ class ApiService {
     });
     if (!res.success) throw new Error(res.error?.message || 'Failed to pay staff');
     return res.data!;
+  }
+
+  async updateStaffPayment(id: string, data: any): Promise<StaffPayment> {
+    const res = await this.request<StaffPayment>(`/staff/payments/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to update payment');
+    return res.data!;
+  }
+
+  async cancelStaffPayment(id: string, reason?: string): Promise<boolean> {
+    const res = await this.request<any>(`/staff/payments/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to cancel payment');
+    return true;
+  }
+
+  async getStaffBankTransferLetters(): Promise<StaffBankTransferLetter[]> {
+    const res = await this.request<StaffBankTransferLetter[]>('/staff/bank-transfer-letters');
+    return res.data || [];
+  }
+
+  async getNextBankTransferMemo(params?: {
+    paymentType?: string;
+    selectionScope?: string;
+    paymentMonth?: string;
+    paymentYear?: number | string;
+  }): Promise<{ nextSerial: number; memoNumber: string }> {
+    const query = new URLSearchParams();
+    if (params?.paymentType) query.append('paymentType', params.paymentType);
+    if (params?.selectionScope) query.append('selectionScope', params.selectionScope);
+    if (params?.paymentMonth) query.append('paymentMonth', params.paymentMonth);
+    if (params?.paymentYear) query.append('paymentYear', params.paymentYear.toString());
+    const res = await this.request<{ nextSerial: number; memoNumber: string }>(`/staff/bank-transfer-letters/next-memo?${query.toString()}`);
+    return res.data || { nextSerial: 1, memoNumber: '' };
+  }
+
+  async getStaffBankTransferLetter(id: string): Promise<StaffBankTransferLetter> {
+    const res = await this.request<StaffBankTransferLetter>(`/staff/bank-transfer-letters/${id}`);
+    if (!res.success) throw new Error(res.error?.message || 'Failed to get bank transfer letter');
+    return res.data!;
+  }
+
+  async createStaffBankTransferLetter(data: Partial<StaffBankTransferLetter>): Promise<StaffBankTransferLetter> {
+    const res = await this.request<StaffBankTransferLetter>('/staff/bank-transfer-letters', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to save bank transfer letter');
+    return res.data!;
+  }
+
+  async cancelStaffBankTransferLetter(id: string, reason?: string): Promise<boolean> {
+    const res = await this.request<any>(`/staff/bank-transfer-letters/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to cancel bank transfer letter');
+    return true;
+  }
+
+  async disburseFestivalAllowance(data: any): Promise<{ payments: StaffPayment[]; bankLetter?: any }> {
+    const res = await this.request<{ payments: StaffPayment[]; bankLetter?: any }>('/staff/disburse-festival-allowance', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to disburse festival allowance');
+    return res.data!;
+  }
+
+  async reviseStaffSalary(id: string, data: { newSalary: number; effectiveDate: string; reason?: string }): Promise<Staff> {
+    const res = await this.request<Staff>(`/staff/${id}/salary-revision`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to revise staff salary');
+    return res.data!;
+  }
+
+  async getAssets(params?: {
+    category?: string;
+    condition?: string;
+    search?: string;
+    location?: string;
+    includeArchived?: boolean;
+    termId?: string;
+  }): Promise<MosqueAsset[]> {
+    const query = new URLSearchParams();
+    if (params) {
+      if (params.category) query.append('category', params.category);
+      if (params.condition) query.append('condition', params.condition);
+      if (params.search) query.append('search', params.search);
+      if (params.location) query.append('location', params.location);
+      if (params.includeArchived) query.append('includeArchived', 'true');
+      if (params.termId) query.append('termId', params.termId);
+    }
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    const res = await this.request<MosqueAsset[]>(`/assets${qs}`);
+    if (Array.isArray(res.data)) {
+      return res.data;
+    }
+    if (res.data && Array.isArray((res.data as any).assets)) {
+      return (res.data as any).assets;
+    }
+    return [];
+  }
+
+  async getAsset(id: string): Promise<MosqueAsset & { linkedExpense?: any; auditHistory?: any[] }> {
+    const res = await this.request<any>(`/assets/${id}`);
+    if (!res.success) throw new Error(res.error?.message || 'Failed to fetch asset');
+    return res.data;
+  }
+
+  async createAsset(data: any): Promise<MosqueAsset> {
+    const res = await this.request<MosqueAsset>('/assets', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to create asset');
+    return res.data!;
+  }
+
+  async updateAsset(id: string, data: any): Promise<MosqueAsset> {
+    const res = await this.request<MosqueAsset>(`/assets/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to update asset');
+    return res.data!;
+  }
+
+  async addAssetServiceRecord(id: string, data: any): Promise<MosqueAsset> {
+    const res = await this.request<MosqueAsset>(`/assets/${id}/service`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to add service record');
+    return res.data!;
+  }
+
+  async archiveAsset(id: string, isArchived: boolean, reason?: string): Promise<MosqueAsset> {
+    const res = await this.request<MosqueAsset>(`/assets/${id}/archive`, {
+      method: 'POST',
+      body: JSON.stringify({ isArchived, reason }),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to update archive status');
+    return res.data!;
+  }
+
+  async deleteAsset(id: string, force: boolean = false): Promise<void> {
+    const qs = force ? '?force=true' : '';
+    const res = await this.request<void>(`/assets/${id}${qs}`, {
+      method: 'DELETE',
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to delete asset');
+  }
+
+  async clearDemoAssets(): Promise<{ count: number; message: string }> {
+    const res = await this.request<{ count: number; message: string; removedCount: number }>('/assets/clear-demo', {
+      method: 'POST',
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to clear demo assets');
+    return { count: (res as any).removedCount || (res.data as any)?.removedCount || 0, message: (res as any).message || 'Demo assets cleared' };
+  }
+
+  async logAssetAudit(id: string, action: string, details?: string): Promise<void> {
+    await this.request<void>(`/assets/${id}/audit`, {
+      method: 'POST',
+      body: JSON.stringify({ action, details }),
+    });
+  }
+
+  async getProperties(): Promise<MosqueProperty[]> {
+    const res = await this.request<MosqueProperty[]>('/properties');
+    return res.data || [];
+  }
+
+  async getCemeteryRecords(): Promise<CemeteryRecord[]> {
+    const res = await this.request<CemeteryRecord[]>('/cemetery');
+    return res.data || [];
+  }
+
+  async getNotices(): Promise<MosqueNotice[]> {
+    const res = await this.request<MosqueNotice[]>('/notices');
+    return res.data || [];
   }
 
   async createCemeteryRecord(data: any): Promise<CemeteryRecord> {

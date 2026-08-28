@@ -193,7 +193,15 @@ export default function App() {
       if (resolutionsRes) setResolutions(resolutionsRes);
       if (staffRes) setStaff(staffRes);
       if (staffPaysRes) setStaffPayments(staffPaysRes);
-      if (assetsRes) setAssets(assetsRes);
+      if (assetsRes) {
+        if (Array.isArray(assetsRes)) {
+          setAssets(assetsRes);
+        } else if ((assetsRes as any).assets && Array.isArray((assetsRes as any).assets)) {
+          setAssets((assetsRes as any).assets);
+        } else {
+          setAssets([]);
+        }
+      }
       if (propsRes) setProperties(propsRes);
       if (cemeteryRes) setCemetery(cemeteryRes);
       if (noticesRes) setNotices(noticesRes);
@@ -432,8 +440,43 @@ export default function App() {
     await loadData(false);
   };
 
+  const handleAddStaff = async (data: any) => {
+    await api.createStaff(data);
+    await loadData(false);
+  };
+
+  const handleUpdateStaff = async (id: string, data: any) => {
+    await api.updateStaff(id, data);
+    await loadData(false);
+  };
+
+  const handleDeleteStaff = async (id: string) => {
+    await api.deleteStaff(id);
+    await loadData(false);
+  };
+
   const handlePayStaff = async (data: any) => {
     await api.payStaffSalary(data);
+    await loadData(false);
+  };
+
+  const handleReviseStaffSalary = async (id: string, data: any) => {
+    await api.reviseStaffSalary(id, data);
+    await loadData(false);
+  };
+
+  const handleDisburseFestivalAllowance = async (data: any) => {
+    await api.disburseFestivalAllowance(data);
+    await loadData(false);
+  };
+
+  const handleUpdateStaffPayment = async (id: string, data: any) => {
+    await api.updateStaffPayment(id, data);
+    await loadData(false);
+  };
+
+  const handleCancelStaffPayment = async (id: string, reason?: string) => {
+    await api.cancelStaffPayment(id, reason);
     await loadData(false);
   };
 
@@ -445,6 +488,37 @@ export default function App() {
   const handleAddNotice = async (data: any) => {
     await api.createNotice(data);
     await loadData(false);
+  };
+
+  const handleAddAsset = async (data: any) => {
+    await api.createAsset(data);
+    await loadData(false);
+  };
+
+  const handleUpdateAsset = async (id: string, data: any) => {
+    await api.updateAsset(id, data);
+    await loadData(false);
+  };
+
+  const handleDeleteAsset = async (id: string, force?: boolean) => {
+    await api.deleteAsset(id, force);
+    await loadData(false);
+  };
+
+  const handleArchiveAsset = async (id: string, isArchived: boolean, reason?: string) => {
+    await api.archiveAsset(id, isArchived, reason);
+    await loadData(false);
+  };
+
+  const handleAddAssetService = async (id: string, data: any) => {
+    await api.addAssetServiceRecord(id, data);
+    await loadData(false);
+  };
+
+  const handleClearDemoAssets = async () => {
+    const res = await api.clearDemoAssets();
+    await loadData(false);
+    return res;
   };
 
   const handleAddUser = async (data: any) => {
@@ -688,8 +762,25 @@ export default function App() {
           cemetery={cemetery}
           notices={notices}
           accounts={accounts}
+          accountHeads={accountHeads}
+          committeeTerms={terms}
+          expenseEntries={expenses}
+          currentMosque={mosque}
           language={language}
+          onAddStaff={handleAddStaff}
+          onUpdateStaff={handleUpdateStaff}
+          onDeleteStaff={handleDeleteStaff}
           onPayStaff={handlePayStaff}
+          onReviseStaffSalary={handleReviseStaffSalary}
+          onDisburseFestivalAllowance={handleDisburseFestivalAllowance}
+          onUpdateStaffPayment={handleUpdateStaffPayment}
+          onCancelStaffPayment={handleCancelStaffPayment}
+          onAddAsset={handleAddAsset}
+          onUpdateAsset={handleUpdateAsset}
+          onDeleteAsset={handleDeleteAsset}
+          onArchiveAsset={handleArchiveAsset}
+          onAddAssetService={handleAddAssetService}
+          onClearDemoAssets={handleClearDemoAssets}
           onAddCemeteryRecord={handleAddCemetery}
           onAddNotice={handleAddNotice}
         />

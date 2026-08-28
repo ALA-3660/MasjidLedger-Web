@@ -25,7 +25,7 @@ interface PerformanceReportPrintProps {
   singleMember?: MemberEvaluationScoreResult | null;
   fromDate?: string;
   toDate?: string;
-  reportType?: 'ALL_MEMBERS' | 'SINGLE_MEMBER' | 'EXECUTIVE_SUMMARY';
+  reportType?: 'ALL_MEMBERS' | 'SINGLE_MEMBER' | 'ATTENDANCE_REPORT' | 'RESPONSIBILITY_REPORT' | 'NEEDS_IMPROVEMENT_REPORT';
 }
 
 export const PerformanceReportPrint: React.FC<PerformanceReportPrintProps> = ({
@@ -39,6 +39,8 @@ export const PerformanceReportPrint: React.FC<PerformanceReportPrintProps> = ({
   toDate,
   reportType = 'ALL_MEMBERS',
 }) => {
+  const [selectedReportType, setSelectedReportType] = useState<'ALL_MEMBERS' | 'SINGLE_MEMBER' | 'ATTENDANCE_REPORT' | 'RESPONSIBILITY_REPORT' | 'NEEDS_IMPROVEMENT_REPORT'>(reportType);
+  const [includeLetterhead, setIncludeLetterhead] = useState(true);
   const [includeComments, setIncludeComments] = useState(true);
   const [includeSignatures, setIncludeSignatures] = useState(true);
   const [includeMonthlyTrend, setIncludeMonthlyTrend] = useState(true);
@@ -46,28 +48,68 @@ export const PerformanceReportPrint: React.FC<PerformanceReportPrintProps> = ({
   if (!isOpen) return null;
 
   const handlePrint = () => {
+    document.body.classList.add('print-action-plan-active');
     window.print();
+    setTimeout(() => {
+      document.body.classList.remove('print-action-plan-active');
+    }, 500);
   };
 
   const getStarText = (stars: number) => {
     return '★'.repeat(stars) + '☆'.repeat(5 - stars);
   };
 
+  const displayedMembers = React.useMemo(() => {
+    if (selectedReportType === 'NEEDS_IMPROVEMENT_REPORT') {
+      return memberScores.filter(m => m.starRating < 3 || m.finalScore < 70);
+    }
+    return memberScores;
+  }, [memberScores, selectedReportType]);
+
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
       {/* Controls Bar (Hidden on print) */}
       <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl overflow-hidden flex flex-col max-h-[96vh]">
-        <div className="print:hidden flex items-center justify-between p-4 bg-slate-800 text-white">
+        <div className="print:hidden flex items-center justify-between p-4 bg-slate-800 text-white flex-wrap gap-2">
           <div className="flex items-center space-x-2">
             <Award className="w-5 h-5 text-amber-400" />
             <h3 className="font-bold text-sm sm:text-base">
-              {reportType === 'SINGLE_MEMBER'
+              {selectedReportType === 'SINGLE_MEMBER'
                 ? `সদস্য মূল্যায়ন রিপোর্ট - ${singleMember?.memberName}`
+                : selectedReportType === 'ATTENDANCE_REPORT'
+                ? 'কমিটি সদস্য মিটিং উপস্থিতি ও নিয়মিতকরণ প্রতিবেদন'
+                : selectedReportType === 'RESPONSIBILITY_REPORT'
+                ? 'কমিটি সদস্য অর্পিত দায়িত্ব ও অ্যাকশন প্ল্যান বাস্তবায়ন প্রতিবেদন'
+                : selectedReportType === 'NEEDS_IMPROVEMENT_REPORT'
+                ? 'উন্নয়ন প্রয়োজন এমন সদস্যদের বিশেষ পর্যালোচনা তালিকা'
                 : 'কমিটি সদস্য পারফরম্যান্স ও মূল্যায়ন অফিসিয়াল রিপোর্ট'}
             </h3>
           </div>
 
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center flex-wrap gap-2">
+            {/* Report Type Selector */}
+            {reportType !== 'SINGLE_MEMBER' && (
+              <select
+                value={selectedReportType}
+                onChange={(e) => setSelectedReportType(e.target.value as any)}
+                className="bg-slate-700 text-white text-xs rounded-lg px-2.5 py-1.5 border border-slate-600 font-semibold focus:outline-hidden"
+              >
+                <option value="ALL_MEMBERS">সকল সদস্য মূল্যায়ন সামারি</option>
+                <option value="ATTENDANCE_REPORT">মিটিং উপস্থিতি রিপোর্ট</option>
+                <option value="RESPONSIBILITY_REPORT">অর্পিত দায়িত্ব ও একশন প্ল্যান রিপোর্ট</option>
+                <option value="NEEDS_IMPROVEMENT_REPORT">উন্নয়ন প্রয়োজন তালিকা (Review)</option>
+              </select>
+            )}
+
+            <label className="flex items-center space-x-1.5 text-xs text-slate-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={includeLetterhead}
+                onChange={(e) => setIncludeLetterhead(e.target.checked)}
+                className="rounded text-blue-500"
+              />
+              <span>Software Letterhead</span>
+            </label>
             <label className="flex items-center space-x-1.5 text-xs text-slate-300 cursor-pointer">
               <input
                 type="checkbox"
@@ -75,7 +117,7 @@ export const PerformanceReportPrint: React.FC<PerformanceReportPrintProps> = ({
                 onChange={(e) => setIncludeComments(e.target.checked)}
                 className="rounded text-blue-500"
               />
-              <span>মূল্যায়ন মন্তব্য</span>
+              <span>মন্তব্য</span>
             </label>
             <label className="flex items-center space-x-1.5 text-xs text-slate-300 cursor-pointer">
               <input
@@ -106,32 +148,57 @@ export const PerformanceReportPrint: React.FC<PerformanceReportPrintProps> = ({
         <div className="overflow-y-auto p-4 sm:p-8 bg-slate-100 flex justify-center">
           <div
             id="printable-performance-report"
-            className="bg-white w-full max-w-[210mm] min-h-[297mm] p-8 sm:p-10 shadow-md border border-slate-200 text-slate-900 font-sans text-[12px] leading-relaxed relative flex flex-col justify-between"
+            className="report-print-root bg-white w-full max-w-[210mm] min-h-[297mm] p-8 sm:p-10 shadow-md border border-slate-200 text-slate-900 font-sans text-[12px] leading-relaxed relative flex flex-col justify-between print:border-none print:shadow-none print:p-0"
           >
             {/* Header */}
             <div>
-              <div className="text-center border-b-2 border-slate-800 pb-4 mb-4">
-                <div className="text-xs text-slate-500 font-medium mb-1">
-                  বিসমিল্লাহির রাহমানির রাহিম
-                </div>
-                <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                  {mosque?.nameBn || mosque?.name || 'মসজিদ পরিচালনা কমিটি'}
-                </h1>
-                {mosque?.waqfEstateName && (
-                  <div className="text-xs font-semibold text-slate-700 mt-0.5">
-                    {mosque.waqfEstateName} {mosque.registrationNumber ? `| রেজি: ${mosque.registrationNumber}` : ''}
+              {includeLetterhead ? (
+                <div className="text-center border-b-2 border-slate-800 pb-4 mb-4">
+                  <div className="text-xs text-slate-500 font-medium mb-1">
+                    বিসমিল্লাহির রাহমানির রাহিম
                   </div>
-                )}
-                <div className="text-[11px] text-slate-600 mt-1">
-                  {mosque?.address || 'মিরপুর, ঢাকা-১২১৬'}
-                </div>
+                  <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                    {mosque?.nameBn || mosque?.name || 'মসজিদ পরিচালনা কমিটি'}
+                  </h1>
+                  {mosque?.waqfEstateName && (
+                    <div className="text-xs font-semibold text-slate-700 mt-0.5">
+                      {mosque.waqfEstateName} {mosque.registrationNumber ? `| রেজি: ${mosque.registrationNumber}` : ''}
+                    </div>
+                  )}
+                  <div className="text-[11px] text-slate-600 mt-1">
+                    {mosque?.address || 'মিরপুর, ঢাকা-১২১৬'}
+                  </div>
 
-                <div className="mt-3 inline-block bg-slate-900 text-white px-4 py-1 rounded-full text-xs font-bold tracking-wide">
-                  {reportType === 'SINGLE_MEMBER'
-                    ? 'কমিটি সদস্য ব্যক্তিগত পারফরম্যান্স ও কার্যক্রম মূল্যায়ন পত্র'
-                    : 'কমিটি সদস্য পারফরম্যান্স, দায়িত্ব ও সার্বিক মূল্যায়ন বিবরণী'}
+                  <div className="mt-3 inline-block bg-slate-900 text-white px-4 py-1 rounded-full text-xs font-bold tracking-wide print:border print:border-slate-800 print:text-black print:bg-white">
+                    {selectedReportType === 'SINGLE_MEMBER'
+                      ? 'কমিটি সদস্য ব্যক্তিগত পারফরম্যান্স ও কার্যক্রম মূল্যায়ন পত্র'
+                      : selectedReportType === 'ATTENDANCE_REPORT'
+                      ? 'কমিটি সদস্য মিটিং উপস্থিতি ও নিয়মিতকরণ বিস্তারিত প্রতিবেদন'
+                      : selectedReportType === 'RESPONSIBILITY_REPORT'
+                      ? 'কমিটি সদস্য অর্পিত দায়িত্ব ও অ্যাকশন প্ল্যান বাস্তবায়ন প্রতিবেদন'
+                      : selectedReportType === 'NEEDS_IMPROVEMENT_REPORT'
+                      ? 'উন্নয়ন প্রয়োজন এমন সদস্যদের বিশেষ পর্যালোচনা ও ফলোআপ তালিকা'
+                      : 'কমিটি সদস্য পারফরম্যান্স, দায়িত্ব ও সার্বিক মূল্যায়ন বিবরণী'}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="text-center pb-4 mb-4 border-b border-slate-300">
+                  <div className="inline-block bg-slate-900 text-white px-4 py-1 rounded-full text-xs font-bold tracking-wide print:border print:border-slate-800 print:text-black print:bg-white">
+                    {selectedReportType === 'SINGLE_MEMBER'
+                      ? 'কমিটি সদস্য ব্যক্তিগত পারফরম্যান্স ও কার্যক্রম মূল্যায়ন পত্র'
+                      : selectedReportType === 'ATTENDANCE_REPORT'
+                      ? 'কমিটি সদস্য মিটিং উপস্থিতি ও নিয়মিতকরণ বিস্তারিত প্রতিবেদন'
+                      : selectedReportType === 'RESPONSIBILITY_REPORT'
+                      ? 'কমিটি সদস্য অর্পিত দায়িত্ব ও অ্যাকশন প্ল্যান বাস্তবায়ন প্রতিবেদন'
+                      : selectedReportType === 'NEEDS_IMPROVEMENT_REPORT'
+                      ? 'উন্নয়ন প্রয়োজন এমন সদস্যদের বিশেষ পর্যালোচনা ও ফলোআপ তালিকা'
+                      : 'কমিটি সদস্য পারফরম্যান্স, দায়িত্ব ও সার্বিক মূল্যায়ন বিবরণী'}
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-1 print:hidden">
+                    (অফিসিয়াল লেটারহেড প্যাডের ওপর মুদ্রণের জন্য প্রস্তুত)
+                  </div>
+                </div>
+              )}
 
               {/* Meta Info Bar */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50 p-3 rounded-lg border border-slate-200 text-[11px] mb-5">
@@ -336,7 +403,7 @@ export const PerformanceReportPrint: React.FC<PerformanceReportPrintProps> = ({
               )}
 
               {/* All Members Performance Table View */}
-              {reportType !== 'SINGLE_MEMBER' && (
+              {selectedReportType !== 'SINGLE_MEMBER' && (
                 <div className="space-y-4">
                   <table className="w-full text-left border-collapse border border-slate-300 text-[11px]">
                     <thead>
@@ -353,63 +420,71 @@ export const PerformanceReportPrint: React.FC<PerformanceReportPrintProps> = ({
                       </tr>
                     </thead>
                     <tbody>
-                      {memberScores.map((mem, index) => (
-                        <tr key={mem.memberId} className={index % 2 === 1 ? 'bg-slate-50' : 'bg-white'}>
-                          <td className="border border-slate-300 p-2 text-center font-semibold">
-                            {toBanglaNumber(index + 1)}
-                          </td>
-                          <td className="border border-slate-300 p-2">
-                            <div className="font-bold text-slate-900">{mem.memberName}</div>
-                            <div className="text-[10px] text-slate-500">{mem.positionCustomBn || mem.position}</div>
-                          </td>
-                          <td className="border border-slate-300 p-2 text-center">
-                            <span className="font-semibold">{toBanglaNumber(mem.attendancePercentage)}%</span>
-                            <div className="text-[9px] text-slate-400">({toBanglaNumber(mem.presentMeetings)}/{toBanglaNumber(mem.totalMeetings)})</div>
-                          </td>
-                          <td className="border border-slate-300 p-2 text-center">
-                            <span className="font-semibold">{toBanglaNumber(mem.taskCompletionPercentage)}%</span>
-                            <div className="text-[9px] text-slate-400">({toBanglaNumber(mem.completedTasks)}/{toBanglaNumber(mem.totalAssignedTasks)})</div>
-                          </td>
-                          <td className="border border-slate-300 p-2 text-center font-semibold">
-                            {toBanglaNumber(mem.activityScore)}%
-                          </td>
-                          <td className="border border-slate-300 p-2 text-center font-semibold">
-                            {toBanglaNumber(mem.qualityAverageScore)}%
-                          </td>
-                          <td className="border border-slate-300 p-2 text-center font-black text-blue-800 text-xs">
-                            {toBanglaNumber(mem.finalScore)}%
-                            {mem.isManuallyOverridden && <span className="text-[9px] text-amber-600 block">(সমন্বিত)</span>}
-                          </td>
-                          <td className="border border-slate-300 p-2 text-center text-amber-500 font-bold tracking-widest whitespace-nowrap">
-                            {getStarText(mem.starRating)}
-                          </td>
-                          <td className="border border-slate-300 p-2 text-center">
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                              mem.starRating === 5 ? 'bg-emerald-100 text-emerald-800' :
-                              mem.starRating === 4 ? 'bg-blue-100 text-blue-800' :
-                              mem.starRating === 3 ? 'bg-amber-100 text-amber-800' :
-                              'bg-slate-100 text-slate-700'
-                            }`}>
-                              {mem.performanceLevelBn}
-                            </span>
+                      {displayedMembers.length === 0 ? (
+                        <tr>
+                          <td colSpan={9} className="border border-slate-300 p-4 text-center text-slate-500">
+                            এই ফিল্টারে কোনো তথ্য পাওয়া যায়নি
                           </td>
                         </tr>
-                      ))}
+                      ) : (
+                        displayedMembers.map((mem, index) => (
+                          <tr key={mem.memberId} className={index % 2 === 1 ? 'bg-slate-50' : 'bg-white'}>
+                            <td className="border border-slate-300 p-2 text-center font-semibold">
+                              {toBanglaNumber(index + 1)}
+                            </td>
+                            <td className="border border-slate-300 p-2">
+                              <div className="font-bold text-slate-900">{mem.memberName}</div>
+                              <div className="text-[10px] text-slate-500">{mem.positionCustomBn || mem.position}</div>
+                            </td>
+                            <td className="border border-slate-300 p-2 text-center">
+                              <span className="font-semibold">{toBanglaNumber(mem.attendancePercentage)}%</span>
+                              <div className="text-[9px] text-slate-400">({toBanglaNumber(mem.presentMeetings)}/{toBanglaNumber(mem.totalMeetings)})</div>
+                            </td>
+                            <td className="border border-slate-300 p-2 text-center">
+                              <span className="font-semibold">{toBanglaNumber(mem.taskCompletionPercentage)}%</span>
+                              <div className="text-[9px] text-slate-400">({toBanglaNumber(mem.completedTasks)}/{toBanglaNumber(mem.totalAssignedTasks)})</div>
+                            </td>
+                            <td className="border border-slate-300 p-2 text-center font-semibold">
+                              {toBanglaNumber(mem.activityScore)}%
+                            </td>
+                            <td className="border border-slate-300 p-2 text-center font-semibold">
+                              {toBanglaNumber(mem.qualityAverageScore)}%
+                            </td>
+                            <td className="border border-slate-300 p-2 text-center font-black text-blue-800 text-xs">
+                              {toBanglaNumber(mem.finalScore)}%
+                              {mem.isManuallyOverridden && <span className="text-[9px] text-amber-600 block">(সমন্বিত)</span>}
+                            </td>
+                            <td className="border border-slate-300 p-2 text-center text-amber-500 font-bold tracking-widest whitespace-nowrap">
+                              {getStarText(mem.starRating)}
+                            </td>
+                            <td className="border border-slate-300 p-2 text-center">
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                mem.starRating === 5 ? 'bg-emerald-100 text-emerald-800' :
+                                mem.starRating === 4 ? 'bg-blue-100 text-blue-800' :
+                                mem.starRating === 3 ? 'bg-amber-100 text-amber-800' :
+                                'bg-slate-100 text-slate-700'
+                              }`}>
+                                {mem.performanceLevelBn}
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
 
                   {/* Summary Metric Stats */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs">
                     <div className="text-center border-r border-slate-200">
-                      <div className="text-slate-500">মোট কমিটি সদস্য</div>
-                      <div className="font-bold text-slate-800 text-sm">{toBanglaNumber(memberScores.length)} জন</div>
+                      <div className="text-slate-500">রিপোর্টভুক্ত সদস্য</div>
+                      <div className="font-bold text-slate-800 text-sm">{toBanglaNumber(displayedMembers.length)} জন</div>
                     </div>
                     <div className="text-center border-r border-slate-200">
                       <div className="text-slate-500">কমিটির গড় স্কোর</div>
                       <div className="font-bold text-blue-700 text-sm">
                         {toBanglaNumber(
-                          memberScores.length > 0
-                            ? Math.round(memberScores.reduce((a, b) => a + b.finalScore, 0) / memberScores.length)
+                          displayedMembers.length > 0
+                            ? Math.round(displayedMembers.reduce((a, b) => a + b.finalScore, 0) / displayedMembers.length)
                             : 0
                         )}%
                       </div>
@@ -418,8 +493,8 @@ export const PerformanceReportPrint: React.FC<PerformanceReportPrintProps> = ({
                       <div className="text-slate-500">গড় মিটিং উপস্থিতি</div>
                       <div className="font-bold text-emerald-700 text-sm">
                         {toBanglaNumber(
-                          memberScores.length > 0
-                            ? Math.round(memberScores.reduce((a, b) => a + b.attendancePercentage, 0) / memberScores.length)
+                          displayedMembers.length > 0
+                            ? Math.round(displayedMembers.reduce((a, b) => a + b.attendancePercentage, 0) / displayedMembers.length)
                             : 0
                         )}%
                       </div>
@@ -428,8 +503,8 @@ export const PerformanceReportPrint: React.FC<PerformanceReportPrintProps> = ({
                       <div className="text-slate-500">গড় দায়িত্ব বাস্তবায়ন</div>
                       <div className="font-bold text-purple-700 text-sm">
                         {toBanglaNumber(
-                          memberScores.length > 0
-                            ? Math.round(memberScores.reduce((a, b) => a + b.taskCompletionPercentage, 0) / memberScores.length)
+                          displayedMembers.length > 0
+                            ? Math.round(displayedMembers.reduce((a, b) => a + b.taskCompletionPercentage, 0) / displayedMembers.length)
                             : 0
                         )}%
                       </div>

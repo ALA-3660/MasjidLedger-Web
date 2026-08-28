@@ -25,6 +25,7 @@ import {
   CommitteeManualEvaluation,
   Staff,
   StaffPayment,
+  StaffBankTransferLetter,
   MosqueAsset,
   MosqueProperty,
   CemeteryRecord,
@@ -62,6 +63,7 @@ export class DatabaseStore {
   committeeManualEvaluations: CommitteeManualEvaluation[] = [];
   staffList: Staff[] = [];
   staffPayments: StaffPayment[] = [];
+  staffBankTransferLetters: StaffBankTransferLetter[] = [];
   assets: MosqueAsset[] = [];
   properties: MosqueProperty[] = [];
   cemeteryRecords: CemeteryRecord[] = [];
@@ -106,9 +108,42 @@ export class DatabaseStore {
         this.committeeActivities = parsed.committeeActivities || [];
         this.committeeTasks = parsed.committeeTasks || [];
         this.committeeManualEvaluations = parsed.committeeManualEvaluations || [];
-        this.staffList = parsed.staffList || [];
+        this.staffList = (parsed.staffList || []).map((s: any, idx: number) => {
+          const staffYear = s.joiningDate ? s.joiningDate.split('-')[0] : '2026';
+          const autoCode = s.staffCode || `STF-${staffYear}-${String(idx + 1).padStart(3, '0')}`;
+          return {
+            ...s,
+            staffCode: autoCode,
+            employmentType: s.employmentType || 'PERMANENT',
+            employmentTypeBn: s.employmentTypeBn || 'স্থায়ী',
+            presentAddress: s.presentAddress || s.address || '',
+            permanentAddress: s.permanentAddress || s.address || '',
+            salaryEffectiveDate: s.salaryEffectiveDate || s.joiningDate || '2026-01-01',
+            salaryHistory: Array.isArray(s.salaryHistory) && s.salaryHistory.length > 0 ? s.salaryHistory : [
+              {
+                id: `sh-${s.id}-init`,
+                effectiveDate: s.joiningDate || '2026-01-01',
+                newSalary: s.monthlySalary || 0,
+                allowance: s.allowance || 0,
+                reason: 'প্রারম্ভিক নির্ধারিত বেতন',
+                changedByName: 'সিস্টেম অ্যাডমিন',
+                createdAt: s.joiningDate ? `${s.joiningDate}T00:00:00.000Z` : new Date().toISOString(),
+              }
+            ],
+          };
+        });
         this.staffPayments = parsed.staffPayments || [];
-        this.assets = parsed.assets || [];
+        this.staffBankTransferLetters = parsed.staffBankTransferLetters || [];
+        this.assets = (parsed.assets || []).map((a: any) => ({
+          ...a,
+          category: a.category || 'OTHER',
+          condition: a.condition || 'GOOD',
+          attachments: a.attachments || [],
+          serviceHistory: a.serviceHistory || [],
+          isArchived: Boolean(a.isArchived),
+          isDeleted: Boolean(a.isDeleted),
+          isDemo: a.isDemo !== undefined ? a.isDemo : (a.id === 'ast-01' || a.id === 'ast-02' || a.id === 'ast-03' || a.id === 'ast-04'),
+        }));
         this.properties = parsed.properties || [];
         this.cemeteryRecords = parsed.cemeteryRecords || [];
         this.notices = parsed.notices || [];
@@ -154,6 +189,7 @@ export class DatabaseStore {
         committeeManualEvaluations: this.committeeManualEvaluations,
         staffList: this.staffList,
         staffPayments: this.staffPayments,
+        staffBankTransferLetters: this.staffBankTransferLetters,
         assets: this.assets,
         properties: this.properties,
         cemeteryRecords: this.cemeteryRecords,
@@ -1472,6 +1508,13 @@ export class DatabaseStore {
         monthlySalary: 28000,
         allowance: 4000,
         status: 'ACTIVE',
+        bankName: 'Islami Bank Bangladesh PLC',
+        branchName: 'Mirpur-10 Branch',
+        accountHolderName: 'Mufti Abdullah Al Mamun',
+        accountNumber: '205021300018894',
+        routingNumber: '125263456',
+        accountType: 'SAVINGS',
+        bankStatus: 'ACTIVE',
         createdAt: '2019-01-01T00:00:00.000Z'
       },
       {
@@ -1487,6 +1530,13 @@ export class DatabaseStore {
         monthlySalary: 18000,
         allowance: 2000,
         status: 'ACTIVE',
+        bankName: 'Islami Bank Bangladesh PLC',
+        branchName: 'Mirpur-10 Branch',
+        accountHolderName: 'Md Mahmud Hasan',
+        accountNumber: '205021300029955',
+        routingNumber: '125263456',
+        accountType: 'SAVINGS',
+        bankStatus: 'ACTIVE',
         createdAt: '2020-03-01T00:00:00.000Z'
       },
       {
@@ -1502,40 +1552,231 @@ export class DatabaseStore {
         monthlySalary: 13000,
         allowance: 1000,
         status: 'ACTIVE',
+        bankName: 'Islami Bank Bangladesh PLC',
+        branchName: 'Mirpur-10 Branch',
+        accountHolderName: 'Md Nurul Islam',
+        accountNumber: '205021300037741',
+        routingNumber: '125263456',
+        accountType: 'SAVINGS',
+        bankStatus: 'ACTIVE',
         createdAt: '2021-06-01T00:00:00.000Z'
       }
     );
+
+    // Initial Bank Transfer Letter
+    this.staffBankTransferLetters.push({
+      id: 'btl-001',
+      mosqueId: mosque1.id,
+      memoNumber: 'MJMWE/Bank/Salary/All/Aug/2026/1',
+      runningSerial: 1,
+      letterDate: '2026-08-25',
+      paymentType: 'SALARY',
+      paymentMonth: '2026-08',
+      paymentYear: 2026,
+      selectionScope: 'ALL',
+      staffCount: 3,
+      totalAmount: 59000,
+      totalAmountInWordsBn: 'উনষাট হাজার টাকা মাত্র',
+      bankName: 'Islami Bank Bangladesh PLC',
+      branchName: 'Mirpur-10 Branch, Dhaka',
+      bankAddress: 'মিরপুর-১০ গোলচত্বর, ঢাকা',
+      mosqueBankAccountId: 'acc-bank-01',
+      mosqueBankAccountName: 'মাদানী জামে মসজিদ ও ওয়াকফ এস্টেট',
+      mosqueBankAccountNumber: '20501234567890',
+      subject: 'আগস্ট-২০২৬ মাসের বেতন/হাদিয়া বাবদ ২০৫০১২৩৪৫৬৭৮৯০ নম্বর হিসাব থেকে আমাদের কর্মচারীদের হিসাবে তহবিল স্থানান্তরের প্রয়োজনীয় ব্যবস্থা গ্রহণ প্রসঙ্গে।',
+      bodyParagraph: 'মুহতারাম, আসসালামু আলাইকুম ওয়া-রাহমাতুল্লাহ। নিম্নে প্রদত্ত বিবরণ অনুযায়ী আমাদের মসজিদের মাসিক বেতন/হাদিয়া বাবদ ২০৫০১২৩৪৫৬৭৮৯০ নম্বর হিসাব থেকে নিম্নোক্ত কর্মচারীদের নিজ নিজ ব্যাংক হিসাবে সর্বমোট ৫৯,০০০/- (উনষাট হাজার টাকা মাত্র) টাকা স্থানান্তরের প্রয়োজনীয় ব্যবস্থা গ্রহণের জন্য অনুরোধ করা হলো।',
+      declarationText: 'উপরোক্ত তালিকাভুক্ত সকল ব্যক্তিবর্গ বর্তমানে অত্র মসজিদের কর্মরত ইমাম ও কর্মচারী এবং তাঁদের প্রদেয় অর্থ সংশ্লিষ্ট অনুমোদিত হিসাব অনুযায়ী নির্ধারিত হয়েছে।',
+      items: [
+        {
+          staffId: 'stf-01',
+          staffName: 'মাওলানা মুফতি আব্দুল্লাহ আল-মামুন',
+          designationBn: 'খতীব ও পেশ ইমাম',
+          bankName: 'Islami Bank Bangladesh PLC',
+          branchName: 'Mirpur-10 Branch',
+          accountHolderName: 'Mufti Abdullah Al Mamun',
+          accountNumber: '205021300018894',
+          routingNumber: '125263456',
+          basicSalary: 28000,
+          allowance: 4000,
+          deduction: 0,
+          netPayable: 32000
+        },
+        {
+          staffId: 'stf-02',
+          staffName: 'হাফেজ ক্বারী মোঃ মাহমুদ হাসান',
+          designationBn: 'প্রধান মুয়াজ্জিন ও সহকারী ইমাম',
+          bankName: 'Islami Bank Bangladesh PLC',
+          branchName: 'Mirpur-10 Branch',
+          accountHolderName: 'Md Mahmud Hasan',
+          accountNumber: '205021300029955',
+          routingNumber: '125263456',
+          basicSalary: 18000,
+          allowance: 0,
+          deduction: 0,
+          netPayable: 18000
+        },
+        {
+          staffId: 'stf-03',
+          staffName: 'মোঃ নুরুল ইসলাম',
+          designationBn: 'প্রধান খাদেম ও পরিচ্ছন্নতাকর্মী',
+          bankName: 'Islami Bank Bangladesh PLC',
+          branchName: 'Mirpur-10 Branch',
+          accountHolderName: 'Md Nurul Islam',
+          accountNumber: '205021300037741',
+          routingNumber: '125263456',
+          basicSalary: 13000,
+          allowance: 0,
+          deduction: 4000,
+          netPayable: 9000
+        }
+      ],
+      termId: 'term-01',
+      termTitle: '২০২৪-২০২৬ দ্বিবার্ষিক কার্যকরী কমিটি',
+      status: 'FINAL',
+      showLetterhead: true,
+      createdBy: 'usr-admin-1',
+      createdByName: 'মুহাম্মদ রফিকুল ইসলাম',
+      createdAt: '2026-08-25T11:00:00.000Z'
+    });
 
     // 11. Assets
     this.assets.push(
       {
         id: 'ast-01',
         mosqueId: mosque1.id,
-        assetCode: 'AST-GEN-01',
+        assetCode: 'AST-GEN-001',
         name: 'Soundproof Diesel Generator (30 KVA)',
         category: 'GENERATOR',
+        categoryBn: 'জেনারেটর',
+        brand: 'Perkins / Stamford',
+        model: 'PK-30KVA-SILENT',
+        serialNumber: 'PK-2022-88741',
         purchaseDate: '2022-04-15',
         purchaseValue: 650000,
         currentValue: 520000,
         location: 'গ্রাউন্ড ফ্লোর জেনারেটর রুম',
+        responsiblePerson: 'মোঃ নুরুল ইসলাম',
+        responsiblePersonPhone: '01712000111',
         condition: 'GOOD',
-        responsiblePerson: 'মোঃ নুরুল ইসলাম (খাদেম)',
-        warrantyInfo: 'পরবর্তী সার্ভিসিং: সেপ্টেম্বর ২০২৬',
+        conditionBn: 'ভালো / সচল',
+        nextServiceDate: '2026-09-15',
+        warrantyInfo: '৩ বছরের সার্ভিসিং ওয়ারেন্টি (মেয়াদ শেষ: ২০২৫)',
+        supplier: 'বাংলা পাওয়ার জেনারেটর কোং লিমিটেড',
+        sourceOfPurchase: 'বিশেষ মসজিদ উন্নয়ন অনুদান',
+        description: 'বিদ্যুৎ চলে গেলে স্বয়ংক্রিয়ভাবে মসজিদ কমপ্লেক্সে ও অজুখানায় বিদ্যুৎ সরবরাহ সচল রাখে।',
+        notes: 'প্রতি মাসে মোবিল ও ফিল্টার নিয়মিত চেক করা আবশ্যক।',
+        expenseVoucherNumber: 'EXP-2022-000412',
+        termId: term1.id,
+        termTitle: term1.title,
+        isArchived: false,
+        isDemo: true,
+        serviceHistory: [
+          {
+            id: 'srv-001',
+            serviceDate: '2026-03-10',
+            serviceType: 'REGULAR_MAINTENANCE',
+            serviceTypeBn: 'নিয়মিত সার্ভিসিং',
+            servicedBy: 'বাংলা পাওয়ার টেকনিশিয়ান টিম',
+            cost: 8500,
+            expenseVoucherNumber: 'EXP-2026-000088',
+            description: 'মবিল চেঞ্জ, এয়ার ফিল্টার ও ডিজেল ফিল্টার পরিবর্তন।',
+            nextServiceDate: '2026-09-15',
+            performedBy: 'মুহাম্মদ রফিকুল ইসলাম',
+            createdAt: '2026-03-10T11:00:00.000Z'
+          }
+        ],
+        attachments: [],
         createdAt: '2022-04-15T00:00:00.000Z'
       },
       {
         id: 'ast-02',
         mosqueId: mosque1.id,
-        assetCode: 'AST-AC-CENTRAL',
+        assetCode: 'AST-AC-002',
         name: 'Gree 4-Ton Standing Air Conditioners (4 Units)',
-        category: 'ELECTRICAL',
+        category: 'AC',
+        categoryBn: 'এয়ার কন্ডিশনার / এসি',
+        brand: 'Gree',
+        model: 'GV-48C3 Standing 4.0 Ton',
+        serialNumber: 'GR-48-2023-01..04',
         purchaseDate: '2023-05-10',
         purchaseValue: 560000,
         currentValue: 480000,
-        location: '১ম তলা মূল নামাজ কক্ষ',
-        condition: 'GOOD',
+        location: '১ম তলা মূল নামাজ কক্ষ (উত্তর ও দক্ষিণ পাশ)',
         responsiblePerson: 'মুহাম্মদ রফিকুল ইসলাম',
+        responsiblePersonPhone: '01819123456',
+        condition: 'GOOD',
+        conditionBn: 'ভালো / সচল',
+        nextServiceDate: '2026-10-01',
+        warrantyInfo: 'কম্প্রেসর ৫ বছর গ্যারান্টি (মেয়াদ ২০২৮ পর্যন্ত)',
+        supplier: 'গ্রী ইলেকট্রনিক্স বাংলাদেশ ডিলার শোরুম',
+        description: 'জুমার নামাজ ও রমজান তারাবিতে মূল জামাত হলের শীতাতপ নিয়ন্ত্রণ ব্যবস্থা।',
+        termId: term1.id,
+        termTitle: term1.title,
+        isArchived: false,
+        isDemo: true,
+        serviceHistory: [],
+        attachments: [],
         createdAt: '2023-05-10T00:00:00.000Z'
+      },
+      {
+        id: 'ast-03',
+        mosqueId: mosque1.id,
+        assetCode: 'AST-SND-003',
+        name: 'Ahuja 500W Mosque Amplifier & Digital Wireless Mic System',
+        category: 'SOUND_SYSTEM',
+        categoryBn: 'সাউন্ড সিস্টেম ও মাইক',
+        brand: 'Ahuja & TOA',
+        model: 'SSA-5000EM & TOA Column Speakers',
+        serialNumber: 'AH-500-88190',
+        purchaseDate: '2023-11-20',
+        purchaseValue: 145000,
+        currentValue: 125000,
+        location: 'মিহরাব ও আজান কন্ট্রোল ডেক',
+        responsiblePerson: 'হাফেজ মোঃ আব্দুল্লাহ (মুয়াজ্জিন)',
+        responsiblePersonPhone: '01812999000',
+        condition: 'GOOD',
+        conditionBn: 'ভালো / সচল',
+        nextServiceDate: '2026-11-15',
+        warrantyInfo: '১ বছরের পূর্ণ বিক্রয়োত্তর সেবা',
+        supplier: 'স্টেডিয়াম মার্কেট সাউন্ড হাউস',
+        description: 'আজান, খুতবা ও ৫ ওয়াক্ত নামাজের জন্য ডিজিটাল ইকো-ফ্রি সাউন্ড অ্যামপ্লিফায়ার ও মিনার হর্ন।',
+        termId: term1.id,
+        termTitle: term1.title,
+        isArchived: false,
+        isDemo: true,
+        serviceHistory: [],
+        attachments: [],
+        createdAt: '2023-11-20T00:00:00.000Z'
+      },
+      {
+        id: 'ast-04',
+        mosqueId: mosque1.id,
+        assetCode: 'AST-CCTV-004',
+        name: 'Hikvision 16-Channel 5MP IP CCTV Security System',
+        category: 'CCTV',
+        categoryBn: 'সিসিটিভি ক্যামেরা',
+        brand: 'Hikvision',
+        model: 'DS-7616NI-Q2 / 5MP Dome & Bullet',
+        serialNumber: 'HK-16CH-9021',
+        purchaseDate: '2024-01-15',
+        purchaseValue: 85000,
+        currentValue: 72000,
+        location: 'মসজিদ অফিস রুম (মনিটর ও এনভিআর)',
+        responsiblePerson: 'মোঃ জহিরুল হক',
+        responsiblePersonPhone: '01711223344',
+        condition: 'GOOD',
+        conditionBn: 'ভালো / সচল',
+        nextServiceDate: '2026-08-30',
+        warrantyInfo: '২ বছর হার্ডওয়্যার রিপ্লেসমেন্ট ওয়ারেন্টি',
+        supplier: 'আইটি সিকিউরিটি সল্যুশন লিমিটেড',
+        description: 'মসজিদ প্রাঙ্গণ, প্রধান গেট, দানবাক্স এলাকা ও ওজুখনা সার্বক্ষণিক ২৪/৭ সিসিটিভি সার্ভেইল্যান্সের আওতায়।',
+        termId: term1.id,
+        termTitle: term1.title,
+        isArchived: false,
+        isDemo: true,
+        serviceHistory: [],
+        attachments: [],
+        createdAt: '2024-01-15T00:00:00.000Z'
       }
     );
 

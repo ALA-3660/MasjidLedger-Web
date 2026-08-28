@@ -29,7 +29,10 @@ import {
   CommitteeManualEvaluation,
   Staff,
   StaffPayment,
+  StaffBankTransferLetter,
+  SalaryHistoryEntry,
   MosqueAsset,
+  AssetServiceRecord,
   PublicDocumentToken,
   SmsLog
 } from './src/types';
@@ -3683,10 +3686,14 @@ app.get('/api/v1/committee/evaluation-summary', authenticate, (req: AuthRequest,
   if (fromDate) meetings = meetings.filter(m => m.date >= String(fromDate));
   if (toDate) meetings = meetings.filter(m => m.date <= String(toDate));
 
-  // Filter tasks & activities
+  // Filter tasks, action plans & activities
   let tasks = db.committeeTasks.filter(t => t.termId === selectedTermId && t.mosqueId === mosqueId);
   if (fromDate) tasks = tasks.filter(t => t.assignedDate >= String(fromDate));
   if (toDate) tasks = tasks.filter(t => t.assignedDate <= String(toDate));
+
+  let actionPlans = (db.committeeActionPlans || []).filter(p => p.termId === selectedTermId && p.mosqueId === mosqueId && !p.isDeleted);
+  if (fromDate) actionPlans = actionPlans.filter(p => !p.startDate || p.startDate >= String(fromDate));
+  if (toDate) actionPlans = actionPlans.filter(p => !p.dueDate || p.dueDate <= String(toDate));
 
   let activities = db.committeeActivities.filter(a => a.termId === selectedTermId && a.mosqueId === mosqueId);
   if (fromDate) activities = activities.filter(a => a.date >= String(fromDate));
@@ -3743,28 +3750,42 @@ app.get('/api/v1/committee/evaluation-summary', authenticate, (req: AuthRequest,
       }
     }
 
-    // 2. Responsibility / Task Completion Calculation
+    // 2. Responsibility / Task & Action Plan Completion Calculation
     const memTasks = tasks.filter(t => t.memberId === mem.id || t.memberName === mem.name);
     
+    // Include Action Plans assigned to this member (either primary or assistant)
+    const memActionPlans = actionPlans.filter(p => 
+      p.responsibleMemberId === mem.id || 
+      p.responsibleMemberName === mem.name ||
+      (Array.isArray(p.assistantMemberIds) && p.assistantMemberIds.includes(mem.id))
+    );
+
     // Also include action items from meetings where assignee matches member
     let meetingAssignedTasksCount = 0;
-    let meetingCompletedTasksCount = 0;
     meetings.forEach(meet => {
       if (Array.isArray(meet.actionItems)) {
         meet.actionItems.forEach(item => {
           if (item.assigneeName && (item.assigneeName.includes(mem.name) || mem.name.includes(item.assigneeName))) {
             meetingAssignedTasksCount++;
-            // If meeting is final and past deadline, assume completed or checked via tasks
           }
         });
       }
     });
 
-    const totalTasks = memTasks.length + (memTasks.length === 0 ? meetingAssignedTasksCount : 0);
-    const completedTasks = memTasks.filter(t => t.status === 'COMPLETED').length + (memTasks.length === 0 ? meetingAssignedTasksCount : 0);
-    const pendingTasks = memTasks.filter(t => t.status === 'PENDING').length;
-    const inProgressTasks = memTasks.filter(t => t.status === 'IN_PROGRESS').length;
-    const overdueTasks = memTasks.filter(t => t.status === 'OVERDUE').length;
+    const totalTasks = memTasks.length + memActionPlans.length + (memTasks.length === 0 && memActionPlans.length === 0 ? meetingAssignedTasksCount : 0);
+    const completedTasks = memTasks.filter(t => t.status === 'COMPLETED').length + 
+      memActionPlans.filter(p => p.status === 'COMPLETED').length + 
+      (memTasks.length === 0 && memActionPlans.length === 0 ? meetingAssignedTasksCount : 0);
+    
+    const pendingTasks = memTasks.filter(t => t.status === 'PENDING').length + 
+      memActionPlans.filter(p => p.status === 'TODO' || p.status === 'ON_HOLD').length;
+    
+    const inProgressTasks = memTasks.filter(t => t.status === 'IN_PROGRESS').length + 
+      memActionPlans.filter(p => p.status === 'IN_PROGRESS').length;
+    
+    const todayStr = new Date().toISOString().split('T')[0];
+    const overdueTasks = memTasks.filter(t => t.status === 'OVERDUE').length + 
+      memActionPlans.filter(p => p.status !== 'COMPLETED' && p.status !== 'CANCELLED' && p.dueDate && p.dueDate < todayStr).length;
 
     let taskCompletionPercentage = 100;
     if (totalTasks > 0) {
@@ -4930,33 +4951,110 @@ app.get('/api/v1/staff/payments', authenticate, (req: AuthRequest, res: Response
   res.json({ success: true, data: payments });
 });
 
+app.get('/api/v1/staff/next-code', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const currentYear = new Date().getFullYear();
+  const yearStaff = db.staffList.filter(s => s.mosqueId === mosqueId);
+  const nextSeq = yearStaff.length + 1;
+  const nextCode = `STF-${currentYear}-${String(nextSeq).padStart(3, '0')}`;
+  res.json({ success: true, data: { nextCode, year: currentYear, count: yearStaff.length } });
+});
+
 app.post('/api/v1/staff', authenticate, requirePermission('MANAGE_STAFF'), (req: AuthRequest, res: Response) => {
-  const { name, role, designationBn, phone, nid, salary, joiningDate, address, allowance } = req.body;
+  const { 
+    name, 
+    fullNameBn,
+    staffCode,
+    role, 
+    designationBn, 
+    employmentType,
+    employmentTypeBn,
+    phone, 
+    nid, 
+    salary, 
+    monthlySalary,
+    joiningDate, 
+    address, 
+    presentAddress,
+    permanentAddress,
+    allowance,
+    salaryEffectiveDate,
+    educationQualification,
+    photoUrl,
+    signatureUrl,
+    bankName,
+    branchName,
+    accountHolderName,
+    accountNumber,
+    routingNumber,
+    accountType,
+    bankStatus,
+    notes
+  } = req.body;
   const mosqueId = req.currentMosque!.id;
 
   if (!name || !designationBn || !phone) {
     return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'স্টাফের নাম, পদবী ও মোবাইল নম্বর আবশ্যক।' } });
   }
 
+  const joinDate = joiningDate || new Date().toISOString().split('T')[0];
+  const joinYear = joinDate.split('-')[0] || new Date().getFullYear().toString();
+  const yearStaffCount = db.staffList.filter(s => s.mosqueId === mosqueId).length + 1;
+  const finalCode = staffCode || `STF-${joinYear}-${String(yearStaffCount).padStart(3, '0')}`;
+
+  const numSalary = Number(monthlySalary !== undefined ? monthlySalary : salary) || 15000;
+  const numAllowance = Number(allowance) || 0;
+  const effDate = salaryEffectiveDate || joinDate;
+
+  const initialSalaryHistory: SalaryHistoryEntry = {
+    id: `sh-${Date.now()}-init`,
+    effectiveDate: effDate,
+    newSalary: numSalary,
+    allowance: numAllowance,
+    reason: 'প্রারম্ভিক নির্ধারিত বেতন/হাদিয়া',
+    changedBy: req.user!.id,
+    changedByName: req.user!.name,
+    createdAt: new Date().toISOString(),
+  };
+
   const staff: Staff = {
     id: `staff-${Date.now()}`,
     mosqueId,
     name,
+    fullNameBn: fullNameBn || name,
+    staffCode: finalCode,
     nid: nid || '',
     phone,
     designation: (role as any) || 'OTHER',
     designationBn,
-    monthlySalary: Number(salary) || 15000,
-    allowance: Number(allowance) || 0,
-    joiningDate: joiningDate || new Date().toISOString().split('T')[0],
-    address,
+    employmentType: employmentType || 'PERMANENT',
+    employmentTypeBn: employmentTypeBn || (employmentType === 'CONTRACTUAL' ? 'চুক্তিভিত্তিক' : employmentType === 'PART_TIME' ? 'খণ্ডকালীন' : employmentType === 'TEMPORARY' ? 'অস্থায়ী' : 'স্থায়ী'),
+    monthlySalary: numSalary,
+    allowance: numAllowance,
+    salaryEffectiveDate: effDate,
+    salaryHistory: [initialSalaryHistory],
+    joiningDate: joinDate,
+    address: presentAddress || address || '',
+    presentAddress: presentAddress || address || '',
+    permanentAddress: permanentAddress || address || '',
+    educationQualification: educationQualification || undefined,
+    photoUrl: photoUrl || undefined,
+    signatureUrl: signatureUrl || undefined,
+    bankName: bankName || undefined,
+    branchName: branchName || undefined,
+    accountHolderName: accountHolderName || undefined,
+    accountNumber: accountNumber || undefined,
+    routingNumber: routingNumber || undefined,
+    accountType: accountType || 'SAVINGS',
+    bankStatus: bankStatus || (accountNumber ? 'ACTIVE' : 'PENDING'),
+    notes,
     status: 'ACTIVE',
     createdAt: new Date().toISOString()
   };
 
   db.staffList.push(staff);
   db.save();
-  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'STAFF', `নতুন স্টাফ নিয়োগ: ${name} (${designationBn})`);
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'STAFF', `নতুন স্টাফ নিয়োগ: ${name} (${designationBn}, আইডি: ${finalCode})`);
   realtime.broadcastToMosque(mosqueId, 'STAFF_CREATED', staff, { senderId: req.user!.id });
 
   res.json({ success: true, data: staff, message: 'স্টাফ সফলভাবে যুক্ত করা হয়েছে।' });
@@ -4966,46 +5064,382 @@ app.put('/api/v1/staff/:id', authenticate, requirePermission('MANAGE_STAFF'), (r
   const staff = db.staffList.find(s => s.id === req.params.id && s.mosqueId === req.currentMosque!.id);
   if (!staff) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'স্টাফ পাওয়া যায়নি।' } });
 
-  Object.assign(staff, req.body);
+  const { 
+    name, 
+    fullNameBn,
+    staffCode,
+    designation, 
+    designationBn, 
+    employmentType,
+    employmentTypeBn,
+    phone, 
+    nid, 
+    monthlySalary, 
+    salary, 
+    salaryEffectiveDate,
+    salaryRevisionReason,
+    joiningDate, 
+    resignationDate,
+    terminationDate,
+    educationQualification,
+    photoUrl,
+    signatureUrl,
+    address, 
+    presentAddress,
+    permanentAddress,
+    allowance, 
+    status, 
+    notes,
+    bankName,
+    branchName,
+    accountHolderName,
+    accountNumber,
+    routingNumber,
+    accountType,
+    bankStatus
+  } = req.body;
+  
+  if (name) staff.name = name;
+  if (fullNameBn !== undefined) staff.fullNameBn = fullNameBn;
+  if (staffCode !== undefined) staff.staffCode = staffCode;
+  if (designation) staff.designation = designation;
+  if (designationBn) staff.designationBn = designationBn;
+  if (employmentType) staff.employmentType = employmentType;
+  if (employmentTypeBn) staff.employmentTypeBn = employmentTypeBn;
+  if (phone) staff.phone = phone;
+  if (nid !== undefined) staff.nid = nid;
+  if (joiningDate) staff.joiningDate = joiningDate;
+  if (resignationDate !== undefined) staff.resignationDate = resignationDate;
+  if (terminationDate !== undefined) staff.terminationDate = terminationDate;
+  if (educationQualification !== undefined) staff.educationQualification = educationQualification;
+  if (photoUrl !== undefined) staff.photoUrl = photoUrl;
+  if (signatureUrl !== undefined) staff.signatureUrl = signatureUrl;
+  if (address !== undefined) staff.address = address;
+  if (presentAddress !== undefined) staff.presentAddress = presentAddress;
+  if (permanentAddress !== undefined) staff.permanentAddress = permanentAddress;
+  if (status) staff.status = status;
+  if (notes !== undefined) staff.notes = notes;
+  if (bankName !== undefined) staff.bankName = bankName;
+  if (branchName !== undefined) staff.branchName = branchName;
+  if (accountHolderName !== undefined) staff.accountHolderName = accountHolderName;
+  if (accountNumber !== undefined) staff.accountNumber = accountNumber;
+  if (routingNumber !== undefined) staff.routingNumber = routingNumber;
+  if (accountType !== undefined) staff.accountType = accountType;
+  if (bankStatus !== undefined) staff.bankStatus = bankStatus;
+
+  // Handle Salary Update & Record Salary History
+  const targetNewSalary = monthlySalary !== undefined ? Number(monthlySalary) : (salary !== undefined ? Number(salary) : undefined);
+  const targetNewAllowance = allowance !== undefined ? Number(allowance) : staff.allowance;
+
+  if (targetNewSalary !== undefined && targetNewSalary !== staff.monthlySalary) {
+    if (!staff.salaryHistory) staff.salaryHistory = [];
+    const prevSal = staff.monthlySalary;
+    staff.monthlySalary = targetNewSalary;
+    staff.allowance = targetNewAllowance;
+    staff.salaryEffectiveDate = salaryEffectiveDate || new Date().toISOString().split('T')[0];
+
+    const historyEntry: SalaryHistoryEntry = {
+      id: `sh-${Date.now()}`,
+      effectiveDate: staff.salaryEffectiveDate,
+      previousSalary: prevSal,
+      newSalary: targetNewSalary,
+      allowance: targetNewAllowance,
+      incrementAmount: targetNewSalary - prevSal,
+      reason: salaryRevisionReason || 'বেতন স্কেল হালনাগাদ / ইনক্রিমেন্ট',
+      changedBy: req.user!.id,
+      changedByName: req.user!.name,
+      createdAt: new Date().toISOString(),
+    };
+    staff.salaryHistory.unshift(historyEntry);
+
+    db.logAudit(
+      req.currentMosque!.id,
+      req.user!.id,
+      req.user!.name,
+      req.user!.role,
+      'UPDATE',
+      'STAFF_SALARY',
+      `${staff.name} এর বেতন সংশোধন/বৃদ্ধি: ৳${prevSal} ➔ ৳${targetNewSalary} (কার্যকর: ${staff.salaryEffectiveDate})`
+    );
+  } else if (allowance !== undefined) {
+    staff.allowance = Number(allowance);
+  }
+
+  staff.updatedAt = new Date().toISOString();
+
   db.save();
-  db.logAudit(req.currentMosque!.id, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'STAFF', `স্টাফ তথ্য আপডেট: ${staff.name}`);
+  db.logAudit(req.currentMosque!.id, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'STAFF', `স্টাফ তথ্য আপডেট: ${staff.name} (${staff.designationBn}, স্ট্যাটাস: ${staff.status})`);
   realtime.broadcastToMosque(req.currentMosque!.id, 'STAFF_UPDATED', staff, { senderId: req.user!.id });
 
   res.json({ success: true, data: staff, message: 'স্টাফ তথ্য সফলভাবে আপডেট হয়েছে।' });
 });
 
-app.delete('/api/v1/staff/:id', authenticate, requirePermission('MANAGE_STAFF'), (req: AuthRequest, res: Response) => {
-  const idx = db.staffList.findIndex(s => s.id === req.params.id && s.mosqueId === req.currentMosque!.id);
-  if (idx === -1) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'স্টাফ পাওয়া যায়নি।' } });
+// Explicit Salary Revision Endpoint
+app.post('/api/v1/staff/:id/salary-revision', authenticate, requirePermission('MANAGE_STAFF'), (req: AuthRequest, res: Response) => {
+  const staff = db.staffList.find(s => s.id === req.params.id && s.mosqueId === req.currentMosque!.id);
+  if (!staff) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'স্টাফ পাওয়া যায়নি।' } });
 
+  const { newSalary, allowance, effectiveDate, reason } = req.body;
+  if (newSalary === undefined || Number(newSalary) < 0) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'সঠিক নতুন বেতন/হাদিয়ার পরিমাণ দিন।' } });
+  }
+
+  const prevSal = staff.monthlySalary;
+  const numNewSal = Number(newSalary);
+  const numAllowance = allowance !== undefined ? Number(allowance) : (staff.allowance || 0);
+  const effDate = effectiveDate || new Date().toISOString().split('T')[0];
+
+  staff.monthlySalary = numNewSal;
+  staff.allowance = numAllowance;
+  staff.salaryEffectiveDate = effDate;
+  if (!staff.salaryHistory) staff.salaryHistory = [];
+
+  const historyEntry: SalaryHistoryEntry = {
+    id: `sh-${Date.now()}`,
+    effectiveDate: effDate,
+    previousSalary: prevSal,
+    newSalary: numNewSal,
+    allowance: numAllowance,
+    incrementAmount: numNewSal - prevSal,
+    reason: reason || 'কমিটি অনুমোদিত বেতন বৃদ্ধি',
+    changedBy: req.user!.id,
+    changedByName: req.user!.name,
+    createdAt: new Date().toISOString(),
+  };
+
+  staff.salaryHistory.unshift(historyEntry);
+  staff.updatedAt = new Date().toISOString();
+
+  db.save();
+  db.logAudit(
+    req.currentMosque!.id,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'STAFF_SALARY',
+    `${staff.name} এর বেতন বৃদ্ধি: ৳${prevSal} ➔ ৳${numNewSal} (${reason || 'ইনক্রিমেন্ট'})`
+  );
+  realtime.broadcastToMosque(req.currentMosque!.id, 'STAFF_UPDATED', staff, { senderId: req.user!.id });
+
+  res.json({ success: true, data: staff, historyEntry, message: 'বেতন সংশোধন ও হিস্ট্রি সফলভাবে সংরক্ষিত হয়েছে।' });
+});
+
+// Batch Disburse Festival Allowance / Bonus
+app.post('/api/v1/staff/disburse-festival-allowance', authenticate, requirePermission('MANAGE_STAFF'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { 
+    festivalName, 
+    paymentType = 'FESTIVAL_ALLOWANCE',
+    month, 
+    paymentDate, 
+    paymentMethod = 'BANK', 
+    accountId, 
+    staffAllocations, // Array of { staffId, amount, notes }
+    notes 
+  } = req.body;
+
+  if (!festivalName) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'উৎসবের নাম প্রদান করুন।' } });
+  }
+
+  if (!Array.isArray(staffAllocations) || staffAllocations.length === 0) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'অন্তত একজন স্টাফ নির্বাচন করুন।' } });
+  }
+
+  const account = db.accounts.find(a => a.id === accountId && a.mosqueId === mosqueId) || 
+                  db.accounts.find(a => a.mosqueId === mosqueId && a.accountType === 'BANK') ||
+                  db.accounts[0];
+
+  const currentYear = new Date().getFullYear();
+  const payDate = paymentDate || new Date().toISOString().split('T')[0];
+  const payMonth = month || `${currentYear}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+  const activeTerm = db.committeeTerms.find(t => t.mosqueId === mosqueId && t.status === 'ACTIVE');
+
+  let batchTotalAmount = 0;
+  const createdPayments: StaffPayment[] = [];
+
+  for (const item of staffAllocations) {
+    const staff = db.staffList.find(s => s.id === item.staffId && s.mosqueId === mosqueId);
+    if (!staff) continue;
+
+    const amount = Number(item.amount) || 0;
+    if (amount <= 0) continue;
+
+    batchTotalAmount += amount;
+    const expVoucher = `EXP-${currentYear}-${String(db.expenseEntries.filter(e => e.mosqueId === mosqueId).length + 1).padStart(6, '0')}`;
+    const expEntryId = `exp-fest-${Date.now()}-${staff.id.slice(-4)}`;
+
+    const payment: StaffPayment = {
+      id: `pay-${Date.now()}-${staff.id.slice(-4)}`,
+      mosqueId,
+      staffId: staff.id,
+      staffName: staff.name,
+      designationBn: staff.designationBn,
+      month: payMonth,
+      paymentDate: payDate,
+      paymentType: paymentType as any,
+      festivalName,
+      basicSalary: 0,
+      bonus: amount,
+      otherAllowance: 0,
+      allowance: amount,
+      deduction: 0,
+      totalPayable: amount,
+      netPaid: amount,
+      paymentMethod: paymentMethod || 'BANK',
+      accountId: account.id,
+      accountNameBn: account.nameBn,
+      expenseVoucherNumber: expVoucher,
+      expenseEntryId: expEntryId,
+      notes: `${festivalName}: ${item.notes || notes || ''}`.trim(),
+      status: 'PAID',
+      termId: activeTerm ? activeTerm.id : undefined,
+      createdAt: new Date().toISOString()
+    };
+
+    db.staffPayments.unshift(payment);
+    createdPayments.push(payment);
+
+    // Auto Expense Entry
+    db.expenseEntries.unshift({
+      id: expEntryId,
+      mosqueId,
+      termId: activeTerm ? activeTerm.id : undefined,
+      voucherNumber: expVoucher,
+      date: payDate,
+      mainHeadId: 'head-exp-01',
+      mainHeadNameBn: 'ইমাম ও স্টাফ বেতন-ভাতা (Staff Salary)',
+      subHeadId: staff.designation === 'IMAM' || staff.designation === 'KHATIB' ? 'head-exp-01-1' : 'head-exp-01-2',
+      subHeadNameBn: `${festivalName} ভাতা (${staff.name})`,
+      amount: amount,
+      paymentMethod: payment.paymentMethod,
+      accountId: account.id,
+      accountName: account.nameBn,
+      payeeName: staff.name,
+      payeePhone: staff.phone,
+      reference: `${festivalName} - ${payMonth}`,
+      description: `${staff.name} (${staff.designationBn}) কে ${festivalName} বাবদ উৎসব ভাতা প্রদান [ভাউচার: ${expVoucher}]`,
+      createdBy: req.user!.id,
+      createdByName: req.user!.name,
+      approvedBy: req.user!.id,
+      approvedByName: req.user!.name,
+      approvedAt: new Date().toISOString(),
+      status: 'APPROVED',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+  }
+
+  // Deduct bank/cash balance
+  account.currentBalance -= batchTotalAmount;
+
+  db.save();
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'STAFF_PAYMENT',
+    `${festivalName} উৎসব ভাতা বিতরণ: ${createdPayments.length} জন স্টাফকে সর্বমোট ৳${batchTotalAmount} প্রদান`
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'STAFF_FESTIVAL_DISBURSED', { payments: createdPayments, totalAmount: batchTotalAmount }, { senderId: req.user!.id });
+  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+  res.json({ 
+    success: true, 
+    data: { payments: createdPayments, totalAmount: batchTotalAmount, count: createdPayments.length },
+    message: `${festivalName} বাবদ ${createdPayments.length} জন স্টাফের উৎসব ভাতা সফলভাবে একাউন্ট ও ভাউচারে যুক্ত হয়েছে।` 
+  });
+});
+
+app.delete('/api/v1/staff/:id', authenticate, requirePermission('MANAGE_STAFF'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const staff = db.staffList.find(s => s.id === req.params.id && s.mosqueId === mosqueId);
+  if (!staff) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'স্টাফ পাওয়া যায়নি।' } });
+
+  // Check if staff has past payment history
+  const hasPayments = db.staffPayments.some(p => p.staffId === staff.id && p.mosqueId === mosqueId);
+  if (hasPayments) {
+    // Preserve financial history: deactivate instead of permanent deletion
+    staff.status = 'INACTIVE';
+    staff.updatedAt = new Date().toISOString();
+    db.save();
+    db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'STAFF', `স্টাফ নিষ্ক্রিয় করা হয়েছে (পূর্ববর্তী পেমেন্ট ইতিহাস সংরক্ষিত): ${staff.name}`);
+    realtime.broadcastToMosque(mosqueId, 'STAFF_UPDATED', staff, { senderId: req.user!.id });
+    return res.json({ 
+      success: true, 
+      data: staff,
+      archived: true, 
+      message: 'স্টাফের পূর্ববর্তী বেতন প্রদানের ইতিহাস থাকায় তাঁকে নিষ্ক্রিয় (Inactive) হিসেবে সংরক্ষণ করা হয়েছে।' 
+    });
+  }
+
+  const idx = db.staffList.findIndex(s => s.id === req.params.id && s.mosqueId === mosqueId);
   const removed = db.staffList.splice(idx, 1)[0];
   db.save();
-  db.logAudit(req.currentMosque!.id, req.user!.id, req.user!.name, req.user!.role, 'DELETE', 'STAFF', `স্টাফ অপসারণ: ${removed.name}`);
-  realtime.broadcastToMosque(req.currentMosque!.id, 'STAFF_DELETED', { id: removed.id }, { senderId: req.user!.id });
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'DELETE', 'STAFF', `স্টাফ অপসারণ: ${removed.name}`);
+  realtime.broadcastToMosque(mosqueId, 'STAFF_DELETED', { id: removed.id }, { senderId: req.user!.id });
 
   res.json({ success: true, message: 'স্টাফ সফলভাবে অপসারণ করা হয়েছে।' });
 });
 
 // Pay staff salary
 const handleStaffPay = (req: AuthRequest, res: Response) => {
-  const { staffId, month, year, basicSalary, bonus, deduction, netPaid, paymentMethod, accountId, notes } = req.body;
+  const { 
+    staffId, 
+    month, 
+    year, 
+    paymentDate,
+    paymentType,
+    festivalName,
+    basicSalary, 
+    bonus, 
+    otherAllowance,
+    allowance,
+    deduction, 
+    advanceDeduction,
+    netPaid, 
+    paymentMethod, 
+    accountId, 
+    staffSignatureUrl,
+    receivedByConfirmation,
+    notes 
+  } = req.body;
+  
   const mosqueId = req.currentMosque!.id;
   const staff = db.staffList.find(s => s.id === staffId && s.mosqueId === mosqueId);
-  const account = db.accounts.find(a => a.id === accountId) || db.accounts.find(a => a.mosqueId === mosqueId) || db.accounts[0];
+  const account = db.accounts.find(a => a.id === accountId && a.mosqueId === mosqueId) || 
+                  db.accounts.find(a => a.mosqueId === mosqueId) || 
+                  db.accounts[0];
 
   if (!staff) {
     return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'স্টাফ পাওয়া যায়নি।' } });
   }
 
-  const totalAmount = Number(netPaid) || Number(basicSalary) || staff.monthlySalary;
+  const numBasic = Number(basicSalary) >= 0 ? Number(basicSalary) : staff.monthlySalary;
+  const numBonus = Number(bonus) || 0;
+  const numOther = Number(otherAllowance) || (Number(allowance) > numBonus ? Number(allowance) - numBonus : 0);
+  const numAdvDeduction = Number(advanceDeduction) || 0;
+  const numDeduction = (Number(deduction) || 0) + numAdvDeduction;
+  const totalPayable = numBasic + numBonus + numOther;
+  const totalAmount = Number(netPaid) > 0 ? Number(netPaid) : (totalPayable - numDeduction);
+  
   const currentYear = Number(year) || new Date().getFullYear();
-  const monthName = month || 'আগস্ট';
+  const monthName = month || `${currentYear}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+  const payDate = paymentDate || new Date().toISOString().split('T')[0];
+
+  // Active Committee Term Link
+  const activeTerm = db.committeeTerms.find(t => t.mosqueId === mosqueId && t.status === 'ACTIVE');
 
   // Check and deduct account balance
   account.currentBalance -= totalAmount;
 
   // Auto create expense voucher
   const expVoucher = `EXP-${currentYear}-${String(db.expenseEntries.filter(e => e.mosqueId === mosqueId).length + 1).padStart(6, '0')}`;
+  const expEntryId = `exp-pay-${Date.now()}`;
 
   const payment: StaffPayment = {
     id: `pay-${Date.now()}`,
@@ -5013,39 +5447,52 @@ const handleStaffPay = (req: AuthRequest, res: Response) => {
     staffId: staff.id,
     staffName: staff.name,
     designationBn: staff.designationBn,
-    month: `${currentYear}-${monthName}`,
-    paymentDate: new Date().toISOString().split('T')[0],
-    basicSalary: Number(basicSalary) || staff.monthlySalary,
-    allowance: Number(bonus) || 0,
-    deduction: Number(deduction) || 0,
+    month: monthName,
+    paymentDate: payDate,
+    paymentType: paymentType || 'REGULAR_SALARY',
+    festivalName: festivalName || undefined,
+    basicSalary: numBasic,
+    bonus: numBonus,
+    otherAllowance: numOther,
+    allowance: numBonus + numOther,
+    deduction: numDeduction,
+    advanceDeduction: numAdvDeduction,
+    totalPayable: totalPayable,
     netPaid: totalAmount,
     paymentMethod: paymentMethod || 'CASH',
     accountId: account.id,
+    accountNameBn: account.nameBn,
     expenseVoucherNumber: expVoucher,
+    expenseEntryId: expEntryId,
     notes,
+    staffSignatureUrl: staffSignatureUrl || staff.signatureUrl || undefined,
+    receivedByConfirmation: receivedByConfirmation !== undefined ? Boolean(receivedByConfirmation) : true,
+    status: 'PAID',
+    termId: activeTerm ? activeTerm.id : undefined,
     createdAt: new Date().toISOString()
   };
 
   db.staffPayments.unshift(payment);
 
-  // Auto-post expense entry
+  // Auto-post expense entry linked to Committee Term and head-exp-01
   db.expenseEntries.unshift({
-    id: `exp-pay-${Date.now()}`,
+    id: expEntryId,
     mosqueId,
+    termId: activeTerm ? activeTerm.id : undefined,
     voucherNumber: expVoucher,
-    date: payment.paymentDate,
+    date: payDate,
     mainHeadId: 'head-exp-01',
     mainHeadNameBn: 'ইমাম ও স্টাফ বেতন-ভাতা (Staff Salary)',
     subHeadId: staff.designation === 'IMAM' || staff.designation === 'KHATIB' ? 'head-exp-01-1' : 'head-exp-01-2',
-    subHeadNameBn: `${staff.designationBn} বেতন ও হাদিয়া (${staff.name} - ${monthName} ${currentYear})`,
+    subHeadNameBn: `${staff.designationBn} বেতন ও হাদিয়া (${staff.name} - ${monthName})`,
     amount: totalAmount,
     paymentMethod: payment.paymentMethod,
     accountId: account.id,
     accountName: account.nameBn,
     payeeName: staff.name,
     payeePhone: staff.phone,
-    reference: `Salary Month: ${monthName} ${currentYear}`,
-    description: `${staff.name} (${staff.designationBn}) এর ${monthName} ${currentYear} মাসের বেতন পরিশোধ`,
+    reference: `${paymentType === 'FESTIVAL_ALLOWANCE' ? festivalName || 'উৎসব ভাতা' : 'Salary Month'}: ${monthName}`,
+    description: `${staff.name} (${staff.designationBn}) এর ${monthName} মাসের ${paymentType === 'FESTIVAL_ALLOWANCE' ? `${festivalName || 'উৎসব ভাতা'}` : 'বেতন/হাদিয়া'} পরিশোধ ${numBonus > 0 ? `(বোনাস: ৳${numBonus})` : ''} ${notes ? `[${notes}]` : ''}`.trim(),
     createdBy: req.user!.id,
     createdByName: req.user!.name,
     approvedBy: req.user!.id,
@@ -5057,78 +5504,997 @@ const handleStaffPay = (req: AuthRequest, res: Response) => {
   });
 
   db.save();
-  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'STAFF_PAYMENT', `${staff.name} এর বেতন পরিশোধ (${expVoucher}): ৳ ${totalAmount}`);
+  db.logAudit(
+    mosqueId, 
+    req.user!.id, 
+    req.user!.name, 
+    req.user!.role, 
+    'CREATE', 
+    'STAFF_PAYMENT', 
+    `${staff.name} এর ${monthName} মাসের বেতন পরিশোধ (${expVoucher}): মূল ৳${numBasic}${numBonus > 0 ? ` + বোনাস ৳${numBonus}` : ''} = মোট ৳${totalAmount}`
+  );
 
   realtime.broadcastToMosque(mosqueId, 'STAFF_PAID', payment, { senderId: req.user!.id });
   realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
 
-  res.json({ success: true, data: payment, message: 'বেতন সফলভাবে পরিশোধ ও হিসাবভুক্ত করা হয়েছে।' });
+  res.json({ success: true, data: payment, message: 'বেতন ও বোনাস সফলভাবে পরিশোধ ও হিসাবভুক্ত করা হয়েছে।' });
 };
 
 app.post('/api/v1/staff/pay', authenticate, requirePermission('MANAGE_STAFF'), handleStaffPay);
 app.post('/api/v1/management/staff-pay', authenticate, requirePermission('MANAGE_STAFF'), handleStaffPay);
+
+// Update Staff Payment (with accounting integrity)
+app.put('/api/v1/staff/payments/:id', authenticate, requirePermission('MANAGE_STAFF'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const payment = db.staffPayments.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (!payment) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'পেমেন্ট রেকর্ড পাওয়া যায়নি।' } });
+
+  const { notes, basicSalary, bonus, otherAllowance, deduction, netPaid, paymentMethod, accountId, paymentDate } = req.body;
+  const expEntry = db.expenseEntries.find(e => e.voucherNumber === payment.expenseVoucherNumber || e.id === payment.expenseEntryId);
+
+  const oldAmount = payment.netPaid;
+  const oldAccountId = payment.accountId;
+
+  if (basicSalary !== undefined) payment.basicSalary = Number(basicSalary);
+  if (bonus !== undefined) payment.bonus = Number(bonus);
+  if (otherAllowance !== undefined) payment.otherAllowance = Number(otherAllowance);
+  if (payment.bonus !== undefined || payment.otherAllowance !== undefined) {
+    payment.allowance = (payment.bonus || 0) + (payment.otherAllowance || 0);
+  }
+  if (deduction !== undefined) payment.deduction = Number(deduction);
+  
+  if (payment.basicSalary !== undefined) {
+    payment.totalPayable = (payment.basicSalary || 0) + (payment.bonus || 0) + (payment.otherAllowance || 0);
+  }
+
+  const newAmount = netPaid !== undefined ? Number(netPaid) : (payment.totalPayable ? payment.totalPayable - (payment.deduction || 0) : payment.netPaid);
+  const newAccountId = accountId || payment.accountId;
+  const newPayDate = paymentDate || payment.paymentDate;
+
+  // If financial balance or account changed, adjust accounts safely
+  if (newAmount !== oldAmount || newAccountId !== oldAccountId) {
+    const oldAcc = db.accounts.find(a => a.id === oldAccountId);
+    const newAcc = db.accounts.find(a => a.id === newAccountId);
+
+    if (oldAcc) oldAcc.currentBalance += oldAmount; // restore old
+    if (newAcc) newAcc.currentBalance -= newAmount; // deduct new
+
+    payment.netPaid = newAmount;
+    payment.accountId = newAccountId;
+    if (newAcc) payment.accountNameBn = newAcc.nameBn;
+
+    if (expEntry) {
+      expEntry.amount = newAmount;
+      expEntry.accountId = newAccountId;
+      if (newAcc) expEntry.accountName = newAcc.nameBn;
+      expEntry.updatedAt = new Date().toISOString();
+    }
+  }
+
+  if (paymentMethod) {
+    payment.paymentMethod = paymentMethod;
+    if (expEntry) expEntry.paymentMethod = paymentMethod;
+  }
+
+  if (paymentDate) {
+    payment.paymentDate = paymentDate;
+    if (expEntry) expEntry.date = paymentDate;
+  }
+
+  if (notes !== undefined) {
+    payment.notes = notes;
+    if (expEntry) expEntry.description = `${payment.staffName} (${payment.designationBn}) এর ${payment.month} মাসের বেতন পরিশোধ [সংশোধিত] ${notes ? `(${notes})` : ''}`.trim();
+  }
+
+  payment.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(
+    mosqueId, 
+    req.user!.id, 
+    req.user!.name, 
+    req.user!.role, 
+    'UPDATE', 
+    'STAFF_PAYMENT', 
+    `${payment.staffName} এর বেতন রেকর্ড সংশোধন (${payment.expenseVoucherNumber}): ৳${newAmount}`
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'STAFF_PAYMENT_UPDATED', payment, { senderId: req.user!.id });
+  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+  res.json({ success: true, data: payment, message: 'বেতন পরিশোধের বিবরণ সফলভাবে সংশোধন করা হয়েছে।' });
+});
+
+// Cancel / Reversal for Staff Payment
+app.post('/api/v1/staff/payments/:id/cancel', authenticate, requirePermission('MANAGE_STAFF'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const payment = db.staffPayments.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (!payment) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'পেমেন্ট রেকর্ড পাওয়া যায়নি।' } });
+
+  if (payment.status === 'CANCELLED') {
+    return res.status(400).json({ success: false, error: { code: 'ALREADY_CANCELLED', message: 'এই পেমেন্টটি ইতিমধ্যে বাতিল করা হয়েছে।' } });
+  }
+
+  const { reason } = req.body;
+  const account = db.accounts.find(a => a.id === payment.accountId);
+  if (account) {
+    account.currentBalance += payment.netPaid; // Restore fund
+  }
+
+  payment.status = 'CANCELLED';
+  payment.notes = `${payment.notes ? payment.notes + ' | ' : ''}[বাতিলকৃত: ${reason || 'প্রশাসনিক সিদ্ধান্ত'}]`;
+  payment.updatedAt = new Date().toISOString();
+
+  const expEntry = db.expenseEntries.find(e => e.voucherNumber === payment.expenseVoucherNumber || e.id === payment.expenseEntryId);
+  if (expEntry) {
+    expEntry.status = 'REJECTED';
+    expEntry.description = `[বাতিলকৃত ভাউচার] ${expEntry.description} (কারণ: ${reason || 'প্রশাসনিক সিদ্ধান্ত'})`;
+    expEntry.updatedAt = new Date().toISOString();
+  }
+
+  db.save();
+  db.logAudit(
+    mosqueId, 
+    req.user!.id, 
+    req.user!.name, 
+    req.user!.role, 
+    'DELETE', 
+    'STAFF_PAYMENT', 
+    `${payment.staffName} এর ${payment.month} মাসের বেতন বাতিল ও ব্যালেন্স সমন্বয় (${payment.expenseVoucherNumber}): ৳${payment.netPaid}`
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'STAFF_PAYMENT_CANCELLED', { id: payment.id }, { senderId: req.user!.id });
+  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+  res.json({ success: true, message: 'বেতন পেমেন্ট সফলভাবে বাতিল ও ব্যাংক/ক্যাশ একাউন্টে তহবিল সমন্বয় করা হয়েছে।' });
+});
+
+// ==========================================
+// 9.1 STAFF BANK TRANSFER LETTERS
+// ==========================================
+app.get('/api/v1/staff/bank-transfer-letters', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const letters = (db.staffBankTransferLetters || [])
+    .filter(l => l.mosqueId === mosqueId)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  res.json({ success: true, data: letters });
+});
+
+app.get('/api/v1/staff/bank-transfer-letters/next-memo', authenticate, (req: AuthRequest, res: Response) => {
+  const mosque = req.currentMosque!;
+  const mosqueId = mosque.id;
+  const { paymentType = 'SALARY', selectionScope = 'ALL', paymentMonth = '', paymentYear = '' } = req.query as Record<string, string>;
+
+  const existingLetters = (db.staffBankTransferLetters || []).filter(l => l.mosqueId === mosqueId);
+  const nextSerial = existingLetters.length > 0 
+    ? Math.max(...existingLetters.map(l => l.runningSerial || 0)) + 1 
+    : 1;
+
+  // Short code for Mosque
+  const mosqueCode = (mosque as any).code || (mosque.name ? mosque.name.replace(/[^a-zA-Z]/g, '').slice(0, 5).toUpperCase() : '') || 'MJMWE';
+  
+  // Payment Type in English
+  const typeMap: Record<string, string> = {
+    SALARY: 'Salary',
+    FESTIVAL_ALLOWANCE: 'FestivalAllowance',
+    BONUS: 'Bonus',
+    SPECIAL_ALLOWANCE: 'SpecialAllowance',
+    OTHER: 'Allowance'
+  };
+  const typeStr = typeMap[paymentType] || 'Salary';
+  const scopeStr = selectionScope === 'ALL' ? 'All' : 'Selected';
+  
+  // Month Name in short English
+  let monthStr = 'Month';
+  if (paymentMonth) {
+    const monthIndex = parseInt(paymentMonth.split('-')[1] || '0', 10);
+    const monthsShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    if (monthIndex >= 1 && monthIndex <= 12) {
+      monthStr = monthsShort[monthIndex - 1];
+    } else {
+      monthStr = paymentMonth.slice(0, 3);
+    }
+  }
+
+  const yearStr = paymentYear || new Date().getFullYear().toString();
+  const memoNumber = `${mosqueCode}/Bank/${typeStr}/${scopeStr}/${monthStr}/${yearStr}/${nextSerial}`;
+
+  res.json({ success: true, data: { nextSerial, memoNumber } });
+});
+
+app.get('/api/v1/staff/bank-transfer-letters/:id', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const letter = (db.staffBankTransferLetters || []).find(l => l.id === req.params.id && l.mosqueId === mosqueId);
+  if (!letter) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ব্যাংক ট্রান্সফার লেটার পাওয়া যায়নি।' } });
+  res.json({ success: true, data: letter });
+});
+
+app.post('/api/v1/staff/bank-transfer-letters', authenticate, requirePermission('MANAGE_STAFF'), (req: AuthRequest, res: Response) => {
+  const mosque = req.currentMosque!;
+  const mosqueId = mosque.id;
+  const {
+    letterDate,
+    paymentType = 'SALARY',
+    paymentTypeCustomBn,
+    paymentMonth,
+    paymentYear,
+    selectionScope = 'ALL',
+    bankName,
+    branchName,
+    bankAddress,
+    mosqueBankAccountId,
+    mosqueBankAccountName,
+    mosqueBankAccountNumber,
+    subject,
+    bodyParagraph,
+    declarationText,
+    items = [],
+    relatedPaymentIds = [],
+    termId,
+    termTitle,
+    showLetterhead = true,
+    notes,
+    totalAmountInWordsBn
+  } = req.body;
+
+  if (!items || items.length === 0) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'কমপক্ষে একজন স্টাফের বিবরণ থাকা আবশ্যক।' } });
+  }
+
+  const existingLetters = (db.staffBankTransferLetters || []).filter(l => l.mosqueId === mosqueId);
+  const nextSerial = existingLetters.length > 0 
+    ? Math.max(...existingLetters.map(l => l.runningSerial || 0)) + 1 
+    : 1;
+
+  const mosqueCode = (mosque as any).code || (mosque.name ? mosque.name.replace(/[^a-zA-Z]/g, '').slice(0, 5).toUpperCase() : '') || 'MJMWE';
+  const typeMap: Record<string, string> = {
+    SALARY: 'Salary',
+    FESTIVAL_ALLOWANCE: 'FestivalAllowance',
+    BONUS: 'Bonus',
+    SPECIAL_ALLOWANCE: 'SpecialAllowance',
+    OTHER: 'Allowance'
+  };
+  const typeStr = typeMap[paymentType] || 'Salary';
+  const scopeStr = selectionScope === 'ALL' ? 'All' : 'Selected';
+  
+  let monthStr = 'Month';
+  if (paymentMonth) {
+    const monthIndex = parseInt(paymentMonth.split('-')[1] || '0', 10);
+    const monthsShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    if (monthIndex >= 1 && monthIndex <= 12) {
+      monthStr = monthsShort[monthIndex - 1];
+    } else {
+      monthStr = paymentMonth.slice(0, 3);
+    }
+  }
+
+  const yearNum = Number(paymentYear) || new Date().getFullYear();
+  const memoNumber = `${mosqueCode}/Bank/${typeStr}/${scopeStr}/${monthStr}/${yearNum}/${nextSerial}`;
+
+  const totalAmount = items.reduce((sum: number, it: any) => sum + (Number(it.netPayable) || 0), 0);
+
+  // Active committee term lookup if not provided
+  let activeTermId = termId;
+  let activeTermTitle = termTitle;
+  if (!activeTermId) {
+    const activeTerm = db.committeeTerms.find(t => t.mosqueId === mosqueId && t.status === 'ACTIVE');
+    if (activeTerm) {
+      activeTermId = activeTerm.id;
+      activeTermTitle = activeTerm.title;
+    }
+  }
+
+  const letter: StaffBankTransferLetter = {
+    id: `btl-${Date.now()}`,
+    mosqueId,
+    memoNumber,
+    runningSerial: nextSerial,
+    letterDate: letterDate || new Date().toISOString().split('T')[0],
+    paymentType,
+    paymentTypeCustomBn,
+    paymentMonth: paymentMonth || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`,
+    paymentYear: yearNum,
+    selectionScope: selectionScope as 'ALL' | 'SELECTED',
+    staffCount: items.length,
+    totalAmount,
+    totalAmountInWordsBn: totalAmountInWordsBn || '',
+    bankName: bankName || 'ইসলামী ব্যাংক বাংলাদেশ পিএলসি',
+    branchName: branchName || '',
+    bankAddress: bankAddress || '',
+    mosqueBankAccountId,
+    mosqueBankAccountName: mosqueBankAccountName || mosque.name,
+    mosqueBankAccountNumber: mosqueBankAccountNumber || '',
+    subject: subject || '',
+    bodyParagraph: bodyParagraph || '',
+    declarationText: declarationText || 'উপরোক্ত তালিকাভুক্ত সকল ব্যক্তিবর্গ বর্তমানে অত্র মসজিদের কর্মরত ইমাম ও কর্মচারী এবং তাঁদের প্রদেয় অর্থ সংশ্লিষ্ট অনুমোদিত হিসাব অনুযায়ী নির্ধারিত হয়েছে।',
+    items,
+    relatedPaymentIds,
+    termId: activeTermId,
+    termTitle: activeTermTitle,
+    status: 'FINAL',
+    showLetterhead: showLetterhead !== false,
+    notes,
+    createdBy: req.user!.id,
+    createdByName: req.user!.name,
+    createdAt: new Date().toISOString()
+  };
+
+  if (!db.staffBankTransferLetters) {
+    db.staffBankTransferLetters = [];
+  }
+  db.staffBankTransferLetters.unshift(letter);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'STAFF',
+    `স্টাফ ব্যাংক ট্রান্সফার দরখাস্ত প্রস্তুত (স্মারক: ${memoNumber}, মোট কর্মচারি: ${items.length} জন, মোট টাকা: ৳${totalAmount})`
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'STAFF_BANK_LETTER_CREATED', letter, { senderId: req.user!.id });
+
+  res.json({ success: true, data: letter, message: 'ব্যাংক ট্রান্সফার দরখাস্ত সফলভাবে সংরক্ষিত হয়েছে।' });
+});
+
+app.post('/api/v1/staff/bank-transfer-letters/:id/cancel', authenticate, requirePermission('MANAGE_STAFF'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const letter = (db.staffBankTransferLetters || []).find(l => l.id === req.params.id && l.mosqueId === mosqueId);
+  if (!letter) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ব্যাংক ট্রান্সফার দরখাস্ত পাওয়া যায়নি।' } });
+
+  const { reason } = req.body;
+  letter.status = 'CANCELLED';
+  letter.notes = `${letter.notes ? letter.notes + ' | ' : ''}[বাতিলকৃত: ${reason || 'প্রশাসনিক সিদ্ধান্ত'}]`;
+  letter.updatedAt = new Date().toISOString();
+
+  db.save();
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'DELETE',
+    'STAFF',
+    `ব্যাংক ট্রান্সফার দরখাস্ত বাতিল (স্মারক: ${letter.memoNumber}, কারণ: ${reason || 'প্রশাসনিক সিদ্ধান্ত'})`
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'STAFF_BANK_LETTER_CANCELLED', { id: letter.id }, { senderId: req.user!.id });
+
+  res.json({ success: true, message: 'ব্যাংক ট্রান্সফার দরখাস্ত সফলভাবে বাতিল করা হয়েছে।' });
+});
 
 // ==========================================
 // 10. ASSETS & PROPERTIES MANAGEMENT
 // ==========================================
 app.get('/api/v1/assets', authenticate, (req: AuthRequest, res: Response) => {
   const mosqueId = req.currentMosque!.id;
-  const assets = db.assets.filter(a => a.mosqueId === mosqueId);
-  res.json({ success: true, data: assets });
+  const { category, condition, search, location, includeArchived, termId } = req.query as {
+    category?: string;
+    condition?: string;
+    search?: string;
+    location?: string;
+    includeArchived?: string;
+    termId?: string;
+  };
+
+  let list = db.assets.filter(a => a.mosqueId === mosqueId && !a.isDeleted);
+
+  if (includeArchived !== 'true') {
+    list = list.filter(a => !a.isArchived);
+  }
+
+  if (category && category !== 'ALL') {
+    list = list.filter(a => a.category === category);
+  }
+
+  if (condition && condition !== 'ALL') {
+    list = list.filter(a => a.condition === condition);
+  }
+
+  if (location && location !== 'ALL') {
+    list = list.filter(a => a.location?.toLowerCase().includes(location.toLowerCase()));
+  }
+
+  if (termId && termId !== 'ALL') {
+    list = list.filter(a => a.termId === termId);
+  }
+
+  if (search && search.trim()) {
+    const q = search.trim().toLowerCase();
+    list = list.filter(a =>
+      a.name?.toLowerCase().includes(q) ||
+      a.assetCode?.toLowerCase().includes(q) ||
+      a.brand?.toLowerCase().includes(q) ||
+      a.model?.toLowerCase().includes(q) ||
+      a.serialNumber?.toLowerCase().includes(q) ||
+      a.location?.toLowerCase().includes(q) ||
+      a.responsiblePerson?.toLowerCase().includes(q) ||
+      a.supplier?.toLowerCase().includes(q)
+    );
+  }
+
+  // Calculate comprehensive stats for mosque assets
+  const allMosqueAssets = db.assets.filter(a => a.mosqueId === mosqueId && !a.isDeleted && !a.isArchived);
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  const stats = {
+    totalAssets: allMosqueAssets.length,
+    goodCount: allMosqueAssets.filter(a => a.condition === 'GOOD').length,
+    needsRepairCount: allMosqueAssets.filter(a => a.condition === 'NEEDS_REPAIR' || a.condition === 'FAIR' || a.condition === 'POOR').length,
+    outOfOrderCount: allMosqueAssets.filter(a => a.condition === 'OUT_OF_ORDER' || a.condition === 'DAMAGED').length,
+    lostCount: allMosqueAssets.filter(a => a.condition === 'LOST').length,
+    disposedCount: allMosqueAssets.filter(a => a.condition === 'DISPOSED').length,
+    archivedCount: db.assets.filter(a => a.mosqueId === mosqueId && !a.isDeleted && a.isArchived).length,
+    demoCount: db.assets.filter(a => a.mosqueId === mosqueId && !a.isDeleted && a.isDemo).length,
+    totalPurchaseValue: allMosqueAssets.reduce((sum, a) => sum + (Number(a.purchaseValue) || 0), 0),
+    totalCurrentValue: allMosqueAssets.reduce((sum, a) => sum + (Number(a.currentValue) || 0), 0),
+    upcomingServiceCount: allMosqueAssets.filter(a => a.nextServiceDate && a.nextServiceDate >= todayStr).length,
+    overdueServiceCount: allMosqueAssets.filter(a => a.nextServiceDate && a.nextServiceDate < todayStr).length,
+  };
+
+  res.json({ success: true, data: list, stats });
+});
+
+app.get('/api/v1/assets/:id', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const asset = db.assets.find(a => a.id === req.params.id && a.mosqueId === mosqueId);
+  if (!asset) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সম্পদ পাওয়া যায়নি।' } });
+  }
+
+  // Linked expense voucher if available
+  let linkedExpense = null;
+  if (asset.expenseVoucherNumber || asset.expenseEntryId) {
+    linkedExpense = db.expenseEntries.find(
+      e => e.mosqueId === mosqueId && (e.voucherNumber === asset.expenseVoucherNumber || e.id === asset.expenseEntryId)
+    );
+  }
+
+  // Audit history for this asset
+  const auditHistory = db.auditLogs.filter(
+    l => l.mosqueId === mosqueId && l.module === 'ASSET' && (l.recordId === asset.id || l.details?.includes(asset.assetCode))
+  ).slice(0, 20);
+
+  res.json({
+    success: true,
+    data: {
+      ...asset,
+      linkedExpense,
+      auditHistory
+    }
+  });
 });
 
 app.post('/api/v1/assets', authenticate, requirePermission('MANAGE_ASSETS'), (req: AuthRequest, res: Response) => {
-  const { name, category, quantity, unit, estimatedValue, purchaseDate, location, condition, notes } = req.body;
+  const {
+    assetCode: customCode,
+    name,
+    category,
+    categoryBn,
+    brand,
+    model,
+    serialNumber,
+    purchaseDate,
+    purchaseValue,
+    currentValue,
+    location,
+    responsiblePerson,
+    responsiblePersonPhone,
+    condition,
+    conditionBn,
+    nextServiceDate,
+    warrantyInfo,
+    supplier,
+    sourceOfPurchase,
+    notes,
+    description,
+    photoUrl,
+    attachments,
+    termId,
+    termTitle,
+    expenseVoucherNumber,
+    expenseEntryId,
+    createExpenseVoucher,
+    accountId,
+    expenseHeadId
+  } = req.body;
+
   const mosqueId = req.currentMosque!.id;
 
+  if (!name || !name.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'সম্পদের নাম আবশ্যক।' } });
+  }
+
+  // Auto-generate code if not provided
+  const categoryPrefixMap: Record<string, string> = {
+    GENERATOR: 'GEN',
+    FAN: 'FAN',
+    AC: 'AC',
+    REFRIGERATOR: 'FRG',
+    DEEP_FREEZER: 'DFZ',
+    SOUND_SYSTEM: 'SND',
+    CCTV: 'CCTV',
+    COMPUTER_ICT: 'ICT',
+    FURNITURE: 'FUR',
+    ELECTRICAL: 'ELE',
+    WATER_WUDU: 'WDU',
+    CONSTRUCTION: 'CON',
+    RELIGIOUS: 'REL',
+    OTHER: 'AST'
+  };
+
+  const prefix = categoryPrefixMap[category] || 'AST';
   const count = db.assets.filter(a => a.mosqueId === mosqueId).length + 1;
-  const assetCode = `AST-${String(count).padStart(4, '0')}`;
+  const autoCode = `AST-${prefix}-${String(count).padStart(3, '0')}`;
+  const assetCode = customCode && customCode.trim() ? customCode.trim() : autoCode;
+
+  // Active committee term fallback
+  const activeTerm = db.committeeTerms.find(t => t.mosqueId === mosqueId && t.status === 'ACTIVE');
+  const selectedTermId = termId || activeTerm?.id || '';
+  const selectedTermTitle = termTitle || activeTerm?.title || '';
+
+  const parsedPurchaseValue = Number(purchaseValue) || 0;
+  const parsedCurrentValue = currentValue !== undefined && currentValue !== null && currentValue !== '' ? Number(currentValue) : parsedPurchaseValue;
+
+  let linkedVoucherNo = expenseVoucherNumber || '';
+  let linkedExpenseId = expenseEntryId || '';
+
+  // Optional: Auto-create Expense Voucher in Accounting without duplication
+  if (createExpenseVoucher && parsedPurchaseValue > 0 && accountId && expenseHeadId) {
+    const account = db.accounts.find(a => a.id === accountId && a.mosqueId === mosqueId);
+    const head = db.accountHeads.find(h => h.id === expenseHeadId && h.mosqueId === mosqueId);
+
+    if (account && head) {
+      const expCount = db.expenseEntries.filter(e => e.mosqueId === mosqueId).length + 1;
+      const year = new Date().getFullYear();
+      const expVoucherNo = `EXP-${year}-${String(expCount).padStart(6, '0')}`;
+      const newExpId = `exp-${Date.now()}`;
+
+      const expenseEntry = {
+        id: newExpId,
+        mosqueId,
+        voucherNumber: expVoucherNo,
+        date: purchaseDate || new Date().toISOString().split('T')[0],
+        mainHeadId: head.id,
+        mainHeadNameBn: head.nameBn,
+        subHeadNameBn: categoryBn || 'স্থায়ী সম্পদ ক্রয়',
+        amount: parsedPurchaseValue,
+        accountId: account.id,
+        accountName: account.name || account.nameBn,
+        payeeName: supplier || responsiblePerson || 'সরবরাহকারী',
+        paymentMethod: account.accountType === 'CASH' ? ('CASH' as const) : ('BANK' as const),
+        description: `সম্পদ ক্রয় ভাউচার: ${name} (${assetCode})${brand ? ' | ' + brand : ''}`,
+        status: 'APPROVED' as const,
+        createdBy: req.user!.id,
+        createdByName: req.user!.name,
+        approvedBy: req.user!.id,
+        approvedByName: req.user!.name,
+        approvedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      account.currentBalance -= parsedPurchaseValue;
+      db.expenseEntries.unshift(expenseEntry);
+      linkedVoucherNo = expVoucherNo;
+      linkedExpenseId = newExpId;
+
+      db.logAudit(
+        mosqueId,
+        req.user!.id,
+        req.user!.name,
+        req.user!.role,
+        'CREATE',
+        'EXPENSE',
+        `সম্পদ ক্রয়ের সাথে স্বয়ংক্রিয় ব্যয় ভাউচার তৈরি (${expVoucherNo}): ৳${parsedPurchaseValue} (${name})`
+      );
+    }
+  }
 
   const asset: MosqueAsset = {
     id: `ast-${Date.now()}`,
     mosqueId,
     assetCode,
-    name,
-    category: category || 'ELECTRONICS',
-    purchaseValue: Number(estimatedValue) || 0,
-    currentValue: Number(estimatedValue) || 0,
+    name: name.trim(),
+    category: category || 'OTHER',
+    categoryBn: categoryBn || '',
+    brand: brand || '',
+    model: model || '',
+    serialNumber: serialNumber || '',
     purchaseDate: purchaseDate || new Date().toISOString().split('T')[0],
+    purchaseValue: parsedPurchaseValue,
+    currentValue: parsedCurrentValue,
     location: location || 'মূল ভবন',
+    responsiblePerson: responsiblePerson || '',
+    responsiblePersonPhone: responsiblePersonPhone || '',
     condition: condition || 'GOOD',
-    notes,
-    createdAt: new Date().toISOString()
+    conditionBn: conditionBn || '',
+    nextServiceDate: nextServiceDate || '',
+    warrantyInfo: warrantyInfo || '',
+    supplier: supplier || '',
+    sourceOfPurchase: sourceOfPurchase || '',
+    notes: notes || '',
+    description: description || '',
+    photoUrl: photoUrl || '',
+    attachments: attachments || [],
+    serviceHistory: [],
+    expenseVoucherNumber: linkedVoucherNo,
+    expenseEntryId: linkedExpenseId,
+    isExpenseLinked: Boolean(linkedVoucherNo || linkedExpenseId),
+    termId: selectedTermId,
+    termTitle: selectedTermTitle,
+    isArchived: false,
+    isDeleted: false,
+    isDemo: false,
+    createdBy: req.user!.id,
+    createdByName: req.user!.name,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   };
 
   db.assets.unshift(asset);
   db.save();
-  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'ASSET', `নতুন সম্পদ রেজিস্ট্রি: ${name} (${assetCode})`);
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'ASSET',
+    `নতুন সম্পদ রেজিস্ট্রি: ${asset.name} (${asset.assetCode}) | ক্রয়মূল্য: ৳${asset.purchaseValue} | অবস্থা: ${asset.condition}`
+  );
+
   realtime.broadcastToMosque(mosqueId, 'ASSET_CREATED', asset, { senderId: req.user!.id });
+  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
 
   res.json({ success: true, data: asset, message: 'সম্পদের তথ্য সফলভাবে সংরক্ষিত হয়েছে।' });
 });
 
 app.put('/api/v1/assets/:id', authenticate, requirePermission('MANAGE_ASSETS'), (req: AuthRequest, res: Response) => {
-  const asset = db.assets.find(a => a.id === req.params.id && a.mosqueId === req.currentMosque!.id);
+  const mosqueId = req.currentMosque!.id;
+  const asset = db.assets.find(a => a.id === req.params.id && a.mosqueId === mosqueId);
   if (!asset) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সম্পদ পাওয়া যায়নি।' } });
 
-  Object.assign(asset, req.body);
+  const prevCondition = asset.condition;
+  const prevValue = asset.currentValue;
+
+  const {
+    name,
+    category,
+    categoryBn,
+    brand,
+    model,
+    serialNumber,
+    purchaseDate,
+    purchaseValue,
+    currentValue,
+    location,
+    responsiblePerson,
+    responsiblePersonPhone,
+    condition,
+    conditionBn,
+    nextServiceDate,
+    warrantyInfo,
+    supplier,
+    sourceOfPurchase,
+    notes,
+    description,
+    photoUrl,
+    attachments,
+    termId,
+    termTitle,
+    expenseVoucherNumber,
+    isArchived
+  } = req.body;
+
+  if (name !== undefined) asset.name = name.trim();
+  if (category !== undefined) asset.category = category;
+  if (categoryBn !== undefined) asset.categoryBn = categoryBn;
+  if (brand !== undefined) asset.brand = brand;
+  if (model !== undefined) asset.model = model;
+  if (serialNumber !== undefined) asset.serialNumber = serialNumber;
+  if (purchaseDate !== undefined) asset.purchaseDate = purchaseDate;
+  if (purchaseValue !== undefined) asset.purchaseValue = Number(purchaseValue) || 0;
+  if (currentValue !== undefined) asset.currentValue = Number(currentValue) || 0;
+  if (location !== undefined) asset.location = location;
+  if (responsiblePerson !== undefined) asset.responsiblePerson = responsiblePerson;
+  if (responsiblePersonPhone !== undefined) asset.responsiblePersonPhone = responsiblePersonPhone;
+  if (condition !== undefined) asset.condition = condition;
+  if (conditionBn !== undefined) asset.conditionBn = conditionBn;
+  if (nextServiceDate !== undefined) asset.nextServiceDate = nextServiceDate;
+  if (warrantyInfo !== undefined) asset.warrantyInfo = warrantyInfo;
+  if (supplier !== undefined) asset.supplier = supplier;
+  if (sourceOfPurchase !== undefined) asset.sourceOfPurchase = sourceOfPurchase;
+  if (notes !== undefined) asset.notes = notes;
+  if (description !== undefined) asset.description = description;
+  if (photoUrl !== undefined) asset.photoUrl = photoUrl;
+  if (attachments !== undefined) asset.attachments = attachments;
+  if (termId !== undefined) asset.termId = termId;
+  if (termTitle !== undefined) asset.termTitle = termTitle;
+  if (expenseVoucherNumber !== undefined) {
+    asset.expenseVoucherNumber = expenseVoucherNumber;
+    asset.isExpenseLinked = Boolean(expenseVoucherNumber);
+  }
+  if (isArchived !== undefined) asset.isArchived = Boolean(isArchived);
+
+  asset.updatedAt = new Date().toISOString();
   db.save();
-  db.logAudit(req.currentMosque!.id, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'ASSET', `সম্পদ আপডেট: ${asset.name}`);
-  realtime.broadcastToMosque(req.currentMosque!.id, 'ASSET_UPDATED', asset, { senderId: req.user!.id });
+
+  let changeDetail = `সম্পদের তথ্য আপডেট: ${asset.name} (${asset.assetCode})`;
+  if (prevCondition !== asset.condition) {
+    changeDetail += ` | অবস্থা পরিবর্তন: ${prevCondition} → ${asset.condition}`;
+  }
+  if (prevValue !== asset.currentValue) {
+    changeDetail += ` | বর্তমান মূল্য: ৳${prevValue} → ৳${asset.currentValue}`;
+  }
+
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'ASSET', changeDetail);
+  realtime.broadcastToMosque(mosqueId, 'ASSET_UPDATED', asset, { senderId: req.user!.id });
+  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
 
   res.json({ success: true, data: asset, message: 'সম্পদের তথ্য সফলভাবে আপডেট হয়েছে।' });
 });
 
+// Add Maintenance / Service Record
+app.post('/api/v1/assets/:id/service', authenticate, requirePermission('MANAGE_ASSETS'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const asset = db.assets.find(a => a.id === req.params.id && a.mosqueId === mosqueId);
+  if (!asset) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সম্পদ পাওয়া যায়নি।' } });
+
+  const {
+    serviceDate,
+    serviceType,
+    serviceTypeBn,
+    servicedBy,
+    cost,
+    description,
+    nextServiceDate,
+    updateConditionTo,
+    createMaintenanceExpense,
+    accountId,
+    expenseHeadId
+  } = req.body;
+
+  if (!description || !description.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'সার্ভিসিং / মেরামতের বিবরণ আবশ্যক।' } });
+  }
+
+  const serviceCost = Number(cost) || 0;
+  let serviceVoucherNo = '';
+  let serviceExpenseId = '';
+
+  // Optional: Auto-create Expense Voucher for Maintenance
+  if (createMaintenanceExpense && serviceCost > 0 && accountId && expenseHeadId) {
+    const account = db.accounts.find(a => a.id === accountId && a.mosqueId === mosqueId);
+    const head = db.accountHeads.find(h => h.id === expenseHeadId && h.mosqueId === mosqueId);
+
+    if (account && head) {
+      const expCount = db.expenseEntries.filter(e => e.mosqueId === mosqueId).length + 1;
+      const year = new Date().getFullYear();
+      const expVoucherNo = `EXP-${year}-${String(expCount).padStart(6, '0')}`;
+      const newExpId = `exp-${Date.now()}`;
+
+      const expenseEntry = {
+        id: newExpId,
+        mosqueId,
+        voucherNumber: expVoucherNo,
+        date: serviceDate || new Date().toISOString().split('T')[0],
+        mainHeadId: head.id,
+        mainHeadNameBn: head.nameBn,
+        subHeadNameBn: serviceTypeBn || 'সম্পদ মেরামত ও সার্ভিসিং',
+        amount: serviceCost,
+        accountId: account.id,
+        accountName: account.name || account.nameBn,
+        payeeName: servicedBy || 'সার্ভিসিং টেকনিশিয়ান',
+        paymentMethod: account.accountType === 'CASH' ? ('CASH' as const) : ('BANK' as const),
+        description: `সম্পদ মেরামত/সার্ভিসিং খরচ: ${asset.name} (${asset.assetCode}) - ${description}`,
+        status: 'APPROVED' as const,
+        createdBy: req.user!.id,
+        createdByName: req.user!.name,
+        approvedBy: req.user!.id,
+        approvedByName: req.user!.name,
+        approvedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      account.currentBalance -= serviceCost;
+      db.expenseEntries.unshift(expenseEntry);
+      serviceVoucherNo = expVoucherNo;
+      serviceExpenseId = newExpId;
+
+      db.logAudit(
+        mosqueId,
+        req.user!.id,
+        req.user!.name,
+        req.user!.role,
+        'CREATE',
+        'EXPENSE',
+        `সম্পদ সার্ভিসিং খরচ বাবদ ব্যয় ভাউচার তৈরি (${expVoucherNo}): ৳${serviceCost} (${asset.name})`
+      );
+    }
+  }
+
+  const serviceRecord: AssetServiceRecord = {
+    id: `srv-${Date.now()}`,
+    serviceDate: serviceDate || new Date().toISOString().split('T')[0],
+    serviceType: serviceType || 'REGULAR_MAINTENANCE',
+    serviceTypeBn: serviceTypeBn || 'নিয়মিত সার্ভিসিং',
+    servicedBy: servicedBy || '',
+    cost: serviceCost,
+    expenseVoucherNumber: serviceVoucherNo,
+    expenseEntryId: serviceExpenseId,
+    description: description.trim(),
+    nextServiceDate: nextServiceDate || '',
+    performedBy: req.user!.name,
+    createdAt: new Date().toISOString()
+  };
+
+  if (!asset.serviceHistory) asset.serviceHistory = [];
+  asset.serviceHistory.unshift(serviceRecord);
+
+  if (nextServiceDate) {
+    asset.nextServiceDate = nextServiceDate;
+  }
+  if (updateConditionTo) {
+    asset.condition = updateConditionTo;
+  }
+
+  asset.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'ASSET',
+    `সম্পদ সার্ভিসিং লগ যুক্ত: ${asset.name} (${asset.assetCode}) | খরচ: ৳${serviceCost} | বিবরণ: ${description}`
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'ASSET_UPDATED', asset, { senderId: req.user!.id });
+  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+  res.json({ success: true, data: asset, message: 'সার্ভিসিং রেকর্ড সফলভাবে যুক্ত হয়েছে।' });
+});
+
+// Toggle Archive
+app.post('/api/v1/assets/:id/archive', authenticate, requirePermission('MANAGE_ASSETS'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const asset = db.assets.find(a => a.id === req.params.id && a.mosqueId === mosqueId);
+  if (!asset) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সম্পদ পাওয়া যায়নি।' } });
+
+  const { isArchived, reason } = req.body;
+  asset.isArchived = isArchived !== undefined ? Boolean(isArchived) : !asset.isArchived;
+  asset.updatedAt = new Date().toISOString();
+  db.save();
+
+  const actionText = asset.isArchived ? 'আর্কাইভ' : 'সক্রিয়করণ';
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'ASSET',
+    `সম্পদ ${actionText}: ${asset.name} (${asset.assetCode})${reason ? ' | কারণ: ' + reason : ''}`
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'ASSET_UPDATED', asset, { senderId: req.user!.id });
+  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+  res.json({
+    success: true,
+    data: asset,
+    message: asset.isArchived ? 'সম্পদটি সফলভাবে আর্কাইভ তালিকায় স্থানান্তরিত হয়েছে।' : 'সম্পদটি পুনরায় সক্রিয় তালিকায় ফিরিয়ে আনা হয়েছে।'
+  });
+});
+
+// Delete Asset (Safe soft-delete or remove)
 app.delete('/api/v1/assets/:id', authenticate, requirePermission('MANAGE_ASSETS'), (req: AuthRequest, res: Response) => {
-  const idx = db.assets.findIndex(a => a.id === req.params.id && a.mosqueId === req.currentMosque!.id);
+  const mosqueId = req.currentMosque!.id;
+  const { force } = req.query as { force?: string };
+  const idx = db.assets.findIndex(a => a.id === req.params.id && a.mosqueId === mosqueId);
   if (idx === -1) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সম্পদ পাওয়া যায়নি।' } });
 
+  const asset = db.assets[idx];
+  const hasHistory = Boolean(asset.expenseVoucherNumber || (asset.serviceHistory && asset.serviceHistory.length > 0));
+
+  if (hasHistory && force !== 'true') {
+    // Soft delete / archive to protect financial and audit integrity
+    asset.isArchived = true;
+    asset.updatedAt = new Date().toISOString();
+    db.save();
+
+    db.logAudit(
+      mosqueId,
+      req.user!.id,
+      req.user!.name,
+      req.user!.role,
+      'DELETE',
+      'ASSET',
+      `সম্পদ আর্কাইভ (আর্থিক লেনদেন সংযুক্ত থাকার কারণে সফট-ডিলিট): ${asset.name} (${asset.assetCode})`
+    );
+
+    realtime.broadcastToMosque(mosqueId, 'ASSET_UPDATED', asset, { senderId: req.user!.id });
+    realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+    return res.json({
+      success: true,
+      message: 'সম্পদটির সাথে আর্থিক ভাউচার ও সার্ভিস ইতিহাস সংযুক্ত থাকায় ডাটাবেজ অখণ্ডতার জন্য এটি নিরাপদে আর্কাইভ তালিকায় সরানো হয়েছে।'
+    });
+  }
+
+  // Hard delete if no history or forced
   const removed = db.assets.splice(idx, 1)[0];
   db.save();
-  db.logAudit(req.currentMosque!.id, req.user!.id, req.user!.name, req.user!.role, 'DELETE', 'ASSET', `সম্পদ মুছে ফেলা: ${removed.name}`);
-  realtime.broadcastToMosque(req.currentMosque!.id, 'ASSET_DELETED', { id: removed.id }, { senderId: req.user!.id });
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'DELETE',
+    'ASSET',
+    `সম্পদ স্থায়ীভাবে মুছে ফেলা: ${removed.name} (${removed.assetCode})`
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'ASSET_DELETED', { id: removed.id }, { senderId: req.user!.id });
+  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
 
   res.json({ success: true, message: 'সম্পদ সফলভাবে তালিকা থেকে মোছা হয়েছে।' });
+});
+
+// Clear Demo Assets (Safely remove demo markers only)
+app.post('/api/v1/assets/clear-demo', authenticate, requirePermission('MANAGE_ASSETS'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const initialCount = db.assets.length;
+  db.assets = db.assets.filter(a => !(a.mosqueId === mosqueId && a.isDemo));
+  const removedCount = initialCount - db.assets.length;
+
+  db.save();
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'DELETE',
+    'ASSET',
+    `ডেমো সম্পদ রেকর্ড সফলভাবে পরিচ্ছন্ন করা হয়েছে (${removedCount} টি রেকর্ড)`
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'ASSET_CLEARED_DEMO', { count: removedCount }, { senderId: req.user!.id });
+  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+  res.json({
+    success: true,
+    removedCount,
+    message: `${removedCount} টি ডেমো সম্পদ রেকর্ড সফলভাবে পরিচ্ছন্ন করা হয়েছে। আপনার নিজস্ব এন্ট্রিগুলো সুরক্ষিত রয়েছে।`
+  });
+});
+
+// Client Audit Action Logging for Assets
+app.post('/api/v1/assets/:id/audit', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { action, details } = req.body;
+  const asset = db.assets.find(a => a.id === req.params.id && a.mosqueId === mosqueId);
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    action || 'PRINT',
+    'ASSET',
+    details || `সম্পদ তথ্য প্রিন্ট/রিপোর্ট দেখা হয়েছে: ${asset ? asset.name + ' (' + asset.assetCode + ')' : req.params.id}`
+  );
+
+  res.json({ success: true });
 });
 
 // Properties
