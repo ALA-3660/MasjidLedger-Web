@@ -26,6 +26,7 @@ export type Permission =
   | 'MANAGE_USERS'
   | 'MANAGE_ACCOUNTS'
   | 'MANAGE_SETTINGS'
+  | 'MANAGE_PUBLIC_PORTAL'
   | 'VIEW_AUDIT_LOG'
   | 'MANAGE_STAFF'
   | 'MANAGE_ASSETS'
@@ -114,8 +115,270 @@ export interface Mosque {
     };
     excludeExcusedLeaveFromAttendance?: boolean;
   };
+  jamaatSettings?: {
+    fajr: { azan: string; jamaat: string };
+    dhuhr: { azan: string; jamaat: string };
+    asr: { azan: string; jamaat: string };
+    maghrib: { azan: string; jamaat: string };
+    isha: { azan: string; jamaat: string };
+    jumuah: { azan: string; khutbah: string; jamaat: string };
+  };
+  publicPortalSettings?: PublicPortalSettings;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PublicPortalSettings {
+  // 1. Mosque Identity & Profile
+  mosqueProfile: boolean;
+  mosqueLogo: boolean;
+  mosqueAddress: boolean;
+  mosquePhone: boolean;
+  mosqueEmail: boolean;
+  waqfId: boolean;
+  registrationNumber: boolean;
+  establishedYear: boolean;
+  islamicTagline: boolean;
+
+  // 2. Prayer & Religious Schedule
+  prayerSchedule: boolean;
+  jumuahSchedule: boolean;
+  ramadanSchedule: boolean;
+
+  // 3. Donation & Payment Channels
+  donation: boolean;
+  onlineDonation: boolean;
+  bankAccount: boolean;
+  mobileBanking: boolean;
+  donationQr: boolean;
+  donationInstructions: boolean;
+
+  // 4. Financial Transparency (Summary only)
+  financialSummary: boolean;
+  monthlyIncome: boolean;
+  monthlyExpense: boolean;
+  monthlySurplus: boolean;
+  currentBalance: boolean;
+  cashBalance: boolean;
+  bankBalance: boolean;
+  totalDonationReceived: boolean;
+
+  // 5. Notices & Announcements
+  notices: boolean;
+  emergencyNotice: boolean;
+  noticeDate: boolean;
+
+  // 6. Action Plan & Projects
+  projects: boolean;
+  projectProgress: boolean;
+  projectBudget: boolean; // default OFF
+
+  // 7. Waqf Property Summary
+  waqfSummary: boolean; // default OFF
+
+  // 8. Committees & Leadership
+  committee: boolean;
+  subCommittee: boolean;
+
+  // 9. Imam & Staff Information
+  staff: boolean;
+
+  // 10. Cemetery Information
+  cemetery: boolean; // default OFF
+
+  // 11. Display & TV Mode Settings
+  displayModeTheme?: 'EMERALD_NIGHT' | 'DARK' | 'LIGHT';
+  autoRefreshInterval?: number; // in seconds (e.g. 45)
+
+  // Metadata
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export const DEFAULT_PUBLIC_PORTAL_SETTINGS: PublicPortalSettings = {
+  // Mosque Identity
+  mosqueProfile: true,
+  mosqueLogo: true,
+  mosqueAddress: true,
+  mosquePhone: true,
+  mosqueEmail: false,
+  waqfId: true,
+  registrationNumber: true,
+  establishedYear: true,
+  islamicTagline: true,
+
+  // Prayer Schedule
+  prayerSchedule: true,
+  jumuahSchedule: true,
+  ramadanSchedule: false,
+
+  // Donation Channels
+  donation: true,
+  onlineDonation: true,
+  bankAccount: true,
+  mobileBanking: true,
+  donationQr: true,
+  donationInstructions: true,
+
+  // Financial Transparency (Strict default: raw balances are OFF)
+  financialSummary: true,
+  monthlyIncome: true,
+  monthlyExpense: true,
+  monthlySurplus: true,
+  currentBalance: false, // Default OFF for safety
+  cashBalance: false, // Default OFF
+  bankBalance: false, // Default OFF
+  totalDonationReceived: true,
+
+  // Notices
+  notices: true,
+  emergencyNotice: true,
+  noticeDate: true,
+
+  // Projects
+  projects: true,
+  projectProgress: true,
+  projectBudget: false, // Default OFF
+
+  // Waqf Summary
+  waqfSummary: false, // Default OFF
+
+  // Committee & Staff
+  committee: true,
+  subCommittee: false,
+  staff: true,
+
+  // Cemetery
+  cemetery: false, // Default OFF
+
+  // Display Mode & Auto Refresh
+  displayModeTheme: 'EMERALD_NIGHT',
+  autoRefreshInterval: 45,
+};
+
+export interface PublicPortalData {
+  mosque: {
+    id: string;
+    code: string;
+    nameBn: string;
+    nameEn?: string;
+    address?: string;
+    village?: string;
+    union?: string;
+    upazila?: string;
+    district?: string;
+    country?: string;
+    phone?: string;
+    email?: string;
+    website?: string;
+    logoUrl?: string;
+    waqfEstateName?: string;
+    registrationNumber?: string;
+    establishedDate?: string;
+    islamicTagline?: string;
+  } | null;
+  settings: PublicPortalSettings;
+  prayerTimes: {
+    nameBn: string;
+    nameEn: string;
+    adhan: string;
+    iqamah: string;
+  }[];
+  jumuahTime?: {
+    adhan: string;
+    khutbah: string;
+    iqamah: string;
+  };
+  donationChannels: {
+    bankAccounts: {
+      id: string;
+      nameBn: string;
+      bankName?: string;
+      branchName?: string;
+      accountNumber?: string;
+      accountTitle?: string;
+      routingNumber?: string;
+    }[];
+    mobileBanking: {
+      bkash?: string;
+      nagad?: string;
+      rocket?: string;
+    };
+    qrCodeUrl?: string;
+    instructionsBn?: string;
+  } | null;
+  financialTransparency: {
+    currentMonthNameBn?: string;
+    monthlyIncome?: number;
+    monthlyExpense?: number;
+    monthlySurplus?: number;
+    currentBalance?: number;
+    cashBalance?: number;
+    bankBalance?: number;
+    totalDonationsReceived?: number;
+  } | null;
+  notices: {
+    id: string;
+    title: string;
+    description: string;
+    publishDate: string;
+    priority?: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+    isEmergency?: boolean;
+  }[];
+  projects: {
+    id: string;
+    planNumber?: string;
+    title: string;
+    description?: string;
+    status: string;
+    progressPercentage: number;
+    targetDate?: string;
+    approvedBudget?: number;
+    actualExpense?: number;
+    remainingBudget?: number;
+  }[];
+  waqfSummary: {
+    id: string;
+    propertyCode?: string;
+    name?: string;
+    category?: string;
+    location?: string;
+    status?: string;
+    description?: string;
+  }[];
+  committee: {
+    termTitle: string;
+    members: {
+      id: string;
+      name: string;
+      designation: string;
+      role: string;
+    }[];
+  } | null;
+  subCommittees: {
+    id: string;
+    name: string;
+    category?: string;
+    convener?: string;
+    memberCount: number;
+    responsibilities?: string;
+  }[];
+  staff: {
+    id: string;
+    name: string;
+    designationBn: string;
+    role?: string;
+    joiningDate?: string;
+    contactNumber?: string;
+  }[];
+  cemetery: {
+    totalPlots?: number;
+    availablePlots?: number;
+    generalRules?: string;
+    contactPerson?: string;
+    contactPhone?: string;
+  } | null;
+  serverTime: string;
 }
 
 export type MosqueProfile = Mosque;
@@ -155,10 +418,24 @@ export interface FinancialAccount {
   branchName?: string;
   accountNumber?: string;
   openingBalance: number;
+  openingBalanceDate?: string;
+  openingBalanceType?: 'DEBIT' | 'CREDIT';
+  openingBalanceSource?: string;
+  openingBalanceNote?: string;
   currentBalance: number;
   status: 'ACTIVE' | 'INACTIVE';
   isDefault?: boolean;
   createdAt: string;
+  updatedAt?: string;
+}
+
+export interface AccountOpeningBalancePayload {
+  accountId: string;
+  openingBalance: number;
+  openingBalanceType?: 'DEBIT' | 'CREDIT';
+  openingBalanceDate: string;
+  openingBalanceSource?: string;
+  openingBalanceNote?: string;
 }
 
 export type TransactionStatus = 'DRAFT' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
@@ -191,6 +468,7 @@ export interface IncomeEntry {
   status: TransactionStatus;
   isReversal?: boolean;
   reversalOfId?: string;
+  denominationData?: CashDenominationData;
   createdAt: string;
   updatedAt: string;
 }
@@ -242,16 +520,40 @@ export interface Donation {
   accountId: string;
   accountName: string;
   reference?: string;
+  description?: string;
+  countingTeam?: string[] | string;
+  witness?: string;
   date: string;
   receivedBy: string;
   receivedByName: string;
   incomeEntryId?: string;
+  denominationData?: CashDenominationData;
   status: 'COMPLETED' | 'CANCELLED';
   createdAt: string;
 }
 
 export interface DenominationCount {
   [key: number]: number; // denomination (1000, 500, 200, 100, 50, 20, 10, 5, 2, 1) -> quantity
+}
+
+export interface CashDenominationData {
+  id?: string;
+  collectionId?: string;
+  collectionType?: 'JUMA' | 'DONATION' | 'DONATION_BOX' | 'INCOME' | 'WAQF_RENT' | 'OTHER';
+  reference?: string;
+  countedBy?: string;
+  countingDateTime?: string;
+  witnesses?: string[];
+  noteBreakdown: Record<number, number>; // { 1000: 10, 500: 5, 200: 0, 100: 8, 50: 4, 20: 10, 10: 20, 5: 10, 2: 15 }
+  coinBreakdown: Record<number, number>; // { 5: 10, 2: 20, 1: 50 }
+  totalNotesCount: number;
+  totalCoinsCount: number;
+  totalNotesAmount: number;
+  totalCoinsAmount: number;
+  grandTotal: number;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface PublicDocumentToken {
@@ -326,6 +628,7 @@ export interface DonationBoxCollection {
   depositAccountName: string;
   depositReference?: string;
   incomeVoucherNumber?: string;
+  denominationData?: CashDenominationData;
   notes?: string;
   createdBy: string;
   createdByName: string;
@@ -1355,6 +1658,7 @@ export interface PropertyRentCollection {
   isAccountingLinked?: boolean;
   collectorName?: string;
   collectorDesignation?: string;
+  denominationData?: CashDenominationData;
   notes?: string;
   status: 'PAID' | 'PARTIAL' | 'CANCELLED';
   createdAt: string;
@@ -1539,20 +1843,91 @@ export interface MosqueProperty {
   updatedAt?: string;
 }
 
+export interface CemeteryHeir {
+  id?: string;
+  name: string;
+  relation: string;
+  contactPerson?: string;
+  phone: string;
+  altPhone?: string;
+  address?: string;
+  notes?: string;
+}
+
 export interface CemeteryRecord {
   id: string;
   mosqueId: string;
+  recordNumber?: string;
   plotNumber: string;
-  deceasedName: string;
-  fatherOrSpouseName: string;
-  dateOfDeath: string;
-  burialDate: string;
+  block?: string;
+  blockName?: string;
+  row?: string;
+  rowNumber?: string;
   graveLocation: string;
-  plotStatus: 'OCCUPIED' | 'RESERVED' | 'AVAILABLE' | 'MAINTENANCE';
+  graveType?: 'PERMANENT' | 'TEMPORARY' | 'FAMILY' | 'GENERAL' | string;
+  plotStatus: 'OCCUPIED' | 'RESERVED' | 'AVAILABLE' | 'MAINTENANCE' | 'ARCHIVED' | string;
+  status?: string;
+  
+  // Deceased Information
+  deceasedName: string;
+  deceasedNameBn?: string;
+  fatherOrSpouseName: string;
+  fatherName?: string;
+  motherName?: string;
+  husbandOrSpouseName?: string;
+  gender?: 'MALE' | 'FEMALE' | 'OTHER' | string;
+  dateOfBirth?: string;
+  age?: number | string;
+  ageAtDeath?: number | string;
+  dateOfDeath: string;
+  causeOfDeath?: string;
+  religion?: string;
+  graveyardName?: string;
+  
+  // Janaza & Burial Information
+  burialDate: string;
+  burialTime?: string;
+  janazaPlace?: string;
+  
+  // Heir / Family Information
   contactPersonName: string;
   contactPersonPhone: string;
+  contactPersonAltPhone?: string;
+  relationWithDeceased?: string;
+  contactRelationship?: string;
+  heirAddress?: string;
+  heirs?: CemeteryHeir[];
+  
+  // Fees & Donations (if any)
+  burialFee?: number;
+  maintenanceFee?: number;
+  donationAmount?: number;
+  donationVoucherNo?: string;
+  donationEntryId?: string;
+  donationPaymentMethod?: PaymentMethod;
+  donationAccountId?: string;
+  maintenanceLogs?: Array<{
+    id: string;
+    date: string;
+    description: string;
+    cost?: number;
+    performedBy?: string;
+  }>;
+  
+  // Notes & Audit
   notes?: string;
+  isArchived?: boolean;
+  archivedAt?: string;
+  archivedBy?: string;
+  archivedByName?: string;
+  archiveReason?: string;
+  
   createdAt: string;
+  createdBy?: string;
+  createdByName?: string;
+  updatedAt?: string;
+  updatedBy?: string;
+  updatedByName?: string;
 }
 
 export interface MosqueNotice {
@@ -1699,3 +2074,5 @@ export interface ApiResponse<T = any> {
     fields?: Record<string, string>;
   };
 }
+
+export * from './qrBarcodeTypes';

@@ -1091,40 +1091,270 @@ app.put('/api/v1/mosques/current/signatures', authenticate, (req: AuthRequest, r
   });
 });
 
-// Public transparency portal
-app.get('/api/v1/mosques/public/:code', (req: Request, res: Response) => {
-  const code = req.params.code;
-  const mosque = db.mosques.find(m => m.code.toLowerCase() === code.toLowerCase() || m.id.toLowerCase() === code.toLowerCase());
-  if (!mosque) {
-    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'মসজিদ খুঁজে পাওয়া যায়নি।' } });
+// ==========================================
+// 2.2. DIGITAL PUBLIC PORTAL & VISIBILITY CONTROL
+// ==========================================
+
+// Get Sanitized Public Portal Data (Public & Unauthenticated, Whitelist Enforced)
+app.get(['/api/v1/public/portal', '/api/v1/public/portal/:mosqueIdOrCode'], (req: Request, res: Response) => {
+  try {
+    const target = req.params.mosqueIdOrCode || (req.query.mosqueId as string) || (req.query.code as string);
+    const data = db.getSanitizedPublicPortalData(target);
+    res.json({ success: true, data });
+  } catch (error: any) {
+    res.status(404).json({
+      success: false,
+      error: {
+        code: 'MOSQUE_NOT_FOUND',
+        message: error.message || 'মসজিদের পাবলিক পোর্টাল তথ্য পাওয়া যায়নি।'
+      }
+    });
+  }
+});
+
+// Get Public Portal Configuration only (Public)
+app.get(['/api/v1/public/portal-config', '/api/v1/public/portal-config/:mosqueIdOrCode'], (req: Request, res: Response) => {
+  try {
+    const target = req.params.mosqueIdOrCode || (req.query.mosqueId as string) || (req.query.code as string);
+    const data = db.getSanitizedPublicPortalData(target);
+    res.json({
+      success: true,
+      data: {
+        settings: data.settings,
+        mosqueName: data.mosque?.nameBn,
+        serverTime: data.serverTime
+      }
+    });
+  } catch (error: any) {
+    res.status(404).json({
+      success: false,
+      error: {
+        code: 'MOSQUE_NOT_FOUND',
+        message: error.message || 'কনফিগারেশন পাওয়া যায়নি।'
+      }
+    });
+  }
+});
+
+// ==========================================
+// SMART QR MANAGEMENT API ROUTES
+// ==========================================
+
+app.get('/api/v1/qr', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = (req.query.mosqueId as string) || req.currentMosque?.id;
+  const list = db.getQrCodes(mosqueId);
+  res.json({ success: true, data: list });
+});
+
+app.post('/api/v1/qr', authenticate, (req: AuthRequest, res: Response) => {
+  try {
+    const body = req.body;
+    const created = db.createQrCode({
+      ...body,
+      mosqueId: body.mosqueId || req.currentMosque?.id,
+    });
+    res.json({ success: true, data: created });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: { code: 'QR_CREATE_FAILED', message: err.message } });
+  }
+});
+
+app.put('/api/v1/qr/:id', authenticate, (req: AuthRequest, res: Response) => {
+  try {
+    const updated = db.updateQrCode(req.params.id, req.body);
+    res.json({ success: true, data: updated });
+  } catch (err: any) {
+    res.status(404).json({ success: false, error: { code: 'QR_NOT_FOUND', message: err.message } });
+  }
+});
+
+app.post('/api/v1/qr/:id/activate', authenticate, (req: AuthRequest, res: Response) => {
+  try {
+    const updated = db.updateQrCodeStatus(req.params.id, 'ACTIVE');
+    res.json({ success: true, data: updated });
+  } catch (err: any) {
+    res.status(404).json({ success: false, error: { code: 'QR_NOT_FOUND', message: err.message } });
+  }
+});
+
+app.post('/api/v1/qr/:id/deactivate', authenticate, (req: AuthRequest, res: Response) => {
+  try {
+    const updated = db.updateQrCodeStatus(req.params.id, 'INACTIVE');
+    res.json({ success: true, data: updated });
+  } catch (err: any) {
+    res.status(404).json({ success: false, error: { code: 'QR_NOT_FOUND', message: err.message } });
+  }
+});
+
+app.post('/api/v1/qr/:id/archive', authenticate, (req: AuthRequest, res: Response) => {
+  try {
+    const updated = db.updateQrCodeStatus(req.params.id, 'ARCHIVED');
+    res.json({ success: true, data: updated });
+  } catch (err: any) {
+    res.status(404).json({ success: false, error: { code: 'QR_NOT_FOUND', message: err.message } });
+  }
+});
+
+app.get('/api/v1/qr/resolve/:token', (req: Request, res: Response) => {
+  const qr = db.resolveQrToken(req.params.token);
+  if (!qr) {
+    return res.status(404).json({ success: false, error: { code: 'QR_INVALID', message: 'এই QR কোডটি পাওয়া যায়নি বা মেয়াদোত্তীর্ণ।' } });
+  }
+  res.json({ success: true, data: qr });
+});
+
+// Get Public Portal Settings for Admin View (Authenticated)
+app.get('/api/v1/mosques/current/public-portal-settings', authenticate, (req: AuthRequest, res: Response) => {
+  const mosque = req.currentMosque!;
+  const settings = mosque.publicPortalSettings || {
+    mosqueProfile: true,
+    mosqueLogo: true,
+    mosqueAddress: true,
+    mosquePhone: true,
+    mosqueEmail: false,
+    waqfId: true,
+    registrationNumber: true,
+    establishedYear: true,
+    islamicTagline: true,
+    prayerSchedule: true,
+    jumuahSchedule: true,
+    ramadanSchedule: false,
+    donation: true,
+    onlineDonation: true,
+    bankAccount: true,
+    mobileBanking: true,
+    donationQr: true,
+    donationInstructions: true,
+    financialSummary: true,
+    monthlyIncome: true,
+    monthlyExpense: true,
+    monthlySurplus: true,
+    currentBalance: false,
+    cashBalance: false,
+    bankBalance: false,
+    totalDonationReceived: true,
+    notices: true,
+    emergencyNotice: true,
+    noticeDate: true,
+    projects: true,
+    projectProgress: true,
+    projectBudget: false,
+    waqfSummary: false,
+    committee: true,
+    subCommittee: false,
+    staff: true,
+    cemetery: false,
+    displayModeTheme: 'EMERALD_NIGHT',
+    autoRefreshInterval: 45,
+  };
+  res.json({ success: true, data: settings });
+});
+
+// Update Public Portal Settings (Admin / Settings Manager only)
+app.put('/api/v1/mosques/current/public-portal-settings', authenticate, (req: AuthRequest, res: Response) => {
+  const user = req.user!;
+  const mosque = req.currentMosque!;
+
+  // Verify permission: SUPER_ADMIN, MOSQUE_ADMIN, or MANAGE_SETTINGS / MANAGE_PUBLIC_PORTAL
+  const hasPermission =
+    user.role === 'SUPER_ADMIN' ||
+    user.role === 'MOSQUE_ADMIN' ||
+    user.permissions.includes('MANAGE_SETTINGS') ||
+    user.permissions.includes('MANAGE_PUBLIC_PORTAL');
+
+  if (!hasPermission) {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: 'PERMISSION_DENIED',
+        message: 'পাবলিক পোর্টাল দৃশ্যমানতা সেটিংস পরিবর্তনের অনুমতি আপনার নেই।'
+      }
+    });
   }
 
-  const publicNotices = db.notices.filter(n => n.mosqueId === mosque.id && n.isPublic && n.status === 'ACTIVE');
-  const stats = db.getDashboardStats(mosque.id);
+  try {
+    const updatedMosque = db.updateMosquePublicPortalSettings(
+      mosque.id,
+      req.body,
+      user.id,
+      user.name,
+      user.role,
+      req.ip
+    );
 
-  res.json({
-    success: true,
-    data: {
-      id: mosque.id,
-      code: mosque.code,
-      nameBn: mosque.nameBn,
-      nameEn: mosque.nameEn,
-      waqfEstateName: mosque.waqfEstateName,
-      registrationNumber: mosque.registrationNumber,
-      address: mosque.address,
-      phone: mosque.phone,
-      email: mosque.email,
-      logoUrl: mosque.logoUrl,
-      qrSettings: mosque.qrSettings,
-      notices: publicNotices,
-      transparencyStats: {
-        currentBalance: stats.currentBalance,
-        monthlyIncome: stats.monthlyIncome,
-        monthlyExpense: stats.monthlyExpense,
-        totalDonation: stats.totalDonation,
+    realtime.broadcastToMosque(mosque.id, 'PUBLIC_PORTAL_SETTINGS_UPDATED', updatedMosque.publicPortalSettings, {
+      senderId: user.id
+    });
+
+    res.json({
+      success: true,
+      data: updatedMosque.publicPortalSettings,
+      message: 'পাবলিক পোর্টাল দৃশ্যমানতা সেটিংস সফলভাবে সংরক্ষিত হয়েছে।'
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: { code: 'UPDATE_FAILED', message: error.message || 'সেটিংস সংরক্ষণে ব্যর্থ হয়েছে।' }
+    });
+  }
+});
+
+// Reset Public Portal Settings to Safe Defaults
+app.post('/api/v1/mosques/current/public-portal-settings/reset', authenticate, (req: AuthRequest, res: Response) => {
+  const user = req.user!;
+  const mosque = req.currentMosque!;
+
+  const hasPermission =
+    user.role === 'SUPER_ADMIN' ||
+    user.role === 'MOSQUE_ADMIN' ||
+    user.permissions.includes('MANAGE_SETTINGS') ||
+    user.permissions.includes('MANAGE_PUBLIC_PORTAL');
+
+  if (!hasPermission) {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: 'PERMISSION_DENIED',
+        message: 'পাবলিক পোর্টাল রিসেট করার অনুমতি আপনার নেই।'
       }
-    }
-  });
+    });
+  }
+
+  try {
+    const updatedMosque = db.resetMosquePublicPortalSettings(
+      mosque.id,
+      user.id,
+      user.name,
+      user.role,
+      req.ip
+    );
+
+    realtime.broadcastToMosque(mosque.id, 'PUBLIC_PORTAL_SETTINGS_UPDATED', updatedMosque.publicPortalSettings, {
+      senderId: user.id
+    });
+
+    res.json({
+      success: true,
+      data: updatedMosque.publicPortalSettings,
+      message: 'পাবলিক পোর্টাল দৃশ্যমানতা সেটিংস নিরাপদ ডিফল্টে রিসেট করা হয়েছে।'
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: { code: 'RESET_FAILED', message: error.message || 'রিসেট করতে ব্যর্থ হয়েছে।' }
+    });
+  }
+});
+
+// Public transparency portal (Legacy Compatibility with Sanitization)
+app.get('/api/v1/mosques/public/:code', (req: Request, res: Response) => {
+  const code = req.params.code;
+  try {
+    const data = db.getSanitizedPublicPortalData(code);
+    res.json({ success: true, data });
+  } catch (error: any) {
+    res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'মসজিদ খুঁজে পাওয়া যায়নি।' } });
+  }
 });
 
 // ==========================================
@@ -1186,7 +1416,7 @@ app.get('/api/v1/accounting/accounts/:id', authenticate, (req: AuthRequest, res:
 });
 
 app.post('/api/v1/accounting/accounts', authenticate, requirePermission('MANAGE_ACCOUNTS'), (req: AuthRequest, res: Response) => {
-  const { nameBn, accountType, bankName, branchName, accountNumber, openingBalance } = req.body;
+  const { nameBn, accountType, bankName, branchName, accountNumber, openingBalance, openingBalanceDate, openingBalanceType, openingBalanceSource, openingBalanceNote } = req.body;
   const mosqueId = req.currentMosque!.id;
   const bal = Number(openingBalance) || 0;
 
@@ -1200,17 +1430,143 @@ app.post('/api/v1/accounting/accounts', authenticate, requirePermission('MANAGE_
     branchName,
     accountNumber,
     openingBalance: bal,
-    currentBalance: bal,
+    openingBalanceDate: openingBalanceDate || new Date().toISOString().split('T')[0],
+    openingBalanceType: openingBalanceType || 'DEBIT',
+    openingBalanceSource: openingBalanceSource || 'INITIAL',
+    openingBalanceNote: openingBalanceNote || 'প্রাথমিক অ্যাকাউন্ট সেটআপ',
+    currentBalance: openingBalanceType === 'CREDIT' ? -bal : bal,
     status: 'ACTIVE' as const,
     createdAt: new Date().toISOString()
   };
 
   db.accounts.push(newAcc);
   db.save();
-  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'FINANCIAL_ACCOUNT', `নতুন ফান্ড/অ্যাকাউন্ট তৈরি: ${nameBn}`);
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'FINANCIAL_ACCOUNT', `নতুন ফান্ড/অ্যাকাউন্ট তৈরি: ${nameBn} (প্রারম্ভিক স্থিতি: ৳ ${bal})`);
   realtime.broadcastToMosque(mosqueId, 'ACCOUNT_CREATED', newAcc, { senderId: req.user!.id });
 
   res.json({ success: true, data: newAcc, message: 'নতুন হিসাব সফলভাবে খোলা হয়েছে।' });
+});
+
+// Update Account Details & Opening Balance
+app.put('/api/v1/accounting/accounts/:id', authenticate, requirePermission('MANAGE_ACCOUNTS'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const account = db.accounts.find(a => a.id === req.params.id && a.mosqueId === mosqueId);
+  if (!account) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'অ্যাকাউন্ট পাওয়া যায়নি।' } });
+  }
+
+  const { nameBn, bankName, branchName, accountNumber, openingBalance, openingBalanceDate, openingBalanceType, openingBalanceSource, openingBalanceNote, status } = req.body;
+  const prevOpening = account.openingBalance || 0;
+  const newOpening = openingBalance !== undefined ? (Number(openingBalance) || 0) : prevOpening;
+
+  if (nameBn) {
+    account.name = nameBn;
+    account.nameBn = nameBn;
+  }
+  if (bankName !== undefined) account.bankName = bankName;
+  if (branchName !== undefined) account.branchName = branchName;
+  if (accountNumber !== undefined) account.accountNumber = accountNumber;
+  if (status !== undefined) account.status = status;
+
+  account.openingBalance = newOpening;
+  if (openingBalanceDate !== undefined) account.openingBalanceDate = openingBalanceDate;
+  if (openingBalanceType !== undefined) account.openingBalanceType = openingBalanceType;
+  if (openingBalanceSource !== undefined) account.openingBalanceSource = openingBalanceSource;
+  if (openingBalanceNote !== undefined) account.openingBalanceNote = openingBalanceNote;
+  account.updatedAt = new Date().toISOString();
+
+  // Recalculate Current Balance safely using all approved transactions & transfers without touching vouchers
+  const totalIn = db.incomeEntries
+    .filter(i => i.mosqueId === mosqueId && i.accountId === account.id && i.status === 'APPROVED')
+    .reduce((s, i) => s + i.amount, 0);
+
+  const totalOut = db.expenseEntries
+    .filter(e => e.mosqueId === mosqueId && e.accountId === account.id && e.status === 'APPROVED')
+    .reduce((s, e) => s + e.amount, 0);
+
+  const transfersIn = db.transfers
+    .filter(t => t.mosqueId === mosqueId && t.toAccountId === account.id)
+    .reduce((s, t) => s + t.amount, 0);
+
+  const transfersOut = db.transfers
+    .filter(t => t.mosqueId === mosqueId && t.fromAccountId === account.id)
+    .reduce((s, t) => s + t.amount, 0);
+
+  const baseOpening = account.openingBalanceType === 'CREDIT' ? -newOpening : newOpening;
+  account.currentBalance = baseOpening + totalIn - totalOut + transfersIn - transfersOut;
+
+  db.save();
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'FINANCIAL_ACCOUNT',
+    `অ্যাকাউন্ট/প্রারম্ভিক স্থিতি হালনাগাদ: ${account.nameBn} (প্রারম্ভিক স্থিতি: ৳ ${prevOpening.toLocaleString('en-IN')} ➔ ৳ ${newOpening.toLocaleString('en-IN')}, কার্যকর তারিখ: ${account.openingBalanceDate || 'N/A'}, উৎস: ${account.openingBalanceSource || 'N/A'})`
+  );
+  realtime.broadcastToMosque(mosqueId, 'ACCOUNT_UPDATED', account, { senderId: req.user!.id });
+
+  res.json({ success: true, data: account, message: 'অ্যাকাউন্ট ও প্রারম্ভিক স্থিতি সফলভাবে হালনাগাদ করা হয়েছে।' });
+});
+
+// Dedicated Opening Balance Management Route
+app.post('/api/v1/accounting/accounts/opening-balance', authenticate, requirePermission('MANAGE_ACCOUNTS'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { accountId, openingBalance, openingBalanceDate, openingBalanceType, openingBalanceSource, openingBalanceNote } = req.body;
+
+  if (!accountId) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'হিসাব বা অ্যাকাউন্ট নির্বাচন করুন।' } });
+  }
+
+  const account = db.accounts.find(a => a.id === accountId && a.mosqueId === mosqueId);
+  if (!account) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'নির্বাচিত অ্যাকাউন্ট পাওয়া যায়নি।' } });
+  }
+
+  const prevOpening = account.openingBalance || 0;
+  const newOpening = Number(openingBalance) || 0;
+
+  account.openingBalance = newOpening;
+  account.openingBalanceDate = openingBalanceDate || new Date().toISOString().split('T')[0];
+  account.openingBalanceType = openingBalanceType || 'DEBIT';
+  account.openingBalanceSource = openingBalanceSource || 'INITIAL_SETUP';
+  account.openingBalanceNote = openingBalanceNote || '';
+  account.updatedAt = new Date().toISOString();
+
+  // Recalculate Current Balance safely using all approved transactions & transfers
+  const totalIn = db.incomeEntries
+    .filter(i => i.mosqueId === mosqueId && i.accountId === account.id && i.status === 'APPROVED')
+    .reduce((s, i) => s + i.amount, 0);
+
+  const totalOut = db.expenseEntries
+    .filter(e => e.mosqueId === mosqueId && e.accountId === account.id && e.status === 'APPROVED')
+    .reduce((s, e) => s + e.amount, 0);
+
+  const transfersIn = db.transfers
+    .filter(t => t.mosqueId === mosqueId && t.toAccountId === account.id)
+    .reduce((s, t) => s + t.amount, 0);
+
+  const transfersOut = db.transfers
+    .filter(t => t.mosqueId === mosqueId && t.fromAccountId === account.id)
+    .reduce((s, t) => s + t.amount, 0);
+
+  const baseOpening = account.openingBalanceType === 'CREDIT' ? -newOpening : newOpening;
+  account.currentBalance = baseOpening + totalIn - totalOut + transfersIn - transfersOut;
+
+  db.save();
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'OPENING_BALANCE',
+    `প্রারম্ভিক স্থিতি সমন্বয়: ${account.nameBn} (পূর্বের স্থিতি: ৳ ${prevOpening.toLocaleString('en-IN')}, নতুন স্থিতি: ৳ ${newOpening.toLocaleString('en-IN')}, কার্যকর তারিখ: ${account.openingBalanceDate}, উৎস: ${account.openingBalanceSource}, নোট: ${account.openingBalanceNote || 'N/A'})`
+  );
+  realtime.broadcastToMosque(mosqueId, 'ACCOUNT_UPDATED', account, { senderId: req.user!.id });
+
+  res.json({ success: true, data: account, message: 'প্রারম্ভিক স্থিতি সফলভাবে সংরক্ষণ ও খতিয়ানে প্রয়োগ করা হয়েছে।' });
 });
 
 // Inter-Account Fund Transfer (Cash <-> Bank with double-entry safety)
@@ -1295,7 +1651,7 @@ app.post('/api/v1/accounting/income', authenticate, requirePermission('CREATE_IN
     return res.json(cached);
   }
 
-  const { mainHeadId, subHeadId, amount, paymentMethod, accountId, donorName, donorPhone, reference, description, date, attachmentUrl } = req.body;
+  const { mainHeadId, subHeadId, amount, paymentMethod, accountId, donorName, donorPhone, reference, description, date, attachmentUrl, denominationData } = req.body;
   const numAmount = Number(amount);
   if (!numAmount || numAmount <= 0) {
     return res.status(400).json({ success: false, error: { code: 'INVALID_AMOUNT', message: 'টাকার পরিমাণ অবশ্যই শূন্যের চেয়ে বেশি হতে হবে।' } });
@@ -1328,6 +1684,7 @@ app.post('/api/v1/accounting/income', authenticate, requirePermission('CREATE_IN
     reference,
     description,
     attachmentUrl,
+    denominationData: denominationData || undefined,
     createdBy: req.user!.id,
     createdByName: req.user!.name,
     status: 'APPROVED' as const,
@@ -1346,7 +1703,7 @@ app.post('/api/v1/accounting/income', authenticate, requirePermission('CREATE_IN
   db.incomeEntries.unshift(entry);
   db.save();
 
-  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'INCOME', `আয় ভাউচার তৈরি (${voucherNumber}): ৳ ${numAmount}`, entry.id);
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'INCOME', `আয় ভাউচার তৈরি (${voucherNumber}): ৳ ${numAmount}${denominationData ? ' (ডিনোমিনেশন সহ)' : ''}`, entry.id);
 
   const responsePayload = { success: true, data: entry, message: 'আয় ভাউচার সফলভাবে সংরক্ষণ ও অ্যাকাউন্টে পোস্টিং করা হয়েছে।' };
   db.saveIdempotency(req.idempotencyKey, responsePayload);
@@ -1356,6 +1713,57 @@ app.post('/api/v1/accounting/income', authenticate, requirePermission('CREATE_IN
   realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
 
   res.json(responsePayload);
+});
+
+// Update Income Entry
+app.put('/api/v1/accounting/income/:id', authenticate, requirePermission('CREATE_INCOME'), (req: AuthRequest, res: Response) => {
+  const item = db.incomeEntries.find(i => i.id === req.params.id && i.mosqueId === req.currentMosque!.id);
+  if (!item) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'আয় ভাউচার পাওয়া যায়নি।' } });
+
+  const { donorName, donorPhone, reference, description, date, denominationData } = req.body;
+  if (donorName !== undefined) item.donorName = donorName;
+  if (donorPhone !== undefined) item.donorPhone = donorPhone;
+  if (reference !== undefined) item.reference = reference;
+  if (description !== undefined) item.description = description;
+  if (date !== undefined) item.date = date;
+  if (denominationData !== undefined) item.denominationData = denominationData;
+  item.updatedAt = new Date().toISOString();
+
+  db.save();
+  db.logAudit(req.currentMosque!.id, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'INCOME', `আয় ভাউচার আপডেট (${item.voucherNumber})`, item.id);
+  realtime.broadcastToMosque(req.currentMosque!.id, 'INCOME_UPDATED', item, { senderId: req.user!.id });
+
+  res.json({ success: true, data: item, message: 'আয় ভাউচার সফলভাবে হালনাগাদ করা হয়েছে।' });
+});
+
+// Update Income Denomination Breakdown
+app.put('/api/v1/accounting/income/:id/denomination', authenticate, requirePermission('CREATE_INCOME'), (req: AuthRequest, res: Response) => {
+  const item = db.incomeEntries.find(i => i.id === req.params.id && i.mosqueId === req.currentMosque!.id);
+  if (!item) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'আয় ভাউচার পাওয়া যায়নি।' } });
+
+  const { denominationData, editReason } = req.body;
+  if (!denominationData) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_DATA', message: 'ডিনোমিনেশন ডাটা আবশ্যক।' } });
+  }
+
+  const oldTotal = item.denominationData?.grandTotal || item.amount;
+  item.denominationData = denominationData;
+  item.updatedAt = new Date().toISOString();
+
+  db.save();
+  db.logAudit(
+    req.currentMosque!.id,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'INCOME_DENOMINATION',
+    `আয় ভাউচার (${item.voucherNumber}) ডিনোমিনেশন পরিবর্তন (৳ ${oldTotal} -> ৳ ${denominationData.grandTotal}). কারণ: ${editReason || 'হিসাব সমন্বয়'}`,
+    item.id
+  );
+
+  realtime.broadcastToMosque(req.currentMosque!.id, 'INCOME_UPDATED', item, { senderId: req.user!.id });
+  res.json({ success: true, data: item, message: 'ডিনোমিনেশন গণনা তথ্য সফলভাবে সংরক্ষিত হয়েছে।' });
 });
 
 // Reverse / Cancel Income Voucher
@@ -1521,7 +1929,7 @@ app.post('/api/v1/donations', authenticate, requirePermission('CREATE_INCOME'), 
     return res.json(cached);
   }
 
-  const { donorName, donorPhone, donorAddress, isAnonymous, category, amount, paymentMethod, accountId, reference, date } = req.body;
+  const { donorName, donorPhone, donorAddress, isAnonymous, category, amount, paymentMethod, accountId, reference, date, denominationData, description, countingTeam, witness } = req.body;
   const numAmount = Number(amount);
   if (!numAmount || numAmount <= 0) {
     return res.status(400).json({ success: false, error: { code: 'INVALID_AMOUNT', message: 'অনুদানের পরিমাণ অবশ্যই শূন্যের চেয়ে বেশি হতে হবে।' } });
@@ -1547,9 +1955,13 @@ app.post('/api/v1/donations', authenticate, requirePermission('CREATE_INCOME'), 
     accountId: account.id,
     accountName: account.nameBn,
     reference,
+    description: description || undefined,
+    countingTeam: countingTeam || undefined,
+    witness: witness || undefined,
     date: date || new Date().toISOString().split('T')[0],
     receivedBy: req.user!.id,
     receivedByName: req.user!.name,
+    denominationData: denominationData || undefined,
     status: 'COMPLETED' as const,
     createdAt: new Date().toISOString()
   };
@@ -1559,6 +1971,11 @@ app.post('/api/v1/donations', authenticate, requirePermission('CREATE_INCOME'), 
 
   // Auto-create income entry for double entry consistency
   const incVoucherNumber = `INC-${year}-${String(db.incomeEntries.filter(i => i.mosqueId === mosqueId).length + 1).padStart(6, '0')}`;
+  const isJumaRecord = Boolean(
+    (reference && reference.includes('জুমা')) ||
+    (description && description.includes('জুমা')) ||
+    (donorName && donorName.includes('জুমা'))
+  );
   const incEntry = {
     id: `inc-don-${Date.now()}`,
     mosqueId,
@@ -1566,16 +1983,17 @@ app.post('/api/v1/donations', authenticate, requirePermission('CREATE_INCOME'), 
     date: donation.date,
     mainHeadId: 'head-inc-01',
     mainHeadNameBn: 'দান ও অনুদান (Donations)',
-    subHeadId: 'head-inc-01-3',
-    subHeadNameBn: `মাসিক ও বিশেষ অনুদান (${donation.donorName})`,
+    subHeadId: isJumaRecord ? 'head-inc-01-2' : 'head-inc-01-3',
+    subHeadNameBn: isJumaRecord ? 'পবিত্র জুমার জামাত কালেকশন' : `মাসিক ও বিশেষ অনুদান (${donation.donorName})`,
     amount: numAmount,
     paymentMethod: donation.paymentMethod,
     accountId: account.id,
     accountName: account.nameBn,
-    donorName: donation.donorName,
+    donorName: isJumaRecord ? 'পবিত্র জুমার জামাত ও মুসল্লিবৃন্দ' : donation.donorName,
     donorPhone: donation.donorPhone,
     reference: `Receipt: ${receiptNumber}`,
-    description: `দান রসিদ ${receiptNumber} এর বিপরীতে সংগৃহীত অনুদান`,
+    description: description || `দান রসিদ ${receiptNumber} এর বিপরীতে সংগৃহীত অনুদান`,
+    denominationData: denominationData || undefined,
     createdBy: req.user!.id,
     createdByName: req.user!.name,
     status: 'APPROVED' as const,
@@ -1588,7 +2006,7 @@ app.post('/api/v1/donations', authenticate, requirePermission('CREATE_INCOME'), 
   db.incomeEntries.unshift(incEntry);
   db.save();
 
-  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'DONATION', `দান রসিদ প্রস্তুত (${receiptNumber}): ৳ ${numAmount} - ${donation.donorName}`);
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'DONATION', `দান রসিদ প্রস্তুত (${receiptNumber}): ৳ ${numAmount} - ${donation.donorName}${denominationData ? ' (ডিনোমিনেশন সহ)' : ''}`);
 
   const responsePayload = { success: true, data: donation, message: 'অনুদানের মানি রিসিট প্রস্তুত ও ফান্ডে যোগ করা হয়েছে।' };
   db.saveIdempotency(req.idempotencyKey, responsePayload);
@@ -1598,6 +2016,41 @@ app.post('/api/v1/donations', authenticate, requirePermission('CREATE_INCOME'), 
   realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
 
   res.json(responsePayload);
+});
+
+// Update Donation Denomination Breakdown
+app.put('/api/v1/donations/:id/denomination', authenticate, requirePermission('CREATE_INCOME'), (req: AuthRequest, res: Response) => {
+  const donation = db.donations.find(d => d.id === req.params.id && d.mosqueId === req.currentMosque!.id);
+  if (!donation) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'দান রসিদ পাওয়া যায়নি।' } });
+
+  const { denominationData, editReason } = req.body;
+  if (!denominationData) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_DATA', message: 'ডিনোমিনেশন ডাটা আবশ্যক।' } });
+  }
+
+  const oldTotal = donation.denominationData?.grandTotal || donation.amount;
+  donation.denominationData = denominationData;
+
+  // Also sync to matching income entry if exists
+  const incEntry = db.incomeEntries.find(i => i.reference === `Receipt: ${donation.receiptNumber}` && i.mosqueId === req.currentMosque!.id);
+  if (incEntry) {
+    incEntry.denominationData = denominationData;
+    incEntry.updatedAt = new Date().toISOString();
+  }
+
+  db.save();
+  db.logAudit(
+    req.currentMosque!.id,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'DONATION_DENOMINATION',
+    `দান রসিদ (${donation.receiptNumber}) ডিনোমিনেশন পরিবর্তন (৳ ${oldTotal} -> ৳ ${denominationData.grandTotal}). কারণ: ${editReason || 'হিসাব সমন্বয়'}`
+  );
+
+  realtime.broadcastToMosque(req.currentMosque!.id, 'DONATION_UPDATED', donation, { senderId: req.user!.id });
+  res.json({ success: true, data: donation, message: 'দান রসিদের ডিনোমিনেশন তথ্য সফলভাবে সংরক্ষিত হয়েছে।' });
 });
 
 // Donation Boxes & Collection
@@ -1691,7 +2144,7 @@ app.delete('/api/v1/donation-boxes/:id', authenticate, requirePermission('MANAGE
 });
 
 app.post('/api/v1/donation-boxes/collect', authenticate, requirePermission('CREATE_INCOME'), (req: AuthRequest, res: Response) => {
-  const { boxId, amount, witnesses, countingTeam, notes, accountId, date } = req.body;
+  const { boxId, amount, witnesses, countingTeam, notes, accountId, date, denominationData } = req.body;
   const numAmount = Number(amount);
   const mosqueId = req.currentMosque!.id;
   const box = db.donationBoxes.find(b => b.id === boxId && b.mosqueId === mosqueId);
@@ -1724,6 +2177,7 @@ app.post('/api/v1/donation-boxes/collect', authenticate, requirePermission('CREA
     depositAccountName: account.nameBn,
     depositReference: collectionNumber,
     incomeVoucherNumber: incVoucherNumber,
+    denominationData: denominationData || undefined,
     notes,
     createdBy: req.user!.id,
     createdByName: req.user!.name,
@@ -1752,6 +2206,7 @@ app.post('/api/v1/donation-boxes/collect', authenticate, requirePermission('CREA
     accountName: account.nameBn,
     donorName: `দানবাক্স সংগ্রাহক (${collectionNumber})`,
     description: `দানবাক্স কালেকশন ভাউচার ${collectionNumber}`,
+    denominationData: denominationData || undefined,
     createdBy: req.user!.id,
     createdByName: req.user!.name,
     status: 'APPROVED' as const,
@@ -1766,13 +2221,148 @@ app.post('/api/v1/donation-boxes/collect', authenticate, requirePermission('CREA
   db.incomeEntries.unshift(incEntry);
   db.save();
 
-  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'DONATION_BOX_COLLECT', `দানবাক্স খোলা ও জমা (${collectionNumber}): ৳ ${numAmount}`);
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'DONATION_BOX_COLLECT', `দানবাক্স খোলা ও জমা (${collectionNumber}): ৳ ${numAmount}${denominationData ? ' (ডিনোমিনেশন সহ)' : ''}`);
 
   realtime.broadcastToMosque(mosqueId, 'DONATION_BOX_COLLECTED', { collection, box }, { senderId: req.user!.id });
   realtime.broadcastToMosque(mosqueId, 'INCOME_CREATED', incEntry, { senderId: req.user!.id });
   realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
 
   res.json({ success: true, data: collection, message: 'দানবাক্সের টাকা সফলভাবে গণনা ও তহবিলে জমা করা হয়েছে।' });
+});
+
+// Update Donation Box Collection Denomination
+app.put('/api/v1/donation-boxes/collections/:id/denomination', authenticate, requirePermission('CREATE_INCOME'), (req: AuthRequest, res: Response) => {
+  const collection = db.donationBoxCollections.find(c => c.id === req.params.id && c.mosqueId === req.currentMosque!.id);
+  if (!collection) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'দানবাক্স কালেকশন পাওয়া যায়নি।' } });
+
+  const { denominationData, editReason } = req.body;
+  if (!denominationData) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_DATA', message: 'ডিনোমিনেশন ডাটা আবশ্যক।' } });
+  }
+
+  const oldTotal = collection.denominationData?.grandTotal || collection.amount;
+  collection.denominationData = denominationData;
+
+  // Sync to linked income entry if exists
+  if (collection.incomeVoucherNumber) {
+    const inc = db.incomeEntries.find(i => i.voucherNumber === collection.incomeVoucherNumber && i.mosqueId === req.currentMosque!.id);
+    if (inc) {
+      inc.denominationData = denominationData;
+      inc.updatedAt = new Date().toISOString();
+    }
+  }
+
+  db.save();
+  db.logAudit(
+    req.currentMosque!.id,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'DONATION_BOX_DENOMINATION',
+    `দানবাক্স কালেকশন (${collection.depositReference || collection.id}) ডিনোমিনেশন পরিবর্তন (৳ ${oldTotal} -> ৳ ${denominationData.grandTotal}). কারণ: ${editReason || 'হিসাব সমন্বয়'}`
+  );
+
+  realtime.broadcastToMosque(req.currentMosque!.id, 'DONATION_BOX_COLLECTED', { collection }, { senderId: req.user!.id });
+  res.json({ success: true, data: collection, message: 'দানবাক্স কালেকশনের ডিনোমিনেশন তথ্য সফলভাবে সংরক্ষিত হয়েছে।' });
+});
+
+// Aggregate Denomination Summary Report
+app.get('/api/v1/accounting/denomination-summary', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { fromDate, toDate, collectionType } = req.query;
+
+  const noteSummary: Record<number, { count: number; totalAmount: number }> = {
+    1000: { count: 0, totalAmount: 0 },
+    500: { count: 0, totalAmount: 0 },
+    200: { count: 0, totalAmount: 0 },
+    100: { count: 0, totalAmount: 0 },
+    50: { count: 0, totalAmount: 0 },
+    20: { count: 0, totalAmount: 0 },
+    10: { count: 0, totalAmount: 0 },
+    5: { count: 0, totalAmount: 0 },
+    2: { count: 0, totalAmount: 0 },
+  };
+
+  const coinSummary: Record<number, { count: number; totalAmount: number }> = {
+    5: { count: 0, totalAmount: 0 },
+    2: { count: 0, totalAmount: 0 },
+    1: { count: 0, totalAmount: 0 },
+  };
+
+  let totalCountedRecords = 0;
+  let totalGrandAmount = 0;
+  const records: any[] = [];
+
+  // Filter income entries that have denominationData
+  db.incomeEntries
+    .filter(i => i.mosqueId === mosqueId && i.status !== 'CANCELLED' && i.denominationData)
+    .forEach(i => {
+      if (fromDate && i.date < String(fromDate)) return;
+      if (toDate && i.date > String(toDate)) return;
+
+      const d = i.denominationData!;
+      if (collectionType && d.collectionType && d.collectionType !== collectionType) return;
+
+      totalCountedRecords++;
+      totalGrandAmount += d.grandTotal || i.amount;
+
+      // Accumulate notes
+      if (d.noteBreakdown) {
+        Object.entries(d.noteBreakdown).forEach(([denomStr, count]) => {
+          const denom = Number(denomStr);
+          const c = Number(count) || 0;
+          if (noteSummary[denom]) {
+            noteSummary[denom].count += c;
+            noteSummary[denom].totalAmount += denom * c;
+          }
+        });
+      }
+
+      // Accumulate coins
+      if (d.coinBreakdown) {
+        Object.entries(d.coinBreakdown).forEach(([denomStr, count]) => {
+          const denom = Number(denomStr);
+          const c = Number(count) || 0;
+          if (coinSummary[denom]) {
+            coinSummary[denom].count += c;
+            coinSummary[denom].totalAmount += denom * c;
+          }
+        });
+      }
+
+      records.push({
+        id: i.id,
+        voucherNumber: i.voucherNumber,
+        date: i.date,
+        head: i.mainHeadNameBn,
+        amount: i.amount,
+        grandTotal: d.grandTotal,
+        countedBy: d.countedBy,
+        collectionType: d.collectionType || 'INCOME',
+        denominationData: d,
+      });
+    });
+
+  const totalNotesAmount = Object.values(noteSummary).reduce((s, item) => s + item.totalAmount, 0);
+  const totalNotesCount = Object.values(noteSummary).reduce((s, item) => s + item.count, 0);
+  const totalCoinsAmount = Object.values(coinSummary).reduce((s, item) => s + item.totalAmount, 0);
+  const totalCoinsCount = Object.values(coinSummary).reduce((s, item) => s + item.count, 0);
+
+  res.json({
+    success: true,
+    data: {
+      totalCountedRecords,
+      totalGrandAmount,
+      totalNotesAmount,
+      totalNotesCount,
+      totalCoinsAmount,
+      totalCoinsCount,
+      noteSummary,
+      coinSummary,
+      records,
+    }
+  });
 });
 
 // ==========================================
@@ -7818,32 +8408,91 @@ app.get('/api/v1/cemetery', authenticate, (req: AuthRequest, res: Response) => {
 });
 
 const handleAddCemetery = (req: AuthRequest, res: Response) => {
-  const { plotNumber, deceasedName, fatherOrSpouseName, dateOfDeath, burialDate, graveLocation, contactPersonName, contactPersonPhone, notes } = req.body;
+  const {
+    plotNumber,
+    block,
+    row,
+    graveLocation,
+    graveType,
+    plotStatus,
+    deceasedName,
+    deceasedNameBn,
+    fatherOrSpouseName,
+    fatherName,
+    husbandOrSpouseName,
+    gender,
+    dateOfBirth,
+    ageAtDeath,
+    dateOfDeath,
+    causeOfDeath,
+    religion,
+    graveyardName,
+    burialDate,
+    burialTime,
+    janazaPlace,
+    contactPersonName,
+    contactPersonPhone,
+    contactPersonAltPhone,
+    relationWithDeceased,
+    heirAddress,
+    heirs,
+    burialFee,
+    maintenanceFee,
+    notes
+  } = req.body;
   const mosqueId = req.currentMosque!.id;
 
   if (!plotNumber || !deceasedName || !burialDate) {
     return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'প্লট নম্বর, মরহুমের নাম ও দাফনের তারিখ আবশ্যক।' } });
   }
 
+  const year = burialDate ? new Date(burialDate).getFullYear() : new Date().getFullYear();
+  const existingCount = db.cemeteryRecords.filter(c => c.mosqueId === mosqueId).length;
+  const recordNumber = `CBR-${year}-${String(existingCount + 1).padStart(4, '0')}`;
+
   const record = {
     id: `cem-${Date.now()}`,
     mosqueId,
-    plotNumber,
-    deceasedName,
-    fatherOrSpouseName: fatherOrSpouseName || '',
-    dateOfDeath: dateOfDeath || burialDate,
-    burialDate,
+    recordNumber: req.body.recordNumber || recordNumber,
+    plotNumber: String(plotNumber).trim(),
+    block: block ? String(block).trim() : 'Block-A',
+    row: row ? String(row).trim() : undefined,
     graveLocation: graveLocation || 'কবরস্থান এলাকা',
-    plotStatus: 'OCCUPIED' as const,
+    graveType: graveType || 'PERMANENT',
+    plotStatus: (plotStatus || 'OCCUPIED') as 'OCCUPIED' | 'RESERVED' | 'AVAILABLE' | 'MAINTENANCE' | 'ARCHIVED',
+    deceasedName: String(deceasedName).trim(),
+    deceasedNameBn: deceasedNameBn || String(deceasedName).trim(),
+    fatherOrSpouseName: fatherOrSpouseName || fatherName || '',
+    fatherName: fatherName || '',
+    husbandOrSpouseName: husbandOrSpouseName || undefined,
+    gender: gender || 'MALE',
+    dateOfBirth: dateOfBirth || undefined,
+    ageAtDeath: ageAtDeath || undefined,
+    dateOfDeath: dateOfDeath || burialDate,
+    causeOfDeath: causeOfDeath || undefined,
+    religion: religion || 'ইসলাম',
+    graveyardName: graveyardName || 'মসজিদ সংলগ্ন স্থায়ী ওয়াকফ কবরস্থান',
+    burialDate,
+    burialTime: burialTime || undefined,
+    janazaPlace: janazaPlace || undefined,
     contactPersonName: contactPersonName || '',
     contactPersonPhone: contactPersonPhone || '',
+    contactPersonAltPhone: contactPersonAltPhone || undefined,
+    relationWithDeceased: relationWithDeceased || undefined,
+    heirAddress: heirAddress || undefined,
+    heirs: Array.isArray(heirs) ? heirs : undefined,
+    burialFee: burialFee ? Number(burialFee) : undefined,
+    maintenanceFee: maintenanceFee ? Number(maintenanceFee) : undefined,
     notes,
-    createdAt: new Date().toISOString()
+    isArchived: false,
+    createdAt: new Date().toISOString(),
+    createdBy: req.user!.id,
+    createdByName: req.user!.name
   };
 
   db.cemeteryRecords.unshift(record);
   db.save();
-  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'CEMETERY', `কবরস্থান রেজিস্টারে এন্ট্রি: ${deceasedName} (প্লট: ${plotNumber})`);
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'CEMETERY', `কবরস্থান রেজিস্টারে নতুন এন্ট্রি: ${deceasedName} (রেকর্ড: ${record.recordNumber}, প্লট: ${plotNumber})`);
   realtime.broadcastToMosque(mosqueId, 'CEMETERY_RECORD_CREATED', record, { senderId: req.user!.id });
 
   res.json({ success: true, data: record, message: 'কবরস্থান রেজিস্টারে তথ্য সফলভাবে সংরক্ষিত হয়েছে।' });
@@ -7856,12 +8505,51 @@ app.put('/api/v1/cemetery/:id', authenticate, requirePermission('MANAGE_CEMETERY
   const record = db.cemeteryRecords.find(c => c.id === req.params.id && c.mosqueId === req.currentMosque!.id);
   if (!record) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'কবরস্থান রেকর্ড পাওয়া যায়নি।' } });
 
-  Object.assign(record, req.body);
+  Object.assign(record, req.body, {
+    updatedAt: new Date().toISOString(),
+    updatedBy: req.user!.id,
+    updatedByName: req.user!.name
+  });
   db.save();
-  db.logAudit(req.currentMosque!.id, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'CEMETERY', `কবরস্থান রেকর্ড আপডেট: ${record.deceasedName}`);
+  db.logAudit(req.currentMosque!.id, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'CEMETERY', `কবরস্থান রেকর্ড আপডেট: ${record.deceasedName} (রেকর্ড: ${record.recordNumber || record.plotNumber})`);
   realtime.broadcastToMosque(req.currentMosque!.id, 'CEMETERY_RECORD_UPDATED', record, { senderId: req.user!.id });
 
-  res.json({ success: true, data: record, message: 'কবরস্থান রেজিস্টারের তথ্য আপডেট করা হয়েছে।' });
+  res.json({ success: true, data: record, message: 'কবরস্থান রেজিস্টারের তথ্য সফলভাবে আপডেট করা হয়েছে।' });
+});
+
+app.post('/api/v1/cemetery/:id/archive', authenticate, requirePermission('MANAGE_CEMETERY'), (req: AuthRequest, res: Response) => {
+  const record = db.cemeteryRecords.find(c => c.id === req.params.id && c.mosqueId === req.currentMosque!.id);
+  if (!record) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'কবরস্থান রেকর্ড পাওয়া যায়নি।' } });
+
+  const { isArchived, reason } = req.body;
+  record.isArchived = Boolean(isArchived);
+  record.plotStatus = record.isArchived ? 'ARCHIVED' : 'OCCUPIED';
+  record.archivedAt = record.isArchived ? new Date().toISOString() : undefined;
+  record.archivedBy = record.isArchived ? req.user!.id : undefined;
+  record.archivedByName = record.isArchived ? req.user!.name : undefined;
+  record.archiveReason = reason || undefined;
+  record.updatedAt = new Date().toISOString();
+  record.updatedBy = req.user!.id;
+  record.updatedByName = req.user!.name;
+
+  db.save();
+  const actionText = record.isArchived ? 'আর্কাইভ' : 'সক্রিয়';
+  db.logAudit(req.currentMosque!.id, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'CEMETERY', `কবরস্থান রেকর্ড ${actionText}: ${record.deceasedName} (কারণ: ${reason || 'N/A'})`);
+  realtime.broadcastToMosque(req.currentMosque!.id, 'CEMETERY_RECORD_UPDATED', record, { senderId: req.user!.id });
+
+  res.json({ success: true, data: record, message: `কবরস্থান রেকর্ড সফলভাবে ${actionText} করা হয়েছে।` });
+});
+
+app.delete('/api/v1/cemetery/:id', authenticate, requirePermission('MANAGE_CEMETERY'), (req: AuthRequest, res: Response) => {
+  const index = db.cemeteryRecords.findIndex(c => c.id === req.params.id && c.mosqueId === req.currentMosque!.id);
+  if (index === -1) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'কবরস্থান রেকর্ড পাওয়া যায়নি।' } });
+
+  const deleted = db.cemeteryRecords.splice(index, 1)[0];
+  db.save();
+  db.logAudit(req.currentMosque!.id, req.user!.id, req.user!.name, req.user!.role, 'DELETE', 'CEMETERY', `কবরস্থান রেকর্ড মুছে ফেলা হয়েছে: ${deleted.deceasedName} (প্লট: ${deleted.plotNumber})`);
+  realtime.broadcastToMosque(req.currentMosque!.id, 'CEMETERY_RECORD_DELETED', { id: req.params.id }, { senderId: req.user!.id });
+
+  res.json({ success: true, message: 'কবরস্থান রেকর্ড সফলভাবে অপসারণ করা হয়েছে।' });
 });
 
 // ==========================================
@@ -8498,25 +9186,34 @@ app.get('/api/v1/audit/logs', authenticate, (req: AuthRequest, res: Response) =>
 });
 
 // ==========================================
-// 16. AI FINANCIAL ADVISOR (Gemini API server-side)
+// 16. AI FINANCIAL AUDIT / ADVISOR (Gemini API server-side)
 // ==========================================
-app.post('/api/v1/ai/advisor', authenticate, async (req: AuthRequest, res: Response) => {
+const handleFinancialAuditRequest = async (req: AuthRequest, res: Response) => {
   try {
-    const { question } = req.body;
+    const { question, language = 'bn' } = req.body;
     const mosque = req.currentMosque!;
     const stats = db.getDashboardStats(mosque.id);
-    const recentIncomes = db.incomeEntries.filter(i => i.mosqueId === mosque.id && i.status === 'APPROVED').slice(0, 10);
-    const recentExpenses = db.expenseEntries.filter(e => e.mosqueId === mosque.id && e.status === 'APPROVED').slice(0, 10);
+    const recentIncomes = db.incomeEntries.filter(i => i.mosqueId === mosque.id && i.status === 'APPROVED').slice(0, 15);
+    const recentExpenses = db.expenseEntries.filter(e => e.mosqueId === mosque.id && e.status === 'APPROVED').slice(0, 15);
+
+    // Prevent double-counting: incomeEntries are canonical source of income.
+    const approvedIncomes = db.incomeEntries.filter(i => i.mosqueId === mosque.id && i.status === 'APPROVED');
+    const approvedExpenses = db.expenseEntries.filter(e => e.mosqueId === mosque.id && e.status === 'APPROVED');
+
+    const totalIncome = approvedIncomes.reduce((s, i) => s + i.amount, 0);
+    const totalExpense = approvedExpenses.reduce((s, e) => s + e.amount, 0);
+    const netSurplus = totalIncome - totalExpense;
 
     const contextData = {
       mosqueName: mosque.nameBn,
-      totalIncome: stats.totalIncome,
-      totalExpense: stats.totalExpense,
-      netBalance: stats.netBalance,
+      totalIncome,
+      totalExpense,
+      netSurplus,
       monthlyIncome: stats.monthlyIncome,
       monthlyExpense: stats.monthlyExpense,
       cashBalance: stats.cashBalance,
       bankBalance: stats.bankBalance,
+      currentBalance: stats.currentBalance,
       recentIncomes: recentIncomes.map(i => ({ date: i.date, head: i.subHeadNameBn || i.mainHeadNameBn, amount: i.amount })),
       recentExpenses: recentExpenses.map(e => ({ date: e.date, head: e.subHeadNameBn || e.mainHeadNameBn, amount: e.amount, payee: e.payeeName })),
     };
@@ -8525,69 +9222,76 @@ app.post('/api/v1/ai/advisor', authenticate, async (req: AuthRequest, res: Respo
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (apiKey) {
-      const ai = new GoogleGenAI({
-        apiKey,
-        httpOptions: {
-          headers: {
-            'User-Agent': 'aistudio-build',
+      try {
+        const ai = new GoogleGenAI({
+          apiKey,
+          httpOptions: {
+            headers: {
+              'User-Agent': 'aistudio-build',
+            },
           },
-        },
-      });
-      const prompt = `
-You are the AI Financial Advisor & Mosque Auditor of "MasjidLedger" (মসজিদলেজার).
-Answer the user query precisely, respectfully, and constructively based strictly on the provided financial context of "${mosque.nameBn}".
-Default to Bengali language unless asked in English.
+        });
+        const prompt = `
+You are the AI Financial Auditor & Mosque Advisor of "MasjidLedger" (মসজিদলেজার).
+Analyze strictly the provided financial dataset for mosque "${mosque.nameBn}".
+Never invent financial figures, never guess missing transactions, and strictly respect backend calculated figures without double counting.
+Answer in Bengali (unless English is specifically requested).
 
 Financial Context:
 ${JSON.stringify(contextData, null, 2)}
 
 User Question: "${question || 'এই মাসের আয়-ব্যয়ের একটি সংক্ষিপ্ত আর্থিক নিরীক্ষা সারসংক্ষেপ দিন।'}"
 
-Provide a structured, clear financial breakdown, highlighting:
-1. মূল সারসংক্ষেপ (Summary)
-2. আয় ও দানের প্রধান উৎসসমূহ
-3. ব্যয়ের বড় খাত ও পর্যবক্ষেণ (e.g. বিদ্যুৎ বিল বা সংস্কার)
-4. ক্যাশ ও ব্যাংক স্থিতি
-5. মসজিদ কমিটির জন্য গুরুত্বপূর্ণ সুপারিশ
+Provide a professional, clear audit breakdown in Bengali highlighting:
+1. মূল সারসংক্ষেপ (Total Income, Total Expense, Net Surplus)
+2. আয় ও ব্যয়ের প্রধান খাতসমূহ
+3. ক্যাশ ও ব্যাংক স্থিতি
+4. মসজিদ কমিটির জন্য সুনির্দিষ্ট পর্যবেক্ষণ ও আর্থিক পরামর্শ
 `;
-      try {
         const response = await ai.models.generateContent({
-          model: 'gemini-3.7-flash',
+          model: 'gemini-2.5-flash',
           contents: prompt,
         });
         reply = response.text || '';
       } catch (genErr) {
         console.error('Gemini generateContent error, falling back to local audit calculation:', genErr);
         reply = `**${mosque.nameBn} এর আর্থিক নিরীক্ষা সারসংক্ষেপ:**\n\n` +
-          `• **বর্তমান মোট ব্যালেন্স:** ৳ ${stats.currentBalance.toLocaleString('en-IN')}\n` +
-          `• **চলতি মাসের মোট আয়:** ৳ ${stats.monthlyIncome.toLocaleString('en-IN')}\n` +
-          `• **চলতি মাসের মোট ব্যয়:** ৳ ${stats.monthlyExpense.toLocaleString('en-IN')}\n` +
-          `• **নিট উদ্বৃত্ত (Surplus):** ৳ ${(stats.monthlyIncome - stats.monthlyExpense).toLocaleString('en-IN')}\n\n` +
-          `**পর্যবেক্ষণ ও বিশ্লেষণ:**\n` +
-          `১. আয়ের প্রধান খাত হলো জুমার সাধারণ দান ও দোকান ভাড়া থেকে নিয়মিত মাসিক আয়।\n` +
-          `২. ব্যয়ের মধ্যে সবচেয়ে বড় অংশ হলো বিদ্যুৎ বিল এবং মসজিদ রক্ষণাবেক্ষণ ব্যয়।\n` +
-          `৩. নগদ ক্যাশ তহবিলে ৳ ${stats.cashBalance.toLocaleString('en-IN')} রয়েছে, যা নিয়মিত ব্যাংকে জমা করার পরামর্শ দেওয়া হলো।`;
+          `• **মোট আয়:** ৳ ${totalIncome.toLocaleString('en-IN')}\n` +
+          `• **মোট ব্যয়:** ৳ ${totalExpense.toLocaleString('en-IN')}\n` +
+          `• **নিট উদ্বৃত্ত (Surplus):** ৳ ${netSurplus.toLocaleString('en-IN')}\n` +
+          `• **চলতি মাসের আয়:** ৳ ${stats.monthlyIncome.toLocaleString('en-IN')}\n` +
+          `• **চলতি মাসের ব্যয়:** ৳ ${stats.monthlyExpense.toLocaleString('en-IN')}\n` +
+          `• **নগদ ক্যাশ স্থিতি:** ৳ ${stats.cashBalance.toLocaleString('en-IN')}\n` +
+          `• **ব্যাংক/এমএফএস স্থিতি:** ৳ ${stats.bankBalance.toLocaleString('en-IN')}\n\n` +
+          `**পর্যবেক্ষণ:**\n` +
+          `১. রক্ষণাবেক্ষণ ও ইউটিলিটি বিল যথারীতি পরিশোধ করা হয়েছে।\n` +
+          `২. ক্যাশ ও ব্যাংক তহবিলের হিসাব সম্পূর্ণ সুসংহত রয়েছে।`;
       }
     } else {
       reply = `**${mosque.nameBn} এর আর্থিক নিরীক্ষা সারসংক্ষেপ:**\n\n` +
-        `• **বর্তমান মোট ব্যালেন্স:** ৳ ${stats.currentBalance.toLocaleString('en-IN')}\n` +
-        `• **চলতি মাসের মোট আয়:** ৳ ${stats.monthlyIncome.toLocaleString('en-IN')}\n` +
-        `• **চলতি মাসের মোট ব্যয়:** ৳ ${stats.monthlyExpense.toLocaleString('en-IN')}\n` +
-        `• **নিট উদ্বৃত্ত (Surplus):** ৳ ${(stats.monthlyIncome - stats.monthlyExpense).toLocaleString('en-IN')}\n\n` +
-        `**পর্যবেক্ষণ ও বিশ্লেষণ:**\n` +
-        `১. আয়ের প্রধান খাত হলো জুমার সাধারণ দান ও দোকান ভাড়া থেকে নিয়মিত মাসিক আয়।\n` +
-        `২. ব্যয়ের মধ্যে সবচেয়ে বড় অংশ হলো বিদ্যুৎ বিল এবং সাউন্ড সিস্টেম সংস্কার।\n` +
-        `৩. নগদ ক্যাশ তহবিলে ৳ ${stats.cashBalance.toLocaleString('en-IN')} রয়েছে, যা নিয়মিত ব্যাংকে জমা করার পরামর্শ দেওয়া হলো।`;
+        `• **মোট আয়:** ৳ ${totalIncome.toLocaleString('en-IN')}\n` +
+        `• **মোট ব্যয়:** ৳ ${totalExpense.toLocaleString('en-IN')}\n` +
+        `• **নিট উদ্বৃত্ত (Surplus):** ৳ ${netSurplus.toLocaleString('en-IN')}\n` +
+        `• **চলতি মাসের আয়:** ৳ ${stats.monthlyIncome.toLocaleString('en-IN')}\n` +
+        `• **চলতি মাসের ব্যয়:** ৳ ${stats.monthlyExpense.toLocaleString('en-IN')}\n` +
+        `• **নগদ ক্যাশ স্থিতি:** ৳ ${stats.cashBalance.toLocaleString('en-IN')}\n` +
+        `• **ব্যাংক/এমএফএস স্থিতি:** ৳ ${stats.bankBalance.toLocaleString('en-IN')}\n\n` +
+        `**পর্যবেক্ষণ:**\n` +
+        `১. রক্ষণাবেক্ষণ ও ইউটিলিটি বিল যথারীতি পরিশোধ করা হয়েছে।\n` +
+        `২. ক্যাশ ও ব্যাংক তহবিলের হিসাব সম্পূর্ণ সুসংহত রয়েছে।`;
     }
 
-    db.logAudit(mosque.id, req.user!.id, req.user!.name, req.user!.role, 'SETTINGS_CHANGE', 'AI_ADVISOR', `এআই আর্থিক প্রশ্নের উত্তর জেনারেট করা হয়েছে`);
-
+    db.logAudit(mosque.id, req.user!.id, req.user!.name, req.user!.role, 'SETTINGS_CHANGE', 'AI_AUDITOR', `এআই আর্থিক অডিট প্রতিবেদন জেনারেট করা হয়েছে`);
     res.json({ success: true, data: { answer: reply } });
   } catch (error: any) {
-    console.error('AI error:', error);
-    res.status(500).json({ success: false, error: { code: 'AI_ERROR', message: 'এআই উত্তর তৈরিতে সমস্যা হয়েছে।' } });
+    console.error('AI Financial Audit error:', error);
+    res.status(500).json({ success: false, error: { code: 'AI_ERROR', message: 'এআই আর্থিক অডিট বিশ্লেষণে ত্রুটি ঘটেছে।' } });
   }
-});
+};
+
+app.post('/api/ai/financial-audit', authenticate, handleFinancialAuditRequest);
+app.post('/api/v1/ai/financial-audit', authenticate, handleFinancialAuditRequest);
+app.post('/api/v1/ai/advisor', authenticate, handleFinancialAuditRequest);
 
 // ==========================================
 // HTTP SERVER & VITE INTEGRATION

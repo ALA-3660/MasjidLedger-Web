@@ -1,10 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   HeartHandshake,
   Box,
   Plus,
   Search,
   Printer,
+  Receipt,
   QrCode,
   CheckCircle2,
   Users,
@@ -43,13 +44,20 @@ import {
   AccountHead,
   PaymentMethod,
   Mosque,
+  CashDenominationData,
+  User,
 } from '../types';
 import { Language, translations, formatCurrency, formatDate } from '../lib/i18n';
 import { numberToBanglaWords } from '../lib/banglaNumberToWords';
 import { ChangeCalculatorModal } from './ChangeCalculatorModal';
+import { DenominationDetailModal } from './DenominationDetailModal';
+import { api } from '../lib/api';
 import { QRViewer, Barcode128 } from './BarcodeQRService';
 import { SmsPreviewModal } from './SmsPreviewModal';
 import { EditDonationBoxModal } from './EditModals';
+import { QuickDonationBoxReportModal } from './QuickDonationBoxReportModal';
+import { getJumaDisplayDetails } from '../lib/jumaHelper';
+import { QrScanResult } from '../types/qrBarcodeTypes';
 
 interface DonationViewProps {
   donations: Donation[];
@@ -58,14 +66,21 @@ interface DonationViewProps {
   accounts: FinancialAccount[];
   accountHeads?: AccountHead[];
   currentMosque?: Mosque | null;
+  currentUser?: User | null;
   language?: Language;
+  scannedActionIntent?: QrScanResult | null;
+  onClearScannedAction?: () => void;
   onAddDonation: (data: any) => Promise<Donation>;
   onCollectBox: (data: any) => Promise<void>;
   onAddDonationBox?: (data: any) => Promise<void>;
   onAddBox?: (data: any) => Promise<void>;
   onUpdateDonationBox?: (id: string, data: any) => Promise<void>;
   onUpdateBox?: (id: string, data: any) => Promise<void>;
-  onPrintReceipt: (donation: Donation) => void;
+  onPrintReceipt: (
+    donation: Donation,
+    format?: 'A4' | 'POS_80' | 'POS_58',
+    isReprint?: boolean
+  ) => void;
   onSendSms?: (phone: string, message: string, tokenUrl?: string) => Promise<any>;
 }
 
@@ -121,7 +136,10 @@ export const DonationView: React.FC<DonationViewProps> = ({
   accounts,
   accountHeads,
   currentMosque,
+  currentUser,
   language = 'bn',
+  scannedActionIntent,
+  onClearScannedAction,
   onAddDonation,
   onCollectBox,
   onAddDonationBox,
@@ -149,6 +167,8 @@ export const DonationView: React.FC<DonationViewProps> = ({
   const [qrTargetBox, setQrTargetBox] = useState<DonationBox | null>(null);
   const [editingBox, setEditingBox] = useState<DonationBox | null>(null);
   const [isPrintReportOpen, setIsPrintReportOpen] = useState(false);
+  const [isQuickBoxReportOpen, setIsQuickBoxReportOpen] = useState(false);
+  const [selectedReportBoxId, setSelectedReportBoxId] = useState('ALL');
   const [isPrintBoxListOpen, setIsPrintBoxListOpen] = useState(false);
   const [isPrintJumaReportOpen, setIsPrintJumaReportOpen] = useState(false);
 
@@ -189,6 +209,7 @@ export const DonationView: React.FC<DonationViewProps> = ({
   const [donationDate, setDonationDate] = useState(new Date().toISOString().split('T')[0]);
   const [errorMessage, setErrorMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [donationDenominationData, setDonationDenominationData] = useState<CashDenominationData | null>(null);
 
   // 3. "দানবাক্স কালেকশন ও টাকা জমা" (Box Collection Modal)
   const [isBoxModalOpen, setIsBoxModalOpen] = useState(false);
@@ -200,6 +221,7 @@ export const DonationView: React.FC<DonationViewProps> = ({
   const [boxCollectionDate, setBoxCollectionDate] = useState(new Date().toISOString().split('T')[0]);
   const [boxNotes, setBoxNotes] = useState('');
   const [isCollectingBox, setIsCollectingBox] = useState(false);
+  const [boxDenominationData, setBoxDenominationData] = useState<CashDenominationData | null>(null);
 
   // 4. Juma Collection Modal
   const [isJumaModalOpen, setIsJumaModalOpen] = useState(false);
@@ -209,6 +231,14 @@ export const DonationView: React.FC<DonationViewProps> = ({
   const [jumaWitness, setJumaWitness] = useState('');
   const [jumaAccount, setJumaAccount] = useState(accounts[0]?.id || '');
   const [jumaNotes, setJumaNotes] = useState('পবিত্র জুমার সাধারণ কালেকশন');
+  const [jumaDenominationData, setJumaDenominationData] = useState<CashDenominationData | null>(null);
+
+  // 5. Denomination Detail / Slip Modal State
+  const [isDenominationDetailOpen, setIsDenominationDetailOpen] = useState(false);
+  const [activeDenominationDetail, setActiveDenominationDetail] = useState<CashDenominationData | null>(null);
+  const [activeDenominationRef, setActiveDenominationRef] = useState('');
+  const [activeDenominationSource, setActiveDenominationSource] = useState<'INCOME' | 'DONATION' | 'DONATION_BOX' | 'RENT' | 'OTHER'>('DONATION');
+  const [activeDenominationRecordId, setActiveDenominationRecordId] = useState('');
 
   // Handle Box Save function resolving both props
   const saveBoxHandler = onAddDonationBox || onAddBox;
@@ -234,6 +264,53 @@ export const DonationView: React.FC<DonationViewProps> = ({
     setAddBoxError('');
     setIsAddBoxModalOpen(true);
   };
+
+  // Handle Scan -> Direct Entry for Donation, Box Collection, and Juma Collection
+  useEffect(() => {
+    if (!scannedActionIntent) return;
+
+    if (scannedActionIntent.actionKey === 'ACT-DON-NEW' || scannedActionIntent.actionKey === 'ACT_DON_NEW') {
+      setActiveSubTab('donations');
+      // Reset form fields
+      setDonorName('');
+      setDonorPhone('');
+      setDonorAddress('');
+      setIsAnonymous(false);
+      setCategory('GENERAL');
+      setAmount('');
+      setPaymentMethod('CASH');
+      setAccountId(accounts[0]?.id || '');
+      setReference('');
+      setDonationDate(new Date().toISOString().split('T')[0]);
+      setErrorMessage('');
+      setDonationDenominationData(null);
+      setIsDonationModalOpen(true);
+      onClearScannedAction?.();
+    } else if (scannedActionIntent.actionKey === 'ACT-BOX-COLLECT' || scannedActionIntent.actionKey === 'ACT_BOX_COLLECT') {
+      setActiveSubTab('boxes');
+      setSelectedBoxId(donationBoxes[0]?.id || '');
+      setBoxAmount('');
+      setCountingTeam('কোষাধ্যক্ষ, মুয়াজ্জিন, হিসাবরক্ষক');
+      setWitnesses('সভাপতি / সাধারণ সম্পাদক, সম্মানিত মুসল্লিগণ');
+      setBoxDepositAccountId(accounts[0]?.id || '');
+      setBoxCollectionDate(new Date().toISOString().split('T')[0]);
+      setBoxNotes('');
+      setBoxDenominationData(null);
+      setIsBoxModalOpen(true);
+      onClearScannedAction?.();
+    } else if (scannedActionIntent.actionKey === 'ACT-JUM-COLLECT' || scannedActionIntent.actionKey === 'ACT_JUM_COLLECT') {
+      setActiveSubTab('juma');
+      setJumaAmount('');
+      setJumaDate(new Date().toISOString().split('T')[0]);
+      setJumaTeam('ইমাম সাহেব, কোষাধ্যক্ষ, মুয়াজ্জিন');
+      setJumaWitness('সভাপতি / সাধারণ সম্পাদক ও উপস্থিত মুসল্লিগণ');
+      setJumaAccount(accounts[0]?.id || '');
+      setJumaNotes('পবিত্র জুমার সাধারণ কালেকশন');
+      setJumaDenominationData(null);
+      setIsJumaModalOpen(true);
+      onClearScannedAction?.();
+    }
+  }, [scannedActionIntent, accounts, donationBoxes]);
 
   // Currently selected box in collection dialog
   const activeSelectedBox = useMemo(() => {
@@ -309,8 +386,8 @@ export const DonationView: React.FC<DonationViewProps> = ({
   }, [filteredBoxCollections]);
 
   // Handlers
-  const handleDonationSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleDonationSubmit = async (e?: React.FormEvent, submitMode: 'SAVE_AND_PRINT' | 'SAVE_ONLY' = 'SAVE_AND_PRINT') => {
+    if (e && e.preventDefault) e.preventDefault();
     setErrorMessage('');
     const num = Number(amount);
     if (!num || num <= 0) {
@@ -318,9 +395,14 @@ export const DonationView: React.FC<DonationViewProps> = ({
       return;
     }
 
+    if (donationDenominationData && donationDenominationData.grandTotal !== num) {
+      setErrorMessage(`ভাংতি গণনা অনুযায়ী মোট টাকা (৳${donationDenominationData.grandTotal.toLocaleString('en-IN')}) এবং ইনপুটকৃত টাকার পরিমাণ (৳${num.toLocaleString('en-IN')}) সমান হতে হবে।`);
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      const created = await onAddDonation({
+      const payload: any = {
         donorName: isAnonymous ? 'আল্লাহর এক বান্দা (Anonymous)' : donorName,
         donorPhone,
         donorAddress,
@@ -331,9 +413,16 @@ export const DonationView: React.FC<DonationViewProps> = ({
         accountId: accountId || accounts[0]?.id,
         reference,
         date: donationDate,
-      });
+      };
+      if (paymentMethod === 'CASH' && donationDenominationData && donationDenominationData.grandTotal === num) {
+        payload.denominationData = donationDenominationData;
+      }
+      const created = await onAddDonation(payload);
       setIsDonationModalOpen(false);
-      if (created) onPrintReceipt(created);
+      setDonationDenominationData(null);
+      if (created && submitMode === 'SAVE_AND_PRINT') {
+        onPrintReceipt(created, 'POS_80', false);
+      }
     } catch (err: any) {
       setErrorMessage(err.message || 'Error saving donation');
     } finally {
@@ -349,9 +438,14 @@ export const DonationView: React.FC<DonationViewProps> = ({
       return;
     }
 
+    if (boxDenominationData && boxDenominationData.grandTotal !== num) {
+      alert(`ভাংতি গণনা অনুযায়ী মোট টাকা (৳${boxDenominationData.grandTotal.toLocaleString('en-IN')}) এবং বক্সের টাকার পরিমাণ (৳${num.toLocaleString('en-IN')}) সমান হতে হবে।`);
+      return;
+    }
+
     setIsCollectingBox(true);
     try {
-      await onCollectBox({
+      const payload: any = {
         boxId: selectedBoxId || donationBoxes[0]?.id,
         amount: num,
         countingTeam: countingTeam.split(',').map((s) => s.trim()).filter(Boolean),
@@ -359,10 +453,15 @@ export const DonationView: React.FC<DonationViewProps> = ({
         depositAccountId: boxDepositAccountId || accounts[0]?.id,
         collectionDate: boxCollectionDate,
         notes: boxNotes,
-      });
+      };
+      if (boxDenominationData && boxDenominationData.grandTotal === num) {
+        payload.denominationData = boxDenominationData;
+      }
+      await onCollectBox(payload);
       setIsBoxModalOpen(false);
       setBoxAmount('');
       setBoxNotes('');
+      setBoxDenominationData(null);
     } catch (err: any) {
       alert(err.message || 'কালেকশন সংরক্ষণ করতে ব্যর্থ হয়েছে।');
     } finally {
@@ -378,23 +477,35 @@ export const DonationView: React.FC<DonationViewProps> = ({
       return;
     }
 
+    if (jumaDenominationData && jumaDenominationData.grandTotal !== num) {
+      alert(`ভাংতি গণনা অনুযায়ী মোট টাকা (৳${jumaDenominationData.grandTotal.toLocaleString('en-IN')}) এবং জুমার টাকার পরিমাণ (৳${num.toLocaleString('en-IN')}) সমান হতে হবে।`);
+      return;
+    }
+
     try {
-      await onAddDonation({
+      const payload: any = {
         donorName: 'পবিত্র জুমার জামাত ও মুসল্লিগণ',
         donorPhone: '',
-        isAnonymous: true,
+        isAnonymous: false,
         category: 'GENERAL',
         amount: num,
         paymentMethod: 'CASH',
         accountId: jumaAccount || accounts[0]?.id,
         reference: `জুমার কালেকশন - ${jumaDate}`,
         date: jumaDate,
-        description: `${jumaNotes}. গণনা টিম: ${jumaTeam}. সাক্ষী: ${jumaWitness}`,
-      });
+        countingTeam: jumaTeam ? jumaTeam.split(',').map((s) => s.trim()) : undefined,
+        witness: jumaWitness || undefined,
+        description: `${jumaNotes || 'পবিত্র জুমার সাধারণ কালেকশন'}${jumaTeam ? `. গণনা টিম: ${jumaTeam}` : ''}${jumaWitness ? `. সাক্ষী: ${jumaWitness}` : ''}`,
+      };
+      if (jumaDenominationData && jumaDenominationData.grandTotal === num) {
+        payload.denominationData = jumaDenominationData;
+      }
+      await onAddDonation(payload);
       setIsJumaModalOpen(false);
       setJumaAmount('');
       setJumaTeam('');
       setJumaWitness('');
+      setJumaDenominationData(null);
     } catch (err) {
       console.error(err);
     }
@@ -444,13 +555,32 @@ export const DonationView: React.FC<DonationViewProps> = ({
     }
   };
 
-  const handleApplyCalculatedTotal = (calculatedTotal: number) => {
+  const handleApplyCalculatedTotal = (calculatedTotal: number, denominationData?: CashDenominationData) => {
     if (calculatorTarget === 'DONATION') {
       setAmount(calculatedTotal.toString());
+      if (denominationData) setDonationDenominationData(denominationData);
     } else if (calculatorTarget === 'BOX') {
       setBoxAmount(calculatedTotal.toString());
+      if (denominationData) setBoxDenominationData(denominationData);
     } else if (calculatorTarget === 'JUMA') {
       setJumaAmount(calculatedTotal.toString());
+      if (denominationData) setJumaDenominationData(denominationData);
+    }
+  };
+
+  const handleSaveUpdatedDenomination = async (updatedData: CashDenominationData, editReason: string) => {
+    if (!activeDenominationRecordId) return;
+    try {
+      if (activeDenominationSource === 'DONATION') {
+        await api.updateDonationDenomination(activeDenominationRecordId, updatedData, editReason);
+      } else if (activeDenominationSource === 'DONATION_BOX') {
+        await api.updateDonationBoxCollectionDenomination(activeDenominationRecordId, updatedData, editReason);
+      }
+      setActiveDenominationDetail(updatedData);
+      alert('ভাংতি ও ক্যাশ নোট গণনা বিবরণী সফলভাবে হালনাগাদ ও অডিট লগ সংরক্ষণ করা হয়েছে।');
+    } catch (err: any) {
+      alert(err.message || 'ডিনোমিনেশন হালনাগাদ করতে ব্যর্থ হয়েছে।');
+      throw err;
     }
   };
 
@@ -699,14 +829,45 @@ export const DonationView: React.FC<DonationViewProps> = ({
                         </td>
                         <td className="py-3.5 px-4 text-center">
                           <div className="flex items-center justify-center space-x-1.5">
+                            {/* POS Thermal Receipt */}
                             <button
-                              onClick={() => onPrintReceipt(don)}
+                              id={`btn-pos-receipt-${don.id}`}
+                              onClick={() => onPrintReceipt(don, 'POS_80', true)}
+                              className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-semibold flex items-center space-x-1 transition-colors cursor-pointer"
+                              title="POS থার্মাল রসিদ প্রিন্ট করুন (80mm/58mm)"
+                            >
+                              <Receipt className="w-3.5 h-3.5 text-emerald-600" />
+                              <span className="text-[11px]">POS</span>
+                            </button>
+
+                            {/* Official A4 Receipt */}
+                            <button
+                              id={`btn-a4-receipt-${don.id}`}
+                              onClick={() => onPrintReceipt(don, 'A4', true)}
                               className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center space-x-1 transition-colors cursor-pointer"
-                              title="মানি রসিদ প্রিন্ট করুন"
+                              title="অফিসিয়াল A4 রসিদ প্রিন্ট করুন"
                             >
                               <Printer className="w-3.5 h-3.5 text-slate-600" />
-                              <span className="text-[11px]">রসিদ</span>
+                              <span className="text-[11px]">A4</span>
                             </button>
+
+                            {don.denominationData && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveDenominationDetail(don.denominationData || null);
+                                  setActiveDenominationRef(don.receiptNumber);
+                                  setActiveDenominationSource('DONATION');
+                                  setActiveDenominationRecordId(don.id);
+                                  setIsDenominationDetailOpen(true);
+                                }}
+                                className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg text-xs font-semibold flex items-center space-x-1 border border-emerald-200 transition-colors cursor-pointer"
+                                title="নোট ও কয়েন (ভাংতি) গণনা বিবরণী স্লিপ দেখুন"
+                              >
+                                <Banknote className="w-3.5 h-3.5 text-emerald-700" />
+                                <span className="text-[11px]">কাউন্টিং</span>
+                              </button>
+                            )}
 
                             {onSendSms && don.donorPhone && (
                               <button
@@ -797,9 +958,23 @@ export const DonationView: React.FC<DonationViewProps> = ({
                   প্রতিটি দানবাক্সের অবস্থান, দোকানের বিবরণ ও সর্বশেষ খোলার পর অতিক্রান্ত সময়
                 </p>
               </div>
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                 <button
                   type="button"
+                  id="btn-open-donation-box-quick-report"
+                  onClick={() => {
+                    setSelectedReportBoxId('ALL');
+                    setIsQuickBoxReportOpen(true);
+                  }}
+                  className="text-xs font-bold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 px-3 py-1.5 rounded-xl flex items-center space-x-1.5 transition-all shadow-xs cursor-pointer"
+                  title="দানবাক্স কালেকশন রিপোর্ট ফিল্টার ও A4 প্রিন্ট করুন"
+                >
+                  <Printer className="w-3.5 h-3.5 text-amber-700" />
+                  <span>🖨️ কালেকশন রিপোর্ট / প্রিন্ট</span>
+                </button>
+                <button
+                  type="button"
+                  id="btn-open-donation-box-list-print"
                   onClick={() => setIsPrintBoxListOpen(true)}
                   className="text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 px-3 py-1.5 rounded-xl flex items-center space-x-1.5 transition-all shadow-xs cursor-pointer"
                   title="দানবাক্সসমূহের পূর্ণাঙ্গ মাস্টার তালিকা ও বিবরণী প্রিন্ট করুন"
@@ -809,6 +984,7 @@ export const DonationView: React.FC<DonationViewProps> = ({
                 </button>
                 <button
                   type="button"
+                  id="btn-add-new-donation-box"
                   onClick={handleOpenAddBoxModal}
                   className="text-xs font-bold text-teal-800 bg-teal-50 hover:bg-teal-100 border border-teal-200 px-3 py-1.5 rounded-xl flex items-center space-x-1 transition-all cursor-pointer"
                 >
@@ -931,6 +1107,17 @@ export const DonationView: React.FC<DonationViewProps> = ({
                         </button>
                         <button
                           type="button"
+                          onClick={() => {
+                            setSelectedReportBoxId(box.id);
+                            setIsQuickBoxReportOpen(true);
+                          }}
+                          title="এই দানবাক্সের কালেকশন রিপোর্ট প্রিন্ট করুন"
+                          className="p-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-xl transition-colors cursor-pointer"
+                        >
+                          <Printer className="w-4 h-4 text-amber-700" />
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => setQrTargetBox(box)}
                           title="দানবাক্স QR কোড স্টিকার"
                           className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors cursor-pointer"
@@ -972,11 +1159,15 @@ export const DonationView: React.FC<DonationViewProps> = ({
               <div className="flex items-center space-x-2 flex-wrap">
                 <button
                   type="button"
-                  onClick={() => setIsPrintReportOpen(true)}
-                  className="bg-white hover:bg-teal-50 text-teal-900 px-4 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-sm transition-all cursor-pointer"
+                  id="btn-open-register-collection-report"
+                  onClick={() => {
+                    setSelectedReportBoxId(filterBoxId || 'ALL');
+                    setIsQuickBoxReportOpen(true);
+                  }}
+                  className="bg-amber-400 hover:bg-amber-300 text-slate-950 px-4 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-sm transition-all cursor-pointer"
                 >
-                  <Printer className="w-4 h-4 text-teal-700" />
-                  <span>প্রিন্ট-রেডি রেজিস্টার রিপোর্ট</span>
+                  <Printer className="w-4 h-4 text-slate-950" />
+                  <span>🖨️ কালেকশন রিপোর্ট / প্রিন্ট (A4)</span>
                 </button>
               </div>
             </div>
@@ -1097,12 +1288,13 @@ export const DonationView: React.FC<DonationViewProps> = ({
                     <th className="py-3 px-4">উপস্থিত সাক্ষীগণ</th>
                     <th className="py-3 px-4">জমার ফান্ড/অ্যাকাউন্ট</th>
                     <th className="py-3 px-4 text-right">আদায়কৃত টাকা (৳)</th>
+                    <th className="py-3 px-4 text-center">কাউন্টিং স্লিপ</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredBoxCollections.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-10 text-center text-slate-400">
+                      <td colSpan={8} className="py-10 text-center text-slate-400">
                         কোনো কালেকশন এন্ট্রি পাওয়া যায়নি।
                       </td>
                     </tr>
@@ -1161,6 +1353,32 @@ export const DonationView: React.FC<DonationViewProps> = ({
                           <td className="py-3.5 px-4 text-right font-mono font-bold text-emerald-800 text-sm">
                             ৳ {col.amount.toLocaleString('en-IN')}
                           </td>
+
+                          <td className="py-3.5 px-4 text-center">
+                            {col.denominationData ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveDenominationDetail(col.denominationData || null);
+                                  setActiveDenominationRef(
+                                    col.incomeVoucherNumber ||
+                                      col.depositReference ||
+                                      (matchedBox ? matchedBox.boxCode : 'দানবাক্স কালেকশন')
+                                  );
+                                  setActiveDenominationSource('DONATION_BOX');
+                                  setActiveDenominationRecordId(col.id);
+                                  setIsDenominationDetailOpen(true);
+                                }}
+                                className="px-2 py-1 bg-teal-50 hover:bg-teal-100 text-teal-800 rounded-lg text-xs font-bold border border-teal-200 transition-colors inline-flex items-center space-x-1 cursor-pointer"
+                                title="নোট ও কয়েন (ভাংতি) গণনা বিবরণী স্লিপ দেখুন"
+                              >
+                                <Banknote className="w-3.5 h-3.5 text-teal-700" />
+                                <span>স্লিপ</span>
+                              </button>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 font-mono">-</span>
+                            )}
+                          </td>
                         </tr>
                       );
                     })
@@ -1175,6 +1393,7 @@ export const DonationView: React.FC<DonationViewProps> = ({
                       <td className="py-3.5 px-4 text-right font-mono font-bold text-emerald-900 text-base">
                         ৳ {filteredCollectionsTotal.toLocaleString('en-IN')}
                       </td>
+                      <td></td>
                     </tr>
                   </tfoot>
                 )}
@@ -1197,12 +1416,21 @@ export const DonationView: React.FC<DonationViewProps> = ({
                 প্রতি শুক্রবার জুমার নামাজে মুসল্লিদের দানকৃত টাকার হিসাব ও জামাতের বিবরণ
               </p>
             </div>
-            <div className="flex items-center space-x-3">
-              <div className="text-xs font-mono text-slate-600 bg-emerald-50/70 border border-emerald-200 px-3 py-1.5 rounded-xl">
-                জুমার সর্বমোট আদায়:{' '}
-                <strong className="text-emerald-800 text-sm font-bold">
-                  ৳ {filteredJumaTotal.toLocaleString('en-IN')}
-                </strong>
+            <div className="flex items-center space-x-3 flex-wrap gap-y-2">
+              <div className="text-xs font-mono text-slate-700 bg-emerald-50/80 border border-emerald-200 px-3.5 py-1.5 rounded-xl flex items-center space-x-2 shadow-2xs">
+                <span>
+                  জুমার সর্বমোট আদায়:{' '}
+                  <strong className="text-emerald-800 text-sm font-bold">
+                    ৳ {filteredJumaTotal.toLocaleString('en-IN')}
+                  </strong>
+                </span>
+                <span className="text-emerald-300 font-normal">|</span>
+                <span>
+                  মোট জুমা:{' '}
+                  <strong className="text-emerald-800 text-sm font-bold">
+                    {filteredJumaDonations.length}
+                  </strong>
+                </span>
               </div>
               <button
                 type="button"
@@ -1289,44 +1517,87 @@ export const DonationView: React.FC<DonationViewProps> = ({
                       </td>
                     </tr>
                   ) : (
-                    jumaDonations.map((jd) => (
-                      <tr key={jd.id} className="hover:bg-slate-50">
-                        <td className="py-3.5 px-4 font-mono font-bold text-slate-700">
-                          {formatDate(jd.date)}
-                        </td>
-                        <td className="py-3.5 px-4 font-mono text-emerald-800 font-bold">
-                          {jd.receiptNumber}
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <div className="font-semibold text-slate-900">{jd.donorName}</div>
-                          <div className="text-[11px] text-slate-500">{jd.description || jd.reference}</div>
-                        </td>
-                        <td className="py-3.5 px-4 text-slate-700 font-medium">{jd.accountName}</td>
-                        <td className="py-3.5 px-4 text-right font-mono font-bold text-emerald-700 text-sm">
-                          ৳ {jd.amount.toLocaleString('en-IN')}
-                        </td>
-                        <td className="py-3.5 px-4 text-center">
-                          <button
-                            onClick={() => onPrintReceipt(jd)}
-                            className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg text-xs font-bold border border-emerald-200 transition-colors cursor-pointer"
-                          >
-                            রসিদ প্রিন্ট
-                          </button>
+                    jumaDonations.map((jd) => {
+                      const jumaInfo = getJumaDisplayDetails(jd, language);
+                      return (
+                        <tr key={jd.id} className="hover:bg-slate-50">
+                          <td className="py-3.5 px-4 font-mono font-bold text-slate-700">
+                            {formatDate(jd.date)}
+                          </td>
+                          <td className="py-3.5 px-4 font-mono text-emerald-800 font-bold">
+                            {jd.receiptNumber}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <div className="space-y-1">
+                              <div className="font-bold text-slate-900 text-xs">{jumaInfo.title}</div>
+                              <div className="text-[11px] text-slate-700">
+                                <span className="font-semibold text-slate-800">গণনা টিম: </span>
+                                <span>{jumaInfo.countingTeam}</span>
+                              </div>
+                              <div className="text-[11px] text-slate-600">
+                                <span className="font-semibold text-slate-800">সাক্ষী: </span>
+                                <span>{jumaInfo.witness}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-700 font-medium">{jd.accountName}</td>
+                          <td className="py-3.5 px-4 text-right font-mono font-bold text-emerald-700 text-sm">
+                            ৳ {jd.amount.toLocaleString('en-IN')}
+                          </td>
+                          <td className="py-3.5 px-4 text-center">
+                          <div className="flex items-center justify-center space-x-1.5">
+                            <button
+                              onClick={() => onPrintReceipt(jd, 'POS_80', true)}
+                              className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg text-xs font-bold border border-emerald-200 transition-colors flex items-center space-x-1 cursor-pointer"
+                              title="POS থার্মাল রসিদ"
+                            >
+                              <Receipt className="w-3 h-3 text-emerald-600" />
+                              <span>POS</span>
+                            </button>
+                            <button
+                              onClick={() => onPrintReceipt(jd, 'A4', true)}
+                              className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-bold border border-slate-300 transition-colors flex items-center space-x-1 cursor-pointer"
+                              title="A4 অফিসিয়াল রসিদ"
+                            >
+                              <Printer className="w-3 h-3 text-slate-600" />
+                              <span>A4</span>
+                            </button>
+                            {jd.denominationData && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveDenominationDetail(jd.denominationData || null);
+                                  setActiveDenominationRef(jd.receiptNumber || 'জুমার কালেকশন');
+                                  setActiveDenominationSource('DONATION');
+                                  setActiveDenominationRecordId(jd.id);
+                                  setIsDenominationDetailOpen(true);
+                                }}
+                                className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-lg text-xs font-bold border border-amber-200 transition-colors flex items-center space-x-1 cursor-pointer"
+                                title="জুমার ভাংতি ও ক্যাশ নোট গণনা স্লিপ দেখুন"
+                              >
+                                <Banknote className="w-3.5 h-3.5 text-amber-700" />
+                                <span>কাউন্টিং</span>
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
+                    );
+                  })
+                )}
+              </tbody>
                 {jumaDonations.length > 0 && (
                   <tfoot className="bg-slate-50 font-bold border-t-2 border-slate-300">
                     <tr>
-                      <td colSpan={4} className="py-3 px-4 text-right text-slate-800">
+                      <td colSpan={4} className="py-3 px-4 text-right text-slate-800 text-xs">
                         জুমার মোট আদায়কৃত টাকা:
                       </td>
                       <td className="py-3 px-4 text-right font-mono font-bold text-emerald-900 text-base">
                         ৳ {filteredJumaTotal.toLocaleString('en-IN')}
                       </td>
-                      <td></td>
+                      <td className="py-3 px-4 text-center font-mono font-bold text-xs text-slate-700">
+                        মোট জুমা: {filteredJumaDonations.length}
+                      </td>
                     </tr>
                   </tfoot>
                 )}
@@ -1429,6 +1700,39 @@ export const DonationView: React.FC<DonationViewProps> = ({
                   required
                   className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold font-mono text-slate-900 focus:bg-white outline-hidden focus:ring-2 focus:ring-blue-500 text-sm"
                 />
+                {donationDenominationData && (
+                  <div className="mt-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-900">
+                    <div className="flex items-center space-x-2 font-medium">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <div>
+                        <span>ক্যাশ নোট ও ভাংতি গণনা সংযুক্ত</span>
+                        <div className="text-[11px] font-mono text-emerald-700">
+                          {donationDenominationData.totalNotesCount} নোট, {donationDenominationData.totalCoinsCount} কয়েন = ৳{donationDenominationData.grandTotal.toLocaleString('en-IN')}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCalculatorTarget('DONATION');
+                          setIsCalculatorOpen(true);
+                        }}
+                        className="px-2 py-1 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-[11px] font-bold cursor-pointer transition-colors"
+                      >
+                        পুনঃগণনা
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDonationDenominationData(null)}
+                        className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
+                        title="বাতিল করুন"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Category & Date */}
@@ -1508,20 +1812,31 @@ export const DonationView: React.FC<DonationViewProps> = ({
                 />
               </div>
 
-              <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100">
+              <div className="flex flex-col sm:flex-row justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setIsDonationModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+                  className="w-full sm:w-auto px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
                 >
                   বাতিল
                 </button>
                 <button
+                  id="btn-donation-save-only"
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={(e) => handleDonationSubmit(e, 'SAVE_ONLY')}
+                  className="w-full sm:w-auto px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-xl transition-all cursor-pointer"
+                >
+                  {isSubmitting ? 'সংরক্ষণ হচ্ছে...' : 'শুধু সংরক্ষণ'}
+                </button>
+                <button
+                  id="btn-donation-save-print"
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs transition-all cursor-pointer"
+                  className="w-full sm:w-auto px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs transition-all flex items-center justify-center space-x-1.5 cursor-pointer"
                 >
-                  {isSubmitting ? 'সংরক্ষণ হচ্ছে...' : 'দান গ্রহণ ও রসিদ তৈরি'}
+                  <Receipt className="w-3.5 h-3.5" />
+                  <span>{isSubmitting ? 'প্রক্রিয়াধীন...' : 'সংরক্ষণ ও প্রিন্ট (POS)'}</span>
                 </button>
               </div>
             </form>
@@ -1956,6 +2271,39 @@ export const DonationView: React.FC<DonationViewProps> = ({
                   required
                   className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl font-black font-mono text-slate-900 focus:bg-white outline-hidden focus:ring-2 focus:ring-teal-500 text-base"
                 />
+                {boxDenominationData && (
+                  <div className="mt-2 p-2.5 bg-teal-50 border border-teal-200 rounded-xl flex items-center justify-between text-xs text-teal-950">
+                    <div className="flex items-center space-x-2 font-medium">
+                      <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0" />
+                      <div>
+                        <span>দানবাক্সের কয়েন ও ক্যাশ নোট গণনা সংযুক্ত</span>
+                        <div className="text-[11px] font-mono text-teal-700">
+                          {boxDenominationData.totalNotesCount} নোট, {boxDenominationData.totalCoinsCount} কয়েন = ৳{boxDenominationData.grandTotal.toLocaleString('en-IN')}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCalculatorTarget('BOX');
+                          setIsCalculatorOpen(true);
+                        }}
+                        className="px-2 py-1 bg-white hover:bg-teal-100 text-teal-800 border border-teal-300 rounded-lg text-[11px] font-bold cursor-pointer transition-colors"
+                      >
+                        পুনঃগণনা
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBoxDenominationData(null)}
+                        className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
+                        title="বাতিল করুন"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Date & Account */}
@@ -2095,6 +2443,39 @@ export const DonationView: React.FC<DonationViewProps> = ({
                   required
                   className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold font-mono text-slate-900 focus:bg-white outline-hidden"
                 />
+                {jumaDenominationData && (
+                  <div className="mt-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-900">
+                    <div className="flex items-center space-x-2 font-medium">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <div>
+                        <span>জুমার ক্যাশ নোট ও ভাংতি গণনা সংযুক্ত</span>
+                        <div className="text-[11px] font-mono text-emerald-700">
+                          {jumaDenominationData.totalNotesCount} নোট, {jumaDenominationData.totalCoinsCount} কয়েন = ৳{jumaDenominationData.grandTotal.toLocaleString('en-IN')}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCalculatorTarget('JUMA');
+                          setIsCalculatorOpen(true);
+                        }}
+                        className="px-2 py-1 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-[11px] font-bold cursor-pointer transition-colors"
+                      >
+                        পুনঃগণনা
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setJumaDenominationData(null)}
+                        className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
+                        title="বাতিল করুন"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -2154,257 +2535,21 @@ export const DonationView: React.FC<DonationViewProps> = ({
         </div>
       )}
 
-      {/* ---------------- 4. PRINT-READY DONATION BOX COLLECTION REPORT MODAL ---------------- */}
-      {isPrintReportOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-150 report-modal-print-wrapper print:static print:inset-auto print:p-0 print:m-0 print:w-full print:h-auto print:bg-white print:overflow-visible print:block print:z-auto">
-          <div className="bg-white rounded-2xl max-w-5xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[96vh] report-modal-print-card print:static print:w-full print:max-w-none print:h-auto print:max-h-none print:overflow-visible print:border-none print:shadow-none print:rounded-none print:m-0 print:p-0">
-            {/* Top Toolbar */}
-            <div className="p-4 bg-slate-900 text-white flex items-center justify-between print:hidden print-controls-bar">
-              <div className="flex items-center space-x-2">
-                <Printer className="w-5 h-5 text-teal-400" />
-                <h3 className="font-bold text-sm">
-                  দানবাক্স গণনা ও জমাকৃত কালেকশন রেজিস্টার প্রতিবেদন (Print Preview)
-                </h3>
-              </div>
-              <div className="flex items-center space-x-2">
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs rounded-xl flex items-center space-x-1.5 shadow-sm transition-all cursor-pointer"
-                >
-                  <Printer className="w-4 h-4" />
-                  <span>এখনই প্রিন্ট করুন</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsPrintReportOpen(false)}
-                  className="p-2 text-slate-400 hover:text-white rounded-lg cursor-pointer"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-
-            {/* Document Body (Printable) */}
-            <div className="p-6 sm:p-8 overflow-y-auto flex-1 bg-white text-slate-900 space-y-5 font-sans report-modal-print-body print:p-0 print:m-0 print:overflow-visible print:h-auto print:max-h-none print:block print:shadow-none">
-              {/* Structured Official Report Header */}
-              <div className="border-2 border-slate-900 bg-white p-3.5 rounded-none overflow-hidden">
-                <div className="grid grid-cols-12 items-center gap-3">
-                  {/* LEFT: Mosque Official Logo (2 cols) */}
-                  <div className="col-span-2 flex items-center justify-start">
-                    {currentMosque?.logoUrl ? (
-                      <img
-                        src={currentMosque.logoUrl}
-                        alt="Mosque Logo"
-                        className="max-h-16 max-w-full object-contain"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <div className="w-14 h-14 border border-dashed border-teal-600 bg-teal-50/60 flex flex-col items-center justify-center text-teal-800 rounded-lg">
-                        <Building className="w-7 h-7 mb-0.5 text-teal-700" />
-                        <span className="text-[8px] font-bold">লোগো</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* CENTER: Mosque Name, Title & Period (7 cols) */}
-                  <div className="col-span-7 text-center">
-                    <div className="text-xs font-serif text-slate-600 mb-0.5">بِسْمِ اللَّهِ الرَّحْمٰنِ الرَّحِيمِ</div>
-                    <h1 className="text-xl sm:text-2xl font-bold text-slate-950 tracking-tight leading-tight">
-                      {currentMosque?.nameBn || currentMosque?.name || 'মসজিদুল মামুর কমপ্লেক্স ও ওয়াকফ এস্টেট'}
-                    </h1>
-                    {currentMosque?.address && (
-                      <p className="text-xs text-slate-700 mt-0.5">
-                        {currentMosque.address}{' '}
-                        {currentMosque.district ? `• জেলা: ${currentMosque.district}` : ''}{' '}
-                        {currentMosque.phone ? `• ফোন: ${currentMosque.phone}` : ''}
-                      </p>
-                    )}
-                    {currentMosque?.waqfEstateNumber && (
-                      <p className="text-[10px] text-slate-500 font-mono">
-                        ওয়াকফ এস্টেট ইসি নং: {currentMosque.waqfEstateNumber}
-                      </p>
-                    )}
-                    <div className="inline-block mt-1 px-3 py-0.5 bg-slate-900 text-white font-bold text-xs sm:text-sm tracking-wide">
-                      দানবাক্স গণনা ও জমাকৃত কালেকশন রেজিস্টার প্রতিবেদন
-                    </div>
-                    <p className="text-xs font-semibold text-slate-800 mt-1">
-                      সময়কাল: <span className="font-bold text-slate-950">{filterDateFrom ? formatDate(filterDateFrom) : 'শুরু হতে'}</span> হতে{' '}
-                      <span className="font-bold text-slate-950">{filterDateTo ? formatDate(filterDateTo) : 'হালনাগাদ'}</span> পর্যন্ত
-                    </p>
-                  </div>
-
-                  {/* RIGHT: Structured Meta Box (3 cols) */}
-                  <div className="col-span-3 border border-slate-800 bg-slate-50 p-2 text-[11px] space-y-1">
-                    <div className="flex justify-between border-b border-slate-200 pb-0.5">
-                      <span className="text-slate-600">প্রতিবেদন ধরন:</span>
-                      <span className="font-bold text-slate-950">দানবাক্স কালেকশন</span>
-                    </div>
-                    <div className="flex justify-between border-b border-slate-200 pb-0.5">
-                      <span className="text-slate-600">ফিল্টার বক্স:</span>
-                      <span className="font-bold text-slate-900 truncate max-w-[100px]">
-                        {filterBoxId === 'ALL'
-                          ? 'সকল বক্স'
-                          : donationBoxes.find((b) => b.id === filterBoxId)?.boxCode || filterBoxId}
-                      </span>
-                    </div>
-                    <div className="flex justify-between border-b border-slate-200 pb-0.5">
-                      <span className="text-slate-600">মুদ্রা:</span>
-                      <span className="font-bold text-slate-900">BDT (টাকা ৳)</span>
-                    </div>
-                    <div className="flex justify-between text-[10px] text-slate-600 pt-0.5">
-                      <span>প্রিন্টের তারিখ:</span>
-                      <span className="font-mono">{formatDate(new Date().toISOString())}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Master Collection Register Table */}
-              <div className="border border-slate-900 overflow-hidden">
-                <table className="w-full text-xs text-left border-collapse">
-                  <thead className="bg-slate-100 text-slate-900 font-bold border-b border-slate-900">
-                    <tr>
-                      <th className="py-2 px-2 text-center border-r border-slate-300 w-10">ক্রঃ</th>
-                      <th className="py-2 px-2 border-r border-slate-300 w-24">তারিখ</th>
-                      <th className="py-2 px-2 border-r border-slate-300 w-24">বক্স কোড</th>
-                      <th className="py-2 px-2 border-r border-slate-300">দোকান ও অবস্থান</th>
-                      <th className="py-2 px-2 border-r border-slate-300">গণনা টিম ও সদস্যবৃন্দ</th>
-                      <th className="py-2 px-2 border-r border-slate-300">জমার ফান্ড / হিসাব</th>
-                      <th className="py-2 px-2 text-right w-28">আদায়কৃত টাকা (৳)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-300">
-                    {filteredBoxCollections.length === 0 ? (
-                      <tr>
-                        <td colSpan={7} className="py-6 text-center text-slate-500">
-                          কোনো রেকর্ড পাওয়া যায়নি।
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredBoxCollections.map((col, idx) => {
-                        const matchedBox = donationBoxes.find((b) => b.id === col.boxId);
-                        return (
-                          <tr key={col.id}>
-                            <td className="py-2 px-2 text-center border-r border-slate-200 font-mono">
-                              {idx + 1}
-                            </td>
-                            <td className="py-2 px-2 border-r border-slate-200 font-mono">
-                              {formatDate(col.collectionDate)}
-                            </td>
-                            <td className="py-2 px-2 border-r border-slate-200 font-bold font-mono text-slate-900">
-                              {col.boxCode}
-                            </td>
-                            <td className="py-2 px-2 border-r border-slate-200">
-                              <div className="font-semibold text-slate-900">
-                                {matchedBox?.shopName || matchedBox?.location || '-'}
-                              </div>
-                              {matchedBox?.ownerName && (
-                                <div className="text-[10px] text-slate-600">
-                                  মালিক: {matchedBox.ownerName}
-                                </div>
-                              )}
-                            </td>
-                            <td className="py-2 px-2 border-r border-slate-200 text-slate-800 text-[11px]">
-                              {Array.isArray(col.countingTeam)
-                                ? col.countingTeam.join(', ')
-                                : (col.countingTeam as any)}
-                            </td>
-                            <td className="py-2 px-2 border-r border-slate-200 text-slate-800">
-                              {col.depositAccountName}
-                            </td>
-                            <td className="py-2 px-2 text-right font-mono font-bold text-slate-950">
-                              ৳ {col.amount.toLocaleString('en-IN')}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                  <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-900">
-                    <tr>
-                      <td colSpan={6} className="py-2.5 px-3 text-right text-slate-900">
-                        সর্বমোট আদায়কৃত টাকা:
-                      </td>
-                      <td className="py-2.5 px-2 text-right font-mono text-sm font-black text-slate-950">
-                        ৳ {filteredCollectionsTotal.toLocaleString('en-IN')}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-
-              {/* Amount In Words */}
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs">
-                <strong>কথায় (In Words):</strong> {numberToBanglaWords(filteredCollectionsTotal)}
-              </div>
-
-              {/* Official Approval Signatures Section */}
-              <div className="border-t-2 border-slate-900 pt-6 mt-8 break-inside-avoid">
-                <div className="grid grid-cols-3 gap-6 text-center text-xs">
-                  {/* Signature 1: Accountant / Cashier */}
-                  <div className="flex flex-col items-center justify-end">
-                    <div className="h-12 w-full flex items-end justify-center">
-                      {/* Physical handwriting line */}
-                    </div>
-                    <div className="border-t-2 border-slate-900 pt-1.5 font-bold text-slate-950 w-full">
-                      কোষাধ্যক্ষ / হিসাবরক্ষক
-                    </div>
-                    <div className="text-[10px] text-slate-600">হিসাব ও অর্থ বিভাগ</div>
-                  </div>
-
-                  {/* Signature 2: Secretary / Mutawalli */}
-                  <div className="flex flex-col items-center justify-end">
-                    <div className="h-12 w-full flex items-end justify-center">
-                      {currentMosque?.secretarySignatureUrl ? (
-                        <img
-                          src={currentMosque.secretarySignatureUrl}
-                          alt="Secretary Signature"
-                          className="max-h-12 max-w-full object-contain mb-1"
-                          referrerPolicy="no-referrer"
-                        />
-                      ) : null}
-                    </div>
-                    <div className="border-t-2 border-slate-900 pt-1.5 font-bold text-slate-950 w-full">
-                      সাধারণ সম্পাদক / মোতাওয়াল্লী
-                    </div>
-                    <div className="text-[10px] text-slate-600">স্বাক্ষর ও সীল</div>
-                  </div>
-
-                  {/* Signature 3: President */}
-                  <div className="flex flex-col items-center justify-end">
-                    <div className="h-12 w-full flex items-end justify-center">
-                      {currentMosque?.presidentSignatureUrl ? (
-                        <img
-                          src={currentMosque.presidentSignatureUrl}
-                          alt="President Signature"
-                          className="max-h-12 max-w-full object-contain mb-1"
-                          referrerPolicy="no-referrer"
-                        />
-                      ) : null}
-                    </div>
-                    <div className="border-t-2 border-slate-900 pt-1.5 font-bold text-slate-950 w-full">
-                      সভাপতি / সভাপতি মহোদয়
-                    </div>
-                    <div className="text-[10px] text-slate-600">স্বাক্ষর ও সীল</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* System Audit Note Footer */}
-              <div className="border-t border-slate-300 mt-4 pt-2 flex justify-between items-center text-[10px] text-slate-600 break-inside-avoid">
-                <div>
-                  <span>প্রতিবেদন উৎস: </span>
-                  <span className="font-bold text-slate-800">মসজিদলেজার স্বয়ংক্রিয় হিসাব ও নিরীক্ষা ব্যবস্থাপনা সিস্টেম</span>
-                </div>
-                <div>
-                  <span>মুদ্রণ সময়: {new Date().toLocaleString('bn-BD')}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ---------------- 4. QUICK DONATION BOX COLLECTION REPORT & A4 PRINT MODAL ---------------- */}
+      <QuickDonationBoxReportModal
+        isOpen={isQuickBoxReportOpen || isPrintReportOpen}
+        onClose={() => {
+          setIsQuickBoxReportOpen(false);
+          setIsPrintReportOpen(false);
+        }}
+        donationBoxes={donationBoxes}
+        boxCollections={boxCollections}
+        accounts={accounts}
+        currentMosque={currentMosque}
+        currentUser={currentUser}
+        language={language}
+        initialBoxId={selectedReportBoxId}
+      />
 
       {/* ---------------- 5. PRINT-READY DONATION BOXES MASTER LIST MODAL ---------------- */}
       {isPrintBoxListOpen && (
@@ -2806,35 +2951,47 @@ export const DonationView: React.FC<DonationViewProps> = ({
                         </td>
                       </tr>
                     ) : (
-                      filteredJumaDonations.map((jd, idx) => (
-                        <tr key={jd.id}>
-                          <td className="py-2 px-2 text-center border-r border-slate-200 font-mono">
-                            {idx + 1}
-                          </td>
-                          <td className="py-2 px-2 text-center border-r border-slate-200 font-bold text-slate-900">
-                            {formatDate(jd.date)}
-                          </td>
-                          <td className="py-2 px-2 text-center border-r border-slate-200 font-mono font-bold text-emerald-950">
-                            {jd.receiptNumber}
-                          </td>
-                          <td className="py-2 px-2 border-r border-slate-200">
-                            <div className="font-bold text-slate-900">{jd.donorName}</div>
-                            <div className="text-[11px] text-slate-600">{jd.description || jd.reference || '-'}</div>
-                          </td>
-                          <td className="py-2 px-2 border-r border-slate-200 text-slate-800 font-medium">
-                            {jd.accountName}
-                          </td>
-                          <td className="py-2 px-2 text-right font-mono font-bold text-slate-950">
-                            ৳ {jd.amount.toLocaleString('en-IN')}
-                          </td>
-                        </tr>
-                      ))
+                      filteredJumaDonations.map((jd, idx) => {
+                        const jumaInfo = getJumaDisplayDetails(jd, language);
+                        return (
+                          <tr key={jd.id}>
+                            <td className="py-2 px-2 text-center border-r border-slate-200 font-mono">
+                              {idx + 1}
+                            </td>
+                            <td className="py-2 px-2 text-center border-r border-slate-200 font-bold text-slate-900">
+                              {formatDate(jd.date)}
+                            </td>
+                            <td className="py-2 px-2 text-center border-r border-slate-200 font-mono font-bold text-emerald-950">
+                              {jd.receiptNumber}
+                            </td>
+                            <td className="py-2 px-2 border-r border-slate-200">
+                              <div className="space-y-0.5">
+                                <div className="font-bold text-slate-950 text-xs">{jumaInfo.title}</div>
+                                <div className="text-[10.5px] text-slate-700">
+                                  <span className="font-semibold">গণনা টিম: </span>
+                                  <span>{jumaInfo.countingTeam}</span>
+                                </div>
+                                <div className="text-[10px] text-slate-600">
+                                  <span className="font-semibold">সাক্ষী: </span>
+                                  <span>{jumaInfo.witness}</span>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-2 px-2 border-r border-slate-200 text-slate-800 font-medium">
+                              {jd.accountName}
+                            </td>
+                            <td className="py-2 px-2 text-right font-mono font-bold text-slate-950">
+                              ৳ {jd.amount.toLocaleString('en-IN')}
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                   <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-900">
                     <tr>
                       <td colSpan={5} className="py-2.5 px-3 text-right text-slate-900">
-                        জুমার সর্বমোট আদায়কৃত টাকা:
+                        জুমার সর্বমোট আদায়কৃত টাকা (মোট জুমা: {filteredJumaDonations.length} টি):
                       </td>
                       <td className="py-2.5 px-2 text-right font-mono text-sm font-black text-slate-950">
                         ৳ {filteredJumaTotal.toLocaleString('en-IN')}
@@ -2921,7 +3078,63 @@ export const DonationView: React.FC<DonationViewProps> = ({
         isOpen={isCalculatorOpen}
         onClose={() => setIsCalculatorOpen(false)}
         onApplyTotal={handleApplyCalculatedTotal}
+        initialData={
+          calculatorTarget === 'DONATION'
+            ? donationDenominationData
+            : calculatorTarget === 'BOX'
+            ? boxDenominationData
+            : jumaDenominationData
+        }
+        expectedAmount={
+          calculatorTarget === 'DONATION'
+            ? Number(amount) || undefined
+            : calculatorTarget === 'BOX'
+            ? Number(boxAmount) || undefined
+            : Number(jumaAmount) || undefined
+        }
+        collectionType={
+          calculatorTarget === 'DONATION'
+            ? 'DONATION'
+            : calculatorTarget === 'BOX'
+            ? 'DONATION_BOX'
+            : 'JUMA'
+        }
+        reference={
+          calculatorTarget === 'DONATION'
+            ? reference || (donorName ? `দান - ${donorName}` : 'অনুদান')
+            : calculatorTarget === 'BOX'
+            ? (activeSelectedBox ? `বক্স: ${activeSelectedBox.boxCode}` : 'দানবাক্স')
+            : `জুমার কালেকশন - ${jumaDate}`
+        }
+        countedByInitial={
+          calculatorTarget === 'BOX'
+            ? countingTeam
+            : calculatorTarget === 'JUMA'
+            ? jumaTeam
+            : undefined
+        }
+        witnessesInitial={
+          calculatorTarget === 'BOX'
+            ? witnesses.split(',').map((s) => s.trim()).filter(Boolean)
+            : calculatorTarget === 'JUMA'
+            ? jumaWitness.split(',').map((s) => s.trim()).filter(Boolean)
+            : undefined
+        }
+        mosque={currentMosque}
         language={language}
+      />
+
+      {/* ---------------- DENOMINATION DETAIL & AUDIT SLIP MODAL ---------------- */}
+      <DenominationDetailModal
+        isOpen={isDenominationDetailOpen}
+        onClose={() => setIsDenominationDetailOpen(false)}
+        denominationData={activeDenominationDetail}
+        referenceId={activeDenominationRef}
+        sourceType={activeDenominationSource}
+        mosque={currentMosque || null}
+        language={language}
+        onSaveUpdatedDenomination={handleSaveUpdatedDenomination}
+        canEdit={true}
       />
 
       {/* ---------------- SMS PREVIEW MODAL ---------------- */}

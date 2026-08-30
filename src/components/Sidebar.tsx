@@ -21,7 +21,9 @@ import {
   ExternalLink,
   Bot,
   Banknote,
-  Calculator
+  Calculator,
+  QrCode,
+  Scale,
 } from 'lucide-react';
 import { Language, translations } from '../lib/i18n';
 
@@ -32,6 +34,7 @@ export type NavTab =
   | 'donations'
   | 'donationBox'
   | 'dailyLedger'
+  | 'openingBalance'
   | 'cashbook'
   | 'bank'
   | 'accountHeads'
@@ -46,13 +49,16 @@ export type NavTab =
   | 'users'
   | 'admin'
   | 'audit'
-  | 'publicPortal';
+  | 'publicPortal'
+  | 'qrManagement';
 
 export interface SidebarProps {
   activeTab?: NavTab | string;
   onSelectTab?: (tab: NavTab) => void;
   onTabChange?: (tab: any) => void;
   onOpenCalculator?: () => void;
+  onOpenScanner?: () => void;
+  onOpenActionQrHub?: () => void;
   language?: Language;
   isOpen?: boolean;
   onClose?: () => void;
@@ -64,6 +70,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectTab,
   onTabChange,
   onOpenCalculator,
+  onOpenScanner,
+  onOpenActionQrHub,
   language = 'bn',
   isOpen = false,
   onClose,
@@ -94,6 +102,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'income' as NavTab, label: t.income, icon: ArrowDownLeft, color: 'text-emerald-600' },
         { id: 'expense' as NavTab, label: t.expense, icon: ArrowUpRight, color: 'text-rose-600' },
         { id: 'dailyLedger' as NavTab, label: language === 'bn' ? 'দৈনিক লেনদেন' : 'Daily Statement', icon: CalendarCheck, color: 'text-blue-600' },
+        { id: 'openingBalance' as NavTab, label: language === 'bn' ? 'প্রারম্ভিক স্থিতি' : 'Opening Balance', icon: Scale, color: 'text-amber-600' },
         { id: 'donations' as NavTab, label: t.donations, icon: HeartHandshake, color: 'text-teal-600' },
         { id: 'donationBox' as NavTab, label: t.donationBox, icon: Box },
         { id: 'cashbook' as NavTab, label: t.cashbook, icon: Wallet },
@@ -129,6 +138,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       title: t.admin,
       items: [
         { id: 'users' as NavTab, label: language === 'bn' ? 'ইউজার ব্যবস্থাপনা' : 'User Management', icon: Users2, color: 'text-blue-600' },
+        { id: 'qrManagement' as NavTab, label: language === 'bn' ? 'QR ও কুইক এন্ট্রি' : 'QR Management', icon: QrCode, color: 'text-teal-600' },
         { id: 'admin' as NavTab, label: t.mosqueSettings, icon: Settings },
         { id: 'audit' as NavTab, label: t.auditLogs, icon: ShieldAlert },
       ],
@@ -192,6 +202,63 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             </div>
           ))}
+
+          {/* Universal QR & Barcode Scanner Quick Trigger */}
+          {onOpenScanner && (
+            <button
+              id="btn-sidebar-qr-scanner"
+              type="button"
+              onClick={() => {
+                onOpenScanner();
+                if (onClose) onClose();
+              }}
+              className="w-full flex items-center justify-between p-3 bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 border border-blue-200/80 rounded-xl text-left transition-all group cursor-pointer shadow-2xs mb-2.5"
+            >
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 bg-blue-600 text-white rounded-lg group-hover:scale-105 transition-transform">
+                  <QrCode className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-blue-950 font-siliguri">
+                    {language === 'bn' ? 'QR ও বারকোড স্ক্যানার' : 'QR & Barcode Scanner'}
+                  </p>
+                  <p className="text-[11px] text-blue-700 font-baloo">
+                    {language === 'bn' ? 'ক্যামেরা ও লাইভ স্ক্যান' : 'Live Camera & Actions'}
+                  </p>
+                </div>
+              </div>
+              <span className="text-[10px] bg-blue-200/70 text-blue-900 font-bold px-1.5 py-0.5 rounded font-mono">
+                Alt+Q
+              </span>
+            </button>
+          )}
+
+          {/* Action Cards Print Hub Quick Trigger */}
+          {onOpenActionQrHub && (
+            <button
+              id="btn-sidebar-qr-action-hub"
+              type="button"
+              onClick={() => {
+                onOpenActionQrHub();
+                if (onClose) onClose();
+              }}
+              className="w-full flex items-center justify-between p-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-200/80 rounded-xl text-left transition-all group cursor-pointer shadow-2xs mb-2.5"
+            >
+              <div className="flex items-center space-x-2">
+                <div className="p-1.5 bg-slate-700 text-white rounded-lg">
+                  <Layers className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-800 font-siliguri">
+                    {language === 'bn' ? 'অ্যাকশন QR প্রিন্ট সেন্টার' : 'Action QR Print Hub'}
+                  </p>
+                </div>
+              </div>
+              <span className="text-[10px] text-slate-500 font-semibold font-siliguri">
+                {language === 'bn' ? 'কার্ড / স্টিকার' : 'Cards / Sticker'}
+              </span>
+            </button>
+          )}
 
           {/* Denomination Counter Quick Trigger */}
           {onOpenCalculator && (

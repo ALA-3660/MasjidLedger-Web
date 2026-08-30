@@ -11,7 +11,8 @@ import {
   Menu,
   FileSpreadsheet,
   Banknote,
-  Calculator
+  Calculator,
+  QrCode,
 } from 'lucide-react';
 import { Mosque, User } from '../types';
 import { Language, translations } from '../lib/i18n';
@@ -29,6 +30,8 @@ interface NavbarProps {
   onViewModeChange?: (mode: 'desktop' | 'mobile') => void;
   onOpenAi?: () => void;
   onOpenCalculator?: () => void;
+  onOpenScanner?: () => void;
+  onOpenActionQrHub?: () => void;
   onQuickAction?: (action: 'income' | 'expense' | 'donation') => void;
   onToggleSidebar?: () => void;
   onRoleChange?: (role: any) => void;
@@ -49,6 +52,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onViewModeChange,
   onOpenAi,
   onOpenCalculator,
+  onOpenScanner,
+  onOpenActionQrHub,
   onQuickAction,
   onToggleSidebar,
   onRoleChange,
@@ -197,6 +202,17 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Sparkles className="w-3.5 h-3.5 text-blue-600" />
               <span className="hidden md:inline font-siliguri">{language === 'bn' ? 'এআই অডিটর' : 'AI Advisor'}</span>
+            </button>
+
+            {/* Universal QR & Barcode Scanner Button */}
+            <button
+              id="btn-navbar-qr-scanner"
+              onClick={() => onOpenScanner?.()}
+              className="flex items-center space-x-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold font-siliguri shadow-xs transition-all cursor-pointer"
+              title="QR কোড ও বারকোড স্ক্যানার (Alt+Q)"
+            >
+              <QrCode className="w-3.5 h-3.5" />
+              <span className="font-siliguri">{language === 'bn' ? 'QR স্ক্যানার' : 'QR Scan'}</span>
             </button>
 
             {/* Denomination Counter Button */}

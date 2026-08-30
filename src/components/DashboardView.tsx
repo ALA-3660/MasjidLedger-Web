@@ -15,7 +15,11 @@ import {
   ArrowRight,
   ShieldCheck,
   Calendar,
-  RefreshCw
+  RefreshCw,
+  QrCode,
+  Camera,
+  Layers,
+  Zap,
 } from 'lucide-react';
 import {
   DashboardStats,
@@ -44,6 +48,8 @@ interface DashboardViewProps {
   onNavigate: (tab: NavTab) => void;
   onQuickAction?: (action: 'income' | 'expense' | 'donation') => void;
   onOpenAi?: () => void;
+  onOpenScanner?: () => void;
+  onOpenActionQrHub?: () => void;
   onRefresh?: () => void;
 }
 
@@ -61,6 +67,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onNavigate,
   onQuickAction,
   onOpenAi,
+  onOpenScanner,
+  onOpenActionQrHub,
   onRefresh,
 }) => {
   const t = translations[language] || translations.bn;
@@ -233,6 +241,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {/* Prominent Universal SCAN Button */}
+            {onOpenScanner && (
+              <button
+                id="dash-btn-scan-qr"
+                type="button"
+                onClick={onOpenScanner}
+                className="bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white text-xs font-bold font-siliguri px-4 py-2 rounded-lg flex items-center space-x-2 shadow-md hover:shadow-lg transition-all transform hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                title="QR ও বারকোড ক্যামেরা স্ক্যানার (Alt+Q)"
+              >
+                <Camera className="w-4 h-4 text-emerald-100 animate-pulse" />
+                <span className="font-siliguri uppercase tracking-wider">{language === 'bn' ? '📷 স্ক্যান করুন' : '📷 SCAN'}</span>
+              </button>
+            )}
+
             <button
               id="dash-btn-add-income"
               type="button"
@@ -342,6 +364,114 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="mt-3 flex items-center justify-between text-xs text-blue-700 font-bold font-baloo pt-2.5 border-t border-slate-100">
             <span>{t.netBalance}:</span>
             <span className="text-slate-900 font-taka">{formatCurrency(effectiveStats.netBalance, language)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Universal Scan Center (Phase 4: One Scan → One Action) */}
+      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl p-5 sm:p-6 text-white shadow-lg border border-slate-800 relative overflow-hidden font-siliguri">
+        {/* Background decorative ambient circles */}
+        <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
+        <div className="absolute bottom-0 left-1/3 w-60 h-60 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div className="max-w-xl">
+            <div className="flex items-center space-x-2">
+              <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 uppercase tracking-wider">
+                <Zap className="w-3 h-3 text-emerald-400" />
+                <span>Phase 4: One Scan → One Action</span>
+              </span>
+              <span className="text-xs text-slate-400">Universal Scan Hub</span>
+            </div>
+            <h2 className="text-lg sm:text-xl font-bold text-white mt-2">
+              {language === 'bn' ? 'ইউনিভার্সাল স্ক্যান সেন্টার (QR & Barcode)' : 'Universal QR & Barcode Scan Center'}
+            </h2>
+            <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+              {language === 'bn'
+                ? 'যেকোনো রশিদ, ভাউচার, সম্পদ ট্যাগ, ওয়াকফ দোকান বা মডিউল অ্যাকশন কিউআর স্ক্যান করুন। সিস্টেম সরাসরি সংশ্লিষ্ট ফর্ম বা স্মার্ট অ্যাকশন স্ক্রিন খুলবে।'
+                : 'Scan any receipt, voucher, asset tag, waqf shop or module action QR. The system resolves the record and opens its contextual action screen instantly.'}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            {onOpenScanner && (
+              <button
+                id="dash-scan-center-camera-btn"
+                type="button"
+                onClick={onOpenScanner}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 py-2.5 rounded-xl flex items-center space-x-2 shadow-md hover:shadow-emerald-500/20 transition-all transform hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+              >
+                <Camera className="w-4 h-4" />
+                <span>{language === 'bn' ? 'ক্যামেরা স্ক্যানার চালু করুন' : 'Open Camera Scanner'}</span>
+              </button>
+            )}
+
+            {onOpenActionQrHub && (
+              <button
+                id="dash-scan-center-hub-btn"
+                type="button"
+                onClick={onOpenActionQrHub}
+                className="bg-white/10 hover:bg-white/20 text-white border border-white/20 font-bold text-xs px-3.5 py-2.5 rounded-xl flex items-center space-x-1.5 transition-all cursor-pointer"
+              >
+                <Layers className="w-4 h-4 text-blue-300" />
+                <span>{language === 'bn' ? 'অ্যাকশন কিউআর কার্ড' : 'Action QR Hub'}</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Quick Scan Action Pills / Examples */}
+        <div className="relative z-10 mt-5 pt-4 border-t border-white/10 grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <div
+            onClick={onOpenScanner}
+            className="bg-white/5 hover:bg-white/10 border border-white/10 p-2.5 rounded-xl cursor-pointer transition-all flex items-center space-x-2.5"
+          >
+            <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-300 flex items-center justify-center shrink-0">
+              <QrCode className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <span className="text-xs font-bold block truncate">{language === 'bn' ? 'দানবাক্স কালেকশন' : 'Donation Box'}</span>
+              <span className="text-[10px] text-slate-400 font-mono">BOX-MAIN-01</span>
+            </div>
+          </div>
+
+          <div
+            onClick={onOpenScanner}
+            className="bg-white/5 hover:bg-white/10 border border-white/10 p-2.5 rounded-xl cursor-pointer transition-all flex items-center space-x-2.5"
+          >
+            <div className="w-7 h-7 rounded-lg bg-cyan-500/20 text-cyan-300 flex items-center justify-center shrink-0">
+              <QrCode className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <span className="text-xs font-bold block truncate">{language === 'bn' ? 'ওয়াকফ দোকান ভাড়া' : 'Waqf Shop Rent'}</span>
+              <span className="text-[10px] text-slate-400 font-mono">WPF-SHOP-01</span>
+            </div>
+          </div>
+
+          <div
+            onClick={onOpenScanner}
+            className="bg-white/5 hover:bg-white/10 border border-white/10 p-2.5 rounded-xl cursor-pointer transition-all flex items-center space-x-2.5"
+          >
+            <div className="w-7 h-7 rounded-lg bg-amber-500/20 text-amber-300 flex items-center justify-center shrink-0">
+              <QrCode className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <span className="text-xs font-bold block truncate">{language === 'bn' ? 'সম্পদ সার্ভিসিং' : 'Asset Service'}</span>
+              <span className="text-[10px] text-slate-400 font-mono">AST-GEN-01</span>
+            </div>
+          </div>
+
+          <div
+            onClick={onOpenScanner}
+            className="bg-white/5 hover:bg-white/10 border border-white/10 p-2.5 rounded-xl cursor-pointer transition-all flex items-center space-x-2.5"
+          >
+            <div className="w-7 h-7 rounded-lg bg-purple-500/20 text-purple-300 flex items-center justify-center shrink-0">
+              <QrCode className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <span className="text-xs font-bold block truncate">{language === 'bn' ? 'স্টাফ বেতন পরিশোধ' : 'Staff Salary'}</span>
+              <span className="text-[10px] text-slate-400 font-mono">STF-01</span>
+            </div>
           </div>
         </div>
       </div>

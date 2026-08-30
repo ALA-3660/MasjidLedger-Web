@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -6,6 +6,7 @@ import {
   Search,
   Filter,
   Printer,
+  Receipt,
   RotateCcw,
   CheckCircle2,
   XCircle,
@@ -24,11 +25,17 @@ import {
   PaymentMethod,
   User,
   Mosque,
+  CashDenominationData,
 } from '../types';
 import { Language, translations, formatCurrency, formatDate } from '../lib/i18n';
 import { ChangeCalculatorModal } from './ChangeCalculatorModal';
+import { DenominationDetailModal } from './DenominationDetailModal';
 import { EditTransactionModal } from './EditModals';
 import { SmsPreviewModal } from './SmsPreviewModal';
+import { QuickIncomeExpenseReportModal } from './QuickIncomeExpenseReportModal';
+import { api } from '../lib/api';
+import { X } from 'lucide-react';
+import { QrScanResult } from '../types/qrBarcodeTypes';
 
 interface IncomeExpenseViewProps {
   initialTab?: 'income' | 'expense';
@@ -39,13 +46,20 @@ interface IncomeExpenseViewProps {
   currentUser: User | null;
   currentMosque?: Mosque | null;
   language?: Language;
-  onAddIncome: (data: any) => Promise<void>;
-  onAddExpense: (data: any) => Promise<void>;
+  scannedActionIntent?: QrScanResult | null;
+  onClearScannedAction?: () => void;
+  onAddIncome: (data: any, options?: { print?: boolean; format?: 'A4' | 'POS_80' | 'POS_58' }) => Promise<any>;
+  onAddExpense: (data: any, options?: { print?: boolean; format?: 'A4' | 'POS_80' | 'POS_58' }) => Promise<any>;
   onUpdateIncome?: (id: string, data: any) => Promise<void>;
   onUpdateExpense?: (id: string, data: any) => Promise<void>;
   onReverseIncome: (id: string, reason: string) => Promise<void>;
   onReverseExpense: (id: string, reason: string) => Promise<void>;
-  onPrintVoucher: (item: IncomeEntry | ExpenseEntry, type: 'INCOME' | 'EXPENSE') => void;
+  onPrintVoucher: (
+    item: IncomeEntry | ExpenseEntry,
+    type: 'INCOME' | 'EXPENSE',
+    format?: 'A4' | 'POS_80' | 'POS_58',
+    isReprint?: boolean
+  ) => void;
   onSendSms?: (phone: string, message: string, tokenUrl?: string) => Promise<any>;
 }
 
@@ -58,6 +72,8 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
   currentUser,
   currentMosque,
   language = 'bn',
+  scannedActionIntent,
+  onClearScannedAction,
   onAddIncome,
   onAddExpense,
   onUpdateIncome,
@@ -74,6 +90,7 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
 
   // Modal States
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isQuickReportOpen, setIsQuickReportOpen] = useState(false);
   const [modalType, setModalType] = useState<'INCOME' | 'EXPENSE'>('INCOME');
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<{
@@ -98,6 +115,13 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
   const [entryDate, setEntryDate] = useState(new Date().toISOString().split('T')[0]);
   const [errorMessage, setErrorMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [incomeDenominationData, setIncomeDenominationData] = useState<CashDenominationData | null>(null);
+
+  // Denomination View/Edit Modal State
+  const [isDenominationDetailOpen, setIsDenominationDetailOpen] = useState(false);
+  const [activeDenominationDetail, setActiveDenominationDetail] = useState<CashDenominationData | null>(null);
+  const [activeDenominationRef, setActiveDenominationRef] = useState('');
+  const [activeDenominationRecordId, setActiveDenominationRecordId] = useState('');
 
   // Reversal Modal
   const [reversalTarget, setReversalTarget] = useState<{
@@ -127,11 +151,27 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
     setDescription('');
     setEntryDate(new Date().toISOString().split('T')[0]);
     setErrorMessage('');
+    setIncomeDenominationData(null);
     setIsModalOpen(true);
   };
 
-  const handleFormSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Handle Scan -> Direct Entry for Income and Expense
+  useEffect(() => {
+    if (!scannedActionIntent) return;
+
+    if (scannedActionIntent.actionKey === 'ACT-INC-NEW' || scannedActionIntent.actionKey === 'ACT_INC_NEW') {
+      setActiveTab('income');
+      openCreateModal('INCOME');
+      onClearScannedAction?.();
+    } else if (scannedActionIntent.actionKey === 'ACT-EXP-NEW' || scannedActionIntent.actionKey === 'ACT_EXP_NEW') {
+      setActiveTab('expense');
+      openCreateModal('EXPENSE');
+      onClearScannedAction?.();
+    }
+  }, [scannedActionIntent]);
+
+  const handleFormSubmit = async (e?: React.FormEvent, submitMode: 'SAVE_AND_PRINT' | 'SAVE_ONLY' = 'SAVE_AND_PRINT') => {
+    if (e && e.preventDefault) e.preventDefault();
     setErrorMessage('');
     const num = Number(amount);
 
@@ -144,10 +184,15 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
       return;
     }
 
+    if (modalType === 'INCOME' && incomeDenominationData && incomeDenominationData.grandTotal !== num) {
+      setErrorMessage(`ভাংতি গণনা অনুযায়ী মোট টাকা (৳${incomeDenominationData.grandTotal.toLocaleString('en-IN')}) এবং ভাউচারের টাকার পরিমাণ (৳${num.toLocaleString('en-IN')}) সমান হতে হবে।`);
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       if (modalType === 'INCOME') {
-        await onAddIncome({
+        const payload: any = {
           mainHeadId,
           subHeadId,
           amount: num,
@@ -158,7 +203,11 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
           reference,
           description,
           date: entryDate,
-        });
+        };
+        if (paymentMethod === 'CASH' && incomeDenominationData && incomeDenominationData.grandTotal === num) {
+          payload.denominationData = incomeDenominationData;
+        }
+        await onAddIncome(payload, { print: submitMode === 'SAVE_AND_PRINT', format: 'POS_80' });
       } else {
         await onAddExpense({
           mainHeadId,
@@ -171,13 +220,26 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
           reference,
           description,
           date: entryDate,
-        });
+        }, { print: submitMode === 'SAVE_AND_PRINT', format: 'POS_80' });
       }
       setIsModalOpen(false);
+      setIncomeDenominationData(null);
     } catch (err: any) {
       setErrorMessage(err.message || 'Error occurred');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleSaveUpdatedIncomeDenomination = async (updatedData: CashDenominationData, editReason: string) => {
+    if (!activeDenominationRecordId) return;
+    try {
+      await api.updateIncomeDenomination(activeDenominationRecordId, updatedData, editReason);
+      setActiveDenominationDetail(updatedData);
+      alert('ভাংতি ও ক্যাশ নোট গণনা বিবরণী সফলভাবে হালনাগাদ ও অডিট লগ সংরক্ষণ করা হয়েছে।');
+    } catch (err: any) {
+      alert(err.message || 'ডিনোমিনেশন হালনাগাদ করতে ব্যর্থ হয়েছে।');
+      throw err;
     }
   };
 
@@ -250,12 +312,22 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
           </button>
         </div>
 
-        {/* Action Button */}
-        <div>
+        {/* Action Buttons */}
+        <div className="flex items-center gap-2.5 w-full sm:w-auto">
+          <button
+            id="btn-open-quick-report"
+            onClick={() => setIsQuickReportOpen(true)}
+            className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:text-slate-950 bg-slate-100 hover:bg-slate-200 border border-slate-300 flex items-center justify-center space-x-1.5 shadow-2xs transition-all cursor-pointer"
+            title={activeTab === 'income' ? 'আয় ও প্রাপ্তি রিপোর্ট ও প্রিন্ট (A4)' : 'ব্যয় ও পরিশোধ রিপোর্ট ও প্রিন্ট (A4)'}
+          >
+            <Printer className="w-4 h-4 text-slate-600" />
+            <span>🖨️ রিপোর্ট / প্রিন্ট</span>
+          </button>
+
           <button
             id="btn-open-add-voucher"
             onClick={() => openCreateModal(activeTab === 'income' ? 'INCOME' : 'EXPENSE')}
-            className={`w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold text-white flex items-center justify-center space-x-2 shadow-xs transition-all ${
+            className={`w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold text-white flex items-center justify-center space-x-2 shadow-xs transition-all cursor-pointer ${
               activeTab === 'income'
                 ? 'bg-blue-600 hover:bg-blue-700'
                 : 'bg-rose-600 hover:bg-rose-700'
@@ -385,14 +457,43 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
                         </span>
                       </td>
                       <td className="px-5 py-3.5 text-right space-x-1">
-                        {/* Print */}
+                        {/* Denomination Slip Button */}
+                        {item.denominationData && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveDenominationDetail(item.denominationData || null);
+                              setActiveDenominationRef(item.voucherNumber);
+                              setActiveDenominationRecordId(item.id);
+                              setIsDenominationDetailOpen(true);
+                            }}
+                            className="p-1.5 text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 rounded-lg transition-colors inline-flex items-center"
+                            title="নোট ও কয়েন (ভাংতি) গণনা বিবরণী স্লিপ দেখুন"
+                          >
+                            <Banknote className="w-3.5 h-3.5 text-emerald-600" />
+                          </button>
+                        )}
+
+                        {/* POS Thermal Receipt Print */}
+                        <button
+                          id={`btn-pos-print-${item.id}`}
+                          onClick={() =>
+                            onPrintVoucher(item, activeTab === 'income' ? 'INCOME' : 'EXPENSE', 'POS_80', true)
+                          }
+                          className="p-1.5 text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                          title="POS থার্মাল রসিদ প্রিন্ট করুন (80mm/58mm)"
+                        >
+                          <Receipt className="w-3.5 h-3.5 text-emerald-600" />
+                        </button>
+
+                        {/* Official A4 Voucher Print */}
                         <button
                           id={`btn-print-${item.id}`}
                           onClick={() =>
-                            onPrintVoucher(item, activeTab === 'income' ? 'INCOME' : 'EXPENSE')
+                            onPrintVoucher(item, activeTab === 'income' ? 'INCOME' : 'EXPENSE', 'A4', true)
                           }
-                          className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                          title={t.printVoucher}
+                          className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                          title="অফিসিয়াল A4 ভাউচার প্রিন্ট করুন"
                         >
                           <Printer className="w-3.5 h-3.5" />
                         </button>
@@ -534,6 +635,36 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
                     required
                     className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold font-mono text-slate-900 focus:bg-white outline-hidden focus:ring-2 focus:ring-blue-500"
                   />
+                  {modalType === 'INCOME' && incomeDenominationData && (
+                    <div className="mt-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-900">
+                      <div className="flex items-center space-x-2 font-medium">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <div>
+                          <span>ক্যাশ নোট ও ভাংতি গণনা সংযুক্ত</span>
+                          <div className="text-[11px] font-mono text-emerald-700">
+                            {incomeDenominationData.totalNotesCount} নোট, {incomeDenominationData.totalCoinsCount} কয়েন = ৳{incomeDenominationData.grandTotal.toLocaleString('en-IN')}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setIsCalculatorOpen(true)}
+                          className="px-2 py-1 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-[11px] font-bold cursor-pointer transition-colors"
+                        >
+                          পুনঃগণনা
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIncomeDenominationData(null)}
+                          className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
+                          title="বাতিল করুন"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -671,26 +802,40 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
                 />
               </div>
 
-              {/* Footer Actions */}
-              <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-200">
+              {/* Footer Actions with Save & Print vs Save Only */}
+              <div className="flex flex-col sm:flex-row items-center justify-end gap-2 pt-3 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+                  className="w-full sm:w-auto px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
                 >
                   {t.cancel}
+                </button>
+                <button
+                  id="btn-save-only"
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={(e) => handleFormSubmit(e, 'SAVE_ONLY')}
+                  className="w-full sm:w-auto px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-xl transition-all cursor-pointer"
+                >
+                  {isSubmitting ? 'প্রক্রিয়াধীন...' : (language === 'bn' ? 'শুধু সংরক্ষণ' : 'Save Only')}
                 </button>
                 <button
                   id="btn-save-voucher"
                   type="submit"
                   disabled={isSubmitting}
-                  className={`px-5 py-2 text-xs font-bold text-white rounded-xl shadow-xs transition-all ${
+                  className={`w-full sm:w-auto px-5 py-2 text-xs font-bold text-white rounded-xl shadow-xs transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
                     modalType === 'INCOME'
                       ? 'bg-blue-600 hover:bg-blue-700'
                       : 'bg-rose-600 hover:bg-rose-700'
                   }`}
                 >
-                  {isSubmitting ? 'প্রক্রিয়াধীন...' : t.save}
+                  <Receipt className="w-3.5 h-3.5" />
+                  <span>
+                    {isSubmitting
+                      ? 'প্রক্রিয়াধীন...'
+                      : (language === 'bn' ? 'সংরক্ষণ ও প্রিন্ট (POS)' : 'Save & Print (POS)')}
+                  </span>
                 </button>
               </div>
             </form>
@@ -748,8 +893,29 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
       <ChangeCalculatorModal
         isOpen={isCalculatorOpen}
         onClose={() => setIsCalculatorOpen(false)}
-        onApplyTotal={(tot) => setAmount(tot.toString())}
+        onApplyTotal={(tot, data) => {
+          setAmount(tot.toString());
+          if (data) setIncomeDenominationData(data);
+        }}
+        initialData={incomeDenominationData}
+        expectedAmount={Number(amount) || undefined}
+        collectionType="INCOME"
+        reference={reference || (personName ? `আদায় - ${personName}` : 'ক্যাশ আদায়')}
+        mosque={currentMosque}
         language={language}
+      />
+
+      {/* DENOMINATION DETAIL & AUDIT SLIP MODAL */}
+      <DenominationDetailModal
+        isOpen={isDenominationDetailOpen}
+        onClose={() => setIsDenominationDetailOpen(false)}
+        denominationData={activeDenominationDetail}
+        referenceId={activeDenominationRef}
+        sourceType="INCOME"
+        mosque={currentMosque || null}
+        language={language}
+        onSaveUpdatedDenomination={handleSaveUpdatedIncomeDenomination}
+        canEdit={true}
       />
 
       {/* EDIT TRANSACTION MODAL */}
@@ -796,6 +962,21 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
           onSendSms={onSendSms}
         />
       )}
+
+      {/* QUICK INCOME / EXPENSE REPORT & A4 PRINT MODAL */}
+      <QuickIncomeExpenseReportModal
+        isOpen={isQuickReportOpen}
+        onClose={() => setIsQuickReportOpen(false)}
+        type={activeTab === 'income' ? 'INCOME' : 'EXPENSE'}
+        incomes={incomes}
+        expenses={expenses}
+        accounts={accounts}
+        accountHeads={accountHeads}
+        currentMosque={currentMosque}
+        currentUser={currentUser}
+        language={language}
+        initialStatus={statusFilter}
+      />
     </div>
   );
 };

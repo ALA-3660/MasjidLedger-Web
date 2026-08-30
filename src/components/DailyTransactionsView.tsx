@@ -11,9 +11,11 @@ import {
   ArrowUpRight,
   Building,
   CheckCircle2,
+  Scale,
 } from 'lucide-react';
-import { IncomeEntry, ExpenseEntry, FinancialAccount, Mosque, User } from '../types';
+import { IncomeEntry, ExpenseEntry, FinancialAccount, Mosque, User, AccountOpeningBalancePayload } from '../types';
 import { Language, translations, formatDate } from '../lib/i18n';
+import { OpeningBalanceModal } from './OpeningBalanceModal';
 
 interface DailyTransactionsViewProps {
   incomes: IncomeEntry[];
@@ -22,6 +24,7 @@ interface DailyTransactionsViewProps {
   currentMosque: Mosque | null;
   currentUser?: User | null;
   language?: Language;
+  onUpdateOpeningBalance?: (data: AccountOpeningBalancePayload) => Promise<void>;
 }
 
 export const DailyTransactionsView: React.FC<DailyTransactionsViewProps> = ({
@@ -31,9 +34,11 @@ export const DailyTransactionsView: React.FC<DailyTransactionsViewProps> = ({
   currentMosque,
   currentUser,
   language = 'bn',
+  onUpdateOpeningBalance,
 }) => {
   const t = translations[language] || translations.bn;
 
+  const [isOpeningBalanceModalOpen, setIsOpeningBalanceModalOpen] = useState(false);
   const todayStr = new Date().toISOString().split('T')[0];
   const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL');
   const [datePreset, setDatePreset] = useState<'TODAY' | 'YESTERDAY' | 'WEEK' | 'MONTH' | 'CUSTOM'>('MONTH');
@@ -126,7 +131,10 @@ export const DailyTransactionsView: React.FC<DailyTransactionsViewProps> = ({
       : accounts.filter((a) => a.id === selectedAccountId);
 
   const initialOpeningFromAccounts = selectedAccounts.reduce(
-    (sum, acc) => sum + (acc.openingBalance || 0),
+    (sum, acc) => {
+      const bal = acc.openingBalance || 0;
+      return acc.openingBalanceType === 'CREDIT' ? sum - bal : sum + bal;
+    },
     0
   );
 
@@ -274,6 +282,14 @@ export const DailyTransactionsView: React.FC<DailyTransactionsViewProps> = ({
         </div>
 
         <div className="flex items-center space-x-2">
+          <button
+            id="btn-opening-balance-daily"
+            onClick={() => setIsOpeningBalanceModalOpen(true)}
+            className="px-3.5 py-2 border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold rounded-xl flex items-center space-x-1.5 transition-colors cursor-pointer shadow-xs"
+          >
+            <Scale className="w-3.5 h-3.5 text-amber-700" />
+            <span>প্রারম্ভিক স্থিতি (Opening)</span>
+          </button>
           <button
             id="btn-export-csv-daily"
             onClick={handleExportCSV}
@@ -869,6 +885,21 @@ export const DailyTransactionsView: React.FC<DailyTransactionsViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Opening Balance Adjustment Modal */}
+      {isOpeningBalanceModalOpen && (
+        <OpeningBalanceModal
+          isOpen={isOpeningBalanceModalOpen}
+          onClose={() => setIsOpeningBalanceModalOpen(false)}
+          accounts={accounts}
+          preselectedAccountId={selectedAccountId !== 'ALL' ? selectedAccountId : accounts[0]?.id}
+          onUpdateOpeningBalance={async (payload) => {
+            if (onUpdateOpeningBalance) {
+              await onUpdateOpeningBalance(payload);
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

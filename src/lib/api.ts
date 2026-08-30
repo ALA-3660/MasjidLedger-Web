@@ -5,6 +5,7 @@ import {
   DashboardStats,
   AccountHead,
   FinancialAccount,
+  AccountOpeningBalancePayload,
   IncomeEntry,
   ExpenseEntry,
   Donation,
@@ -25,6 +26,10 @@ import {
   AuditLog,
   UserStatus,
   SubCommittee,
+  PublicPortalSettings,
+  PublicPortalData,
+  DEFAULT_PUBLIC_PORTAL_SETTINGS,
+  QRCodeEntity,
 } from '../types';
 
 class ApiService {
@@ -81,7 +86,7 @@ class ApiService {
     return promise;
   }
 
-  private async executeRequest<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
+  private async executeRequest<T>(endpoint: string, options: RequestInit = {}, retryCount: number = 0): Promise<ApiResponse<T>> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'x-user-id': this.currentUserId,
@@ -162,8 +167,16 @@ class ApiService {
         err.name === 'TimeoutError' ||
         (err.message && err.message.includes('aborted'));
 
+      const isGet = !options.method || options.method.toUpperCase() === 'GET';
+
+      // Auto-retry transient GET failures (e.g. during server startup or brief network reconnection)
+      if (!isAbort && isGet && retryCount < 2) {
+        await new Promise((resolve) => setTimeout(resolve, (retryCount + 1) * 350));
+        return this.executeRequest<T>(endpoint, options, retryCount + 1);
+      }
+
       if (!isAbort) {
-        console.error(`API Error on ${endpoint}:`, err);
+        console.warn(`[MasjidLedger API] Request failed for ${endpoint}:`, err.message || err);
       }
 
       return {
@@ -206,6 +219,48 @@ class ApiService {
     return res.data || null;
   }
 
+  async getQrCodes(mosqueId?: string): Promise<QRCodeEntity[]> {
+    const endpoint = mosqueId ? `/qr?mosqueId=${encodeURIComponent(mosqueId)}` : '/qr';
+    const res = await this.request<QRCodeEntity[]>(endpoint);
+    return res.data || [];
+  }
+
+  async createQrCode(data: Partial<QRCodeEntity>): Promise<QRCodeEntity> {
+    const res = await this.request<QRCodeEntity>('/qr', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to create QR code');
+    return res.data!;
+  }
+
+  async updateQrCode(id: string, data: Partial<QRCodeEntity>): Promise<QRCodeEntity> {
+    const res = await this.request<QRCodeEntity>(`/qr/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to update QR code');
+    return res.data!;
+  }
+
+  async activateQrCode(id: string): Promise<QRCodeEntity> {
+    const res = await this.request<QRCodeEntity>(`/qr/${id}/activate`, { method: 'POST' });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to activate QR');
+    return res.data!;
+  }
+
+  async deactivateQrCode(id: string): Promise<QRCodeEntity> {
+    const res = await this.request<QRCodeEntity>(`/qr/${id}/deactivate`, { method: 'POST' });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to deactivate QR');
+    return res.data!;
+  }
+
+  async archiveQrCode(id: string): Promise<QRCodeEntity> {
+    const res = await this.request<QRCodeEntity>(`/qr/${id}/archive`, { method: 'POST' });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to archive QR');
+    return res.data!;
+  }
+
   async updateMosqueSettings(data: Partial<Mosque>): Promise<Mosque> {
     const res = await this.request<Mosque>('/mosques/current', {
       method: 'PUT',
@@ -213,6 +268,108 @@ class ApiService {
     });
     if (!res.success) throw new Error(res.error?.message || 'Failed to update mosque settings');
     return res.data!;
+  }
+
+  async getPublicPortalData(mosqueIdOrCode?: string): Promise<PublicPortalData> {
+    const endpoint = mosqueIdOrCode ? `/public/portal/${encodeURIComponent(mosqueIdOrCode)}` : '/public/portal';
+    const res = await this.request<PublicPortalData>(endpoint);
+    if (!res.success || !res.data) {
+      return {
+        mosque: {
+          id: 'mosque-mamun-001',
+          code: 'MASJID-001',
+          nameBn: 'বাইতুল আমান জামে মসজিদ',
+          nameEn: 'Baytul Aman Jame Masjid',
+          address: 'কেন্দ্রীয় রোড, সদর',
+          district: 'কক্সবাজার',
+          country: 'বাংলাদেশ',
+          phone: '01811223344',
+          email: 'info@baytulamanmasjid.org',
+          website: 'https://masjidledger.org',
+          logoUrl: 'https://images.unsplash.com/photo-1564769625405-2af4ab607b75?auto=format&fit=crop&q=80&w=200',
+          waqfEstateName: 'ওয়াকফ এস্টেট নং ৪১২',
+          registrationNumber: 'REG-2023-889',
+          establishedDate: '১৯৯৫',
+          islamicTagline: '"যারা আল্লাহর ঘরে সালাত কায়েম করে এবং যাকাত দেয়—তারাই তো আল্লাহর মসজিদসমূহ আবাদ করে।"'
+        },
+        prayerTimes: [
+          { nameBn: 'ফজর (Fajr)', nameEn: 'Fajr', adhan: '০৪:৫০', iqamah: '০৫:১৫' },
+          { nameBn: 'যোহর (Dhuhr)', nameEn: 'Dhuhr', adhan: '১২:১৫', iqamah: '০১:১৫' },
+          { nameBn: 'আসর (Asr)', nameEn: 'Asr', adhan: '০৪:৩০', iqamah: '০৪:৪৫' },
+          { nameBn: 'মাগরিব (Maghrib)', nameEn: 'Maghrib', adhan: '০৬:২৫', iqamah: '০৬:৩০' },
+          { nameBn: 'এশা (Isha)', nameEn: 'Isha', adhan: '০৭:৪৫', iqamah: '০৮:১৫' }
+        ],
+        jumuahTime: { adhan: '১২:৩০', khutbah: '০১:০০', iqamah: '০১:৩০' },
+        donationChannels: {
+          bankAccounts: [
+            { id: 'acc-1', nameBn: 'প্রধান মসজিদ ফান্ড', bankName: 'ইসলামী ব্যাংক বাংলাদেশ পিএলসি', branchName: 'কক্সবাজার শাখা', accountNumber: '20501230200123', accountTitle: 'Baytul Aman Jame Masjid Fund' }
+          ],
+          mobileBanking: { bkash: '01711223344 (মার্চেন্ট)', nagad: '01811223344 (মার্চেন্ট)' },
+          qrCodeUrl: 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=https://masjidledger.org/donate',
+          instructionsBn: 'বিকাশ বা নগদ অ্যাপের মার্চেন্ট বা পেমেন্ট অপশনে গিয়ে মসজিদের তহবিলে আপনার সাদাকাহ/দান সরাসরি পাঠাতে পারেন।'
+        },
+        financialTransparency: {
+          currentMonthNameBn: 'আগস্ট ২০২৬',
+          monthlyIncome: 125000,
+          monthlyExpense: 98000,
+          monthlySurplus: 27000,
+          currentBalance: 345000,
+          totalDonationsReceived: 110000
+        },
+        notices: [
+          { id: 'not-1', title: 'আসন্ন জুমুআহ বয়ান ও বিশেষ দোয়া', description: 'আগামী জুমুআহ নামাজে পবিত্র রমজানের প্রস্তুতি ও দানশীলতা বিষয়ে গুরুত্বপূর্ণ বয়ান পেশ করবেন খতিব সাহেব। সকলের উপস্থিতি কামনা করছি।', publishDate: '2026-08-28', priority: 'HIGH', isEmergency: false }
+        ],
+        projects: [
+          { id: 'proj-1', planNumber: 'PRJ-01', title: 'মসজিদ ২য় তলা সম্প্রসারণ ও ছাদ ঢালাই কাজ', description: 'নামাজির সংখ্যা বৃদ্ধিতে দ্বিতীয় তলার ছাদ ঢালাই ও টাইলস স্থাপন কাজ চলমান।', status: 'চলমান', progressPercentage: 64, targetDate: '2026-10-15', approvedBudget: 5000000, actualExpense: 3200000, remainingBudget: 1800000 }
+        ],
+        waqfSummary: [
+          { id: 'wq-1', propertyCode: 'WQF-01', name: 'মার্কেট ভবন (নিচতলা ও ২য় তলা)', category: 'বাণিজ্যিক দোকান', location: 'স্টেশন রোড, কক্সবাজার', status: 'ভাড়া দেওয়া আছে', description: 'মাসিক ভাড়ার আয় সরাসরি মসজিদ তহবিলে জমা হয়।' }
+        ],
+        committee: {
+          termTitle: 'পরিচালনা কমিটি ২০২৪-২০২৬',
+          members: [
+            { id: 'm-1', name: 'আলহাজ্ব মোহাম্মদ ইউনুস', designation: 'সভাপতি', role: 'সভাপতি' },
+            { id: 'm-2', name: 'প্রকৌশলী আব্দুল মালেক', designation: 'সাধারণ সম্পাদক', role: 'সাধারণ সম্পাদক' },
+            { id: 'm-3', name: 'হাফেজ মাওলানা জহিরুল ইসলাম', designation: 'খতিব / ইমাম', role: 'খতিব / ইমাম' }
+          ]
+        },
+        subCommittees: [],
+        staff: [],
+        cemetery: undefined,
+        settings: DEFAULT_PUBLIC_PORTAL_SETTINGS,
+        serverTime: new Date().toISOString()
+      };
+    }
+    return res.data;
+  }
+
+  async getPublicPortalSettings(): Promise<PublicPortalSettings> {
+    const res = await this.request<PublicPortalSettings>('/mosques/current/public-portal-settings');
+    if (!res.success || !res.data) {
+      return { ...DEFAULT_PUBLIC_PORTAL_SETTINGS };
+    }
+    return res.data;
+  }
+
+  async updatePublicPortalSettings(settings: Partial<PublicPortalSettings>): Promise<PublicPortalSettings> {
+    const res = await this.request<PublicPortalSettings>('/mosques/current/public-portal-settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'পাবলিক পোর্টাল দৃশ্যমানতা সেটিংস সংরক্ষণ করা সম্ভব হয়নি');
+    }
+    return res.data;
+  }
+
+  async resetPublicPortalSettings(): Promise<PublicPortalSettings> {
+    const res = await this.request<PublicPortalSettings>('/mosques/current/public-portal-settings/reset', {
+      method: 'POST',
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'পাবলিক পোর্টাল সেটিংস রিসেট করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
   }
 
   async uploadMosqueLogo(data: { fileName: string; fileType?: string; mimeType?: string; base64Data: string }): Promise<Mosque> {
@@ -306,6 +463,24 @@ class ApiService {
       body: JSON.stringify(data),
     });
     if (!res.success) throw new Error(res.error?.message || 'Failed to create account');
+    return res.data!;
+  }
+
+  async updateAccount(id: string, data: Partial<FinancialAccount>): Promise<FinancialAccount> {
+    const res = await this.request<FinancialAccount>(`/accounting/accounts/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to update account');
+    return res.data!;
+  }
+
+  async updateOpeningBalance(data: AccountOpeningBalancePayload): Promise<FinancialAccount> {
+    const res = await this.request<FinancialAccount>('/accounting/accounts/opening-balance', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to update opening balance');
     return res.data!;
   }
 
@@ -438,6 +613,43 @@ class ApiService {
     });
     if (!res.success) throw new Error(res.error?.message || 'Failed to collect donation box');
     return res.data!;
+  }
+
+  // Denomination Update & Summary APIs
+  async updateIncomeDenomination(id: string, denominationData: any, editReason?: string): Promise<IncomeEntry> {
+    const res = await this.request<IncomeEntry>(`/accounting/income/${id}/denomination`, {
+      method: 'PUT',
+      body: JSON.stringify({ denominationData, editReason }),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to update income denomination');
+    return res.data!;
+  }
+
+  async updateDonationDenomination(id: string, denominationData: any, editReason?: string): Promise<Donation> {
+    const res = await this.request<Donation>(`/donations/${id}/denomination`, {
+      method: 'PUT',
+      body: JSON.stringify({ denominationData, editReason }),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to update donation denomination');
+    return res.data!;
+  }
+
+  async updateDonationBoxCollectionDenomination(id: string, denominationData: any, editReason?: string): Promise<DonationBoxCollection> {
+    const res = await this.request<DonationBoxCollection>(`/donation-boxes/collections/${id}/denomination`, {
+      method: 'PUT',
+      body: JSON.stringify({ denominationData, editReason }),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to update box collection denomination');
+    return res.data!;
+  }
+
+  async getDenominationSummary(params?: { fromDate?: string; toDate?: string; collectionType?: string }): Promise<any> {
+    const query = new URLSearchParams();
+    if (params?.fromDate) query.append('fromDate', params.fromDate);
+    if (params?.toDate) query.append('toDate', params.toDate);
+    if (params?.collectionType) query.append('collectionType', params.collectionType);
+    const res = await this.request<any>(`/accounting/denomination-summary?${query.toString()}`);
+    return res.data || null;
   }
 
   // Inter-Account Transfer / Contra
@@ -1004,6 +1216,32 @@ class ApiService {
     return res.data!;
   }
 
+  async updateCemeteryRecord(id: string, data: any): Promise<CemeteryRecord> {
+    const res = await this.request<CemeteryRecord>(`/cemetery/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to update cemetery record');
+    return res.data!;
+  }
+
+  async archiveCemeteryRecord(id: string, isArchived: boolean, reason?: string): Promise<CemeteryRecord> {
+    const res = await this.request<CemeteryRecord>(`/cemetery/${id}/archive`, {
+      method: 'POST',
+      body: JSON.stringify({ isArchived, reason }),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to archive cemetery record');
+    return res.data!;
+  }
+
+  async deleteCemeteryRecord(id: string): Promise<boolean> {
+    const res = await this.request<{ success: boolean }>(`/cemetery/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to delete cemetery record');
+    return true;
+  }
+
   async createNotice(data: any): Promise<MosqueNotice> {
     const res = await this.request<MosqueNotice>('/management/notices', {
       method: 'POST',
@@ -1113,9 +1351,9 @@ class ApiService {
     return res.data || [];
   }
 
-  // AI Advisor
+  // AI Advisor / Financial Auditor
   async askAi(question: string, language: string = 'bn') {
-    return this.request<{ answer: string }>('/ai/advisor', {
+    return this.request<{ answer: string }>('/ai/financial-audit', {
       method: 'POST',
       body: JSON.stringify({ question, language }),
     });

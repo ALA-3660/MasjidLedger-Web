@@ -38,7 +38,12 @@ import {
   DashboardStats,
   PaymentMethod,
   SmsLog,
-  PublicDocumentToken
+  PublicDocumentToken,
+  PublicPortalSettings,
+  DEFAULT_PUBLIC_PORTAL_SETTINGS,
+  PublicPortalData,
+  QRCodeEntity,
+  QRStatus,
 } from '../types';
 
 const DB_FILE_PATH = path.join(process.cwd(), 'data', 'masjidledger_db.json');
@@ -53,6 +58,7 @@ export class DatabaseStore {
   donations: Donation[] = [];
   donationBoxes: DonationBox[] = [];
   donationBoxCollections: DonationBoxCollection[] = [];
+  qrCodes: QRCodeEntity[] = [];
   committeeTerms: CommitteeTerm[] = [];
   committeeMembers: CommitteeMember[] = [];
   committeeMeetings: CommitteeMeeting[] = [];
@@ -92,7 +98,12 @@ export class DatabaseStore {
       if (fs.existsSync(DB_FILE_PATH)) {
         const raw = fs.readFileSync(DB_FILE_PATH, 'utf-8');
         const parsed = JSON.parse(raw);
-        this.mosques = parsed.mosques || [];
+        this.mosques = (parsed.mosques || []).map((m: any) => ({
+          ...m,
+          publicPortalSettings: m.publicPortalSettings
+            ? { ...DEFAULT_PUBLIC_PORTAL_SETTINGS, ...m.publicPortalSettings }
+            : { ...DEFAULT_PUBLIC_PORTAL_SETTINGS }
+        }));
         this.users = parsed.users || [];
         this.accountHeads = parsed.accountHeads || [];
         this.accounts = parsed.accounts || [];
@@ -153,16 +164,23 @@ export class DatabaseStore {
         this.notifications = parsed.notifications || [];
         this.transfers = parsed.transfers || [];
         this.uploadedFiles = parsed.uploadedFiles || [];
+        this.qrCodes = parsed.qrCodes || [];
         this.auditLogs = parsed.auditLogs || [];
         this.idempotencyMap = parsed.idempotencyMap || {};
+
         return;
       }
     } catch (e) {
-      console.warn('[DB] Failed to load DB file, seeding initial dataset:', e);
+      console.warn('[DB] Failed to load DB file:', e);
     }
 
-    this.seedInitialData();
-    this.save();
+    // Only seed initial data if DEMO_MODE is explicitly enabled. Otherwise start with empty dataset for production.
+    if (process.env.DEMO_MODE === 'true') {
+      this.seedInitialData();
+      this.save();
+    } else {
+      console.log('[DB] Production mode: Starting with empty/clean database. No demo data seeded.');
+    }
   }
 
   save() {
@@ -201,6 +219,7 @@ export class DatabaseStore {
         notifications: this.notifications,
         transfers: this.transfers,
         uploadedFiles: this.uploadedFiles,
+        qrCodes: this.qrCodes,
         auditLogs: this.auditLogs,
         idempotencyMap: this.idempotencyMap,
       };
@@ -549,7 +568,7 @@ export class DatabaseStore {
     };
     this.accounts.push(accCash, accBank, accBkash);
 
-    // 5. Initial Income & Expenses
+    // 5. Initial Income & Expenses (10 Incomes & 10 Expenses with canonical codes)
     this.incomeEntries.push(
       {
         id: 'inc-001',
@@ -625,6 +644,181 @@ export class DatabaseStore {
         status: 'APPROVED',
         createdAt: '2026-08-23T15:30:00.000Z',
         updatedAt: '2026-08-23T16:00:00.000Z'
+      },
+      {
+        id: 'inc-004',
+        mosqueId: mosque1.id,
+        voucherNumber: 'INC-2026-000004',
+        date: '2026-08-24',
+        mainHeadId: 'head-inc-01',
+        mainHeadNameBn: 'দান ও অনুদান',
+        subHeadId: 'head-inc-01-1',
+        subHeadNameBn: 'জুমার সাধারণ দান (Friday Collection)',
+        amount: 12000,
+        paymentMethod: 'CASH',
+        accountId: accCash.id,
+        accountName: accCash.nameBn,
+        donorName: 'মাগরিবের মুসল্লিবৃন্দ',
+        description: 'মাগরিবের নামাজের পর বিশেষ দোয়া মাহফিলের এককালীন কালেকশন',
+        createdBy: 'usr-accountant-1',
+        createdByName: 'আব্দুল কাদির (হিসাবরক্ষক)',
+        approvedBy: 'usr-admin-1',
+        approvedByName: 'মুহাম্মদ রফিকুল ইসলাম',
+        approvedAt: '2026-08-24T19:30:00.000Z',
+        status: 'APPROVED',
+        createdAt: '2026-08-24T19:00:00.000Z',
+        updatedAt: '2026-08-24T19:30:00.000Z'
+      },
+      {
+        id: 'inc-005',
+        mosqueId: mosque1.id,
+        voucherNumber: 'INC-2026-000005',
+        date: '2026-08-25',
+        mainHeadId: 'head-inc-02',
+        mainHeadNameBn: 'ওয়াকফ ও দোকান ভাড়া আয়',
+        subHeadId: 'head-inc-02-1',
+        subHeadNameBn: 'মসজিদ মার্কেট দোকান ভাড়া',
+        amount: 15000,
+        paymentMethod: 'CASH',
+        accountId: accCash.id,
+        accountName: accCash.nameBn,
+        donorName: 'মোঃ রফিকুল ইসলাম (দোকান নং ১ - আল-মদিনা ফার্মেসি)',
+        reference: 'RENT-AUG-01',
+        description: 'আগস্ট ২০২৬ মাসের ফার্মেসি দোকান ভাড়া ক্যাশে পরিশোধ',
+        createdBy: 'usr-accountant-1',
+        createdByName: 'আব্দুল কাদির (হিসাবরক্ষক)',
+        approvedBy: 'usr-admin-1',
+        approvedByName: 'মুহাম্মদ রফিকুল ইসলাম',
+        approvedAt: '2026-08-25T11:30:00.000Z',
+        status: 'APPROVED',
+        createdAt: '2026-08-25T11:00:00.000Z',
+        updatedAt: '2026-08-25T11:30:00.000Z'
+      },
+      {
+        id: 'inc-006',
+        mosqueId: mosque1.id,
+        voucherNumber: 'INC-2026-000006',
+        date: '2026-08-25',
+        mainHeadId: 'head-inc-02',
+        mainHeadNameBn: 'ওয়াকফ ও দোকান ভাড়া আয়',
+        subHeadId: 'head-inc-02-1',
+        subHeadNameBn: 'ওয়াকফ পুকুর ইজারা আয়',
+        amount: 18000,
+        paymentMethod: 'BANK',
+        accountId: accBank.id,
+        accountName: accBank.nameBn,
+        donorName: 'মোঃ সাইদুর রহমান (রুপালী ফিশারিজ)',
+        reference: 'IBBL-DEP-44910',
+        description: 'আগস্ট ২০২৬ মাসের ওয়াকফ পুকুর মৎস্য ইজারার কিস্তি জমা',
+        createdBy: 'usr-accountant-1',
+        createdByName: 'আব্দুল কাদির (হিসাবরক্ষক)',
+        approvedBy: 'usr-admin-1',
+        approvedByName: 'মুহাম্মদ রফিকুল ইসলাম',
+        approvedAt: '2026-08-25T14:00:00.000Z',
+        status: 'APPROVED',
+        createdAt: '2026-08-25T13:30:00.000Z',
+        updatedAt: '2026-08-25T14:00:00.000Z'
+      },
+      {
+        id: 'inc-007',
+        mosqueId: mosque1.id,
+        voucherNumber: 'INC-2026-000007',
+        date: '2026-08-26',
+        mainHeadId: 'head-inc-01',
+        mainHeadNameBn: 'দান ও অনুদান',
+        subHeadId: 'head-inc-01-4',
+        subHeadNameBn: 'মসজিদ উন্নয়ন ও নির্মাণ তহবিল',
+        amount: 25000,
+        paymentMethod: 'CASH',
+        accountId: accCash.id,
+        accountName: accCash.nameBn,
+        donorName: 'আলহাজ্ব শামসুল হুদা',
+        reference: 'REC-BOOK-04/12',
+        description: 'মসজিদ কমপ্লেক্সের অজুখানা সংস্কার ও আধুনিকীকরণ ফান্ডে অনুদান',
+        createdBy: 'usr-admin-1',
+        createdByName: 'মুহাম্মদ রফিকুল ইসলাম',
+        approvedBy: 'usr-admin-1',
+        approvedByName: 'মুহাম্মদ রফিকুল ইসলাম',
+        approvedAt: '2026-08-26T15:30:00.000Z',
+        status: 'APPROVED',
+        createdAt: '2026-08-26T15:00:00.000Z',
+        updatedAt: '2026-08-26T15:30:00.000Z'
+      },
+      {
+        id: 'inc-008',
+        mosqueId: mosque1.id,
+        voucherNumber: 'INC-2026-000008',
+        date: '2026-08-27',
+        mainHeadId: 'head-inc-01',
+        mainHeadNameBn: 'দান ও অনুদান',
+        subHeadId: 'head-inc-01-1',
+        subHeadNameBn: 'দানবাক্স কালেকশন তহবিল',
+        amount: 16800,
+        paymentMethod: 'CASH',
+        accountId: accCash.id,
+        accountName: accCash.nameBn,
+        donorName: 'প্রধান গেট দানবাক্স (BOX-MAIN-GATE)',
+        reference: 'BOX-COL-AUG-01',
+        description: '১৫ আগস্ট তারিখের প্রধান ফটক দানবাক্স খোলার গণনাকৃত মোট জমা',
+        createdBy: 'usr-admin-1',
+        createdByName: 'মুহাম্মদ রফিকুল ইসলাম',
+        approvedBy: 'usr-admin-1',
+        approvedByName: 'মুহাম্মদ রফিকুল ইসলাম',
+        approvedAt: '2026-08-27T17:00:00.000Z',
+        status: 'APPROVED',
+        createdAt: '2026-08-27T16:00:00.000Z',
+        updatedAt: '2026-08-27T17:00:00.000Z'
+      },
+      {
+        id: 'inc-009',
+        mosqueId: mosque1.id,
+        voucherNumber: 'INC-2026-000009',
+        date: '2026-08-28',
+        mainHeadId: 'head-inc-01',
+        mainHeadNameBn: 'দান ও অনুদান',
+        subHeadId: 'head-inc-01-4',
+        subHeadNameBn: 'এতিমখানা ও হেফজ ফান্ড অনুদান',
+        amount: 8500,
+        paymentMethod: 'BKASH',
+        accountId: accBkash.id,
+        accountName: accBkash.nameBn,
+        donorName: 'মোছাঃ নাজনীন আক্তার',
+        donorPhone: '01819554433',
+        reference: 'BKASH-77GH19',
+        description: 'মরহুম পিতামাতার ইসালে সাওয়াবের উদ্দেশ্যে এতিম ছাত্রদের খাদ্য সহায়তা অনুদান',
+        createdBy: 'usr-accountant-1',
+        createdByName: 'আব্দুল কাদির (হিসাবরক্ষক)',
+        approvedBy: 'usr-admin-1',
+        approvedByName: 'মুহাম্মদ রফিকুল ইসলাম',
+        approvedAt: '2026-08-28T12:00:00.000Z',
+        status: 'APPROVED',
+        createdAt: '2026-08-28T11:45:00.000Z',
+        updatedAt: '2026-08-28T12:00:00.000Z'
+      },
+      {
+        id: 'inc-010',
+        mosqueId: mosque1.id,
+        voucherNumber: 'INC-2026-000010',
+        date: '2026-08-29',
+        mainHeadId: 'head-inc-01',
+        mainHeadNameBn: 'দান ও অনুদান',
+        subHeadId: 'head-inc-01-4',
+        subHeadNameBn: 'সৌর প্যানেল ও আইপিএস স্থাপন তহবিল',
+        amount: 35000,
+        paymentMethod: 'BANK',
+        accountId: accBank.id,
+        accountName: accBank.nameBn,
+        donorName: 'আলহাজ্ব ড. মোস্তফা কামাল (প্রবাসী যুক্তরাজ্য)',
+        reference: 'TRX-CITY-891002',
+        description: 'মসজিদের ৫ কিলোওয়াট সোলার সিস্টেম স্থাপন প্রজেক্টে বিশেষ দান',
+        createdBy: 'usr-accountant-1',
+        createdByName: 'আব্দুল কাদির (হিসাবরক্ষক)',
+        approvedBy: 'usr-admin-1',
+        approvedByName: 'মুহাম্মদ রফিকুল ইসলাম',
+        approvedAt: '2026-08-29T16:30:00.000Z',
+        status: 'APPROVED',
+        createdAt: '2026-08-29T16:00:00.000Z',
+        updatedAt: '2026-08-29T16:30:00.000Z'
       }
     );
 
@@ -678,6 +872,206 @@ export class DatabaseStore {
         status: 'APPROVED',
         createdAt: '2026-08-22T16:30:00.000Z',
         updatedAt: '2026-08-22T17:00:00.000Z'
+      },
+      {
+        id: 'exp-003',
+        mosqueId: mosque1.id,
+        voucherNumber: 'EXP-2026-000003',
+        date: '2026-08-25',
+        mainHeadId: 'head-exp-01',
+        mainHeadNameBn: 'কর্মকর্তা ও কর্মচারীদের বেতন-ভাতা',
+        subHeadId: 'head-exp-01-1',
+        subHeadNameBn: 'খতীব ও পেশ ইমাম হাদিয়া',
+        amount: 32000,
+        paymentMethod: 'BANK',
+        accountId: accBank.id,
+        accountName: accBank.nameBn,
+        payeeName: 'মাওলানা মুফতি আব্দুল্লাহ আল-মামুন',
+        reference: 'SALARY-AUG-STF01',
+        description: 'আগস্ট ২০২৬ মাসের মাসিক মূল হাদিয়া ও বিশেষ ভাতা পরিশোধ',
+        createdBy: 'usr-accountant-1',
+        createdByName: 'আব্দুল কাদির (হিসাবরক্ষক)',
+        approvedBy: 'usr-admin-1',
+        approvedByName: 'মুহাম্মদ রফিকুল ইসলাম',
+        approvedAt: '2026-08-25T12:00:00.000Z',
+        status: 'APPROVED',
+        createdAt: '2026-08-25T11:00:00.000Z',
+        updatedAt: '2026-08-25T12:00:00.000Z'
+      },
+      {
+        id: 'exp-004',
+        mosqueId: mosque1.id,
+        voucherNumber: 'EXP-2026-000004',
+        date: '2026-08-25',
+        mainHeadId: 'head-exp-01',
+        mainHeadNameBn: 'কর্মকর্তা ও কর্মচারীদের বেতন-ভাতা',
+        subHeadId: 'head-exp-01-2',
+        subHeadNameBn: 'মুয়াজ্জিন ও সহকারী ইমাম হাদিয়া',
+        amount: 18000,
+        paymentMethod: 'BANK',
+        accountId: accBank.id,
+        accountName: accBank.nameBn,
+        payeeName: 'হাফেজ ক্বারী মোঃ মাহমুদ হাসান',
+        reference: 'SALARY-AUG-STF02',
+        description: 'আগস্ট ২০২৬ মাসের প্রধান মুয়াজ্জিন সাহেবের বেতন পরিশোধ',
+        createdBy: 'usr-accountant-1',
+        createdByName: 'আব্দুল কাদির (হিসাবরক্ষক)',
+        approvedBy: 'usr-admin-1',
+        approvedByName: 'মুহাম্মদ রফিকুল ইসলাম',
+        approvedAt: '2026-08-25T12:30:00.000Z',
+        status: 'APPROVED',
+        createdAt: '2026-08-25T11:30:00.000Z',
+        updatedAt: '2026-08-25T12:30:00.000Z'
+      },
+      {
+        id: 'exp-005',
+        mosqueId: mosque1.id,
+        voucherNumber: 'EXP-2026-000005',
+        date: '2026-08-25',
+        mainHeadId: 'head-exp-01',
+        mainHeadNameBn: 'কর্মকর্তা ও কর্মচারীদের বেতন-ভাতা',
+        subHeadId: 'head-exp-01-2',
+        subHeadNameBn: 'খাদেম ও পরিচ্ছন্নতাকর্মী বেতন',
+        amount: 9000,
+        paymentMethod: 'BANK',
+        accountId: accBank.id,
+        accountName: accBank.nameBn,
+        payeeName: 'মোঃ নুরুল ইসলাম',
+        reference: 'SALARY-AUG-STF03',
+        description: 'আগস্ট ২০২৬ মাসের প্রধান খাদেম সাহেবের বেতন (অগ্রিম কর্তনান্তে)',
+        createdBy: 'usr-accountant-1',
+        createdByName: 'আব্দুল কাদির (হিসাবরক্ষক)',
+        approvedBy: 'usr-admin-1',
+        approvedByName: 'মুহাম্মদ রফিকুল ইসলাম',
+        approvedAt: '2026-08-25T13:00:00.000Z',
+        status: 'APPROVED',
+        createdAt: '2026-08-25T11:45:00.000Z',
+        updatedAt: '2026-08-25T13:00:00.000Z'
+      },
+      {
+        id: 'exp-006',
+        mosqueId: mosque1.id,
+        voucherNumber: 'EXP-2026-000006',
+        date: '2026-08-26',
+        mainHeadId: 'head-exp-03',
+        mainHeadNameBn: 'মেরামত, রক্ষণাবেক্ষণ ও সংস্কার',
+        subHeadId: 'head-exp-03-1',
+        subHeadNameBn: 'জেনারেটর সার্ভিসিং ও জ্বালানি',
+        amount: 8500,
+        paymentMethod: 'CASH',
+        accountId: accCash.id,
+        accountName: accCash.nameBn,
+        payeeName: 'বাংলা পাওয়ার জেনারেটর সার্ভিসেস',
+        reference: 'SRV-GEN-8812',
+        description: '৩০ কেভিএ ডিজেল জেনারেটরের মবিল পরিবর্তন ও এয়ার ফিল্টার সার্ভিসিং',
+        createdBy: 'usr-admin-1',
+        createdByName: 'মুহাম্মদ রফিকুল ইসলাম',
+        approvedBy: 'usr-admin-1',
+        approvedByName: 'মুহাম্মদ রফিকুল ইসলাম',
+        approvedAt: '2026-08-26T16:00:00.000Z',
+        status: 'APPROVED',
+        createdAt: '2026-08-26T15:00:00.000Z',
+        updatedAt: '2026-08-26T16:00:00.000Z'
+      },
+      {
+        id: 'exp-007',
+        mosqueId: mosque1.id,
+        voucherNumber: 'EXP-2026-000007',
+        date: '2026-08-27',
+        mainHeadId: 'head-exp-02',
+        mainHeadNameBn: 'বিদ্যুৎ, পানি ও গ্যাস বিল',
+        subHeadId: 'head-exp-02-2',
+        subHeadNameBn: 'ওয়াকফ সম্পত্তি খাজনা ও কর',
+        amount: 4500,
+        paymentMethod: 'BANK',
+        accountId: accBank.id,
+        accountName: accBank.nameBn,
+        payeeName: 'পল্লবী ইউনিয়ন ভূমি রাজস্ব অফিস',
+        reference: 'DAK-2026-9854',
+        description: 'ওয়াকফ মার্কেট (PROP-WAQF-01) এর বার্ষিক ভূমি উন্নয়ন কর পরিশোধ',
+        createdBy: 'usr-admin-1',
+        createdByName: 'মুহাম্মদ রফিকুল ইসলাম',
+        approvedBy: 'usr-admin-1',
+        approvedByName: 'মুহাম্মদ রফিকুল ইসলাম',
+        approvedAt: '2026-08-27T12:00:00.000Z',
+        status: 'APPROVED',
+        createdAt: '2026-08-27T11:00:00.000Z',
+        updatedAt: '2026-08-27T12:00:00.000Z'
+      },
+      {
+        id: 'exp-008',
+        mosqueId: mosque1.id,
+        voucherNumber: 'EXP-2026-000008',
+        date: '2026-08-28',
+        mainHeadId: 'head-exp-02',
+        mainHeadNameBn: 'বিদ্যুৎ, পানি ও গ্যাস বিল',
+        subHeadId: 'head-exp-02-2',
+        subHeadNameBn: 'ওয়াকফ সম্পত্তি খাজনা ও কর',
+        amount: 3200,
+        paymentMethod: 'CASH',
+        accountId: accCash.id,
+        accountName: accCash.nameBn,
+        payeeName: 'পল্লবী ভূমি রাজস্ব অফিস',
+        reference: 'DAK-2026-9912',
+        description: 'ওয়াকফ পুকুর জমির (PROP-WAQF-03) ভূমি রাজস্ব কর পরিশোধ',
+        createdBy: 'usr-accountant-1',
+        createdByName: 'আব্দুল কাদির (হিসাবরক্ষক)',
+        approvedBy: 'usr-admin-1',
+        approvedByName: 'মুহাম্মদ রফিকুল ইসলাম',
+        approvedAt: '2026-08-28T14:30:00.000Z',
+        status: 'APPROVED',
+        createdAt: '2026-08-28T14:00:00.000Z',
+        updatedAt: '2026-08-28T14:30:00.000Z'
+      },
+      {
+        id: 'exp-009',
+        mosqueId: mosque1.id,
+        voucherNumber: 'EXP-2026-000009',
+        date: '2026-08-29',
+        mainHeadId: 'head-exp-03',
+        mainHeadNameBn: 'মেরামত, রক্ষণাবেক্ষণ ও সংস্কার',
+        subHeadId: 'head-exp-03-1',
+        subHeadNameBn: 'পুকুর পাড় সংস্কার ও সুরক্ষা পাইলিং',
+        amount: 6000,
+        paymentMethod: 'CASH',
+        accountId: accCash.id,
+        accountName: accCash.nameBn,
+        payeeName: 'দেশ বিল্ডার্স ও শ্রমিক দল',
+        reference: 'VOUCHER-098',
+        description: 'ওয়াকফ পুকুরের উত্তর পাড়ের মাটি ভরাট ও বাঁশের পাইলিং সুরক্ষা ব্যয়',
+        createdBy: 'usr-admin-1',
+        createdByName: 'মুহাম্মদ রফিকুল ইসলাম',
+        approvedBy: 'usr-admin-1',
+        approvedByName: 'মুহাম্মদ রফিকুল ইসলাম',
+        approvedAt: '2026-08-29T16:00:00.000Z',
+        status: 'APPROVED',
+        createdAt: '2026-08-29T15:30:00.000Z',
+        updatedAt: '2026-08-29T16:00:00.000Z'
+      },
+      {
+        id: 'exp-010',
+        mosqueId: mosque1.id,
+        voucherNumber: 'EXP-2026-000010',
+        date: '2026-08-29',
+        mainHeadId: 'head-exp-03',
+        mainHeadNameBn: 'মেরামত, রক্ষণাবেক্ষণ ও সংস্কার',
+        subHeadId: 'head-exp-03-1',
+        subHeadNameBn: 'আইপিএস ব্যাটারি ও এলইডি লাইট ফিটিং',
+        amount: 19500,
+        paymentMethod: 'CASH',
+        accountId: accCash.id,
+        accountName: accCash.nameBn,
+        payeeName: 'রহিমআফ্রোজ ব্যাটারি ও লাইটিং কর্নার',
+        reference: 'INV-RA-77810',
+        description: 'কর্মপরিকল্পনা AP-2026-005 অনুযায়ী আইপিএস ব্যাটারি এসিড চেঞ্জ ও ৫০টি এলইডি লাইট স্থাপন',
+        createdBy: 'usr-admin-1',
+        createdByName: 'মুহাম্মদ রফিকুল ইসলাম',
+        approvedBy: 'usr-admin-1',
+        approvedByName: 'মুহাম্মদ রফিকুল ইসলাম',
+        approvedAt: '2026-08-29T18:00:00.000Z',
+        status: 'APPROVED',
+        createdAt: '2026-08-29T17:30:00.000Z',
+        updatedAt: '2026-08-29T18:00:00.000Z'
       }
     );
 
@@ -1564,6 +1958,50 @@ export class DatabaseStore {
         accountType: 'SAVINGS',
         bankStatus: 'ACTIVE',
         createdAt: '2021-06-01T00:00:00.000Z'
+      },
+      {
+        id: 'stf-04',
+        mosqueId: mosque1.id,
+        name: 'মাওলানা মোঃ সাইফুল ইসলাম',
+        nid: '19922691234567897',
+        phone: '01719887766',
+        designation: 'TEACHER',
+        designationBn: 'হেফজখানা শিক্ষক ও সহকারী খতীব',
+        address: 'মসজিদ কমপ্লেক্স ১ম তলা শিক্ষক কক্ষ',
+        joiningDate: '2022-01-15',
+        monthlySalary: 22000,
+        allowance: 3000,
+        status: 'ACTIVE',
+        bankName: 'Islami Bank Bangladesh PLC',
+        branchName: 'Mirpur-10 Branch',
+        accountHolderName: 'Saiful Islam',
+        accountNumber: '205021300048892',
+        routingNumber: '125263456',
+        accountType: 'SAVINGS',
+        bankStatus: 'ACTIVE',
+        createdAt: '2022-01-15T00:00:00.000Z'
+      },
+      {
+        id: 'stf-05',
+        mosqueId: mosque1.id,
+        name: 'মোঃ আব্দুল মান্নান',
+        nid: '19802691234567898',
+        phone: '01915443322',
+        designation: 'SECURITY',
+        designationBn: 'নিরাপত্তাকর্মী ও নাইট গার্ড',
+        address: 'মিরপুর-১২, ঢাকা',
+        joiningDate: '2023-04-01',
+        monthlySalary: 12000,
+        allowance: 1000,
+        status: 'ACTIVE',
+        bankName: 'Islami Bank Bangladesh PLC',
+        branchName: 'Mirpur-10 Branch',
+        accountHolderName: 'Abdul Mannan',
+        accountNumber: '205021300059914',
+        routingNumber: '125263456',
+        accountType: 'SAVINGS',
+        bankStatus: 'ACTIVE',
+        createdAt: '2023-04-01T00:00:00.000Z'
       }
     );
 
@@ -1781,6 +2219,38 @@ export class DatabaseStore {
         serviceHistory: [],
         attachments: [],
         createdAt: '2024-01-15T00:00:00.000Z'
+      },
+      {
+        id: 'ast-05',
+        mosqueId: mosque1.id,
+        assetCode: 'AST-SOL-005',
+        name: '5KW On-Grid Solar Inverter & Li-FePO4 Battery System',
+        category: 'SOLAR_IPS',
+        categoryBn: 'সৌর বিদ্যুৎ ও আইপিএস',
+        brand: 'Luminous / Growatt',
+        model: 'Solar-Hybrid 5000VA',
+        serialNumber: 'GW-SOL-2025-901',
+        purchaseDate: '2025-06-20',
+        purchaseValue: 240000,
+        currentValue: 215000,
+        location: 'মসজিদ ছাদ ও কন্ট্রোল রুম',
+        responsiblePerson: 'মোঃ নুরুল ইসলাম',
+        responsiblePersonPhone: '01815222333',
+        condition: 'GOOD',
+        conditionBn: 'ভালো / সচল',
+        nextServiceDate: '2026-12-15',
+        warrantyInfo: '৫ বছরের সোলার প্যানেল ওয়ারেন্টি ও ২ বছর ব্যাটারি রিপ্লেসমেন্ট',
+        supplier: 'গ্রিন এনার্জি সল্যুশনস বিডি',
+        sourceOfPurchase: 'বিশেষ মুসল্লি অনুদান তহবিল',
+        description: 'বিদ্যুৎ বিভ্রাটের সময় আজান, ফ্যান ও জরুরি লাইটিং সার্বক্ষণিক নিরবচ্ছিন্ন রাখার জন্য আধুনিক সোলার ব্যাকআপ।',
+        notes: 'প্রতি ত্রৈমাসিকে ব্যাটারি ভোল্টেজ ও সোলার প্যানেল পরিষ্কার করা আবশ্যক।',
+        termId: term1.id,
+        termTitle: term1.title,
+        isArchived: false,
+        isDemo: true,
+        serviceHistory: [],
+        attachments: [],
+        createdAt: '2025-06-20T00:00:00.000Z'
       }
     );
 
@@ -2447,6 +2917,146 @@ export class DatabaseStore {
         ],
 
         createdAt: '2026-01-01T00:00:00.000Z'
+      },
+      {
+        id: 'prop-04',
+        mosqueId: mosque1.id,
+        propertyCode: 'PROP-WAQF-04',
+        name: 'হাজী ওসমান গনি ওয়াকফ মার্কেট ও আবাসিক কোয়ার্টার',
+        nameBn: 'হাজী ওসমান গনি ওয়াকফ মার্কেট ও আবাসিক কোয়ার্টার',
+        type: 'COMMERCIAL_LAND',
+        category: 'MARKET',
+        description: 'মসজিদের পূর্ব সংলগ্ন ৩ তলা বিশিষ্ট পাকা ওয়াকফ মার্কেট ও ইমাম-মুয়াজ্জিন কোয়ার্টার ভবন',
+        location: 'পূর্বপল্লী প্রধান সড়ক, মিরপুর-১২, ঢাকা',
+        fullAddress: 'হোল্ডিং নং- ১৪/বি, পূর্বপল্লী, মিরপুর-১২, ঢাকা-১২১৬',
+        area: '৫.২৫ শতাংশ',
+        areaAmount: 5.25,
+        areaUnit: 'DECIMAL',
+        ownershipType: 'WAQF',
+        csPlotNo: '৪১৮',
+        saPlotNo: '৫২৪',
+        rsPlotNo: '৭৩০',
+        bsPlotNo: '১০৬০',
+        plotNo: '১০৬০',
+        csKhatianNo: '৮৯',
+        saKhatianNo: '১১৮',
+        rsKhatianNo: '২৪০',
+        bsKhatianNo: '৪৮২',
+        mutationKhatianNo: 'মিউটেশন-১৩৫/২০১৪',
+        khatianNo: '৪৮২',
+        mouza: 'সেনপাড়া পর্বতা',
+        jlNumber: '৪৫',
+        subRegistryOffice: 'মিরপুর সাব-রেজিস্ট্রি অফিস',
+        boundaryNorth: 'সরকারি ড্রেন ও রাস্তা',
+        boundarySouth: 'মসজিদ চত্বর',
+        boundaryEast: 'ব্যক্তিগত আবাসিক প্লট',
+        boundaryWest: 'মসজিদ সংযোগ লেন',
+        waqfEnrollmentNo: 'EC-19200/1992',
+        waqfDeedNo: '৫৬১২/১৯৯২',
+        waqfYear: '১৯৯২',
+        waqfDeedDate: '1992-07-10',
+        waqifName: 'মরহুম হাজী ওসমান গনি',
+        waqifFatherName: 'মরহুম আব্দুল জলিল',
+        waqifAddress: 'মিরপুর-১২, ঢাকা',
+        waqfPurpose: 'মসজিদ ও মাদরাসা পরিচালনা এবং ধর্মীয় শিক্ষা ব্যয় নির্বাহ',
+        waqfEstateName: 'হাজী ওসমান গনি ওয়াকফ এস্টেট',
+        currentUse: 'নিচতলায় ৪টি বাণিজ্যিক দোকান ও উপরতলায় স্টাফ কোয়ার্টার',
+        possessionStatus: 'RENTED',
+        status: 'RENTED',
+        estimatedValue: 16500000,
+        monthlyIncome: 32000,
+        monthlyRent: 32000,
+        annualIncome: 384000,
+        documentsCount: 3,
+        notes: 'ভবনের নিচতলার ৪টি দোকানের নিয়মিত মাসিক ভাড়া আদায় হচ্ছে।',
+        tenants: [
+          {
+            id: 'tnt-04',
+            mosqueId: mosque1.id,
+            propertyId: 'prop-04',
+            tenantCode: 'TNT-004',
+            name: 'মোঃ জাহিদ হাসান',
+            fatherOrSpouseName: 'মোঃ শফিউল আলম',
+            mobile: '01719223344',
+            nid: '19842691234567891',
+            address: 'মিরপুর-১২, ঢাকা',
+            unitOrShopNo: 'দোকান নং ০১ (মুদি ও ডিপার্টমেন্টাল)',
+            businessName: 'বিসমিল্লাহ জেনারেল স্টোর',
+            businessType: 'মুদি ও কনফেকশনারি',
+            agreementNo: 'AGR-2025-04',
+            startDate: '2025-01-01',
+            endDate: '2027-12-31',
+            monthlyRent: 12000,
+            annualRent: 144000,
+            securityDeposit: 100000,
+            paymentDueDate: 7,
+            status: 'ACTIVE',
+            createdAt: '2025-01-01T00:00:00.000Z'
+          }
+        ],
+        rentCollections: [],
+        documents: [],
+        khajnaRecords: [],
+        expenses: [],
+        inspections: [],
+        createdAt: '2026-01-01T00:00:00.000Z'
+      },
+      {
+        id: 'prop-05',
+        mosqueId: mosque1.id,
+        propertyCode: 'PROP-WAQF-05',
+        name: 'হেফজখানা ও এতিমখানা ভবন ওয়াকফ সম্পত্তি',
+        nameBn: 'হেফজখানা ও এতিমখানা ভবন ওয়াকফ সম্পত্তি',
+        type: 'RESIDENTIAL_PLOT',
+        category: 'BUILDING',
+        description: 'মসজিদের উত্তর সীমানায় অবস্থিত ৪ তলা হেফজখানা ও ছাত্রাবাস ওয়াকফ ভবন',
+        location: 'মসজিদ কমপ্লেক্সের উত্তর অংশ, মিরপুর-১২',
+        fullAddress: 'মিরপুর-১২, পল্লবী, ঢাকা-১২১৬',
+        area: '৭.৫০ শতাংশ',
+        areaAmount: 7.5,
+        areaUnit: 'DECIMAL',
+        ownershipType: 'WAQF',
+        csPlotNo: '৪২২',
+        saPlotNo: '৫২৮',
+        rsPlotNo: '৭৩৬',
+        bsPlotNo: '১০৬৮',
+        plotNo: '১০৬৮',
+        csKhatianNo: '৯১',
+        saKhatianNo: '১২০',
+        rsKhatianNo: '২৪৪',
+        bsKhatianNo: '৪৮৬',
+        mutationKhatianNo: 'মিউটেশন-১৪০/২০১৬',
+        khatianNo: '৪৮৬',
+        mouza: 'সেনপাড়া পর্বতা',
+        jlNumber: '৪৫',
+        subRegistryOffice: 'মিরপুর সাব-রেজিস্ট্রি অফিস',
+        boundaryNorth: 'সরকারি প্রাইমারি স্কুল',
+        boundarySouth: 'মসজিদের প্রধান চত্বর',
+        boundaryEast: 'আবাসিক এলাকা',
+        boundaryWest: 'সরকারি রাস্তা',
+        waqfEnrollmentNo: 'EC-20411/1998',
+        waqfDeedNo: '৬৭২০/১৯৯৮',
+        waqfYear: '১৯৯৮',
+        waqfDeedDate: '1998-11-20',
+        waqifName: 'মরহুম আলহাজ্ব আব্দুল হাকিম',
+        waqifFatherName: 'মরহুম নূর মোহাম্মদ',
+        waqifAddress: 'মিরপুর, ঢাকা',
+        waqfPurpose: 'কুরআন হিফজ ও নিঃস্ব এতিম শিক্ষার্থীদের আবাসিক শিক্ষা ও খাবার ব্যবস্থা',
+        waqfEstateName: 'আব্দুল হাকিম হেফজখানা ওয়াকফ এস্টেট',
+        currentUse: '৭০ জন ছাত্রের জন্য হেফজখানা, শিক্ষক আবাসন ও এতিমখানা পাঠাগার',
+        possessionStatus: 'MOSQUE_CONTROL',
+        status: 'ACTIVE',
+        estimatedValue: 21000000,
+        monthlyIncome: 0,
+        documentsCount: 2,
+        notes: 'মসজিদ কমিটির প্রত্যক্ষ পরিচালনা ও ওয়াকফ বোর্ডের অনুমোদিত গঠনতন্ত্র অনুযায়ী পরিচালিত।',
+        tenants: [],
+        rentCollections: [],
+        documents: [],
+        khajnaRecords: [],
+        expenses: [],
+        inspections: [],
+        createdAt: '2026-01-01T00:00:00.000Z'
       }
     );
 
@@ -2455,32 +3065,174 @@ export class DatabaseStore {
       {
         id: 'cem-01',
         mosqueId: mosque1.id,
+        recordNumber: 'CBR-2025-0001',
         plotNumber: 'PLOT-A-12',
-        deceasedName: 'মরহুম হাজী আব্দুল গফুর',
-        fatherOrSpouseName: 'মরহুম কাছিম উদ্দিন',
-        dateOfDeath: '2025-11-14',
-        burialDate: '2025-11-15',
-        graveLocation: 'উত্তর-পশ্চিম ব্লক, সারি নং ৩',
+        block: 'Block-A',
+        row: 'সারি নং ৩',
+        graveLocation: 'উত্তর-পশ্চিম ব্লক, ৩য় সারি, প্লট ১২',
+        graveType: 'PERMANENT',
         plotStatus: 'OCCUPIED',
-        contactPersonName: 'মোঃ আসাদুজ্জামান (পুত্র)',
+        deceasedName: 'মরহুম হাজী আব্দুল গফুর',
+        deceasedNameBn: 'মরহুম হাজী আব্দুল গফুর',
+        fatherOrSpouseName: 'মরহুম কাছিম উদ্দিন',
+        fatherName: 'মরহুম কাছিম উদ্দিন',
+        gender: 'MALE',
+        ageAtDeath: '৭৮ বছর',
+        dateOfBirth: '1947-03-12',
+        dateOfDeath: '2025-11-14',
+        causeOfDeath: 'বার্ধক্যজনিত কারণ',
+        religion: 'ইসলাম',
+        graveyardName: 'মসজিদ সংলগ্ন স্থায়ী ওয়াকফ কবরস্থান',
+        burialDate: '2025-11-15',
+        burialTime: 'বাদ জোহর',
+        janazaPlace: 'বায়তুল আমান কেন্দ্রীয় জামে মসজিদ মাঠ',
+        contactPersonName: 'মোঃ আসাদুজ্জামান',
+        relationWithDeceased: 'জ্যেষ্ঠ পুত্র',
         contactPersonPhone: '01713555777',
-        notes: 'স্থায়ী ওয়াকফ কবরস্থান এলাকা।',
-        createdAt: '2025-11-15T00:00:00.000Z'
+        contactPersonAltPhone: '01911444888',
+        heirAddress: 'বাড়ি # ১২, লেন # ৩, সেন্ট্রাল রোড, ঢাকা',
+        notes: 'স্থায়ী ওয়াকফ কবরস্থান এলাকা। কবর পাকা করার অনুমতি নেই।',
+        createdAt: '2025-11-15T00:00:00.000Z',
+        createdBy: 'usr-admin-01',
+        createdByName: 'মাওলানা মাহমুদুর রহমান'
       },
       {
         id: 'cem-02',
         mosqueId: mosque1.id,
+        recordNumber: 'CBR-2026-0002',
         plotNumber: 'PLOT-B-05',
-        deceasedName: 'মরহুমা রোকেয়া বেগম',
-        fatherOrSpouseName: 'মরহুম মোঃ দেলোয়ার হোসেন',
-        dateOfDeath: '2026-02-18',
-        burialDate: '2026-02-19',
-        graveLocation: 'দক্ষিণ ব্লক, সারি নং ১',
+        block: 'Block-B',
+        row: 'সারি নং ১',
+        graveLocation: 'দক্ষিণ ব্লক, ১ম সারি, প্লট ০৫',
+        graveType: 'FAMILY',
         plotStatus: 'OCCUPIED',
-        contactPersonName: 'ইঞ্জিনিয়ার মাহবুব (পুত্র)',
+        deceasedName: 'মরহুমা রোকেয়া বেগম',
+        deceasedNameBn: 'মরহুমা রোকেয়া বেগম',
+        fatherOrSpouseName: 'মরহুম মোঃ দেলোয়ার হোসেন (স্বামী)',
+        fatherName: 'মরহুম শামসুল হক',
+        husbandOrSpouseName: 'মরহুম মোঃ দেলোয়ার হোসেন',
+        gender: 'FEMALE',
+        ageAtDeath: '৬৪ বছর',
+        dateOfBirth: '1962-08-10',
+        dateOfDeath: '2026-02-18',
+        causeOfDeath: 'হৃদযন্ত্রের ক্রিয়া বন্ধ হয়ে',
+        religion: 'ইসলাম',
+        graveyardName: 'মসজিদ সংলগ্ন স্থায়ী ওয়াকফ কবরস্থান',
+        burialDate: '2026-02-19',
+        burialTime: 'বাদ আছর',
+        janazaPlace: 'বায়তুল আমান কেন্দ্রীয় জামে মসজিদ ঈদগাহ ময়দান',
+        contactPersonName: 'ইঞ্জিনিয়ার মাহবুব হোসেন',
+        relationWithDeceased: 'পুত্র',
         contactPersonPhone: '01819222444',
-        notes: 'দাফন সম্পন্ন ও নম্বর ফলক স্থাপিত।',
-        createdAt: '2026-02-19T00:00:00.000Z'
+        contactPersonAltPhone: '01712999333',
+        heirAddress: 'ফ্ল্যাট ৪/এ, গ্রিন ভিউ অ্যাপার্টমেন্ট, মিরপুর, ঢাকা',
+        notes: 'দাফন সম্পন্ন ও সীমানা নম্বর ফলক স্থাপিত হয়েছে।',
+        createdAt: '2026-02-19T00:00:00.000Z',
+        createdBy: 'usr-admin-01',
+        createdByName: 'মাওলানা মাহমুদুর রহমান'
+      },
+      {
+        id: 'cem-03',
+        mosqueId: mosque1.id,
+        recordNumber: 'CBR-2026-0003',
+        plotNumber: 'PLOT-A-08',
+        block: 'Block-A',
+        row: 'সারি নং ২',
+        graveLocation: 'উত্তর ব্লক, ২য় সারি, প্লট ০৮',
+        graveType: 'GENERAL',
+        plotStatus: 'OCCUPIED',
+        deceasedName: 'মরহুম মাষ্টার মোখলেছুর রহমান',
+        deceasedNameBn: 'মরহুম মাষ্টার মোখলেছুর রহমান',
+        fatherOrSpouseName: 'মরহুম আজহার আলী মুন্সী',
+        fatherName: 'মরহুম আজহার আলী মুন্সী',
+        gender: 'MALE',
+        ageAtDeath: '৭০ বছর',
+        dateOfBirth: '1956-01-05',
+        dateOfDeath: '2026-08-28',
+        causeOfDeath: 'বার্ধক্যজনিত অসুস্থতা',
+        religion: 'ইসলাম',
+        graveyardName: 'মসজিদ সংলগ্ন স্থায়ী ওয়াকফ কবরস্থান',
+        burialDate: '2026-08-29',
+        burialTime: 'বাদ আসর',
+        janazaPlace: 'মসজিদ সংলগ্ন ঈদগাহ মাঠ',
+        contactPersonName: 'ডাঃ মোস্তাফিজুর রহমান',
+        relationWithDeceased: 'ছোট ভাই',
+        contactPersonPhone: '01711223344',
+        contactPersonAltPhone: '01552334455',
+        heirAddress: 'গ্রাম: উত্তর পাড়া, ডাকঘর: প্রধান বাজার',
+        notes: 'আজকের তারিখে দাফন সম্পন্ন। যাবতীয় দোয়া ও তদারকি কমিটি কর্তৃক সম্পন্ন।',
+        createdAt: '2026-08-29T10:00:00.000Z',
+        createdBy: 'usr-admin-01',
+        createdByName: 'মাওলানা মাহমুদুর রহমান'
+      },
+      {
+        id: 'cem-04',
+        mosqueId: mosque1.id,
+        recordNumber: 'CBR-2026-0004',
+        plotNumber: 'PLOT-C-15',
+        block: 'Block-C',
+        row: 'সারি নং ৪',
+        graveLocation: 'পূর্ব ব্লক, ৪র্থ সারি, প্লট ১৫',
+        graveType: 'PERMANENT',
+        plotStatus: 'OCCUPIED',
+        deceasedName: 'মরহুম ফরিদা ইয়াসমিন',
+        deceasedNameBn: 'মরহুম ফরিদা ইয়াসমিন',
+        fatherOrSpouseName: 'মোঃ রফিকুল ইসলাম (স্বামী)',
+        fatherName: 'মরহুম নূরুল ইসলাম',
+        husbandOrSpouseName: 'মোঃ রফিকুল ইসলাম',
+        gender: 'FEMALE',
+        ageAtDeath: '৫২ বছর',
+        dateOfBirth: '1974-05-20',
+        dateOfDeath: '2026-08-15',
+        causeOfDeath: 'স্বাভাবিক ইন্তেকাল',
+        religion: 'ইসলাম',
+        graveyardName: 'মসজিদ সংলগ্ন স্থায়ী ওয়াকফ কবরস্থান',
+        burialDate: '2026-08-16',
+        burialTime: 'সকাল ১০:০০',
+        janazaPlace: 'মসজিদ প্রাঙ্গণ',
+        contactPersonName: 'মোঃ রফিকুল ইসলাম',
+        relationWithDeceased: 'স্বামী',
+        contactPersonPhone: '01912888999',
+        heirAddress: 'রোড # ৭, বাড়ি # ২৪, ব্লক-সি',
+        notes: 'পারিবারিক অভিভাবক কর্তৃক দাফন তদারকি সম্পন্ন।',
+        createdAt: '2026-08-16T08:00:00.000Z',
+        createdBy: 'usr-admin-01',
+        createdByName: 'মাওলানা মাহমুদুর রহমান'
+      },
+      {
+        id: 'cem-05',
+        mosqueId: mosque1.id,
+        recordNumber: 'CBR-2026-0005',
+        plotNumber: 'PLOT-D-02',
+        block: 'Block-D',
+        row: 'সারি নং ১',
+        graveLocation: 'দক্ষিণ-পশ্চিম ব্লক, ১ম সারি, প্লট ০২',
+        graveType: 'FAMILY',
+        plotStatus: 'OCCUPIED',
+        deceasedName: 'মরহুমা জাহানারা বেগম',
+        deceasedNameBn: 'মরহুমা জাহানারা বেগম',
+        fatherOrSpouseName: 'মরহুম খন্দকার মোশাররফ হোসেন (স্বামী)',
+        fatherName: 'মরহুম খলিলুর রহমান',
+        husbandOrSpouseName: 'মরহুম খন্দকার মোশাররফ হোসেন',
+        gender: 'FEMALE',
+        ageAtDeath: '৬৯ বছর',
+        dateOfBirth: '1957-04-10',
+        dateOfDeath: '2026-08-20',
+        causeOfDeath: 'বার্ধক্যজনিত ও কিডনি জটিলতা',
+        religion: 'ইসলাম',
+        graveyardName: 'মসজিদ সংলগ্ন স্থায়ী ওয়াকফ কবরস্থান',
+        burialDate: '2026-08-21',
+        burialTime: 'বাদ জুমা',
+        janazaPlace: 'বায়তুল আমান জামে মসজিদ চত্বর',
+        contactPersonName: 'খন্দকার আহসান হাবীব',
+        relationWithDeceased: 'পুত্র',
+        contactPersonPhone: '01715667788',
+        contactPersonAltPhone: '01912334455',
+        heirAddress: 'বাড়ি নং- ৫, রোড নং- ২, পল্লবী, মিরপুর, ঢাকা',
+        notes: 'জুমার নামাজের পর শত শত মুসল্লির উপস্থিতিতে জানাজা ও দাফন সম্পন্ন।',
+        createdAt: '2026-08-21T15:00:00.000Z',
+        createdBy: 'usr-admin-01',
+        createdByName: 'মাওলানা মাহমুদুর রহমান'
       }
     );
 
@@ -2822,6 +3574,446 @@ export class DatabaseStore {
       expenseCategories: expenseCategories.length ? expenseCategories : [{ name: 'বিল ও মেরামত', amount: totalExpense, percentage: 100 }],
     };
   }
+
+  updateMosquePublicPortalSettings(
+    mosqueId: string,
+    newSettings: Partial<PublicPortalSettings>,
+    userId: string,
+    userName: string,
+    userRole: string,
+    ip?: string
+  ): Mosque {
+    const mosque = this.mosques.find(m => m.id === mosqueId);
+    if (!mosque) {
+      throw new Error('Mosque not found');
+    }
+
+    const currentSettings: PublicPortalSettings = mosque.publicPortalSettings
+      ? { ...mosque.publicPortalSettings }
+      : { ...DEFAULT_PUBLIC_PORTAL_SETTINGS };
+
+    // Track changes for detailed audit logging
+    const changedFields: string[] = [];
+    (Object.keys(newSettings) as Array<keyof PublicPortalSettings>).forEach(key => {
+      if (newSettings[key] !== undefined && newSettings[key] !== currentSettings[key]) {
+        changedFields.push(`${String(key)}: ${currentSettings[key] ? 'ON' : 'OFF'} → ${newSettings[key] ? 'ON' : 'OFF'}`);
+      }
+    });
+
+    const updatedSettings: PublicPortalSettings = {
+      ...currentSettings,
+      ...newSettings,
+      updatedAt: new Date().toISOString(),
+      updatedBy: userName || userId,
+    };
+
+    mosque.publicPortalSettings = updatedSettings;
+    mosque.updatedAt = new Date().toISOString();
+    this.save();
+
+    // Record Immutable Audit Log
+    this.logAudit(
+      mosque.id,
+      userId,
+      userName,
+      userRole,
+      'UPDATE',
+      'PUBLIC_PORTAL_SETTINGS',
+      changedFields.length > 0
+        ? `পাবলিক পোর্টাল দৃশ্যমানতা সেটিংস পরিবর্তন: ${changedFields.join(', ')}`
+        : 'পাবলিক পোর্টাল সেটিংস আপডেট করা হয়েছে',
+      mosque.id,
+      ip,
+      {
+        previousState: JSON.stringify(currentSettings),
+        newState: JSON.stringify(updatedSettings),
+        status: 'SUCCESS',
+      }
+    );
+
+    return mosque;
+  }
+
+  resetMosquePublicPortalSettings(
+    mosqueId: string,
+    userId: string,
+    userName: string,
+    userRole: string,
+    ip?: string
+  ): Mosque {
+    const mosque = this.mosques.find(m => m.id === mosqueId);
+    if (!mosque) {
+      throw new Error('Mosque not found');
+    }
+
+    const prevSettings = mosque.publicPortalSettings ? { ...mosque.publicPortalSettings } : { ...DEFAULT_PUBLIC_PORTAL_SETTINGS };
+    const resetSettings: PublicPortalSettings = {
+      ...DEFAULT_PUBLIC_PORTAL_SETTINGS,
+      updatedAt: new Date().toISOString(),
+      updatedBy: userName || userId,
+    };
+
+    mosque.publicPortalSettings = resetSettings;
+    mosque.updatedAt = new Date().toISOString();
+    this.save();
+
+    // Record Audit Log
+    this.logAudit(
+      mosque.id,
+      userId,
+      userName,
+      userRole,
+      'UPDATE',
+      'PUBLIC_PORTAL_SETTINGS',
+      'পাবলিক পোর্টাল দৃশ্যমানতা সেটিংস নিরাপদ ডিফল্টে (Safe Defaults) রিসেট করা হয়েছে',
+      mosque.id,
+      ip,
+      {
+        previousState: JSON.stringify(prevSettings),
+        newState: JSON.stringify(resetSettings),
+        status: 'SUCCESS',
+      }
+    );
+
+    return mosque;
+  }
+
+  getSanitizedPublicPortalData(mosqueIdOrCode?: string): PublicPortalData {
+    let mosque: Mosque | undefined;
+    if (mosqueIdOrCode) {
+      mosque = this.mosques.find(m => m.id === mosqueIdOrCode || m.code === mosqueIdOrCode);
+    }
+    if (!mosque) {
+      mosque = this.mosques.find(m => m.status === 'ACTIVE') || this.mosques[0];
+    }
+    if (!mosque) {
+      throw new Error('No active mosque found in database');
+    }
+
+    const settings: PublicPortalSettings = mosque.publicPortalSettings
+      ? { ...DEFAULT_PUBLIC_PORTAL_SETTINGS, ...mosque.publicPortalSettings }
+      : { ...DEFAULT_PUBLIC_PORTAL_SETTINGS };
+
+    // 1. Whitelist-sanitized Mosque Profile
+    let sanitizedMosque: PublicPortalData['mosque'] = null;
+    if (settings.mosqueProfile) {
+      sanitizedMosque = {
+        id: mosque.id,
+        code: mosque.code,
+        nameBn: mosque.nameBn,
+        nameEn: mosque.nameEn,
+        address: settings.mosqueAddress ? mosque.address : undefined,
+        village: settings.mosqueAddress ? mosque.village : undefined,
+        union: settings.mosqueAddress ? mosque.union : undefined,
+        upazila: settings.mosqueAddress ? mosque.upazila : undefined,
+        district: settings.mosqueAddress ? mosque.district : undefined,
+        country: settings.mosqueAddress ? mosque.country : undefined,
+        phone: settings.mosquePhone ? mosque.phone : undefined,
+        email: settings.mosqueEmail ? mosque.email : undefined,
+        website: mosque.website,
+        logoUrl: settings.mosqueLogo ? mosque.logoUrl : undefined,
+        waqfEstateName: settings.waqfId ? mosque.waqfEstateName : undefined,
+        registrationNumber: settings.registrationNumber ? mosque.registrationNumber : undefined,
+        establishedDate: settings.establishedYear ? mosque.establishedDate : undefined,
+        islamicTagline: settings.islamicTagline
+          ? '"যারা আল্লাহর ঘরে সালাত কায়েম করে এবং যাকাত দেয়—তারাই তো আল্লাহর মসজিদসমূহ আবাদ করে।" — (সূরা আত-তাওবাহ: ১৮)'
+          : undefined,
+      };
+    }
+
+    // 2. Prayer Schedule
+    const prayerTimes = settings.prayerSchedule
+      ? [
+          { nameBn: 'ফজর (Fajr)', nameEn: 'Fajr', adhan: '০৪:৫০', iqamah: '০৫:১৫' },
+          { nameBn: 'যোহর (Dhuhr)', nameEn: 'Dhuhr', adhan: '১২:১৫', iqamah: '০১:১৫' },
+          { nameBn: 'আসর (Asr)', nameEn: 'Asr', adhan: '০৪:৩০', iqamah: '০৪:৪৫' },
+          { nameBn: 'মাগরিব (Maghrib)', nameEn: 'Maghrib', adhan: '০৬:২৫', iqamah: '০৬:৩০' },
+          { nameBn: 'এশা (Isha)', nameEn: 'Isha', adhan: '০৭:৪৫', iqamah: '০৮:১৫' },
+        ]
+      : [];
+
+    const jumuahTime = settings.jumuahSchedule
+      ? {
+          adhan: '১২:৩০',
+          khutbah: '০১:০০',
+          iqamah: '০১:৩০',
+        }
+      : undefined;
+
+    // 3. Donation Channels & Payment Details
+    let donationChannels: PublicPortalData['donationChannels'] = null;
+    if (settings.donation) {
+      const publicAccounts = settings.bankAccount
+        ? this.accounts
+            .filter(a => a.mosqueId === mosque!.id && a.status === 'ACTIVE' && (a.accountType === 'BANK' || a.accountType === 'CASH'))
+            .map(a => ({
+              id: a.id,
+              nameBn: a.nameBn,
+              bankName: a.bankName,
+              branchName: a.branchName,
+              accountNumber: a.accountNumber,
+              accountTitle: a.nameBn || a.name,
+              routingNumber: undefined,
+            }))
+        : [];
+
+      const mobileBanking = settings.mobileBanking
+        ? {
+            bkash: mosque.qrSettings?.bkashNumber || '01711223344 (মার্চেন্ট)',
+            nagad: mosque.qrSettings?.nagadNumber || '01711223344 (মার্চেন্ট)',
+            rocket: mosque.qrSettings?.rocketNumber,
+          }
+        : {};
+
+      donationChannels = {
+        bankAccounts: publicAccounts,
+        mobileBanking,
+        qrCodeUrl: settings.donationQr
+          ? (mosque.qrSettings?.customQrImageUrl || 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=https://masjidledger.org/donate')
+          : undefined,
+        instructionsBn: settings.donationInstructions
+          ? (mosque.qrSettings?.instructionsBn || 'বিকাশ বা নগদ অ্যাপের মার্চেন্ট বা পেমেন্ট অপশনে গিয়ে মসজিদের তহবিলে আপনার সাদাকাহ/দান সরাসরি পাঠাতে পারেন।')
+          : undefined,
+      };
+    }
+
+    // 4. Financial Transparency (Summary only, whitelist enforced)
+    let financialTransparency: PublicPortalData['financialTransparency'] = null;
+    if (settings.financialSummary) {
+      const stats = this.getDashboardStats(mosque.id);
+      const now = new Date();
+      const monthNamesBn = ['জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন', 'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'];
+      const currentMonthNameBn = `${monthNamesBn[now.getMonth()]} ${now.getFullYear()}`;
+
+      const monthlyInc = settings.monthlyIncome ? stats.monthlyIncome : undefined;
+      const monthlyExp = settings.monthlyExpense ? stats.monthlyExpense : undefined;
+      const monthlySurplus = settings.monthlySurplus && monthlyInc !== undefined && monthlyExp !== undefined
+        ? monthlyInc - monthlyExp
+        : undefined;
+
+      financialTransparency = {
+        currentMonthNameBn,
+        monthlyIncome: monthlyInc,
+        monthlyExpense: monthlyExp,
+        monthlySurplus,
+        currentBalance: settings.currentBalance ? stats.currentBalance : undefined,
+        cashBalance: settings.cashBalance ? stats.cashBalance : undefined,
+        bankBalance: settings.bankBalance ? stats.bankBalance : undefined,
+        totalDonationsReceived: settings.totalDonationReceived ? stats.totalDonation : undefined,
+      };
+    }
+
+    // 5. Notices (Only active public notices)
+    const publicNotices: PublicPortalData['notices'] = settings.notices
+      ? this.notices
+          .filter(n => n.mosqueId === mosque!.id && n.isPublic === true && n.status === 'ACTIVE')
+          .map(n => ({
+            id: n.id,
+            title: n.title,
+            description: n.description,
+            publishDate: n.publishDate,
+            priority: n.priority,
+            isEmergency: n.priority === 'URGENT' || n.priority === 'HIGH',
+          }))
+          .filter(n => {
+            if (n.isEmergency && !settings.emergencyNotice) return false;
+            return true;
+          })
+      : [];
+
+    // 6. Projects & Action Plans
+    const projects: PublicPortalData['projects'] = settings.projects
+      ? this.committeeActionPlans
+          .filter(p => p.mosqueId === mosque!.id && p.status !== 'CANCELLED')
+          .map(p => {
+            const progress = p.progressPercentage ?? (p.status === 'COMPLETED' ? 100 : 45);
+
+            return {
+              id: p.id,
+              planNumber: p.planNumber,
+              title: p.title,
+              description: p.description,
+              status: p.status === 'COMPLETED' ? 'সম্পন্ন' : p.status === 'IN_PROGRESS' ? 'চলমান' : 'পরিকল্পনাধীন',
+              progressPercentage: settings.projectProgress ? progress : 0,
+              targetDate: p.dueDate || p.startDate,
+              approvedBudget: settings.projectBudget ? p.estimatedBudget : undefined,
+              actualExpense: settings.projectBudget ? p.actualCost : undefined,
+              remainingBudget: settings.projectBudget && p.estimatedBudget !== undefined
+                ? Math.max(0, (p.estimatedBudget || 0) - (p.actualCost || 0))
+                : undefined,
+            };
+          })
+      : [];
+
+    // 7. Waqf Property Public Summary (Strict whitelist - NO tenant personal phone/NID/leases)
+    const waqfSummary: PublicPortalData['waqfSummary'] = settings.waqfSummary
+      ? this.properties
+          .filter(pr => pr.mosqueId === mosque!.id && !pr.isArchived)
+          .map(pr => ({
+            id: pr.id,
+            propertyCode: pr.propertyCode,
+            name: pr.nameBn || pr.name || pr.description,
+            category: pr.category || pr.type,
+            location: pr.location || pr.fullAddress || 'মসজিদ সংলগ্ন ওয়াকফ এলাকা',
+            status: pr.status === 'RENTED' ? 'ভাড়া দেওয়া আছে' : pr.status === 'ACTIVE' ? 'মসজিদের নিজ নিয়ন্ত্রণে' : 'উন্নয়নাধীন',
+            description: pr.description,
+          }))
+      : [];
+
+    // 8. Committee & Leadership (Strict whitelist - NO personal phone, NID, address)
+    let committee: PublicPortalData['committee'] = null;
+    if (settings.committee) {
+      const activeTerm = this.committeeTerms.find(t => t.mosqueId === mosque!.id && t.status === 'ACTIVE') || this.committeeTerms[0];
+      const activeMembers = activeTerm
+        ? this.committeeMembers.filter(m => m.termId === activeTerm.id && m.status === 'ACTIVE')
+        : [];
+
+      const getMemberDesignationBn = (m: CommitteeMember) => {
+        if (m.positionCustomBn) return m.positionCustomBn;
+        const positionMap: Record<string, string> = {
+          PRESIDENT: 'সভাপতি',
+          VICE_PRESIDENT: 'সহ-সভাপতি',
+          SECRETARY: 'সাধারণ সম্পাদক',
+          JOINT_SECRETARY: 'যুগ্ম সাধারণ সম্পাদক',
+          TREASURER: 'কোষাধ্যক্ষ / ক্যাশিয়ার',
+          ORGANIZING_SECRETARY: 'সাংগঠনিক সম্পাদক',
+          MEMBER: 'সদস্য',
+          IMAM: 'খতিব / ইমাম',
+          ADVISOR: 'উপদেষ্টা',
+          OTHER: 'কমিটি সদস্য',
+        };
+        return positionMap[m.position] || 'কমিটি সদস্য';
+      };
+
+      committee = {
+        termTitle: activeTerm?.title || 'পরিচালনা কমিটি',
+        members: activeMembers.map(m => {
+          const desig = getMemberDesignationBn(m);
+          return {
+            id: m.id,
+            name: m.name,
+            designation: desig,
+            role: desig,
+          };
+        }),
+      };
+    }
+
+    // 9. Sub-Committees
+    const subCommittees: PublicPortalData['subCommittees'] = settings.subCommittee
+      ? this.subCommittees
+          .filter(sc => sc.mosqueId === mosque!.id && sc.status === 'ACTIVE')
+          .map(sc => ({
+            id: sc.id,
+            name: sc.name,
+            category: sc.category,
+            convener: sc.convenerName,
+            memberCount: (sc.memberIds || []).length || (sc.members || []).length,
+            responsibilities: sc.duties || sc.scopeOfWork,
+          }))
+      : [];
+
+    // 10. Imam & Staff (Strict whitelist - NO salary, payments, bank info, NID)
+    const staff: PublicPortalData['staff'] = settings.staff
+      ? this.staffList
+          .filter(s => s.mosqueId === mosque!.id && s.status === 'ACTIVE')
+          .map(s => ({
+            id: s.id,
+            name: s.fullNameBn || s.name,
+            designationBn: s.designationBn || s.designation,
+            role: s.designation,
+            joiningDate: s.joiningDate,
+            contactNumber: s.phone ? `${s.phone.slice(0, 5)}•••••` : undefined, // Safe masked contact
+          }))
+      : [];
+
+    // 11. Cemetery Information
+    let cemetery: PublicPortalData['cemetery'] = null;
+    if (settings.cemetery) {
+      const totalPlots = this.cemeteryRecords.filter(c => c.mosqueId === mosque!.id).length;
+      const availablePlots = this.cemeteryRecords.filter(c => c.mosqueId === mosque!.id && c.plotStatus === 'AVAILABLE').length;
+
+      cemetery = {
+        totalPlots: totalPlots || 120,
+        availablePlots: availablePlots || 35,
+        generalRules: 'মসজিদ কবরস্থানে দাফন ও সংরক্ষণের জন্য পরিচালনা কমিটির সাধারণ নিয়মাবলী ও তালিকাভুক্ত পরিবারের নীতিমালা প্রযোজ্য।',
+        contactPerson: 'কবরস্থান সেবা তত্ত্বাবধায়ক',
+        contactPhone: mosque.phone,
+      };
+    }
+
+    return {
+      mosque: sanitizedMosque,
+      settings,
+      prayerTimes,
+      jumuahTime,
+      donationChannels,
+      financialTransparency,
+      notices: publicNotices,
+      projects,
+      waqfSummary,
+      committee,
+      subCommittees,
+      staff,
+      cemetery,
+      serverTime: new Date().toISOString(),
+    };
+  }
+
+  getQrCodes(mosqueId?: string): QRCodeEntity[] {
+    if (!mosqueId) return this.qrCodes;
+    return this.qrCodes.filter(q => q.mosqueId === mosqueId);
+  }
+
+  createQrCode(data: Partial<QRCodeEntity>): QRCodeEntity {
+    const newQr: QRCodeEntity = {
+      id: `qr-${Date.now()}`,
+      mosqueId: data.mosqueId || 'mosque-mamun-001',
+      name: data.name || 'অপারেশনাল QR',
+      type: data.type || 'OPERATIONAL',
+      destinationType: data.destinationType || 'INCOME_NEW',
+      token: `token-${Math.random().toString(36).substring(2, 10)}${Date.now()}`,
+      status: data.status || 'ACTIVE',
+      description: data.description || '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    this.qrCodes.push(newQr);
+    this.save();
+    return newQr;
+  }
+
+  updateQrCode(id: string, data: Partial<QRCodeEntity>): QRCodeEntity {
+    const idx = this.qrCodes.findIndex(q => q.id === id);
+    if (idx === -1) throw new Error('QR code not found');
+    this.qrCodes[idx] = {
+      ...this.qrCodes[idx],
+      ...data,
+      updatedAt: new Date().toISOString(),
+    };
+    this.save();
+    return this.qrCodes[idx];
+  }
+
+  updateQrCodeStatus(id: string, status: QRStatus): QRCodeEntity {
+    const idx = this.qrCodes.findIndex(q => q.id === id);
+    if (idx === -1) throw new Error('QR code not found');
+    this.qrCodes[idx].status = status;
+    this.qrCodes[idx].updatedAt = new Date().toISOString();
+    this.save();
+    return this.qrCodes[idx];
+  }
+
+  resolveQrToken(token: string): QRCodeEntity | null {
+    const found = this.qrCodes.find(q => q.token === token);
+    if (found) {
+      found.lastUsedAt = new Date().toISOString();
+      found.useCount = (found.useCount || 0) + 1;
+      this.save();
+    }
+    return found || null;
+  }
 }
 
 export const db = new DatabaseStore();
+

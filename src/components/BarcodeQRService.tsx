@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
-import { QrCode, Download, Printer, Copy, Check, ExternalLink } from 'lucide-react';
+import JsBarcode from 'jsbarcode';
+import { QrCode, Download, Printer, Copy, Check, Barcode as BarcodeIcon } from 'lucide-react';
 import { Mosque } from '../types';
 
 interface QRViewerProps {
@@ -215,80 +216,108 @@ export const QRViewer: React.FC<QRViewerProps> = ({
   );
 };
 
-// Clean SVG Code 128 / Barcode Generator
+// High-Precision Code 128 Barcode Generator using JsBarcode
 interface BarcodeProps {
   value: string;
   width?: number;
   height?: number;
+  fontSize?: number;
   showText?: boolean;
+  format?: 'CODE128' | 'CODE39' | 'EAN13' | 'UPC';
+  lineColor?: string;
+  background?: string;
+  margin?: number;
+  className?: string;
 }
 
 export const Barcode128: React.FC<BarcodeProps> = ({
   value,
-  width = 1.6,
+  width = 1.5,
   height = 36,
+  fontSize = 11,
   showText = true,
+  format = 'CODE128',
+  lineColor = '#0f172a',
+  background = '#ffffff',
+  margin = 2,
+  className = '',
 }) => {
-  // Simple clean SVG barcode representation
-  const generatePattern = (text: string) => {
-    let hash = 0;
-    for (let i = 0; i < text.length; i++) {
-      hash = (hash << 5) - hash + text.charCodeAt(i);
-      hash |= 0;
-    }
-    const bars: boolean[] = [];
-    // Start guard
-    bars.push(true, false, true, true, false);
-    // Data encoding simulation
-    for (let i = 0; i < text.length; i++) {
-      const code = text.charCodeAt(i);
-      bars.push(
-        (code & 1) === 1,
-        (code & 2) === 2,
-        false,
-        (code & 4) === 4,
-        (code & 8) === 8,
-        false,
-        (code & 16) === 16,
-        (code & 32) === 32,
-        false
-      );
-    }
-    // Stop guard
-    bars.push(true, true, false, true, false, true, true);
-    return bars;
-  };
+  const svgRef = useRef<SVGSVGElement | null>(null);
 
-  const bars = generatePattern(value || 'ML-000000');
-  const svgWidth = bars.length * width;
+  useEffect(() => {
+    if (!svgRef.current) return;
+    const cleanText = (value || 'ML-0000').trim();
+
+    try {
+      JsBarcode(svgRef.current, cleanText, {
+        format: format,
+        width: width,
+        height: height,
+        displayValue: showText,
+        fontSize: fontSize,
+        font: 'monospace',
+        textMargin: 3,
+        lineColor: lineColor,
+        background: background,
+        margin: margin,
+      });
+    } catch (err) {
+      console.warn('JsBarcode render fallback:', err);
+    }
+  }, [value, width, height, showText, fontSize, format, lineColor, background, margin]);
 
   return (
-    <div className="inline-flex flex-col items-center select-none">
-      <svg
-        width={svgWidth}
-        height={height}
-        viewBox={`0 0 ${svgWidth} ${height}`}
-        className="shape-rendering-crispEdges"
-      >
-        <rect width={svgWidth} height={height} fill="#ffffff" />
-        {bars.map((isBar, idx) =>
-          isBar ? (
-            <rect
-              key={idx}
-              x={idx * width}
-              y={0}
-              width={width}
-              height={height}
-              fill="#0f172a"
-            />
-          ) : null
-        )}
-      </svg>
-      {showText && (
-        <span className="font-mono text-[10px] font-bold text-slate-700 tracking-wider mt-0.5">
-          {value}
-        </span>
-      )}
+    <div className={`inline-flex flex-col items-center select-none ${className}`}>
+      <svg ref={svgRef} className="max-w-full" />
     </div>
+  );
+};
+
+// Standalone High-Res Record QR Component
+interface RecordQrViewerProps {
+  value: string;
+  size?: number;
+  className?: string;
+}
+
+export const RecordQrCode: React.FC<RecordQrViewerProps> = ({
+  value,
+  size = 120,
+  className = '',
+}) => {
+  const [dataUrl, setDataUrl] = useState<string>('');
+
+  useEffect(() => {
+    if (!value) return;
+    QRCode.toDataURL(value, {
+      width: size * 2,
+      margin: 1,
+      color: {
+        dark: '#0f172a',
+        light: '#ffffff',
+      },
+    })
+      .then((url) => setDataUrl(url))
+      .catch((err) => console.error('Record QR error:', err));
+  }, [value, size]);
+
+  if (!dataUrl) {
+    return (
+      <div
+        style={{ width: size, height: size }}
+        className={`bg-slate-100 animate-pulse rounded-lg flex items-center justify-center text-slate-400 ${className}`}
+      >
+        <QrCode className="w-6 h-6 opacity-40" />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={dataUrl}
+      alt="Record QR"
+      style={{ width: size, height: size }}
+      className={`rounded-lg ${className}`}
+    />
   );
 };

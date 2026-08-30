@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Wallet,
   Landmark,
@@ -16,10 +16,15 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   Filter,
+  Scale,
+  Edit3,
+  Info,
 } from 'lucide-react';
-import { FinancialAccount, AccountHead, IncomeEntry, ExpenseEntry, Mosque } from '../types';
+import { FinancialAccount, AccountHead, IncomeEntry, ExpenseEntry, Mosque, AccountOpeningBalancePayload } from '../types';
 import { Language, translations, formatCurrency, formatDate } from '../lib/i18n';
 import { numberToBanglaWords } from '../lib/banglaNumberToWords';
+import { QrScanResult } from '../types/qrBarcodeTypes';
+import { OpeningBalanceModal } from './OpeningBalanceModal';
 
 interface CashBankViewProps {
   accounts: FinancialAccount[];
@@ -28,7 +33,11 @@ interface CashBankViewProps {
   expenses: ExpenseEntry[];
   currentMosque?: Mosque | null;
   language?: Language;
+  scannedActionIntent?: QrScanResult | null;
+  onClearScannedAction?: () => void;
   onAddAccount: (data: any) => Promise<void>;
+  onUpdateAccount?: (id: string, data: Partial<FinancialAccount>) => Promise<void>;
+  onUpdateOpeningBalance?: (data: AccountOpeningBalancePayload) => Promise<void>;
   onAddAccountHead: (data: any) => Promise<void>;
   onTransferFund?: (data: {
     fromAccountId: string;
@@ -47,12 +56,20 @@ export const CashBankView: React.FC<CashBankViewProps> = ({
   expenses,
   currentMosque,
   language = 'bn',
+  scannedActionIntent,
+  onClearScannedAction,
   onAddAccount,
+  onUpdateAccount,
+  onUpdateOpeningBalance,
   onAddAccountHead,
   onTransferFund,
 }) => {
   const t = translations[language] || translations.bn;
-  const [activeTab, setActiveTab] = useState<'cashbook' | 'bankbook' | 'banks' | 'heads'>('cashbook');
+  const [activeTab, setActiveTab] = useState<'cashbook' | 'bankbook' | 'banks' | 'opening-balance' | 'heads'>('cashbook');
+  
+  // Opening Balance Modal State
+  const [isOpeningBalanceModalOpen, setIsOpeningBalanceModalOpen] = useState(false);
+  const [openingBalanceAccountId, setOpeningBalanceAccountId] = useState(accounts[0]?.id || '');
   
   // Selected Bank for Bankbook
   const bankAccountsList = useMemo(() => {
@@ -95,6 +112,17 @@ export const CashBankView: React.FC<CashBankViewProps> = ({
   const [transferRef, setTransferRef] = useState('');
   const [transferNotes, setTransferNotes] = useState('');
   const [isSubmittingTransfer, setIsSubmittingTransfer] = useState(false);
+
+  // Handle Scan -> Direct Entry for Cash/Bank actions
+  useEffect(() => {
+    if (!scannedActionIntent) return;
+
+    const action = scannedActionIntent.actionKey;
+    if (action === 'ACT-TRF-NEW' || (action as string) === 'ACT_TRF_NEW') {
+      setIsTransferModalOpen(true);
+      onClearScannedAction?.();
+    }
+  }, [scannedActionIntent]);
 
   // New Account Head Modal
   const [isHeadModalOpen, setIsHeadModalOpen] = useState(false);
@@ -446,6 +474,18 @@ export const CashBankView: React.FC<CashBankViewProps> = ({
             </button>
 
             <button
+              onClick={() => setActiveTab('opening-balance')}
+              className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shrink-0 ${
+                activeTab === 'opening-balance'
+                  ? 'bg-emerald-700 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Scale className="w-4 h-4 text-emerald-600" />
+              <span>প্রারম্ভিক স্থিতি (Opening Balance)</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('heads')}
               className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shrink-0 ${
                 activeTab === 'heads'
@@ -460,6 +500,17 @@ export const CashBankView: React.FC<CashBankViewProps> = ({
 
           {/* Action Buttons */}
           <div className="flex items-center space-x-2">
+            <button
+              onClick={() => {
+                setOpeningBalanceAccountId(accounts[0]?.id || '');
+                setIsOpeningBalanceModalOpen(true);
+              }}
+              className="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-all shadow-xs cursor-pointer"
+            >
+              <Scale className="w-4 h-4 text-amber-700" />
+              <span>প্রারম্ভিক স্থিতি ব্যবস্থাপনা</span>
+            </button>
+
             {onTransferFund && (
               <button
                 onClick={() => setIsTransferModalOpen(true)}
@@ -1000,45 +1051,226 @@ export const CashBankView: React.FC<CashBankViewProps> = ({
             {accounts.map((acc) => (
               <div
                 key={acc.id}
-                className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3 relative overflow-hidden"
+                className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3 relative overflow-hidden flex flex-col justify-between"
               >
-                <div className="flex items-center justify-between">
-                  <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
-                      acc.accountType === 'CASH'
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                        : acc.accountType === 'BANK'
-                        ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                        : 'bg-purple-50 text-purple-700 border border-purple-200'
-                    }`}
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                        acc.accountType === 'CASH'
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          : acc.accountType === 'BANK'
+                          ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                          : 'bg-purple-50 text-purple-700 border border-purple-200'
+                      }`}
+                    >
+                      {acc.accountType}
+                    </span>
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  </div>
+
+                  <div>
+                    <h3 className="font-bold text-slate-900 text-sm">{acc.nameBn}</h3>
+                    {acc.bankName && (
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {acc.bankName} ({acc.branchName || 'প্রধান শাখা'})
+                      </p>
+                    )}
+                    {acc.accountNumber && (
+                      <p className="font-mono text-xs text-slate-600 mt-1">
+                        হিসাব নং: ••••{acc.accountNumber.slice(-4)}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Opening Balance info card snippet */}
+                  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-xs space-y-1">
+                    <div className="flex items-center justify-between text-slate-500 text-[11px]">
+                      <span>প্রারম্ভিক স্থিতি (Opening):</span>
+                      <span className="font-bold font-mono text-slate-900">
+                        ৳ {(acc.openingBalance || 0).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-baloo">
+                      <span>কার্যকর: {formatDate(acc.openingBalanceDate || '2026-07-31')}</span>
+                      <span>{acc.openingBalanceType === 'CREDIT' ? 'ক্রেডিট' : 'ডেবিট'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-slate-500 font-medium">বর্তমান স্থিতি:</span>
+                    <span className="text-base font-black text-slate-900 font-mono">
+                      {formatCurrency(acc.currentBalance, language)}
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setOpeningBalanceAccountId(acc.id);
+                      setIsOpeningBalanceModalOpen(true);
+                    }}
+                    className="w-full py-1.5 px-3 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-lg text-xs font-bold flex items-center justify-center space-x-1.5 transition-colors cursor-pointer"
                   >
-                    {acc.accountType}
-                  </span>
-                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                </div>
-
-                <div>
-                  <h3 className="font-bold text-slate-900 text-sm">{acc.nameBn}</h3>
-                  {acc.bankName && (
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      {acc.bankName} ({acc.branchName || 'প্রধান শাখা'})
-                    </p>
-                  )}
-                  {acc.accountNumber && (
-                    <p className="font-mono text-xs text-slate-600 mt-1">
-                      হিসাব নং: ••••{acc.accountNumber.slice(-4)}
-                    </p>
-                  )}
-                </div>
-
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-                  <span className="text-xs text-slate-500 font-medium">বর্তমান স্থিতি:</span>
-                  <span className="text-base font-black text-slate-900 font-mono">
-                    {formatCurrency(acc.currentBalance, language)}
-                  </span>
+                    <Edit3 className="w-3.5 h-3.5 text-amber-700" />
+                    <span>প্রারম্ভিক স্থিতি সমন্বয় (Edit)</span>
+                  </button>
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* ---------------- 3.5 OPENING BALANCE MANAGEMENT TAB ---------------- */}
+        {activeTab === 'opening-balance' && (
+          <div className="space-y-6">
+            {/* Header / Notice */}
+            <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-slate-900 text-white p-6 rounded-2xl shadow-sm border border-emerald-900/40">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="space-y-1.5">
+                  <div className="flex items-center space-x-2">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      Accounting Baseline
+                    </span>
+                    <h3 className="text-lg font-bold">প্রারম্ভিক স্থিতি নিয়ন্ত্রণ কেন্দ্র (Opening Balance)</h3>
+                  </div>
+                  <p className="text-xs text-slate-300 font-baloo max-w-2xl">
+                    সকল নগদ তহবিল ও ব্যাংক হিসাবের প্রারম্ভিক জের নির্ভুলভাবে সংরক্ষণ করুন। এটি খতিয়ানের মূল ভিত্তি হিসেবে ব্যবহৃত হবে, কোনো আয় বা ব্যয় হিসেবে নয়।
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setOpeningBalanceAccountId(accounts[0]?.id || '');
+                    setIsOpeningBalanceModalOpen(true);
+                  }}
+                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center space-x-2 shrink-0 cursor-pointer self-start md:self-auto"
+                >
+                  <Scale className="w-4 h-4" />
+                  <span>প্রারম্ভিক স্থিতি এন্ট্রি / সমন্বয়</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Accounting Rule Alert */}
+            <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-xl text-xs text-amber-900 font-baloo space-y-1">
+              <p className="font-bold text-amber-950 font-siliguri flex items-center space-x-1.5">
+                <Shield className="w-4 h-4 text-amber-700" />
+                <span>অ্যাকাউন্টিং নীতিমালা ও ডেটা অখণ্ডতা সুরক্ষা:</span>
+              </p>
+              <p>
+                ১. <strong>আয় বা অনুদান নয়:</strong> প্রারম্ভিক স্থিতি কখনো দান বা আয় হিসেবে কাউন্ট হয় না, ফলে আয় বিবরণী বা ভাউচার লিস্টে কোনো কৃত্রিম ডাটা যুক্ত হবে না।
+              </p>
+              <p>
+                ২. <strong>চলমান খতিয়ান জের:</strong> দৈনিক লেনদেন বিবরণী (Daily Statement), ক্যাশ বই (Cashbook) ও ব্যাংক বইতে এই প্রারম্ভিক স্থিতির উপর ভিত্তি করে রানিং ব্যালেন্স হিসাব করা হয়।
+              </p>
+            </div>
+
+            {/* Table of all Accounts Opening Balances */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+              <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                <span className="font-bold text-slate-800 text-sm">
+                  অ্যাকাউন্টভিত্তিক প্রারম্ভিক স্থিতি বিস্তারিত তালিকা
+                </span>
+                <span className="text-xs text-slate-500 font-mono">
+                  মোট হিসাব: {accounts.length} টি
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-100/75 text-slate-600 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
+                    <tr>
+                      <th className="px-4 py-3">অ্যাকাউন্ট / ফান্ডের নাম</th>
+                      <th className="px-4 py-3">ধরনের হিসাব</th>
+                      <th className="px-4 py-3">কার্যকর প্রারম্ভিক তারিখ</th>
+                      <th className="px-4 py-3">উৎস / কারণ</th>
+                      <th className="px-4 py-3 text-right">প্রারম্ভিক স্থিতি (টাকা)</th>
+                      <th className="px-4 py-3 text-right">বর্তমান রানিং স্থিতি</th>
+                      <th className="px-4 py-3 text-center">অ্যাকশন</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 font-baloo">
+                    {accounts.map((acc) => (
+                      <tr key={acc.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="px-4 py-3 font-siliguri font-bold text-slate-900">
+                          {acc.nameBn}
+                          {acc.bankName && (
+                            <span className="block text-[11px] text-slate-500 font-normal font-baloo">
+                              {acc.bankName} • {acc.accountNumber}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              acc.accountType === 'CASH'
+                                ? 'bg-amber-100 text-amber-800'
+                                : acc.accountType === 'BANK'
+                                ? 'bg-blue-100 text-blue-800'
+                                : 'bg-purple-100 text-purple-800'
+                            }`}
+                          >
+                            {acc.accountType === 'CASH' ? 'নগদ ক্যাশ' : acc.accountType === 'BANK' ? 'ব্যাংক হিসাব' : 'MFS/অন্যান্য'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-slate-700">
+                          {formatDate(acc.openingBalanceDate || '2026-07-31')}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {acc.openingBalanceSource === 'PREVIOUS_COMMITTEE_HANDOVER'
+                            ? 'পূর্ববর্তী কমিটির তহবিল হস্তান্তর'
+                            : acc.openingBalanceSource === 'ANNUAL_CLOSING_BROUGHT_FORWARD'
+                            ? 'পূর্ববর্তী অর্থবছরের সমাপনী জের'
+                            : acc.openingBalanceSource === 'BANK_STATEMENT_BASELINE'
+                            ? 'ব্যাংক হিসাব স্টেটমেন্ট প্রারম্ভিক জের'
+                            : acc.openingBalanceSource === 'AUDIT_ADJUSTMENT'
+                            ? 'অডিট সমন্বয়'
+                            : 'সফটওয়্যার প্রাথমিক সেটআপ'}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono font-bold text-slate-900">
+                          ৳ {(acc.openingBalance || 0).toLocaleString('en-IN')}
+                          <span className="text-[10px] text-slate-400 block">
+                            {acc.openingBalanceType === 'CREDIT' ? '(ক্রেডিট / ঋণ)' : '(ডেবিট / জমা)'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono font-black text-emerald-700 text-sm">
+                          ৳ {(acc.currentBalance || 0).toLocaleString('en-IN')}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <button
+                            onClick={() => {
+                              setOpeningBalanceAccountId(acc.id);
+                              setIsOpeningBalanceModalOpen(true);
+                            }}
+                            className="px-2.5 py-1 bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border border-slate-300 hover:border-emerald-300 rounded-lg text-xs font-bold inline-flex items-center space-x-1 transition-colors cursor-pointer"
+                          >
+                            <Edit3 className="w-3 h-3" />
+                            <span>সমন্বয়</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-slate-50 border-t-2 border-slate-300 font-bold">
+                    <tr>
+                      <td colSpan={4} className="px-4 py-3 text-slate-800 font-siliguri">
+                        সর্বমোট প্রারম্ভিক ও বর্তমান তহবিলের স্থিতি:
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-slate-900 font-black">
+                        ৳ {accounts.reduce((sum, a) => {
+                          const bal = a.openingBalance || 0;
+                          return a.openingBalanceType === 'CREDIT' ? sum - bal : sum + bal;
+                        }, 0).toLocaleString('en-IN')}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-emerald-800 font-black text-sm">
+                        ৳ {accounts.reduce((sum, a) => sum + (a.currentBalance || 0), 0).toLocaleString('en-IN')}
+                      </td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
           </div>
         )}
 
@@ -2027,6 +2259,20 @@ export const CashBankView: React.FC<CashBankViewProps> = ({
             </form>
           </div>
         </div>
+      )}
+      {/* Opening Balance Adjustment Modal */}
+      {isOpeningBalanceModalOpen && (
+        <OpeningBalanceModal
+          isOpen={isOpeningBalanceModalOpen}
+          onClose={() => setIsOpeningBalanceModalOpen(false)}
+          accounts={accounts}
+          preselectedAccountId={openingBalanceAccountId}
+          onUpdateOpeningBalance={async (payload) => {
+            if (onUpdateOpeningBalance) {
+              await onUpdateOpeningBalance(payload);
+            }
+          }}
+        />
       )}
     </div>
   );

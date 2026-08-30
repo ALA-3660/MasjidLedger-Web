@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Users2,
   CalendarCheck,
@@ -47,6 +47,7 @@ import {
   SubCommittee,
 } from '../types';
 import { Language, translations, formatDate } from '../lib/i18n';
+import { QrScanResult } from '../types/qrBarcodeTypes';
 import { MeetingDocumentPrint } from './MeetingDocumentPrint';
 import { MeetingMinutesModal } from './MeetingMinutesModal';
 import { MeetingNoticeModal, MeetingNoticePrintModal } from './MeetingNoticeModal';
@@ -67,6 +68,8 @@ interface CommitteeViewProps {
   language: Language;
   mosque?: Mosque | null;
   currentUser?: any;
+  scannedActionIntent?: QrScanResult | null;
+  onClearScannedAction?: () => void;
   onRefreshMosqueSettings?: () => Promise<void>;
   onAddTerm: (data: any) => Promise<void>;
   onUpdateTerm?: (id: string, data: any) => Promise<void>;
@@ -250,6 +253,8 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
   language,
   mosque,
   currentUser,
+  scannedActionIntent,
+  onClearScannedAction,
   onRefreshMosqueSettings,
   onAddTerm,
   onUpdateTerm,
@@ -289,6 +294,33 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
   const [endDate, setEndDate] = useState('');
   const [termDesc, setTermDesc] = useState('');
   const [termError, setTermError] = useState('');
+
+  // Handle Scan -> Direct Entry for Committee actions
+  useEffect(() => {
+    if (!scannedActionIntent) return;
+
+    const action = scannedActionIntent.actionKey;
+    if (action === 'ACT-MTG-NEW' || (action as string) === 'ACT_MTG_NEW') {
+      setActiveTab('meetings');
+      setMeetingSubTab('notices');
+      setIsNewNoticeModalOpen(true);
+      onClearScannedAction?.();
+    } else if (action === 'ACT-MTG-RESOL' || (action as string) === 'ACT_MTG_RESOL') {
+      setActiveTab('meetings');
+      setMeetingSubTab('resolutions');
+      setEditingResolutionForModal(null);
+      setIsResolutionRevisionMode(false);
+      setIsResolutionModalOpen(true);
+      onClearScannedAction?.();
+    } else if (action === 'ACT-CAP-NEW' || (action as string) === 'ACT_CAP_NEW') {
+      setActiveTab('action-plans');
+      // Pass through or let action plan handle it
+      onClearScannedAction?.();
+    } else if (action === 'ACT-SUB-NEW' || (action as string) === 'ACT_SUB_NEW') {
+      setActiveTab('sub-committees');
+      onClearScannedAction?.();
+    }
+  }, [scannedActionIntent]);
 
   // Edit Term Modal
   const [isEditTermModalOpen, setIsEditTermModalOpen] = useState(false);

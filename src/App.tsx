@@ -4,6 +4,7 @@ import {
   Mosque,
   User,
   FinancialAccount,
+  AccountOpeningBalancePayload,
   AccountHead,
   IncomeEntry,
   ExpenseEntry,
@@ -42,9 +43,16 @@ import { AuditLogView } from './components/AuditLogView';
 import { DailyTransactionsView } from './components/DailyTransactionsView';
 import { UserManagementView } from './components/UserManagementView';
 import { PublicPortalView } from './components/PublicPortalView';
+import { QRManagementView } from './components/QRManagementView';
 import { AdminLoginScreen } from './components/AdminLoginScreen';
-import { MoneyReceiptModal, VoucherModal } from './components/PrintModals';
+import { MoneyReceiptModal, VoucherModal, PrintFormat } from './components/PrintModals';
 import { ChangeCalculatorModal } from './components/ChangeCalculatorModal';
+import { UniversalScannerModal } from './components/UniversalScannerModal';
+import { QrActionCardsModal } from './components/QrActionCardsModal';
+import { RecordActionModal } from './components/RecordActionModal';
+import { RecordPrintLabelModal } from './components/RecordPrintLabelModal';
+import { resolveRecordFromSystem } from './services/qrBarcodeService';
+import { QrScanResult, ResolvedRecordItem, RecordSpecificAction } from './types/qrBarcodeTypes';
 import {
   AlertCircle,
   RefreshCw,
@@ -57,6 +65,12 @@ import {
   HelpCircle,
   Banknote,
   Calculator,
+  QrCode,
+  TrendingUp,
+  Receipt,
+  Camera,
+  HeartHandshake,
+  FileText,
 } from 'lucide-react';
 
 export default function App() {
@@ -81,8 +95,13 @@ export default function App() {
   const [aiAnswer, setAiAnswer] = useState<string>('');
   const [isAiLoading, setIsAiLoading] = useState<boolean>(false);
 
-  // Universal Calculator Global State
+  // Universal Calculator & Scanner Global State
   const [isGlobalCalculatorOpen, setIsGlobalCalculatorOpen] = useState<boolean>(false);
+  const [isScannerOpen, setIsScannerOpen] = useState<boolean>(false);
+  const [isActionCardHubOpen, setIsActionCardHubOpen] = useState<boolean>(false);
+  const [scannedActionIntent, setScannedActionIntent] = useState<QrScanResult | null>(null);
+  const [activeRecordAction, setActiveRecordAction] = useState<ResolvedRecordItem | null>(null);
+  const [activePrintLabel, setActivePrintLabel] = useState<ResolvedRecordItem | null>(null);
 
   // Domain Entity Collections
   const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
@@ -108,11 +127,19 @@ export default function App() {
   const [savedReportConfigs, setSavedReportConfigs] = useState<SavedReportConfig[]>([]);
 
   // Print Modals State
-  const [activeDonationReceipt, setActiveDonationReceipt] = useState<Donation | null>(null);
+  const [activeDonationReceipt, setActiveDonationReceipt] = useState<{
+    donation: Donation | null;
+    format?: PrintFormat;
+    isReprint?: boolean;
+    autoPrint?: boolean;
+  } | null>(null);
   const [activeVoucher, setActiveVoucher] = useState<{
     item: IncomeEntry | ExpenseEntry | null;
     type: 'INCOME' | 'EXPENSE';
-  }>({ item: null, type: 'INCOME' });
+    format?: PrintFormat;
+    isReprint?: boolean;
+    autoPrint?: boolean;
+  }>({ item: null, type: 'INCOME', format: 'POS_80' });
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
 
   // Fetch all initial data from backend (isInitial = true shows full splash; isInitial = false performs background silent sync)
@@ -250,7 +277,7 @@ export default function App() {
       }
     }, 60000);
 
-    // Global Keyboard Shortcut: Alt+C to toggle calculator
+    // Global Keyboard Shortcut: Alt+C for calculator, Alt+Q for scanner
     const handleGlobalShortcuts = (e: KeyboardEvent) => {
       if (
         (e.altKey && (e.key === 'c' || e.key === 'C')) ||
@@ -258,6 +285,12 @@ export default function App() {
       ) {
         e.preventDefault();
         setIsGlobalCalculatorOpen((prev) => !prev);
+      } else if (
+        (e.altKey && (e.key === 'q' || e.key === 'Q')) ||
+        (e.ctrlKey && e.altKey && (e.key === 'q' || e.key === 'Q'))
+      ) {
+        e.preventDefault();
+        setIsScannerOpen((prev) => !prev);
       }
     };
     window.addEventListener('keydown', handleGlobalShortcuts);
@@ -267,6 +300,171 @@ export default function App() {
       window.removeEventListener('keydown', handleGlobalShortcuts);
     };
   }, []);
+
+  // Universal Scanner Action Dispatcher & Deep Link Router
+  const getResolvedRecord = (code: string): ResolvedRecordItem | null => {
+    return resolveRecordFromSystem(code, {
+      incomes,
+      expenses,
+      donations,
+      donationBoxes,
+      staff,
+      staffPayments,
+      assets,
+      properties,
+      cemetery,
+      members,
+      subCommittees,
+      resolutions,
+      meetings,
+    });
+  };
+
+  const handleOpenRecordAction = (target: string | ResolvedRecordItem) => {
+    if (typeof target === 'string') {
+      const resolved = getResolvedRecord(target);
+      if (resolved) {
+        setActiveRecordAction(resolved);
+      }
+    } else {
+      setActiveRecordAction(target);
+    }
+  };
+
+  const handleOpenPrintLabel = (target: string | ResolvedRecordItem) => {
+    if (typeof target === 'string') {
+      const resolved = getResolvedRecord(target);
+      if (resolved) {
+        setActivePrintLabel(resolved);
+      }
+    } else {
+      setActivePrintLabel(target);
+    }
+  };
+
+  const handleScannerNavigate = (result: QrScanResult) => {
+    if (!result) return;
+    
+    if (result.type === 'RECORD') {
+      const resolved = getResolvedRecord(result.code || result.raw);
+      if (resolved) {
+        setActiveRecordAction(resolved);
+      }
+    }
+
+    // Switch to target module tab seamlessly
+    if (result.targetTab) {
+      setCurrentTab(result.targetTab);
+    }
+    setScannedActionIntent(result);
+  };
+
+  const handleExecuteRecordAction = (action: RecordSpecificAction, recordItem: ResolvedRecordItem) => {
+    setActiveRecordAction(null);
+
+    switch (action.actionType) {
+      case 'VIEW_DETAILS':
+        if (recordItem.targetTab) {
+          setCurrentTab(recordItem.targetTab);
+        }
+        break;
+      case 'PRINT_LABEL':
+        setActivePrintLabel(recordItem);
+        break;
+      case 'PRINT_RECEIPT':
+        if (recordItem.entityType === 'INCOME') {
+          setActiveVoucher({ item: recordItem.rawRecord, type: 'INCOME', format: 'POS_80', isReprint: true });
+        } else if (recordItem.entityType === 'EXPENSE') {
+          setActiveVoucher({ item: recordItem.rawRecord, type: 'EXPENSE', format: 'POS_80', isReprint: true });
+        } else if (recordItem.entityType === 'DONATION') {
+          setActiveDonationReceipt({ donation: recordItem.rawRecord, format: 'POS_80', isReprint: true });
+        }
+        break;
+      case 'ASSET_SERVICE':
+      case 'ASSET_REPAIR':
+      case 'ASSET_EXPENSE':
+        setCurrentTab('assets');
+        setScannedActionIntent({
+          raw: recordItem.canonicalCode,
+          type: 'RECORD',
+          code: recordItem.canonicalCode,
+          entityType: 'ASSET',
+          targetTab: 'assets',
+          recordIdOrNumber: recordItem.rawRecord?.id,
+        });
+        break;
+      case 'WAQF_RENT_COLLECT':
+      case 'WAQF_TENANT':
+      case 'WAQF_DUE':
+      case 'WAQF_AGREEMENT':
+        setCurrentTab('property');
+        setScannedActionIntent({
+          raw: recordItem.canonicalCode,
+          type: 'RECORD',
+          code: recordItem.canonicalCode,
+          entityType: 'WAQF_PROPERTY',
+          targetTab: 'property',
+          recordIdOrNumber: recordItem.rawRecord?.id,
+        });
+        break;
+      case 'STAFF_SALARY':
+      case 'STAFF_FESTIVAL':
+      case 'STAFF_HISTORY':
+        setCurrentTab('staff');
+        setScannedActionIntent({
+          raw: recordItem.canonicalCode,
+          type: 'RECORD',
+          code: recordItem.canonicalCode,
+          entityType: 'STAFF',
+          targetTab: 'staff',
+          recordIdOrNumber: recordItem.rawRecord?.id,
+        });
+        break;
+      case 'PLAN_PROGRESS':
+      case 'PLAN_MILESTONE':
+      case 'PLAN_EVIDENCE':
+        setCurrentTab('committee');
+        setScannedActionIntent({
+          raw: recordItem.canonicalCode,
+          type: 'RECORD',
+          code: recordItem.canonicalCode,
+          entityType: 'ACTION_PLAN',
+          targetTab: 'committee',
+          targetSubTab: 'resolutions',
+          recordIdOrNumber: recordItem.rawRecord?.id,
+        });
+        break;
+      case 'BOX_COLLECT':
+      case 'BOX_HISTORY':
+        setCurrentTab('donations');
+        setScannedActionIntent({
+          raw: recordItem.canonicalCode,
+          type: 'RECORD',
+          code: recordItem.canonicalCode,
+          entityType: 'DONATION_BOX',
+          targetTab: 'donations',
+          recordIdOrNumber: recordItem.rawRecord?.id,
+        });
+        break;
+      case 'CEMETERY_DETAILS':
+      case 'CEMETERY_CERTIFICATE':
+        setCurrentTab('cemetery');
+        setScannedActionIntent({
+          raw: recordItem.canonicalCode,
+          type: 'RECORD',
+          code: recordItem.canonicalCode,
+          entityType: 'CEMETERY',
+          targetTab: 'cemetery',
+          recordIdOrNumber: recordItem.rawRecord?.id,
+        });
+        break;
+      default:
+        if (recordItem.targetTab) {
+          setCurrentTab(recordItem.targetTab);
+        }
+        break;
+    }
+  };
 
   // Handlers for Data Mutations
   const handleLogin = async (phoneOrEmail: string, pass: string, mosqueId?: string) => {
@@ -292,10 +490,18 @@ export default function App() {
     setIsAuthenticated(false);
   };
 
-  const handleAddIncome = async (data: any) => {
+  const handleAddIncome = async (data: any, options?: { print?: boolean; format?: PrintFormat }) => {
     const created = await api.createIncome(data);
     await loadData(false);
-    setActiveVoucher({ item: created, type: 'INCOME' });
+    if (options?.print !== false) {
+      setActiveVoucher({
+        item: created,
+        type: 'INCOME',
+        format: options?.format || 'POS_80',
+        isReprint: false,
+      });
+    }
+    return created;
   };
 
   const handleUpdateIncome = async (id: string, data: any) => {
@@ -303,10 +509,18 @@ export default function App() {
     await loadData(false);
   };
 
-  const handleAddExpense = async (data: any) => {
+  const handleAddExpense = async (data: any, options?: { print?: boolean; format?: PrintFormat }) => {
     const created = await api.createExpense(data);
     await loadData(false);
-    setActiveVoucher({ item: created, type: 'EXPENSE' });
+    if (options?.print !== false) {
+      setActiveVoucher({
+        item: created,
+        type: 'EXPENSE',
+        format: options?.format || 'POS_80',
+        isReprint: false,
+      });
+    }
+    return created;
   };
 
   const handleUpdateExpense = async (id: string, data: any) => {
@@ -347,6 +561,16 @@ export default function App() {
 
   const handleAddAccount = async (data: any) => {
     await api.createAccount(data);
+    await loadData(false);
+  };
+
+  const handleUpdateAccount = async (id: string, data: Partial<FinancialAccount>) => {
+    await api.updateAccount(id, data);
+    await loadData(false);
+  };
+
+  const handleUpdateOpeningBalance = async (data: AccountOpeningBalancePayload) => {
+    await api.updateOpeningBalance(data);
     await loadData(false);
   };
 
@@ -502,6 +726,21 @@ export default function App() {
 
   const handleAddCemetery = async (data: any) => {
     await api.createCemeteryRecord(data);
+    await loadData(false);
+  };
+
+  const handleUpdateCemetery = async (id: string, data: any) => {
+    await api.updateCemeteryRecord(id, data);
+    await loadData(false);
+  };
+
+  const handleArchiveCemetery = async (id: string, isArchived: boolean, reason?: string) => {
+    await api.archiveCemeteryRecord(id, isArchived, reason);
+    await loadData(false);
+  };
+
+  const handleDeleteCemetery = async (id: string) => {
+    await api.deleteCemeteryRecord(id);
     await loadData(false);
   };
 
@@ -698,6 +937,8 @@ export default function App() {
             else if (act === 'donation') setCurrentTab('donations');
           }}
           onOpenAi={() => setIsAiOpen(true)}
+          onOpenScanner={() => setIsScannerOpen(true)}
+          onOpenActionQrHub={() => setIsActionCardHubOpen(true)}
           onRefresh={() => loadData(false)}
         />
       )}
@@ -713,13 +954,17 @@ export default function App() {
           currentUser={currentUser}
           currentMosque={mosque}
           language={language}
+          scannedActionIntent={scannedActionIntent}
+          onClearScannedAction={() => setScannedActionIntent(null)}
           onAddIncome={handleAddIncome}
           onAddExpense={handleAddExpense}
           onUpdateIncome={handleUpdateIncome}
           onUpdateExpense={handleUpdateExpense}
           onReverseIncome={handleReverseIncome}
           onReverseExpense={handleReverseExpense}
-          onPrintVoucher={(item, type) => setActiveVoucher({ item, type })}
+          onPrintVoucher={(item, type, format = 'POS_80', isReprint = true) =>
+            setActiveVoucher({ item, type, format, isReprint })
+          }
           onSendSms={handleSendSms}
         />
       )}
@@ -733,6 +978,7 @@ export default function App() {
           currentMosque={mosque}
           currentUser={currentUser}
           language={language}
+          onUpdateOpeningBalance={handleUpdateOpeningBalance}
         />
       )}
 
@@ -746,19 +992,24 @@ export default function App() {
           accountHeads={accountHeads}
           currentMosque={mosque}
           language={language}
+          scannedActionIntent={scannedActionIntent}
+          onClearScannedAction={() => setScannedActionIntent(null)}
           onAddDonation={handleAddDonation}
           onCollectBox={handleCollectBox}
           onAddBox={handleAddDonationBox}
           onUpdateBox={handleUpdateDonationBox}
-          onPrintReceipt={(don) => setActiveDonationReceipt(don)}
+          onPrintReceipt={(don, format = 'POS_80', isReprint = true) =>
+            setActiveDonationReceipt({ donation: don, format, isReprint })
+          }
           onSendSms={handleSendSms}
         />
       )}
 
-      {/* 5. Cashbook, Bank Accounts & Account Heads View */}
+      {/* 5. Cashbook, Bank Accounts, Opening Balance & Account Heads View */}
       {(currentTab === 'accounts' ||
         currentTab === 'cashbook' ||
         currentTab === 'bank' ||
+        currentTab === 'openingBalance' ||
         currentTab === 'accountHeads') && (
         <CashBankView
           accounts={accounts}
@@ -767,7 +1018,11 @@ export default function App() {
           expenses={expenses}
           currentMosque={mosque}
           language={language}
+          scannedActionIntent={scannedActionIntent}
+          onClearScannedAction={() => setScannedActionIntent(null)}
           onAddAccount={handleAddAccount}
+          onUpdateAccount={handleUpdateAccount}
+          onUpdateOpeningBalance={handleUpdateOpeningBalance}
           onAddAccountHead={handleAddAccountHead}
           onTransferFund={handleTransferFund}
         />
@@ -784,6 +1039,8 @@ export default function App() {
           language={language}
           mosque={mosque}
           currentUser={currentUser}
+          scannedActionIntent={scannedActionIntent}
+          onClearScannedAction={() => setScannedActionIntent(null)}
           onRefreshMosqueSettings={async () => {
             await loadData(false);
           }}
@@ -831,6 +1088,8 @@ export default function App() {
           expenseEntries={expenses}
           currentMosque={mosque}
           language={language}
+          scannedActionIntent={scannedActionIntent}
+          onClearScannedAction={() => setScannedActionIntent(null)}
           onAddStaff={handleAddStaff}
           onUpdateStaff={handleUpdateStaff}
           onDeleteStaff={handleDeleteStaff}
@@ -854,6 +1113,9 @@ export default function App() {
           onAddPropertyInspection={handleAddPropertyInspection}
           onAddPropertyLegalCase={handleAddPropertyLegalCase}
           onAddCemeteryRecord={handleAddCemetery}
+          onUpdateCemeteryRecord={handleUpdateCemetery}
+          onArchiveCemeteryRecord={handleArchiveCemetery}
+          onDeleteCemeteryRecord={handleDeleteCemetery}
           onAddNotice={handleAddNotice}
         />
       )}
@@ -909,12 +1171,13 @@ export default function App() {
       )}
 
       {/* 10. Mosque Settings View (Dedicated Configuration Page) */}
-      {(currentTab === 'admin' || currentTab === 'settings') && (
+      {(currentTab === 'admin' || currentTab === 'settings' || currentTab === 'publicPortalSettings') && (
         <MosqueSettingsView
           currentMosque={mosque}
           currentUser={currentUser}
           language={language}
           onSaveSettings={handleSaveMosqueSettings}
+          onOpenLivePortal={() => setCurrentTab('publicPortal')}
         />
       )}
 
@@ -929,7 +1192,16 @@ export default function App() {
         />
       )}
 
-      {/* 12. Public Portal View */}
+      {/* 12. QR Management View */}
+      {currentTab === 'qrManagement' && (
+        <QRManagementView
+          currentMosque={mosque}
+          currentUser={currentUser}
+          language={language}
+        />
+      )}
+
+      {/* 13. Public Portal View */}
       {(currentTab === 'public' || currentTab === 'publicPortal') && (
         <PublicPortalView
           mosque={mosque}
@@ -937,7 +1209,8 @@ export default function App() {
           notices={notices}
           language={language}
           onDonate={handleAddDonation}
-          onPrintReceipt={(don) => setActiveDonationReceipt(don)}
+          onPrintReceipt={(don) => setActiveDonationReceipt({ donation: don, format: 'POS_80', isReprint: false })}
+          onNavigateToLogin={() => setCurrentTab('dashboard')}
         />
       )}
     </>
@@ -966,6 +1239,8 @@ export default function App() {
           onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
           onOpenAi={() => setIsAiOpen(true)}
           onOpenCalculator={() => setIsGlobalCalculatorOpen(true)}
+          onOpenScanner={() => setIsScannerOpen(true)}
+          onOpenActionQrHub={() => setIsActionCardHubOpen(true)}
           onLogout={handleLogout}
           onQuickAction={(act) => {
             if (act === 'income') setCurrentTab('income');
@@ -1011,42 +1286,60 @@ export default function App() {
                 {renderMainContent()}
               </div>
 
-              {/* Mobile Bottom Navigation Bar */}
-              <div className="h-14 bg-white border-t border-slate-200 grid grid-cols-4 items-center shrink-0 px-2 select-none">
+              {/* Mobile Bottom Navigation Bar with Prominent Center SCAN Button */}
+              <div className="h-16 bg-white border-t border-slate-200 grid grid-cols-5 items-center shrink-0 px-1 select-none shadow-lg">
                 <button
                   type="button"
                   onClick={() => setCurrentTab('dashboard')}
-                  className={`flex flex-col items-center justify-center text-[10px] font-semibold py-1 cursor-pointer ${
-                    currentTab === 'dashboard' ? 'text-blue-700' : 'text-slate-500'
+                  className={`flex flex-col items-center justify-center text-[10px] font-semibold py-1 cursor-pointer font-siliguri ${
+                    currentTab === 'dashboard' ? 'text-blue-700 font-bold' : 'text-slate-500'
                   }`}
                 >
+                  <TrendingUp className="w-4 h-4 mb-0.5" />
                   <span>সারসংক্ষেপ</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setCurrentTab('income')}
-                  className={`flex flex-col items-center justify-center text-[10px] font-semibold py-1 cursor-pointer ${
-                    currentTab === 'income' || currentTab === 'expense' ? 'text-blue-700' : 'text-slate-500'
+                  className={`flex flex-col items-center justify-center text-[10px] font-semibold py-1 cursor-pointer font-siliguri ${
+                    currentTab === 'income' || currentTab === 'expense' ? 'text-blue-700 font-bold' : 'text-slate-500'
                   }`}
                 >
+                  <Receipt className="w-4 h-4 mb-0.5" />
                   <span>আয়-ব্যয়</span>
                 </button>
+                
+                {/* Central Prominent SCAN Button */}
+                <button
+                  type="button"
+                  id="mobile-bottom-nav-scan-btn"
+                  onClick={() => setIsScannerOpen(true)}
+                  className="flex flex-col items-center justify-center -mt-5 cursor-pointer group"
+                >
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-600 text-white flex items-center justify-center shadow-lg group-hover:scale-105 group-active:scale-95 transition-all border-3 border-white">
+                    <Camera className="w-6 h-6 animate-pulse" />
+                  </div>
+                  <span className="text-[10px] font-bold text-emerald-800 mt-0.5 font-siliguri">স্ক্যান</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => setCurrentTab('donations')}
-                  className={`flex flex-col items-center justify-center text-[10px] font-semibold py-1 cursor-pointer ${
-                    currentTab === 'donations' ? 'text-blue-700' : 'text-slate-500'
+                  className={`flex flex-col items-center justify-center text-[10px] font-semibold py-1 cursor-pointer font-siliguri ${
+                    currentTab === 'donations' ? 'text-blue-700 font-bold' : 'text-slate-500'
                   }`}
                 >
+                  <HeartHandshake className="w-4 h-4 mb-0.5" />
                   <span>দান</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setCurrentTab('reports')}
-                  className={`flex flex-col items-center justify-center text-[10px] font-semibold py-1 cursor-pointer ${
-                    currentTab === 'reports' ? 'text-blue-700' : 'text-slate-500'
+                  className={`flex flex-col items-center justify-center text-[10px] font-semibold py-1 cursor-pointer font-siliguri ${
+                    currentTab === 'reports' ? 'text-blue-700 font-bold' : 'text-slate-500'
                   }`}
                 >
+                  <FileText className="w-4 h-4 mb-0.5" />
                   <span>রিপোর্ট</span>
                 </button>
               </div>
@@ -1061,6 +1354,8 @@ export default function App() {
               onSelectTab={(tab) => setCurrentTab(tab)}
               onTabChange={(tab) => setCurrentTab(tab)}
               onOpenCalculator={() => setIsGlobalCalculatorOpen(true)}
+              onOpenScanner={() => setIsScannerOpen(true)}
+              onOpenActionQrHub={() => setIsActionCardHubOpen(true)}
               language={language}
               isOpen={isSidebarOpen}
               onClose={() => setIsSidebarOpen(false)}
@@ -1214,16 +1509,19 @@ export default function App() {
         </div>
       )}
 
-      {/* Official Money Receipt Modal */}
+      {/* Official Money Receipt Modal (A4 & POS Thermal) */}
       <MoneyReceiptModal
-        isOpen={!!activeDonationReceipt}
+        isOpen={!!activeDonationReceipt?.donation}
         onClose={() => setActiveDonationReceipt(null)}
-        donation={activeDonationReceipt}
+        donation={activeDonationReceipt?.donation || null}
         mosque={mosque}
         language={language}
+        initialFormat={activeDonationReceipt?.format || 'POS_80'}
+        isReprint={activeDonationReceipt?.isReprint ?? false}
+        autoPrint={activeDonationReceipt?.autoPrint ?? false}
       />
 
-      {/* Official Debit/Credit Voucher Modal */}
+      {/* Official Debit/Credit Voucher Modal (A4 & POS Thermal) */}
       <VoucherModal
         isOpen={!!activeVoucher.item}
         onClose={() => setActiveVoucher({ item: null, type: 'INCOME' })}
@@ -1231,30 +1529,96 @@ export default function App() {
         type={activeVoucher.type}
         mosque={mosque}
         language={language}
+        initialFormat={activeVoucher.format || 'POS_80'}
+        isReprint={activeVoucher.isReprint ?? false}
+        autoPrint={activeVoucher.autoPrint ?? false}
       />
 
-      {/* Floating Quick Denomination Counter Action Button (Accessible across all screens) */}
-      <button
-        id="btn-floating-calculator"
-        type="button"
-        onClick={() => setIsGlobalCalculatorOpen(true)}
-        className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-emerald-700 to-teal-800 hover:from-emerald-800 hover:to-teal-900 text-white p-3.5 sm:px-4 sm:py-3 rounded-full sm:rounded-2xl shadow-xl hover:shadow-2xl border-2 border-white/40 flex items-center space-x-2 transition-all transform hover:scale-105 active:scale-95 group print:hidden cursor-pointer"
-        title="ভাংতি টাকা ও ক্যাশ নোট গণনা (Alt+C)"
-      >
-        <Banknote className="w-5 h-5 text-emerald-200 group-hover:rotate-12 transition-transform" />
-        <span className="font-siliguri font-bold text-xs hidden sm:inline">
-          {language === 'bn' ? 'ভাংতি টাকা গণনা' : 'Cash Counter'}
-        </span>
-        <span className="hidden sm:inline text-[10px] bg-white/20 text-emerald-100 px-1.5 py-0.5 rounded font-mono font-bold">
-          Alt+C
-        </span>
-      </button>
+      {/* Floating Action Buttons: QR Scanner and Denomination Counter */}
+      <div className="fixed bottom-6 right-6 z-40 flex flex-col sm:flex-row items-end sm:items-center space-y-2.5 sm:space-y-0 sm:space-x-3 print:hidden">
+        {/* Floating Quick QR Scanner Button */}
+        <button
+          id="btn-floating-qr-scanner"
+          type="button"
+          onClick={() => setIsScannerOpen(true)}
+          className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white p-3.5 sm:px-4 sm:py-3 rounded-full sm:rounded-2xl shadow-xl hover:shadow-2xl border-2 border-white/40 flex items-center space-x-2 transition-all transform hover:scale-105 active:scale-95 group cursor-pointer"
+          title="QR ও বারকোড স্ক্যানার (Alt+Q)"
+        >
+          <QrCode className="w-5 h-5 text-blue-200 group-hover:rotate-12 transition-transform" />
+          <span className="font-siliguri font-bold text-xs hidden sm:inline">
+            {language === 'bn' ? 'QR স্ক্যানার' : 'QR Scanner'}
+          </span>
+          <span className="hidden sm:inline text-[10px] bg-white/20 text-blue-100 px-1.5 py-0.5 rounded font-mono font-bold">
+            Alt+Q
+          </span>
+        </button>
+
+        {/* Floating Quick Denomination Counter Action Button */}
+        <button
+          id="btn-floating-calculator"
+          type="button"
+          onClick={() => setIsGlobalCalculatorOpen(true)}
+          className="bg-gradient-to-r from-emerald-700 to-teal-800 hover:from-emerald-800 hover:to-teal-900 text-white p-3.5 sm:px-4 sm:py-3 rounded-full sm:rounded-2xl shadow-xl hover:shadow-2xl border-2 border-white/40 flex items-center space-x-2 transition-all transform hover:scale-105 active:scale-95 group cursor-pointer"
+          title="ভাংতি টাকা ও ক্যাশ নোট গণনা (Alt+C)"
+        >
+          <Banknote className="w-5 h-5 text-emerald-200 group-hover:rotate-12 transition-transform" />
+          <span className="font-siliguri font-bold text-xs hidden sm:inline">
+            {language === 'bn' ? 'ভাংতি টাকা গণনা' : 'Cash Counter'}
+          </span>
+          <span className="hidden sm:inline text-[10px] bg-white/20 text-emerald-100 px-1.5 py-0.5 rounded font-mono font-bold">
+            Alt+C
+          </span>
+        </button>
+      </div>
 
       {/* Universal Calculator & Denomination Counter Modal */}
       <ChangeCalculatorModal
         isOpen={isGlobalCalculatorOpen}
         onClose={() => setIsGlobalCalculatorOpen(false)}
         language={language}
+      />
+
+      {/* Universal QR & Barcode Camera Scanner Modal */}
+      <UniversalScannerModal
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        currentUser={currentUser}
+        currentMosque={mosque}
+        language={language}
+        onNavigateToTarget={handleScannerNavigate}
+        onOpenActionCardHub={() => setIsActionCardHubOpen(true)}
+        onOpenRecordAction={handleOpenRecordAction}
+        resolveRecord={getResolvedRecord}
+      />
+
+      {/* Module Action QR Code Catalog & Printable Card Hub */}
+      <QrActionCardsModal
+        isOpen={isActionCardHubOpen}
+        onClose={() => setIsActionCardHubOpen(false)}
+        currentMosque={mosque}
+        currentUser={currentUser}
+        language={language}
+        onOpenScanner={() => setIsScannerOpen(true)}
+      />
+
+      {/* Record Action Hub Modal (Identify -> View -> Act) */}
+      <RecordActionModal
+        isOpen={!!activeRecordAction}
+        onClose={() => setActiveRecordAction(null)}
+        recordItem={activeRecordAction}
+        currentUser={currentUser}
+        currentMosque={mosque}
+        language={language}
+        onExecuteAction={handleExecuteRecordAction}
+        onOpenPrintLabel={handleOpenPrintLabel}
+      />
+
+      {/* Record QR & Barcode Label Sticker Print Hub */}
+      <RecordPrintLabelModal
+        isOpen={!!activePrintLabel}
+        onClose={() => setActivePrintLabel(null)}
+        recordItem={activePrintLabel}
+        mosque={mosque}
       />
     </div>
   );

@@ -263,12 +263,13 @@ aside button,
 
 .single-invoice-print-card .font-arabic-bismillah,
 .official-money-receipt .font-arabic-bismillah,
-.official-expense-voucher .font-arabic-bismillah {
+.official-expense-voucher .font-arabic-bismillah,
+.font-arabic {
   font-family: "Amiri", serif !important;
 }
 
 /* ============================================================
-   SINGLE INVOICE & VOUCHER PRINTING RULES
+   MASTER PRINT ISOLATION ENGINE (GLOBAL PRINT RULES)
    ============================================================ */
 @page {
   size: A4 portrait;
@@ -278,17 +279,29 @@ aside button,
 @media print {
   @page {
     size: A4 portrait;
-    margin: 10mm;
+    margin: 8mm 10mm;
   }
 
+  /* Color Fidelity & Root Reset */
+  html,
   body {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+    color-adjust: exact !important;
     background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
   }
-  html,
-  body,
-  #root {
+
+  #root,
+  #app-shell-root {
+    width: 100% !important;
     height: auto !important;
     min-height: 0 !important;
     max-height: none !important;
@@ -296,16 +309,16 @@ aside button,
     padding: 0 !important;
     background: #ffffff !important;
     overflow: visible !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
   }
 
-  /* Global Scrollbar Suppression in Print Mode */
+  /* Universal Scrollbar Suppression */
   *,
   *::before,
   *::after {
     scrollbar-width: none !important;
     -ms-overflow-style: none !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
   }
 
   ::-webkit-scrollbar {
@@ -314,237 +327,9 @@ aside button,
     height: 0 !important;
   }
 
-  /* When printing document/invoice, suppress background app shell & screen UI */
-  .app-shell-hidden-for-print,
-  body.print-document-active .app-shell-hidden-for-print,
-  body.print-document-active header,
-  body.print-document-active nav,
-  body.print-document-active aside,
-  body.print-document-active #app-sidebar,
-  body.print-document-active .navbar-root,
-  body.print-document-active .app-header,
-  body.print-document-active .mobile-nav-bar,
-  body.print-document-active .mobile-status-bar,
-  body.print-document-active .mobile-header-bar {
-    display: none !important;
-  }
-
-  /* Universal Modal Print Isolation (Hides main root when printing any modal) */
-  body.print-modal-active #root,
-  body.print-document-active #root,
-  body.print-action-plan-active #root,
-  body:has(.print-modal-portal) #root {
-    display: none !important;
-    visibility: hidden !important;
-    height: 0 !important;
-    max-height: 0 !important;
-    overflow: hidden !important;
-  }
-
-  .print-modal-portal {
-    display: block !important;
-    visibility: visible !important;
-    position: static !important;
-    inset: auto !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    height: auto !important;
-    min-height: 0 !important;
-    max-height: none !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    background: #ffffff !important;
-    backdrop-filter: none !important;
-    overflow: visible !important;
-    box-shadow: none !important;
-    z-index: auto !important;
-  }
-
-  .print-modal-portal .print-modal-card {
-    display: block !important;
-    visibility: visible !important;
-    position: static !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    height: auto !important;
-    min-height: 0 !important;
-    max-height: none !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    border: none !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    background: #ffffff !important;
-    overflow: visible !important;
-  }
-
-  .print-modal-portal .print-modal-paper {
-    display: block !important;
-    visibility: visible !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    background: #ffffff !important;
-    overflow: visible !important;
-  }
-
-  .print-modal-portal .print-controls-bar,
-  .print-modal-portal .no-print,
-  .print-modal-portal .print\:hidden {
-    display: none !important;
-  }
-
-  /* Committee Action Plan Direct Print Isolation */
-  body.print-action-plan-active > *:not(#root) {
-    display: none !important;
-  }
-  body.print-action-plan-active #root > *:not(.fixed.inset-0) {
-    display: none !important;
-  }
-  body.print-action-plan-active .fixed.inset-0 {
-    position: static !important;
-    background: transparent !important;
-    backdrop-filter: none !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    display: block !important;
-    overflow: visible !important;
-  }
-  body.print-action-plan-active .fixed.inset-0 > div {
-    max-width: 100% !important;
-    width: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    box-shadow: none !important;
-    border: none !important;
-    background: #ffffff !important;
-  }
-  body.print-action-plan-active .fixed.inset-0 .no-print,
-  body.print-action-plan-active .fixed.inset-0 button,
-  body.print-action-plan-active .fixed.inset-0 label {
-    display: none !important;
-  }
-  body.print-action-plan-active .report-print-root {
-    display: block !important;
-    visibility: visible !important;
-    width: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    background: #ffffff !important;
-  }
-  .report-modal-print-wrapper,
-  .fixed.inset-0.z-50 {
-    position: static !important;
-    inset: auto !important;
-    width: 100% !important;
-    height: auto !important;
-    min-height: 0 !important;
-    max-height: none !important;
-    background: transparent !important;
-    backdrop-filter: none !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    display: block !important;
-    z-index: auto !important;
-    overflow: visible !important;
-  }
-
-  .report-modal-print-card {
-    position: static !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    height: auto !important;
-    min-height: 0 !important;
-    max-height: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    border: none !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    background: #ffffff !important;
-    overflow: visible !important;
-  }
-
-  .report-modal-print-body {
-    position: static !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    height: auto !important;
-    min-height: 0 !important;
-    max-height: none !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    background: #ffffff !important;
-    overflow: visible !important;
-    scrollbar-width: none !important;
-    -ms-overflow-style: none !important;
-  }
-
-  .report-modal-print-body::-webkit-scrollbar {
-    display: none !important;
-    width: 0 !important;
-    height: 0 !important;
-  }
-
-  /* Single Invoice Modal Overlay Reset */
-  .single-invoice-print-wrapper {
-    position: static !important;
-    inset: auto !important;
-    width: 100% !important;
-    height: auto !important;
-    min-height: 0 !important;
-    max-height: none !important;
-    background: transparent !important;
-    backdrop-filter: none !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    display: block !important;
-    z-index: auto !important;
-    overflow: visible !important;
-  }
-
-  .single-invoice-print-card {
-    position: static !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    height: auto !important;
-    min-height: 0 !important;
-    max-height: none !important;
-    margin: 0 auto !important;
-    padding: 0 !important;
-    border: none !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    background: #ffffff !important;
-    overflow: visible !important;
-  }
-
-  /* Single Invoice / Voucher Sheet Boundary */
-  .single-invoice-sheet {
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
-    page-break-before: auto !important;
-    page-break-after: auto !important;
-    break-before: auto !important;
-    break-after: auto !important;
-    height: auto !important;
-    min-height: 0 !important;
-    max-height: none !important;
-    overflow: visible !important;
-    margin: 0 !important;
-    box-shadow: none !important;
-  }
-
-  /* Ensure screen-only controls, backdrops, and interactive elements are hidden */
-  .print-controls-bar,
-  .no-print,
-  .print-hidden,
-  .print\:hidden {
-    display: none !important;
-  }
-
-  /* Hide all navigation, headers, sidebars, drawers, buttons */
+  /* ============================================================
+     1. GLOBAL HIDE FOR ALL SCREEN APPLICATION UI
+     ============================================================ */
   header,
   nav,
   aside,
@@ -554,13 +339,144 @@ aside button,
   .mobile-nav-bar,
   .mobile-status-bar,
   .mobile-header-bar,
+  .app-sidebar-container,
   .ai-advisor-modal,
   .btn-floating,
-  .report-screen-ui {
+  .floating-action-btn,
+  #btn-floating-calculator,
+  .print-controls-bar,
+  .no-print,
+  .print-hidden,
+  .print\:hidden,
+  .report-screen-ui,
+  .screen-only,
+  .print-ignore,
+  button:not(.allow-print),
+  input[type="checkbox"]:not(.allow-print),
+  input[type="text"]:not(.allow-print),
+  input[type="search"]:not(.allow-print),
+  input[type="date"]:not(.allow-print),
+  select:not(.allow-print),
+  .fixed.bottom-0:not(.print-footer),
+  .fixed.top-0:not(.print-header) {
     display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
   }
 
-  /* Main App Container Reset for Print */
+  /* ============================================================
+     2. UNIVERSAL MODAL PRINT ISOLATION
+     When any modal or single invoice/voucher is open,
+     suppress all background page content and show ONLY the document!
+     ============================================================ */
+  
+  /* When an In-DOM modal is open inside #root or main */
+  body:has(.single-invoice-print-wrapper) #app-shell-root > header,
+  body:has(.single-invoice-print-wrapper) #app-shell-root > div > aside,
+  body:has(.single-invoice-print-wrapper) #app-shell-root > div > main,
+  body:has(.report-modal-print-wrapper) #app-shell-root > header,
+  body:has(.report-modal-print-wrapper) #app-shell-root > div > aside,
+  body:has(.report-modal-print-wrapper) #app-shell-root > div > main > *:not(.report-modal-print-wrapper),
+  body:has(.fixed.inset-0.z-50) #app-shell-root > header,
+  body:has(.fixed.inset-0.z-50) #app-shell-root > div > aside,
+  body:has(.fixed.inset-0.z-50) #app-shell-root > div > main > *:not(.fixed.inset-0.z-50) {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* When portal modal is active outside #root */
+  body.print-modal-active #root:not(:has(.single-invoice-print-wrapper):not(:has(.report-modal-print-wrapper))),
+  body:has(.print-modal-portal) #root:not(:has(.single-invoice-print-wrapper):not(:has(.report-modal-print-wrapper))) {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* Reset all modal containers to clean, unconstrained block document */
+  .single-invoice-print-wrapper,
+  .report-modal-print-wrapper,
+  .print-modal-portal,
+  .fixed.inset-0.z-50,
+  div.fixed.inset-0 {
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+    z-index: auto !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Reset modal cards to clean white document paper */
+  .single-invoice-print-card,
+  .report-modal-print-card,
+  .print-modal-card,
+  div.fixed.inset-0 > div {
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  /* Document Body / Paper inside modals */
+  .single-invoice-sheet,
+  .print-modal-paper,
+  .report-modal-print-body,
+  .printable-content,
+  .printable-area,
+  #salary-slip-printable,
+  #bank-letter-print-canvas {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    overflow: visible !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+
+  .single-invoice-sheet {
+    border: 2px solid #0f172a !important;
+    padding: 18px !important;
+    margin: 0 auto !important;
+    border-radius: 0 !important;
+  }
+
+  /* ============================================================
+     3. IN-PAGE REPORT ISOLATION (REPORT CENTER & DIRECT VIEWS)
+     ============================================================ */
   #app-shell-root,
   .app-shell-container,
   main,
@@ -573,11 +489,19 @@ aside button,
     border: none !important;
     background: #ffffff !important;
     overflow: visible !important;
+    display: block !important;
   }
 
-  /* Official Report Print System Container */
-  .report-print-root {
+  /* Hide screen-only sub-containers in Report Center */
+  .report-center-container > *:not(:has(.report-print-root)):not(.report-print-root):not(.report-print-canvas) {
+    display: none !important;
+  }
+
+  /* Official Report Print Container */
+  .report-print-root,
+  .report-print-canvas {
     display: block !important;
+    visibility: visible !important;
     position: static !important;
     width: 100% !important;
     max-width: 100% !important;
@@ -589,26 +513,109 @@ aside button,
     font-family: "Baloo Da 2", system-ui, sans-serif !important;
   }
 
-  .report-print-root table {
+  /* ============================================================
+     4. MULTI-PAGE REPORT TABLES & PAGE BREAK DISCIPLINE
+     ============================================================ */
+  .report-print-root table,
+  .print-modal-paper table,
+  .report-modal-print-body table,
+  table.print-table {
     width: 100% !important;
     max-width: 100% !important;
     border-collapse: collapse !important;
+    background: #ffffff !important;
+    page-break-inside: auto !important;
+    break-inside: auto !important;
   }
 
-  .report-print-root thead {
+  .report-print-root thead,
+  .print-modal-paper thead,
+  .report-modal-print-body thead,
+  table.print-table thead {
     display: table-header-group !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
   }
 
-  .report-print-root tr {
+  .report-print-root tfoot,
+  .print-modal-paper tfoot,
+  .report-modal-print-body tfoot,
+  table.print-table tfoot {
+    display: table-footer-group !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .report-print-root tr,
+  .print-modal-paper tr,
+  .report-modal-print-body tr,
+  table.print-table tr {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
   }
 
   .report-print-root td,
-  .report-print-root th {
+  .report-print-root th,
+  .print-modal-paper td,
+  .print-modal-paper th,
+  .report-modal-print-body td,
+  .report-modal-print-body th {
     overflow-wrap: anywhere !important;
     word-break: break-word !important;
   }
+
+  /* ============================================================
+     5. SIGNATURE & KPI BLOCKS INTEGRITY
+     ============================================================ */
+  .print-signature-block,
+  .signatures-grid,
+  .kpi-summary-box,
+  .letterhead-header-box,
+  .break-inside-avoid {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* ============================================================
+     6. POS / THERMAL PRINTER ROLL RULES (58mm / 80mm)
+     ============================================================ */
+  body:has(.pos-print-58mm-active),
+  body:has(.pos-print-58mm) {
+    width: 58mm !important;
+    max-width: 58mm !important;
+  }
+
+  body:has(.pos-print-80mm-active),
+  body:has(.pos-print-80mm) {
+    width: 80mm !important;
+    max-width: 80mm !important;
+  }
+
+  .pos-thermal-container {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    margin: 0 auto !important;
+    padding: 2mm !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    box-shadow: none !important;
+    border: none !important;
+    font-family: "Tiro Bangla", serif !important;
+  }
+
+  .pos-print-58mm {
+    width: 54mm !important;
+    max-width: 54mm !important;
+  }
+
+  .pos-print-80mm {
+    width: 76mm !important;
+    max-width: 76mm !important;
+  }
 }
+
 
 
