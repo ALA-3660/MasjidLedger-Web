@@ -44,6 +44,9 @@ import { DailyTransactionsView } from './components/DailyTransactionsView';
 import { UserManagementView } from './components/UserManagementView';
 import { PublicPortalView } from './components/PublicPortalView';
 import { QRManagementView } from './components/QRManagementView';
+import { QuickEntryView } from './components/QuickEntryView';
+import { PrayerScheduleView } from './components/PrayerScheduleView';
+import { PrayerTimesView } from './components/PrayerTimesView';
 import { AdminLoginScreen } from './components/AdminLoginScreen';
 import { MoneyReceiptModal, VoucherModal, PrintFormat } from './components/PrintModals';
 import { ChangeCalculatorModal } from './components/ChangeCalculatorModal';
@@ -52,7 +55,7 @@ import { QrActionCardsModal } from './components/QrActionCardsModal';
 import { RecordActionModal } from './components/RecordActionModal';
 import { RecordPrintLabelModal } from './components/RecordPrintLabelModal';
 import { resolveRecordFromSystem } from './services/qrBarcodeService';
-import { QrScanResult, ResolvedRecordItem, RecordSpecificAction } from './types/qrBarcodeTypes';
+import { QrScanResult, ResolvedRecordItem, RecordSpecificAction, QRDestinationType } from './types/qrBarcodeTypes';
 import {
   AlertCircle,
   RefreshCw,
@@ -102,6 +105,16 @@ export default function App() {
   const [scannedActionIntent, setScannedActionIntent] = useState<QrScanResult | null>(null);
   const [activeRecordAction, setActiveRecordAction] = useState<ResolvedRecordItem | null>(null);
   const [activePrintLabel, setActivePrintLabel] = useState<ResolvedRecordItem | null>(null);
+  const [quickEntryConfig, setQuickEntryConfig] = useState<{
+    destination: QRDestinationType;
+    recordId?: string;
+    data?: any;
+  } | null>(null);
+
+  const handleOpenQuickEntry = (destination: QRDestinationType, recordId?: string, data?: any) => {
+    setQuickEntryConfig({ destination, recordId, data });
+    setCurrentTab('quickEntry');
+  };
 
   // Domain Entity Collections
   const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
@@ -295,6 +308,45 @@ export default function App() {
     };
     window.addEventListener('keydown', handleGlobalShortcuts);
 
+    // Deep Link & Scanned URL Parameter Router
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const quickParam = urlParams.get('quick') || urlParams.get('action');
+      const tokenParam = urlParams.get('qr') || urlParams.get('token');
+      const path = window.location.pathname;
+
+      if (path.startsWith('/quick/') || path.startsWith('/qr/')) {
+        const pathToken = path.split('/')[2];
+        if (pathToken) {
+          api
+            .resolveQrToken(pathToken)
+            .then((entity) => {
+              if (entity.type === 'PUBLIC') {
+                setCurrentTab('publicPortal');
+              } else {
+                handleOpenQuickEntry(entity.destinationType, entity.targetRecordId);
+              }
+            })
+            .catch((err) => console.warn('Deep link resolve error:', err));
+        }
+      } else if (tokenParam) {
+        api
+          .resolveQrToken(tokenParam)
+          .then((entity) => {
+            if (entity.type === 'PUBLIC') {
+              setCurrentTab('publicPortal');
+            } else {
+              handleOpenQuickEntry(entity.destinationType, entity.targetRecordId);
+            }
+          })
+          .catch((err) => console.warn('Deep link token resolve error:', err));
+      } else if (quickParam) {
+        handleOpenQuickEntry(quickParam as QRDestinationType);
+      }
+    } catch (e) {
+      console.warn('Deep link initialization error:', e);
+    }
+
     return () => {
       clearInterval(pollInterval);
       window.removeEventListener('keydown', handleGlobalShortcuts);
@@ -349,6 +401,25 @@ export default function App() {
       const resolved = getResolvedRecord(result.code || result.raw);
       if (resolved) {
         setActiveRecordAction(resolved);
+      }
+    } else if (result.type === 'ACTION' && result.destinationType) {
+      handleOpenQuickEntry(result.destinationType, result.recordIdOrNumber);
+      return;
+    } else if (result.qrEntity) {
+      if (result.qrEntity.type === 'PUBLIC') {
+        if (
+          result.qrEntity.destinationType === 'PUBLIC_PORTAL' ||
+          result.qrEntity.destinationType === 'DONATION' ||
+          result.qrEntity.destinationType === 'NOTICE_BOARD' ||
+          result.qrEntity.destinationType === 'PRAYER_SCHEDULE' ||
+          result.qrEntity.destinationType === 'RAMADAN_CALENDAR'
+        ) {
+          setCurrentTab('publicPortal');
+          return;
+        }
+      } else {
+        handleOpenQuickEntry(result.qrEntity.destinationType, result.qrEntity.targetRecordId);
+        return;
       }
     }
 
@@ -939,6 +1010,8 @@ export default function App() {
           onOpenAi={() => setIsAiOpen(true)}
           onOpenScanner={() => setIsScannerOpen(true)}
           onOpenActionQrHub={() => setIsActionCardHubOpen(true)}
+          onOpenDisplayScreen={() => setCurrentTab('publicPortal')}
+          onOpenPrintSchedule={() => setCurrentTab('prayerTimes')}
           onRefresh={() => loadData(false)}
         />
       )}
@@ -1197,11 +1270,37 @@ export default function App() {
         <QRManagementView
           currentMosque={mosque}
           currentUser={currentUser}
-          language={language}
+          donationBoxes={donationBoxes}
+          staffList={staff}
+          properties={properties}
+          assets={assets}
+          onOpenQuickEntry={(dest, id) => handleOpenQuickEntry(dest, id)}
+          onNavigateToTab={(tab) => setCurrentTab(tab as NavTab)}
         />
       )}
 
-      {/* 13. Public Portal View */}
+      {/* 13. Quick Entry Hub (Mobile & Desktop High-Speed Entry) */}
+      {currentTab === 'quickEntry' && (
+        <QuickEntryView
+          initialDestination={quickEntryConfig?.destination || 'INCOME_NEW'}
+          initialRecordId={quickEntryConfig?.recordId}
+          initialData={quickEntryConfig?.data}
+          currentUser={currentUser}
+          currentMosque={mosque}
+          accountHeads={accountHeads}
+          financialAccounts={accounts}
+          staffList={staff}
+          donationBoxes={donationBoxes}
+          properties={properties}
+          assets={assets}
+          cemeteryRecords={cemetery}
+          onBackToDashboard={() => setCurrentTab('dashboard')}
+          onNavigateToTab={(tab) => setCurrentTab(tab as NavTab)}
+          onRequireLogin={() => setIsAuthenticated(true)}
+        />
+      )}
+
+      {/* 14. Public Portal View */}
       {(currentTab === 'public' || currentTab === 'publicPortal') && (
         <PublicPortalView
           mosque={mosque}
@@ -1211,6 +1310,21 @@ export default function App() {
           onDonate={handleAddDonation}
           onPrintReceipt={(don) => setActiveDonationReceipt({ donation: don, format: 'POS_80', isReprint: false })}
           onNavigateToLogin={() => setCurrentTab('dashboard')}
+        />
+      )}
+
+      {/* 15. Prayer Times & Jamaat Management View */}
+      {currentTab === 'prayerTimes' && (
+        <PrayerTimesView
+          currentMosque={mosque}
+          currentUser={currentUser}
+          language={language}
+          onOpenDisplayScreen={() => setCurrentTab('publicPortal')}
+          onOpenPrintSchedule={() => window.print()}
+          onOpenSettings={() => setCurrentTab('admin')}
+          onSaveJamaatTimes={async (jamaatSettings) => {
+            await handleSaveMosqueSettings({ jamaatSettings });
+          }}
         />
       )}
     </>

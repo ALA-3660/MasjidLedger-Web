@@ -390,6 +390,13 @@ export const PublicPortalSettingsView: React.FC<PublicPortalSettingsViewProps> =
               onChange={() => handleToggle('mosqueEmail')}
             />
             <ToggleRow
+              id="locationMap"
+              label="মসজিদের গুগল ম্যাপ ও অবস্থান"
+              desc="পাবলিক পোর্টালে মসজিদের ভৌগোলিক ম্যাপ ও দিকনির্দেশনা প্রদর্শন"
+              checked={settings.locationMap ?? true}
+              onChange={() => handleToggle('locationMap')}
+            />
+            <ToggleRow
               id="waqfId"
               label="ওয়াকফ এস্টেট নাম ও ইসি নম্বর"
               desc="বাংলাদেশ ওয়াকফ প্রশাসনের অন্তর্ভুক্তির বিবরণ"
@@ -446,6 +453,14 @@ export const PublicPortalSettingsView: React.FC<PublicPortalSettingsViewProps> =
               desc="শুক্রবার জুমার নামাজের বিশেষ সময়সূচি"
               checked={settings.jumuahSchedule}
               onChange={() => handleToggle('jumuahSchedule')}
+            />
+            <ToggleRow
+              id="liveWaqtStatus"
+              label="লাইভ ওয়াক্ত স্ট্যাটাস ও কাউন্টডাউন"
+              desc="বর্তমান ওয়াক্তের চলমান স্ট্যাটাস ও পরবর্তী নামাজের রিয়েল-টাইম কাউন্টডাউন টাইমার"
+              checked={settings.liveWaqtStatus ?? true}
+              onChange={() => handleToggle('liveWaqtStatus')}
+              badge="লাইভ ইঞ্জিন"
             />
             <ToggleRow
               id="ramadanSchedule"
@@ -756,15 +771,15 @@ export const PublicPortalSettingsView: React.FC<PublicPortalSettingsViewProps> =
               <Tv className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-slate-900">১০. বড় স্ক্রিন / টিভি ডিসপ্লে মোড</h2>
-              <p className="text-[11px] text-slate-500">মসজিদের ডিজিটাল ডিসপ্লে বোর্ডের থিম ও সময়</p>
+              <h2 className="text-sm font-bold text-slate-900">১০. বড় স্ক্রিন / মসজিদ ডিসপ্লে মোড (Kiosk Settings)</h2>
+              <p className="text-[11px] text-slate-500">টিভি, এলইডি স্ক্রিন ও অ্যান্ড্রয়েড ডিসপ্লে বোর্ডের কনফিগারেশন</p>
             </div>
           </div>
 
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                ডিফল্ট টিভি স্ক্রিন থিম (TV Display Theme)
+                ডিফল্ট টিভি ডিসপ্লে থিম (Display Mode Theme)
               </label>
               <select
                 id="select-display-theme"
@@ -773,15 +788,33 @@ export const PublicPortalSettingsView: React.FC<PublicPortalSettingsViewProps> =
                 onChange={(e) => handleSelectChange('displayModeTheme', e.target.value)}
                 className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-semibold focus:ring-2 focus:ring-blue-600"
               >
-                <option value="EMERALD_NIGHT">এমেরাল্ড নাইট (গাঢ় সবুজ ও সোনালী - ইসলামিক লুক)</option>
-                <option value="DARK">স্লিট ডার্ক (উচ্চ কনট্রাস্ট ও আধুনিক লুক)</option>
-                <option value="LIGHT">ক্লিন লাইট (পরিষ্কার সাদা ও নীল)</option>
+                <option value="EMERALD_NIGHT">এমেরাল্ড নাইট (মরু সবুজ ও সোনালী - ক্লাসিক মসজিদ লুক)</option>
+                <option value="MIDNIGHT_GOLD">মিডনাইট গোল্ড (কালো ও রাজকীয় সোনালী - প্রিমিয়াম হাই-কনট্রাস্ট)</option>
+                <option value="LIGHT">ক্লিন ডেলাইট (উজ্জ্বল সাদা ও নীল - পরিষ্কার পাঠযোগ্যতা)</option>
               </select>
             </div>
 
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                অটো-রিফ্রেশ বিরতি (Auto Sync Interval)
+                প্রতিটি স্লাইডের সময়কাল (Slide Rotation Duration)
+              </label>
+              <select
+                id="select-slide-duration"
+                disabled={!canEdit}
+                value={settings.slideDurationSec || 15}
+                onChange={(e) => handleSelectChange('slideDurationSec', Number(e.target.value))}
+                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-semibold focus:ring-2 focus:ring-blue-600"
+              >
+                <option value={10}>১০ সেকেন্ড পর পর স্লাইড পরিবর্তন</option>
+                <option value={15}>১৫ সেকেন্ড পর পর (প্রস্তাবিত)</option>
+                <option value={20}>২০ সেকেন্ড পর পর</option>
+                <option value={30}>৩০ সেকেন্ড পর পর</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                অটো-ডাটা সিঙ্ক বিরতি (Auto Sync Interval)
               </label>
               <select
                 id="select-refresh-interval"
@@ -795,6 +828,23 @@ export const PublicPortalSettingsView: React.FC<PublicPortalSettingsViewProps> =
                 <option value={60}>১ মিনিট পরপর</option>
                 <option value={120}>২ মিনিট পরপর</option>
               </select>
+            </div>
+
+            <div className="pt-2 space-y-2.5">
+              <ToggleRow
+                id="enableAutoSlideRotation"
+                label="স্বয়ংক্রিয় স্লাইড রোটেশন (Auto Slide Rotation)"
+                desc="টিভি ডিসপ্লেতে স্বয়ংক্রিয়ভাবে একটির পর একটি স্লাইড প্রদর্শন"
+                checked={settings.enableAutoSlideRotation ?? true}
+                onChange={() => handleToggle('enableAutoSlideRotation')}
+              />
+              <ToggleRow
+                id="enableDisplayAudioAlert"
+                label="জামাত ও আজান সাউন্ড নোটিফিকেশন"
+                desc="জামাতের সময় উপস্থিত হলে ক্লায়েন্ট-সাইড মৃদু চিম / বীপ সতর্কবার্তা"
+                checked={settings.enableDisplayAudioAlert ?? true}
+                onChange={() => handleToggle('enableDisplayAudioAlert')}
+              />
             </div>
           </div>
         </div>

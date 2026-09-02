@@ -225,6 +225,12 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({
             SETTINGS (সেটিংস পরিবর্তন)
           </span>
         );
+      case 'JAMAAT_TIME_UPDATED':
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+            JAMAAT TIME (জামাত সময় পরিবর্তন)
+          </span>
+        );
       default:
         return (
           <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">

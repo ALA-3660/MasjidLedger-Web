@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { buildDailyPrayerSchedule, toBanglaDigits } from '../lib/prayerEngine';
 import {
   User,
   Mosque,
@@ -44,6 +45,9 @@ import {
   PublicPortalData,
   QRCodeEntity,
   QRStatus,
+  BackupRecord,
+  RestoreRecord,
+  BackupSettings,
 } from '../types';
 
 const DB_FILE_PATH = path.join(process.cwd(), 'data', 'masjidledger_db.json');
@@ -83,6 +87,9 @@ export class DatabaseStore {
   smsLogs: SmsLog[] = [];
   documentTokens: PublicDocumentToken[] = [];
   idempotencyMap: Record<string, { result: any; createdAt: number }> = {};
+  backupRecords: BackupRecord[] = [];
+  restoreRecords: RestoreRecord[] = [];
+  backupSettings: Record<string, BackupSettings> = {};
 
   constructor() {
     this.init();
@@ -167,6 +174,9 @@ export class DatabaseStore {
         this.qrCodes = parsed.qrCodes || [];
         this.auditLogs = parsed.auditLogs || [];
         this.idempotencyMap = parsed.idempotencyMap || {};
+        this.backupRecords = parsed.backupRecords || [];
+        this.restoreRecords = parsed.restoreRecords || [];
+        this.backupSettings = parsed.backupSettings || {};
 
         return;
       }
@@ -222,6 +232,9 @@ export class DatabaseStore {
         qrCodes: this.qrCodes,
         auditLogs: this.auditLogs,
         idempotencyMap: this.idempotencyMap,
+        backupRecords: this.backupRecords,
+        restoreRecords: this.restoreRecords,
+        backupSettings: this.backupSettings,
       };
       fs.writeFileSync(DB_FILE_PATH, JSON.stringify(data, null, 2), 'utf-8');
     } catch (e) {
@@ -3678,6 +3691,84 @@ export class DatabaseStore {
     return mosque;
   }
 
+  getMosque(mosqueId: string): Mosque | undefined {
+    return this.mosques.find(m => m.id === mosqueId);
+  }
+
+  getMosques(): Mosque[] {
+    return this.mosques;
+  }
+
+  updateMosque(mosqueId: string, updates: Partial<Mosque>): Mosque {
+    const mosque = this.mosques.find(m => m.id === mosqueId);
+    if (!mosque) {
+      throw new Error('Mosque not found');
+    }
+    Object.assign(mosque, updates, { updatedAt: new Date().toISOString() });
+    this.save();
+    return mosque;
+  }
+
+  clearDemoData(
+    mosqueId: string,
+    userId: string,
+    userName: string,
+    userRole: string,
+    ip?: string
+  ): void {
+    const mosque = this.mosques.find(m => m.id === mosqueId);
+    if (!mosque) {
+      throw new Error('Mosque not found');
+    }
+
+    this.incomeEntries = this.incomeEntries.filter(e => e.mosqueId !== mosqueId);
+    this.expenseEntries = this.expenseEntries.filter(e => e.mosqueId !== mosqueId);
+    this.donations = this.donations.filter(e => e.mosqueId !== mosqueId);
+    this.donationBoxes = this.donationBoxes.filter(e => e.mosqueId !== mosqueId);
+    this.donationBoxCollections = this.donationBoxCollections.filter(e => e.mosqueId !== mosqueId);
+    this.committeeMembers = this.committeeMembers.filter(e => e.mosqueId !== mosqueId);
+    this.committeeMeetings = this.committeeMeetings.filter(e => e.mosqueId !== mosqueId);
+    this.committeeNotices = this.committeeNotices.filter(e => e.mosqueId !== mosqueId);
+    this.committeeResolutions = this.committeeResolutions.filter(e => e.mosqueId !== mosqueId);
+    this.committeeActionPlans = this.committeeActionPlans.filter(e => e.mosqueId !== mosqueId);
+    this.committeeActivities = this.committeeActivities.filter(e => e.mosqueId !== mosqueId);
+    this.committeeTasks = this.committeeTasks.filter(e => e.mosqueId !== mosqueId);
+    this.committeeManualEvaluations = this.committeeManualEvaluations.filter(e => e.mosqueId !== mosqueId);
+    this.subCommittees = this.subCommittees.filter(e => e.mosqueId !== mosqueId);
+    this.staffList = this.staffList.filter(e => e.mosqueId !== mosqueId);
+    this.staffPayments = this.staffPayments.filter(e => e.mosqueId !== mosqueId);
+    this.staffBankTransferLetters = this.staffBankTransferLetters.filter(e => e.mosqueId !== mosqueId);
+    this.assets = this.assets.filter(e => e.mosqueId !== mosqueId);
+    this.properties = this.properties.filter(e => e.mosqueId !== mosqueId);
+    this.cemeteryRecords = this.cemeteryRecords.filter(e => e.mosqueId !== mosqueId);
+    this.notices = this.notices.filter(e => e.mosqueId !== mosqueId);
+    this.notifications = this.notifications.filter(e => e.mosqueId !== mosqueId);
+    this.transfers = this.transfers.filter(e => e.mosqueId !== mosqueId);
+    this.smsLogs = this.smsLogs.filter(e => e.mosqueId !== mosqueId);
+
+    this.accounts = this.accounts.map(acc => {
+      if (acc.mosqueId === mosqueId) {
+        return { ...acc, currentBalance: 0, initialBalance: 0 };
+      }
+      return acc;
+    });
+
+    this.save();
+
+    this.logAudit(
+      mosque.id,
+      userId,
+      userName,
+      userRole,
+      'DELETE',
+      'SYSTEM',
+      'ডেমু ডাটা মুছে দিয়ে নতুন প্রকৃত ডাটা এন্ট্রি করার উপযোগী করা হয়েছে',
+      mosque.id,
+      ip,
+      { status: 'SUCCESS' }
+    );
+  }
+
   getSanitizedPublicPortalData(mosqueIdOrCode?: string): PublicPortalData {
     let mosque: Mosque | undefined;
     if (mosqueIdOrCode) {
@@ -3722,21 +3813,27 @@ export class DatabaseStore {
     }
 
     // 2. Prayer Schedule
+    const computedSchedule = buildDailyPrayerSchedule(
+      new Date(),
+      mosque.prayerSettings,
+      mosque.jamaatSettings,
+      mosque.district
+    );
+
     const prayerTimes = settings.prayerSchedule
-      ? [
-          { nameBn: 'ফজর (Fajr)', nameEn: 'Fajr', adhan: '০৪:৫০', iqamah: '০৫:১৫' },
-          { nameBn: 'যোহর (Dhuhr)', nameEn: 'Dhuhr', adhan: '১২:১৫', iqamah: '০১:১৫' },
-          { nameBn: 'আসর (Asr)', nameEn: 'Asr', adhan: '০৪:৩০', iqamah: '০৪:৪৫' },
-          { nameBn: 'মাগরিব (Maghrib)', nameEn: 'Maghrib', adhan: '০৬:২৫', iqamah: '০৬:৩০' },
-          { nameBn: 'এশা (Isha)', nameEn: 'Isha', adhan: '০৭:৪৫', iqamah: '০৮:১৫' },
-        ]
+      ? computedSchedule.prayers.map(p => ({
+          nameBn: `${p.nameBn} (${p.nameEn})`,
+          nameEn: p.nameEn,
+          adhan: toBanglaDigits(p.adhan),
+          iqamah: p.jamaat ? toBanglaDigits(p.jamaat) : 'সময় নির্ধারণ করা হয়নি',
+        }))
       : [];
 
-    const jumuahTime = settings.jumuahSchedule
+    const jumuahTime = settings.jumuahSchedule && computedSchedule.jumuah
       ? {
-          adhan: '১২:৩০',
-          khutbah: '০১:০০',
-          iqamah: '০১:৩০',
+          adhan: toBanglaDigits(computedSchedule.jumuah.adhan),
+          khutbah: toBanglaDigits(computedSchedule.jumuah.khutbah),
+          iqamah: toBanglaDigits(computedSchedule.jumuah.jamaat),
         }
       : undefined;
 
@@ -3803,10 +3900,16 @@ export class DatabaseStore {
       };
     }
 
-    // 5. Notices (Only active public notices)
+    // 5. Notices (Only active public notices that are not expired)
+    const todayStr = new Date().toISOString().split('T')[0];
     const publicNotices: PublicPortalData['notices'] = settings.notices
       ? this.notices
-          .filter(n => n.mosqueId === mosque!.id && n.isPublic === true && n.status === 'ACTIVE')
+          .filter(n => {
+            if (n.mosqueId !== mosque!.id) return false;
+            if (n.isPublic !== true || n.status !== 'ACTIVE') return false;
+            if (n.expiryDate && n.expiryDate < todayStr) return false; // Filter out expired
+            return true;
+          })
           .map(n => ({
             id: n.id,
             title: n.title,
@@ -3999,6 +4102,49 @@ export class DatabaseStore {
     const idx = this.qrCodes.findIndex(q => q.id === id);
     if (idx === -1) throw new Error('QR code not found');
     this.qrCodes[idx].status = status;
+    this.qrCodes[idx].updatedAt = new Date().toISOString();
+    this.save();
+    return this.qrCodes[idx];
+  }
+
+  deleteQrCode(id: string): boolean {
+    const idx = this.qrCodes.findIndex(q => q.id === id);
+    if (idx === -1) return false;
+    this.qrCodes.splice(idx, 1);
+    this.save();
+    return true;
+  }
+
+  bulkCreateQrCodes(list: Partial<QRCodeEntity>[]): QRCodeEntity[] {
+    const created: QRCodeEntity[] = [];
+    for (const item of list) {
+      const newQr: QRCodeEntity = {
+        id: `qr-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        mosqueId: item.mosqueId || 'mosque-mamun-001',
+        name: item.name || 'স্মার্ট QR কোড',
+        type: item.type || 'OPERATIONAL',
+        destinationType: item.destinationType || 'INCOME_NEW',
+        token: `token-${Math.random().toString(36).substring(2, 10)}${Date.now()}`,
+        status: item.status || 'ACTIVE',
+        description: item.description || '',
+        targetRecordId: item.targetRecordId,
+        targetRecordCode: item.targetRecordCode,
+        targetCustomTitle: item.targetCustomTitle,
+        useCount: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      this.qrCodes.push(newQr);
+      created.push(newQr);
+    }
+    this.save();
+    return created;
+  }
+
+  regenerateQrToken(id: string): QRCodeEntity {
+    const idx = this.qrCodes.findIndex(q => q.id === id);
+    if (idx === -1) throw new Error('QR code not found');
+    this.qrCodes[idx].token = `token-${Math.random().toString(36).substring(2, 10)}${Date.now()}`;
     this.qrCodes[idx].updatedAt = new Date().toISOString();
     this.save();
     return this.qrCodes[idx];

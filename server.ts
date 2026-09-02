@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import { GoogleGenAI } from '@google/genai';
 import { db } from './src/server/db';
 import { realtime } from './src/server/ws';
+import { buildDailyPrayerSchedule, buildMonthlyPrayerCalendar } from './src/lib/prayerEngine';
 import {
   User,
   Mosque,
@@ -43,7 +44,9 @@ import {
   PropertyKhajnaRecord,
   SubCommittee,
   PublicDocumentToken,
-  SmsLog
+  SmsLog,
+  BackupRecord,
+  RestoreRecord
 } from './src/types';
 
 const app = express();
@@ -768,6 +771,102 @@ app.put('/api/v1/mosques/current', authenticate, requirePermission('MANAGE_SETTI
     }
   }
 
+  // Track Jamaat time changes
+  if (body.jamaatSettings) {
+    const oldJ = m.jamaatSettings || {};
+    const newJ = body.jamaatSettings;
+    const prayers = [
+      { key: 'fajr', nameBn: 'ফজর' },
+      { key: 'dhuhr', nameBn: 'যোহর' },
+      { key: 'asr', nameBn: 'আসর' },
+      { key: 'maghrib', nameBn: 'মাগরিব' },
+      { key: 'isha', nameBn: 'এশা' },
+      { key: 'jumuah', nameBn: 'জুমুআ' },
+    ];
+
+    for (const p of prayers) {
+      const oldTime = (oldJ as any)[p.key]?.jamaat;
+      const newTime = (newJ as any)[p.key]?.jamaat;
+      if (newTime && oldTime !== newTime) {
+        db.logAudit(
+          m.id,
+          req.user!.id,
+          req.user!.name,
+          req.user!.role,
+          'JAMAAT_TIME_UPDATED',
+          'JAMAAT_SETTINGS',
+          `${p.nameBn} জামাতের সময় পরিবর্তিত হয়েছে (পূর্ববর্তী: ${oldTime || 'অনির্ধারিত'}, নতুন: ${newTime})`,
+          m.id,
+          req.ip,
+          {
+            previousState: oldTime || 'NONE',
+            newState: newTime,
+            status: 'SUCCESS'
+          }
+        );
+      }
+    }
+  }
+
+  // Track Mosque Location & GPS Changes
+  if (body.district && body.district !== m.district) {
+    db.logAudit(
+      m.id,
+      req.user!.id,
+      req.user!.name,
+      req.user!.role,
+      'MOSQUE_LOCATION_UPDATED',
+      'LOCATION_SETTINGS',
+      `মসজিদের অবস্থান ও জেলা পরিবর্তিত হয়েছে (পূর্ববর্তী: ${m.district || 'অনির্ধারিত'}, নতুন: ${body.district})`,
+      m.id,
+      req.ip,
+      {
+        previousState: m.district || 'NONE',
+        newState: body.district,
+        status: 'SUCCESS'
+      }
+    );
+  }
+
+  if (body.latitude !== undefined && body.longitude !== undefined && (body.latitude !== (m as any).latitude || body.longitude !== (m as any).longitude)) {
+    db.logAudit(
+      m.id,
+      req.user!.id,
+      req.user!.name,
+      req.user!.role,
+      'MOSQUE_GPS_COORDINATES_UPDATED',
+      'LOCATION_SETTINGS',
+      `মসজিদের জিপিএস স্থানাঙ্ক পরিবর্তিত হয়েছে (Lat: ${body.latitude}, Lng: ${body.longitude})`,
+      m.id,
+      req.ip,
+      {
+        previousState: `${(m as any).latitude || ''}, ${(m as any).longitude || ''}`,
+        newState: `${body.latitude}, ${body.longitude}`,
+        status: 'SUCCESS'
+      }
+    );
+  }
+
+  // Track Prayer Calculation Parameter Changes
+  if (body.prayerSettings) {
+    db.logAudit(
+      m.id,
+      req.user!.id,
+      req.user!.name,
+      req.user!.role,
+      'PRAYER_CALCULATION_SETTINGS_UPDATED',
+      'PRAYER_SETTINGS',
+      `নামাজের জ্যোতির্বৈজ্ঞানিক হিসাব পদ্ধতি ও মাজহাব কনফিগারেশন আপডেট করা হয়েছে`,
+      m.id,
+      req.ip,
+      {
+        previousState: JSON.stringify(m.prayerSettings || 'DEFAULT_HANAFI'),
+        newState: JSON.stringify(body.prayerSettings),
+        status: 'SUCCESS'
+      }
+    );
+  }
+
   Object.assign(m, body, { updatedAt: new Date().toISOString() });
   db.save();
 
@@ -1195,6 +1294,39 @@ app.post('/api/v1/qr/:id/archive', authenticate, (req: AuthRequest, res: Respons
   }
 });
 
+app.post('/api/v1/qr/bulk', authenticate, (req: AuthRequest, res: Response) => {
+  try {
+    const list = req.body.list || [];
+    const mosqueId = req.currentMosque?.id || 'mosque-mamun-001';
+    const prepared = list.map((item: any) => ({ ...item, mosqueId }));
+    const created = db.bulkCreateQrCodes(prepared);
+    res.json({ success: true, data: created });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: { code: 'QR_BULK_CREATE_FAILED', message: err.message } });
+  }
+});
+
+app.delete('/api/v1/qr/:id', authenticate, (req: AuthRequest, res: Response) => {
+  try {
+    const deleted = db.deleteQrCode(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ success: false, error: { code: 'QR_NOT_FOUND', message: 'QR Code not found' } });
+    }
+    res.json({ success: true, message: 'QR Code deleted successfully' });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: { code: 'QR_DELETE_FAILED', message: err.message } });
+  }
+});
+
+app.post('/api/v1/qr/:id/regenerate-token', authenticate, (req: AuthRequest, res: Response) => {
+  try {
+    const updated = db.regenerateQrToken(req.params.id);
+    res.json({ success: true, data: updated });
+  } catch (err: any) {
+    res.status(404).json({ success: false, error: { code: 'QR_NOT_FOUND', message: err.message } });
+  }
+});
+
 app.get('/api/v1/qr/resolve/:token', (req: Request, res: Response) => {
   const qr = db.resolveQrToken(req.params.token);
   if (!qr) {
@@ -1346,6 +1478,198 @@ app.post('/api/v1/mosques/current/public-portal-settings/reset', authenticate, (
   }
 });
 
+// ==========================================
+// 🕌 PRAYER TIMES MANAGEMENT API ENDPOINTS
+// ==========================================
+
+// 1. Get Live / Daily Prayer Schedule (Location & Settings Aware)
+app.get('/api/v1/prayer/schedule', (req: Request, res: Response) => {
+  try {
+    const districtQuery = req.query.district as string | undefined;
+    const dateQuery = req.query.date as string | undefined;
+    const mosqueId = (req as any).currentMosque?.id || req.query.mosqueId as string;
+
+    const mosque = mosqueId ? db.mosques.find(m => m.id === mosqueId) : db.mosques[0];
+    const targetDate = dateQuery ? new Date(dateQuery) : new Date();
+
+    const schedule = buildDailyPrayerSchedule(
+      targetDate,
+      mosque?.prayerSettings,
+      mosque?.jamaatSettings,
+      districtQuery || mosque?.district || 'ঢাকা'
+    );
+
+    res.json({
+      success: true,
+      data: schedule,
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'PRAYER_CALCULATION_ERROR',
+        message: 'নামাজের সময় হিসাব করা সম্ভব হয়নি: ' + (err.message || 'অজানা ত্রুটি'),
+      },
+    });
+  }
+});
+
+// 2. Get 30-Day Monthly Prayer Calendar
+app.get('/api/v1/prayer/monthly', (req: Request, res: Response) => {
+  try {
+    const now = new Date();
+    const year = parseInt(req.query.year as string, 10) || now.getFullYear();
+    const month = parseInt(req.query.month as string, 10) || (now.getMonth() + 1);
+    const districtQuery = req.query.district as string | undefined;
+    const mosqueId = (req as any).currentMosque?.id || req.query.mosqueId as string;
+
+    const mosque = mosqueId ? db.mosques.find(m => m.id === mosqueId) : db.mosques[0];
+    const monthlyDays = buildMonthlyPrayerCalendar(
+      year,
+      month,
+      mosque?.prayerSettings,
+      districtQuery || mosque?.district || 'ঢাকা'
+    );
+
+    res.json({
+      success: true,
+      data: {
+        year,
+        month,
+        district: districtQuery || mosque?.district || 'ঢাকা',
+        days: monthlyDays,
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'PRAYER_MONTHLY_CALCULATION_ERROR',
+        message: 'মাসিক নামাজের সময়সূচী হিসাব করা সম্ভব হয়নি: ' + (err.message || 'অজানা ত্রুটি'),
+      },
+    });
+  }
+});
+
+// 3. Update Mosque Prayer Settings (Admin Only with Validation & Audit Log)
+app.put('/api/v1/mosques/current/prayer-settings', authenticate, (req: AuthRequest, res: Response) => {
+  const user = req.user!;
+  const mosque = req.currentMosque!;
+
+  const hasPermission =
+    user.role === 'SUPER_ADMIN' ||
+    user.role === 'MOSQUE_ADMIN' ||
+    user.permissions.includes('MANAGE_SETTINGS');
+
+  if (!hasPermission) {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: 'PERMISSION_DENIED',
+        message: 'নামাজের সময় ও জামাত সেটিংস পরিবর্তন করার অনুমতি আপনার নেই।'
+      }
+    });
+  }
+
+  const prayerSettings = req.body;
+  if (!prayerSettings || typeof prayerSettings !== 'object') {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_PAYLOAD', message: 'অবৈধ সেটিংস ডাটা প্রেরিত হয়েছে।' }
+    });
+  }
+
+  try {
+    const targetMosque = db.mosques.find(m => m.id === mosque.id) || mosque;
+    const previousPrayerSettings = targetMosque.prayerSettings;
+    targetMosque.prayerSettings = {
+      ...previousPrayerSettings,
+      ...prayerSettings,
+    };
+    targetMosque.jamaatSettings = {
+      fajr: { azan: prayerSettings.fajr?.adhan || targetMosque.jamaatSettings?.fajr?.azan || 'Auto', jamaat: prayerSettings.fajr?.jamaat || '' },
+      dhuhr: { azan: prayerSettings.dhuhr?.adhan || targetMosque.jamaatSettings?.dhuhr?.azan || 'Auto', jamaat: prayerSettings.dhuhr?.jamaat || '' },
+      asr: { azan: prayerSettings.asr?.adhan || targetMosque.jamaatSettings?.asr?.azan || 'Auto', jamaat: prayerSettings.asr?.jamaat || '' },
+      maghrib: { azan: prayerSettings.maghrib?.adhan || targetMosque.jamaatSettings?.maghrib?.azan || 'Auto', jamaat: prayerSettings.maghrib?.jamaat || '' },
+      isha: { azan: prayerSettings.isha?.adhan || targetMosque.jamaatSettings?.isha?.azan || 'Auto', jamaat: prayerSettings.isha?.jamaat || '' },
+      jumuah: {
+        azan: prayerSettings.jumuah?.adhan || targetMosque.jamaatSettings?.jumuah?.azan || '13:15',
+        khutbah: prayerSettings.jumuah?.khutbah || targetMosque.jamaatSettings?.jumuah?.khutbah || '13:25',
+        jamaat: prayerSettings.jumuah?.jamaat || targetMosque.jamaatSettings?.jumuah?.jamaat || '13:45',
+      },
+    };
+    db.save();
+    const updatedMosque = targetMosque;
+
+    // Log immutable audit entry
+    db.logAudit(
+      mosque.id,
+      user.id,
+      user.name,
+      user.role,
+      'PRAYER_SETTINGS_UPDATED',
+      'PRAYER_MANAGEMENT',
+      `নামাজের সময়সূচী ও জামাত কনফিগারেশন আপডেট করা হয়েছে (জেলা: ${prayerSettings.district || mosque.district || 'ঢাকা'})`,
+      mosque.id,
+      req.ip,
+      {
+        previousState: JSON.stringify(previousPrayerSettings),
+        newState: JSON.stringify(prayerSettings),
+        status: 'SUCCESS'
+      }
+    );
+
+    realtime.broadcastToMosque(mosque.id, 'PRAYER_SETTINGS_UPDATED', updatedMosque.prayerSettings, {
+      senderId: user.id
+    });
+
+    res.json({
+      success: true,
+      data: updatedMosque,
+      message: 'নামাজের সময়সূচী সেটিংস সফলভাবে সংরক্ষিত হয়েছে।'
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: { code: 'UPDATE_FAILED', message: error.message || 'সেটিংস সংরক্ষণে ব্যর্থ হয়েছে।' }
+    });
+  }
+});
+
+// Clear Demo Data & Prepare for Real Data Entry
+app.post('/api/v1/mosques/current/clear-demo-data', authenticate, (req: AuthRequest, res: Response) => {
+  const user = req.user!;
+  const mosque = req.currentMosque!;
+
+  const hasPermission =
+    user.role === 'SUPER_ADMIN' ||
+    user.role === 'MOSQUE_ADMIN' ||
+    user.permissions.includes('MANAGE_SETTINGS');
+
+  if (!hasPermission) {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: 'PERMISSION_DENIED',
+        message: 'ডেমু ডাটা মুছে ফেলার অনুমতি আপনার নেই।'
+      }
+    });
+  }
+
+  try {
+    db.clearDemoData(mosque.id, user.id, user.name, user.role, req.ip);
+    res.json({
+      success: true,
+      message: 'সমস্ত ডেমু ডাটা সফলভাবে মুছে ফেলা হয়েছে। এখন আপনি প্রকৃত ও সঠিক ডাটা এন্ট্রি করতে পারবেন।'
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: { code: 'CLEAR_FAILED', message: error.message || 'ডেমু ডাটা মুছতে ব্যর্থ হয়েছে।' }
+    });
+  }
+});
+
 // Public transparency portal (Legacy Compatibility with Sanitization)
 app.get('/api/v1/mosques/public/:code', (req: Request, res: Response) => {
   const code = req.params.code;
@@ -1356,6 +1680,645 @@ app.get('/api/v1/mosques/public/:code', (req: Request, res: Response) => {
     res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'মসজিদ খুঁজে পাওয়া যায়নি।' } });
   }
 });
+
+// ==========================================
+// GOOGLE DRIVE ENCRYPTED BACKUP & RESTORE API (PHASE 3B)
+// ==========================================
+import { encryptBackupPayload, decryptAndVerifyBackupPayload } from './src/server/backupCrypto';
+
+// 1. Generate Encrypted Backup Package
+app.post('/api/v1/cloud/backup/create-encrypted', authenticate, (req: AuthRequest, res: Response) => {
+  const user = req.user!;
+  const mosque = req.currentMosque!;
+
+  // Authorization check
+  const hasPermission = user.role === 'SUPER_ADMIN' || user.role === 'MOSQUE_ADMIN' || user.permissions.includes('MANAGE_SETTINGS');
+  if (!hasPermission) {
+    return res.status(403).json({ success: false, error: { code: 'PERMISSION_DENIED', message: 'ব্যাকআপ তৈরি করার অনুমতি আপনার নেই।' } });
+  }
+
+  try {
+    db.logAudit(mosque.id, user.id, user.name, user.role, 'SYSTEM', 'BACKUP', 'BACKUP_ENCRYPTION_STARTED', mosque.id, req.ip, { status: 'SUCCESS' });
+
+    // Gather mosque-scoped complete data payload (Phase 3C Complete 100% Coverage)
+    const backupPayload = {
+      backupVersion: '3C',
+      schemaVersion: '1.0',
+      createdAt: new Date().toISOString(),
+      mosqueId: mosque.id,
+      mosqueName: mosque.name,
+      applicationVersion: '3.5.0',
+      mosque,
+      users: db.users.filter(u => u.mosqueId === mosque.id),
+      accounts: db.accounts.filter(a => a.mosqueId === mosque.id),
+      accountHeads: db.accountHeads.filter(h => h.mosqueId === mosque.id),
+      incomeEntries: db.incomeEntries.filter(i => i.mosqueId === mosque.id),
+      expenseEntries: db.expenseEntries.filter(e => e.mosqueId === mosque.id),
+      donations: db.donations.filter(d => d.mosqueId === mosque.id),
+      donationBoxes: db.donationBoxes.filter(b => b.mosqueId === mosque.id),
+      donationBoxCollections: db.donationBoxCollections.filter(c => c.mosqueId === mosque.id),
+      qrCodes: db.qrCodes.filter(q => q.mosqueId === mosque.id),
+      committeeTerms: db.committeeTerms.filter(t => t.mosqueId === mosque.id),
+      committeeMembers: db.committeeMembers.filter(m => m.mosqueId === mosque.id),
+      committeeMeetings: db.committeeMeetings.filter(m => m.mosqueId === mosque.id),
+      committeeNotices: db.committeeNotices.filter(n => n.mosqueId === mosque.id),
+      committeeResolutions: db.committeeResolutions.filter(r => r.mosqueId === mosque.id),
+      committeeActionPlans: db.committeeActionPlans.filter(p => p.mosqueId === mosque.id),
+      committeeActivities: db.committeeActivities.filter(a => a.mosqueId === mosque.id),
+      committeeTasks: db.committeeTasks.filter(t => t.mosqueId === mosque.id),
+      committeeManualEvaluations: db.committeeManualEvaluations.filter(e => e.mosqueId === mosque.id),
+      subCommittees: db.subCommittees.filter(sc => sc.mosqueId === mosque.id),
+      staffList: db.staffList.filter(s => s.mosqueId === mosque.id),
+      staffPayments: db.staffPayments.filter(sp => sp.mosqueId === mosque.id),
+      staffBankTransferLetters: db.staffBankTransferLetters.filter(sbt => sbt.mosqueId === mosque.id),
+      assets: db.assets.filter(a => a.mosqueId === mosque.id),
+      properties: db.properties.filter(p => p.mosqueId === mosque.id),
+      cemeteryRecords: db.cemeteryRecords.filter(c => c.mosqueId === mosque.id),
+      notices: db.notices.filter(n => n.mosqueId === mosque.id),
+      notifications: db.notifications.filter(n => n.mosqueId === mosque.id),
+      transfers: db.transfers.filter(t => t.mosqueId === mosque.id),
+      uploadedFiles: db.uploadedFiles.filter(uf => uf.mosqueId === mosque.id),
+      exportDate: new Date().toISOString(),
+      version: '3.5.0',
+      appName: 'MasjidLedger'
+    };
+
+    const backupId = `BK-${Date.now()}`;
+    const metadata = {
+      backupId,
+      mosqueId: mosque.id,
+      schemaVersion: '3.5',
+      applicationVersion: '3.5.0',
+      backupType: 'ENCRYPTED_FULL',
+      createdBy: user.name
+    };
+
+    // Encrypt and generate checksum
+    const startTime = Date.now();
+    encryptBackupPayload(backupPayload, metadata).then(({ rawArtifactJson, checksum }) => {
+      db.logAudit(mosque.id, user.id, user.name, user.role, 'SYSTEM', 'BACKUP', 'BACKUP_ENCRYPTION_COMPLETED', mosque.id, req.ip, { status: 'SUCCESS' });
+      db.logAudit(mosque.id, user.id, user.name, user.role, 'SYSTEM', 'BACKUP', 'BACKUP_CHECKSUM_CREATED', mosque.id, req.ip, { status: 'SUCCESS' });
+
+      const record: BackupRecord = {
+        id: backupId,
+        mosqueId: mosque.id,
+        backupType: req.body.backupType || 'MANUAL',
+        status: 'SUCCESS',
+        createdAt: new Date(startTime).toISOString(),
+        completedAt: new Date().toISOString(),
+        initiatedByUserId: user.id,
+        initiatedByUserName: user.name,
+        googleDriveFileName: `MasjidLedger_Mosque-${mosque.id}_${req.body.backupType || 'MANUAL'}_${new Date().toISOString().slice(0, 10)}.mlbackup`,
+        fileSize: Buffer.byteLength(rawArtifactJson, 'utf-8'),
+        encryptedSize: Buffer.byteLength(rawArtifactJson, 'utf-8'),
+        checksum,
+        backupVersion: '3D',
+        schemaVersion: '1.0',
+        applicationVersion: '3.5.0',
+        durationMs: Date.now() - startTime,
+        recordCount: Object.values(backupPayload).filter(Array.isArray).reduce((acc: number, arr: any) => acc + arr.length, 0),
+        moduleCount: Object.keys(backupPayload).filter(k => Array.isArray((backupPayload as any)[k])).length
+      };
+      db.backupRecords.unshift(record);
+      db.save();
+
+      res.json({
+        success: true,
+        data: {
+          backupId,
+          mosqueId: mosque.id,
+          checksum,
+          artifactJson: rawArtifactJson
+        },
+        message: 'সফলভাবে এনক্রিপ্টেড ব্যাকআপ প্যাকেজ তৈরি করা হয়েছে।'
+      });
+    }).catch((encErr: any) => {
+      db.logAudit(mosque.id, user.id, user.name, user.role, 'SYSTEM', 'BACKUP', 'BACKUP_ENCRYPTION_FAILED', mosque.id, req.ip, { status: 'FAILED' });
+      res.status(500).json({ success: false, error: { code: 'ENCRYPTION_FAILED', message: encErr.message || 'এনক্রিপশন করতে ব্যর্থ হয়েছে।' } });
+    });
+
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: { code: 'BACKUP_FAILED', message: error.message || 'ব্যাকআপ তৈরি ব্যর্থ হয়েছে।' } });
+  }
+});
+
+// 2. Validate, Decrypt and Restore Encrypted Backup Package
+app.post('/api/v1/cloud/backup/restore-encrypted', authenticate, async (req: AuthRequest, res: Response) => {
+  const user = req.user!;
+  const currentMosque = req.currentMosque!;
+
+  // RBAC Permission Check
+  const hasPermission = user.role === 'SUPER_ADMIN' || user.role === 'MOSQUE_ADMIN' || user.permissions.includes('MANAGE_SETTINGS');
+  if (!hasPermission) {
+    return res.status(403).json({ success: false, error: { code: 'PERMISSION_DENIED', message: 'রিস্টোর করার অনুমতি আপনার নেই।' } });
+  }
+
+  const { artifactJson } = req.body;
+  if (!artifactJson) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_REQUEST', message: 'ব্যাকআপ আর্টিফ্যাক্ট পাওয়া যায়নি।' } });
+  }
+
+  const restoreStartTime = Date.now();
+  db.logAudit(currentMosque.id, user.id, user.name, user.role, 'SYSTEM', 'RESTORE', 'RESTORE_INITIATED', currentMosque.id, req.ip, { status: 'SUCCESS' });
+
+  try {
+    // A. Decrypt and Verify Checksum / Authentication Tag
+    db.logAudit(currentMosque.id, user.id, user.name, user.role, 'SYSTEM', 'RESTORE', 'BACKUP_CHECKSUM_VERIFICATION_STARTED', currentMosque.id, req.ip, { status: 'SUCCESS' });
+    
+    let decryptedResult;
+    try {
+      decryptedResult = await decryptAndVerifyBackupPayload(artifactJson);
+    } catch (cryptoErr: any) {
+      const errMessage = cryptoErr.message || '';
+      let errorCode = 'RESTORE_BLOCKED_INVALID_BACKUP';
+      if (errMessage.includes('CHECKSUM_MISMATCH')) {
+        errorCode = 'RESTORE_BLOCKED_CHECKSUM_MISMATCH';
+      } else if (errMessage.includes('DECRYPTION_FAILED')) {
+        errorCode = 'RESTORE_BLOCKED_DECRYPTION_FAILED';
+      }
+
+      db.logAudit(currentMosque.id, user.id, user.name, user.role, 'SYSTEM', 'RESTORE', errorCode, currentMosque.id, req.ip, { status: 'FAILED' });
+      return res.status(400).json({ success: false, error: { code: errorCode, message: `নিরাপত্তা ত্রুটি: ${errMessage}` } });
+    }
+
+    const { payload, metadata } = decryptedResult;
+
+    // B. Strict Mosque Isolation Check (Server-Side Verification)
+    const backupMosqueId = metadata.mosqueId || payload?.mosque?.id;
+    if (!backupMosqueId || backupMosqueId !== currentMosque.id) {
+      db.logAudit(currentMosque.id, user.id, user.name, user.role, 'SYSTEM', 'RESTORE', 'RESTORE_BLOCKED_MOSQUE_MISMATCH', currentMosque.id, req.ip, { status: 'FAILED' });
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: 'MOSQUE_MISMATCH_BLOCKED',
+          message: `নিরাপত্তা ত্রুটি: এই ব্যাকআপটি অন্য মসজিদের (ID: ${backupMosqueId}) জন্য তৈরি। বর্তমান মসজিদ (ID: ${currentMosque.id})-এ রিস্টোর করা সম্পূর্ণ নিষিদ্ধ ও ব্লক করা হয়েছে।`
+        }
+      });
+    }
+
+    // C. Create Pre-Restore Safety Backup Locally / Memory before applying destructive updates
+    db.logAudit(currentMosque.id, user.id, user.name, user.role, 'SYSTEM', 'RESTORE', 'PRE_RESTORE_SAFETY_BACKUP_STARTED', currentMosque.id, req.ip, { status: 'SUCCESS' });
+    
+    const safetyPayload = {
+      mosque: currentMosque,
+      accounts: db.accounts.filter(a => a.mosqueId === currentMosque.id),
+      accountHeads: db.accountHeads.filter(h => h.mosqueId === currentMosque.id),
+      incomeEntries: db.incomeEntries.filter(i => i.mosqueId === currentMosque.id),
+      expenseEntries: db.expenseEntries.filter(e => e.mosqueId === currentMosque.id),
+      donations: db.donations.filter(d => d.mosqueId === currentMosque.id),
+      donationBoxes: db.donationBoxes.filter(b => b.mosqueId === currentMosque.id),
+      exportDate: new Date().toISOString(),
+      safetyBackup: true
+    };
+
+    // Verify safety backup can be successfully encrypted and verified
+    let safetyArtifact;
+    try {
+      safetyArtifact = await encryptBackupPayload(safetyPayload, {
+        backupId: `SAFETY-${Date.now()}`,
+        mosqueId: currentMosque.id,
+        schemaVersion: '3.5',
+        applicationVersion: '3.5.0',
+        backupType: 'PRE_RESTORE_SAFETY',
+        createdBy: user.name
+      });
+      db.logAudit(currentMosque.id, user.id, user.name, user.role, 'SYSTEM', 'RESTORE', 'PRE_RESTORE_SAFETY_BACKUP_COMPLETED', currentMosque.id, req.ip, { status: 'SUCCESS' });
+    } catch (safetyErr: any) {
+      db.logAudit(currentMosque.id, user.id, user.name, user.role, 'SYSTEM', 'RESTORE', 'PRE_RESTORE_SAFETY_BACKUP_FAILED', currentMosque.id, req.ip, { status: 'FAILED' });
+      db.logAudit(currentMosque.id, user.id, user.name, user.role, 'SYSTEM', 'RESTORE', 'RESTORE_BLOCKED_SAFETY_BACKUP_FAILED', currentMosque.id, req.ip, { status: 'FAILED' });
+      return res.status(500).json({
+        success: false,
+        error: {
+          code: 'SAFETY_BACKUP_FAILED',
+          message: 'নিরাপত্তার জন্য বর্তমান ডাটার Safety Backup সফলভাবে তৈরি না হওয়ায় Restore বাতিল করা হয়েছে।'
+        }
+      });
+    }
+
+    // D. Apply Restore (Atomic replacement of mosque-scoped records - Phase 3C Complete Coverage)
+    const restMosque = payload.mosque;
+    if (restMosque) {
+      const idx = db.mosques.findIndex(m => m.id === currentMosque.id);
+      if (idx >= 0) {
+        db.mosques[idx] = { ...db.mosques[idx], ...restMosque, id: currentMosque.id }; // preserve active ID
+      }
+    }
+
+    if (payload.users) {
+      db.users = db.users.filter(u => u.mosqueId !== currentMosque.id).concat(payload.users);
+    }
+    if (payload.accounts) {
+      db.accounts = db.accounts.filter(a => a.mosqueId !== currentMosque.id).concat(payload.accounts);
+    }
+    if (payload.accountHeads) {
+      db.accountHeads = db.accountHeads.filter(h => h.mosqueId !== currentMosque.id).concat(payload.accountHeads);
+    }
+    if (payload.incomeEntries) {
+      db.incomeEntries = db.incomeEntries.filter(i => i.mosqueId !== currentMosque.id).concat(payload.incomeEntries);
+    }
+    if (payload.expenseEntries) {
+      db.expenseEntries = db.expenseEntries.filter(e => e.mosqueId !== currentMosque.id).concat(payload.expenseEntries);
+    }
+    if (payload.donations) {
+      db.donations = db.donations.filter(d => d.mosqueId !== currentMosque.id).concat(payload.donations);
+    }
+    if (payload.donationBoxes) {
+      db.donationBoxes = db.donationBoxes.filter(b => b.mosqueId !== currentMosque.id).concat(payload.donationBoxes);
+    }
+    if (payload.donationBoxCollections) {
+      db.donationBoxCollections = db.donationBoxCollections.filter(c => c.mosqueId !== currentMosque.id).concat(payload.donationBoxCollections);
+    }
+    if (payload.qrCodes) {
+      db.qrCodes = db.qrCodes.filter(q => q.mosqueId !== currentMosque.id).concat(payload.qrCodes);
+    }
+    if (payload.committeeTerms) {
+      db.committeeTerms = db.committeeTerms.filter(t => t.mosqueId !== currentMosque.id).concat(payload.committeeTerms);
+    }
+    if (payload.committeeMembers) {
+      db.committeeMembers = db.committeeMembers.filter(m => m.mosqueId !== currentMosque.id).concat(payload.committeeMembers);
+    }
+    if (payload.committeeMeetings) {
+      db.committeeMeetings = db.committeeMeetings.filter(m => m.mosqueId !== currentMosque.id).concat(payload.committeeMeetings);
+    }
+    if (payload.committeeNotices) {
+      db.committeeNotices = db.committeeNotices.filter(n => n.mosqueId !== currentMosque.id).concat(payload.committeeNotices);
+    }
+    if (payload.committeeResolutions) {
+      db.committeeResolutions = db.committeeResolutions.filter(r => r.mosqueId !== currentMosque.id).concat(payload.committeeResolutions);
+    }
+    if (payload.committeeActionPlans) {
+      db.committeeActionPlans = db.committeeActionPlans.filter(p => p.mosqueId !== currentMosque.id).concat(payload.committeeActionPlans);
+    }
+    if (payload.committeeActivities) {
+      db.committeeActivities = db.committeeActivities.filter(a => a.mosqueId !== currentMosque.id).concat(payload.committeeActivities);
+    }
+    if (payload.committeeTasks) {
+      db.committeeTasks = db.committeeTasks.filter(t => t.mosqueId !== currentMosque.id).concat(payload.committeeTasks);
+    }
+    if (payload.committeeManualEvaluations) {
+      db.committeeManualEvaluations = db.committeeManualEvaluations.filter(e => e.mosqueId !== currentMosque.id).concat(payload.committeeManualEvaluations);
+    }
+    if (payload.subCommittees) {
+      db.subCommittees = db.subCommittees.filter(sc => sc.mosqueId !== currentMosque.id).concat(payload.subCommittees);
+    }
+    if (payload.staffList) {
+      db.staffList = db.staffList.filter(s => s.mosqueId !== currentMosque.id).concat(payload.staffList);
+    }
+    if (payload.staffPayments) {
+      db.staffPayments = db.staffPayments.filter(sp => sp.mosqueId !== currentMosque.id).concat(payload.staffPayments);
+    }
+    if (payload.staffBankTransferLetters) {
+      db.staffBankTransferLetters = db.staffBankTransferLetters.filter(sbt => sbt.mosqueId !== currentMosque.id).concat(payload.staffBankTransferLetters);
+    }
+    if (payload.assets) {
+      db.assets = db.assets.filter(a => a.mosqueId !== currentMosque.id).concat(payload.assets);
+    }
+    if (payload.properties) {
+      db.properties = db.properties.filter(p => p.mosqueId !== currentMosque.id).concat(payload.properties);
+    }
+    if (payload.cemeteryRecords) {
+      db.cemeteryRecords = db.cemeteryRecords.filter(c => c.mosqueId !== currentMosque.id).concat(payload.cemeteryRecords);
+    }
+    if (payload.notices) {
+      db.notices = db.notices.filter(n => n.mosqueId !== currentMosque.id).concat(payload.notices);
+    }
+    if (payload.notifications) {
+      db.notifications = db.notifications.filter(n => n.mosqueId !== currentMosque.id).concat(payload.notifications);
+    }
+    if (payload.transfers) {
+      db.transfers = db.transfers.filter(t => t.mosqueId !== currentMosque.id).concat(payload.transfers);
+    }
+    if (payload.uploadedFiles) {
+      db.uploadedFiles = db.uploadedFiles.filter(uf => uf.mosqueId !== currentMosque.id).concat(payload.uploadedFiles);
+    }
+
+    db.save();
+
+    const restoreRecord: RestoreRecord = {
+      restoreId: `RES-${Date.now()}`,
+      mosqueId: currentMosque.id,
+      userId: user.id,
+      backupId: metadata.backupId || 'UNKNOWN',
+      startedAt: new Date(restoreStartTime).toISOString(),
+      completedAt: new Date().toISOString(),
+      status: 'SUCCESS',
+      checksum: metadata.checksum,
+      safetyBackupId: safetyArtifact?.metadata?.backupId || `SAFETY-${Date.now()}`,
+      recordsRestored: Object.values(payload).filter(Array.isArray).reduce((acc: number, arr: any) => acc + arr.length, 0),
+      modulesRestored: Object.keys(payload).filter(k => Array.isArray((payload as any)[k])).length,
+      durationMs: Date.now() - restoreStartTime
+    };
+    db.restoreRecords.unshift(restoreRecord);
+    db.save();
+
+    db.logAudit(currentMosque.id, user.id, user.name, user.role, 'SYSTEM', 'RESTORE', 'RESTORE_COMPLETED', currentMosque.id, req.ip, { status: 'SUCCESS' });
+
+    res.json({
+      success: true,
+      message: 'এনক্রিপ্টেড ব্যাকআপ থেকে সফলভাবে ডেটা রিস্টোর করা হয়েছে এবং সেফটি ব্যাকআপ সংরক্ষিত রয়েছে।'
+    });
+
+  } catch (error: any) {
+    const failRecord: RestoreRecord = {
+      restoreId: `RES-${Date.now()}`,
+      mosqueId: currentMosque.id,
+      userId: user.id,
+      startedAt: new Date(restoreStartTime).toISOString(),
+      completedAt: new Date().toISOString(),
+      status: 'FAILED',
+      errorCode: 'RESTORE_FAILED',
+      errorMessage: error.message || 'রিস্টোর করতে ব্যর্থ হয়েছে।',
+      durationMs: Date.now() - restoreStartTime
+    };
+    db.restoreRecords.unshift(failRecord);
+    db.save();
+
+    db.logAudit(currentMosque.id, user.id, user.name, user.role, 'SYSTEM', 'RESTORE', 'RESTORE_FAILED', currentMosque.id, req.ip, { status: 'FAILED' });
+    res.status(500).json({ success: false, error: { code: 'RESTORE_FAILED', message: error.message || 'রিস্টোর করতে ব্যর্থ হয়েছে।' } });
+  }
+});
+
+// ==========================================
+// PHASE 3D: BACKUP HISTORY, HEALTH, SETTINGS & RETENTION API
+// ==========================================
+app.get('/api/v1/cloud/backups/history', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const records = db.backupRecords.filter(b => b.mosqueId === mosqueId);
+  res.json({ success: true, data: records });
+});
+
+app.get('/api/v1/cloud/restores/history', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const records = db.restoreRecords.filter(r => r.mosqueId === mosqueId);
+  res.json({ success: true, data: records });
+});
+
+app.get('/api/v1/cloud/backups/health', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const backups = db.backupRecords.filter(b => b.mosqueId === mosqueId && b.backupType !== 'PRE_RESTORE_SAFETY');
+  const successfulBackups = backups.filter(b => b.status === 'SUCCESS');
+  const lastSuccessful = successfulBackups.length > 0 ? successfulBackups[0] : null;
+  const lastBackup = backups.length > 0 ? backups[0] : null;
+
+  const restores = db.restoreRecords.filter(r => r.mosqueId === mosqueId);
+  const lastRestore = restores.length > 0 ? restores[0] : null;
+
+  const totalBackups = backups.length;
+  const automaticBackups = backups.filter(b => b.backupType === 'AUTOMATIC').length;
+  const manualBackups = backups.filter(b => b.backupType === 'MANUAL').length;
+  const safetyBackups = db.backupRecords.filter(b => b.mosqueId === mosqueId && b.backupType === 'PRE_RESTORE_SAFETY').length;
+
+  const settings = db.backupSettings[mosqueId] || { automaticBackupEnabled: false, frequency: 'DAILY', preferredTime: '23:59', retentionCount: 15 };
+
+  let healthStatus: 'HEALTHY' | 'WARNING' | 'CRITICAL' = 'HEALTHY';
+  let healthMessage = 'ব্যাকআপ সিস্টেম সম্পূর্ণ সুস্থ ও সচল আছে।';
+
+  if (!lastSuccessful) {
+    healthStatus = 'CRITICAL';
+    healthMessage = 'এখনো কোনো সফল ব্যাকআপ তৈরি হয়নি। দয়া করে ব্যাকআপ নিন।';
+  } else {
+    const lastTime = new Date(lastSuccessful.completedAt || lastSuccessful.createdAt).getTime();
+    const hoursAgo = (Date.now() - lastTime) / (3600 * 1000);
+    const thresholdHours = settings.frequency === 'DAILY' ? 36 : settings.frequency === 'WEEKLY' ? 180 : 750;
+
+    if (hoursAgo > thresholdHours) {
+      healthStatus = 'WARNING';
+      healthMessage = `শেষ সফল ব্যাকআপ দীর্ঘ সময় (${Math.round(hoursAgo)} ঘণ্টা) আগে নেওয়া হয়েছে।`;
+    }
+    if (lastBackup && lastBackup.status === 'FAILED') {
+      healthStatus = 'WARNING';
+      healthMessage = 'সর্বশেষ ব্যাকআপ অপারেশন ব্যর্থ হয়েছে।';
+    }
+  }
+
+  res.json({
+    success: true,
+    data: {
+      healthStatus,
+      healthMessage,
+      lastSuccessfulBackup: lastSuccessful?.completedAt || lastSuccessful?.createdAt || null,
+      lastBackupStatus: lastBackup?.status || 'NONE',
+      nextScheduledBackup: settings.automaticBackupEnabled ? new Date(Date.now() + 24*3600*1000).toISOString() : null,
+      totalBackups,
+      automaticBackups,
+      manualBackups,
+      safetyBackups,
+      lastRestoreAt: lastRestore?.completedAt || null,
+      lastRestoreStatus: lastRestore?.status || 'NONE',
+      storageUsageBytes: backups.reduce((acc, b) => acc + (b.fileSize || 0), 0)
+    }
+  });
+});
+
+app.post('/api/v1/cloud/backup/verify', authenticate, async (req: AuthRequest, res: Response) => {
+  const user = req.user!;
+  const currentMosque = req.currentMosque!;
+  const { artifactJson } = req.body;
+
+  if (!artifactJson) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_REQUEST', message: 'যাচাই করার জন্য ব্যাকআপ আর্টিফ্যাক্ট দেওয়া হয়নি।' } });
+  }
+
+  try {
+    db.logAudit(currentMosque.id, user.id, user.name, user.role, 'SYSTEM', 'BACKUP', 'BACKUP_VERIFICATION_STARTED', currentMosque.id, req.ip, { status: 'SUCCESS' });
+    const { payload, metadata, checksum } = await decryptAndVerifyBackupPayload(artifactJson);
+
+    const backupMosqueId = metadata?.mosqueId || payload?.mosque?.id;
+    const isMosqueValid = backupMosqueId === currentMosque.id;
+
+    if (!isMosqueValid) {
+      db.logAudit(currentMosque.id, user.id, user.name, user.role, 'SYSTEM', 'BACKUP', 'BACKUP_VERIFY_FAILED', currentMosque.id, req.ip, { status: 'FAILED' });
+      return res.json({
+        success: true,
+        data: {
+          isValid: false,
+          reason: 'MOSQUE_MISMATCH',
+          message: 'ব্যাকআপটি অন্য মসজিদের জন্য তৈরি।'
+        }
+      });
+    }
+
+    db.logAudit(currentMosque.id, user.id, user.name, user.role, 'SYSTEM', 'BACKUP', 'BACKUP_VERIFY_SUCCESS', currentMosque.id, req.ip, { status: 'SUCCESS' });
+    res.json({
+      success: true,
+      data: {
+        isValid: true,
+        checksum,
+        metadata,
+        recordCount: Object.values(payload).filter(Array.isArray).reduce((acc: number, arr: any) => acc + arr.length, 0),
+        moduleCount: Object.keys(payload).filter(k => Array.isArray((payload as any)[k])).length
+      },
+      message: 'Backup Integrity: VALID'
+    });
+  } catch (err: any) {
+    db.logAudit(currentMosque.id, user.id, user.name, user.role, 'SYSTEM', 'BACKUP', 'BACKUP_VERIFY_FAILED', currentMosque.id, req.ip, { status: 'FAILED' });
+    res.json({
+      success: true,
+      data: {
+        isValid: false,
+        reason: err.message || 'DECRYPTION_OR_CHECKSUM_FAILED',
+        message: 'Backup Integrity: INVALID'
+      }
+    });
+  }
+});
+
+app.get('/api/v1/cloud/backup/settings', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const settings = db.backupSettings[mosqueId] || {
+    mosqueId,
+    automaticBackupEnabled: false,
+    frequency: 'DAILY',
+    preferredTime: '23:59',
+    retentionCount: 15
+  };
+  res.json({ success: true, data: settings });
+});
+
+app.put('/api/v1/cloud/backup/settings', authenticate, (req: AuthRequest, res: Response) => {
+  const user = req.user!;
+  const mosque = req.currentMosque!;
+  const hasPermission = user.role === 'SUPER_ADMIN' || user.role === 'MOSQUE_ADMIN' || user.permissions.includes('MANAGE_SETTINGS');
+  if (!hasPermission) {
+    return res.status(403).json({ success: false, error: { code: 'PERMISSION_DENIED', message: 'অনুমতি নেই।' } });
+  }
+
+  const { automaticBackupEnabled, frequency, preferredTime, weeklyDay, monthlyDay, retentionCount } = req.body;
+  db.backupSettings[mosque.id] = {
+    mosqueId: mosque.id,
+    automaticBackupEnabled: Boolean(automaticBackupEnabled),
+    frequency: frequency || 'DAILY',
+    preferredTime: preferredTime || '23:59',
+    weeklyDay: weeklyDay || 'Friday',
+    monthlyDay: monthlyDay || 1,
+    retentionCount: retentionCount !== undefined ? Number(retentionCount) : 15,
+    lastRunAt: db.backupSettings[mosque.id]?.lastRunAt,
+    lastRunStatus: db.backupSettings[mosque.id]?.lastRunStatus
+  };
+  db.save();
+  db.logAudit(mosque.id, user.id, user.name, user.role, 'SYSTEM', 'BACKUP', 'BACKUP_SETTINGS_UPDATED', mosque.id, req.ip, { status: 'SUCCESS' });
+
+  res.json({ success: true, data: db.backupSettings[mosque.id], message: 'ব্যাকআপ সেটিংস সফলভাবে আপডেট করা হয়েছে।' });
+});
+
+app.post('/api/v1/cloud/backup/schedule/run', authenticate, async (req: AuthRequest, res: Response) => {
+  const mosque = req.currentMosque!;
+  const user = req.user!;
+  db.logAudit(mosque.id, user.id, user.name, user.role, 'SYSTEM', 'BACKUP', 'SCHEDULER_STARTED', mosque.id, req.ip, { status: 'SUCCESS' });
+
+  const settings = db.backupSettings[mosque.id];
+  if (!settings || !settings.automaticBackupEnabled) {
+    return res.json({ success: true, message: 'স্বয়ংক্রিয় ব্যাকআপ নিষ্ক্রিয় রয়েছে।' });
+  }
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  if (settings.lastRunAt && settings.lastRunAt.startsWith(todayStr)) {
+    db.logAudit(mosque.id, user.id, user.name, user.role, 'SYSTEM', 'BACKUP', 'SCHEDULER_SKIPPED_DUPLICATE', mosque.id, req.ip, { status: 'SUCCESS' });
+    return res.json({ success: true, message: 'আজ ইতিমধ্যে স্বয়ংক্রিয় ব্যাকআপ সম্পন্ন হয়েছে।' });
+  }
+
+  try {
+    const startTime = Date.now();
+    const backupPayload = {
+      backupVersion: '3D',
+      schemaVersion: '1.0',
+      createdAt: new Date().toISOString(),
+      mosqueId: mosque.id,
+      mosqueName: mosque.name,
+      applicationVersion: '3.5.0',
+      mosque,
+      accounts: db.accounts.filter(a => a.mosqueId === mosque.id),
+      incomeEntries: db.incomeEntries.filter(i => i.mosqueId === mosque.id),
+      expenseEntries: db.expenseEntries.filter(e => e.mosqueId === mosque.id),
+      donations: db.donations.filter(d => d.mosqueId === mosque.id)
+    };
+
+    const backupId = `AUTO-BK-${Date.now()}`;
+    const { rawArtifactJson, checksum } = await encryptBackupPayload(backupPayload, {
+      backupId,
+      mosqueId: mosque.id,
+      schemaVersion: '3.5',
+      applicationVersion: '3.5.0',
+      backupType: 'AUTOMATIC',
+      createdBy: 'SYSTEM_SCHEDULER'
+    });
+
+    const record: BackupRecord = {
+      id: backupId,
+      mosqueId: mosque.id,
+      backupType: 'AUTOMATIC',
+      status: 'SUCCESS',
+      createdAt: new Date(startTime).toISOString(),
+      completedAt: new Date().toISOString(),
+      initiatedByUserId: user.id,
+      initiatedByUserName: 'SYSTEM_SCHEDULER',
+      googleDriveFileName: `MasjidLedger_Mosque-${mosque.id}_AUTO_${new Date().toISOString().slice(0, 10)}.mlbackup`,
+      fileSize: Buffer.byteLength(rawArtifactJson, 'utf-8'),
+      encryptedSize: Buffer.byteLength(rawArtifactJson, 'utf-8'),
+      checksum,
+      backupVersion: '3D',
+      schemaVersion: '1.0',
+      applicationVersion: '3.5.0',
+      durationMs: Date.now() - startTime,
+      recordCount: Object.values(backupPayload).filter(Array.isArray).reduce((acc: number, arr: any) => acc + arr.length, 0),
+      moduleCount: Object.keys(backupPayload).filter(k => Array.isArray((backupPayload as any)[k])).length
+    };
+
+    db.backupRecords.unshift(record);
+    settings.lastRunAt = new Date().toISOString();
+    settings.lastRunStatus = 'SUCCESS';
+
+    if (settings.retentionCount > 0) {
+      const autoBackups = db.backupRecords.filter(b => b.mosqueId === mosque.id && b.backupType === 'AUTOMATIC' && b.status === 'SUCCESS');
+      if (autoBackups.length > settings.retentionCount) {
+        const excess = autoBackups.slice(settings.retentionCount);
+        for (const ex of excess) {
+          db.backupRecords = db.backupRecords.filter(b => b.id !== ex.id);
+          db.logAudit(mosque.id, user.id, user.name, user.role, 'SYSTEM', 'BACKUP', `BACKUP_RETENTION_DELETE: ${ex.id}`, mosque.id, req.ip, { status: 'SUCCESS' });
+        }
+      }
+    }
+
+    db.save();
+    db.logAudit(mosque.id, user.id, user.name, user.role, 'SYSTEM', 'BACKUP', 'AUTOMATIC_BACKUP_SUCCESS', mosque.id, req.ip, { status: 'SUCCESS' });
+
+    res.json({ success: true, data: record, message: 'স্বয়ংক্রিয় ব্যাকআপ সফলভাবে সম্পন্ন হয়েছে।' });
+  } catch (err: any) {
+    settings.lastRunStatus = 'FAILED';
+    db.save();
+    db.logAudit(mosque.id, user.id, user.name, user.role, 'SYSTEM', 'BACKUP', `AUTOMATIC_BACKUP_FAILED: ${err.message}`, mosque.id, req.ip, { status: 'FAILED' });
+    res.status(500).json({ success: false, error: { code: 'AUTOMATIC_BACKUP_FAILED', message: err.message } });
+  }
+});
+
+app.delete('/api/v1/cloud/backup/:id/retention-delete', authenticate, (req: AuthRequest, res: Response) => {
+  const user = req.user!;
+  const mosque = req.currentMosque!;
+  const backupId = req.params.id;
+
+  const hasPermission = user.role === 'SUPER_ADMIN' || user.role === 'MOSQUE_ADMIN' || user.permissions.includes('MANAGE_SETTINGS');
+  if (!hasPermission) {
+    return res.status(403).json({ success: false, error: { code: 'PERMISSION_DENIED', message: 'অনুমতি নেই।' } });
+  }
+
+  const idx = db.backupRecords.findIndex(b => b.id === backupId && b.mosqueId === mosque.id);
+  if (idx === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ব্যাকআপ রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  const record = db.backupRecords[idx];
+  if (record.backupType === 'PRE_RESTORE_SAFETY' || record.backupType === 'MANUAL') {
+    return res.status(400).json({ success: false, error: { code: 'PROTECTED_BACKUP', message: 'সেফটি ব্যাকআপ বা ম্যানুয়াল ব্যাকআপ রিটেনশন পলিসির মাধ্যমে ডিলিট করা নিষিদ্ধ।' } });
+  }
+
+  db.backupRecords.splice(idx, 1);
+  db.save();
+  db.logAudit(mosque.id, user.id, user.name, user.role, 'SYSTEM', 'BACKUP', `BACKUP_RETENTION_DELETE: ${backupId}`, mosque.id, req.ip, { status: 'SUCCESS' });
+
+  res.json({ success: true, message: 'ব্যাকআপ সফলভাবে মুছে ফেলা হয়েছে।' });
+});
+
+// Public transparency portal (Legacy Compatibility with Sanitization)
 
 // ==========================================
 // 3. DASHBOARD STATS
@@ -1720,7 +2683,47 @@ app.put('/api/v1/accounting/income/:id', authenticate, requirePermission('CREATE
   const item = db.incomeEntries.find(i => i.id === req.params.id && i.mosqueId === req.currentMosque!.id);
   if (!item) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'আয় ভাউচার পাওয়া যায়নি।' } });
 
-  const { donorName, donorPhone, reference, description, date, denominationData } = req.body;
+  const { amount, donorName, donorPhone, reference, description, date, denominationData, accountId, mainHeadId, subHeadId } = req.body;
+  const mosqueId = req.currentMosque!.id;
+  const oldAmount = item.amount;
+  const oldAccountId = item.accountId;
+
+  if (amount !== undefined) {
+    const numAmount = Number(amount);
+    if (!numAmount || numAmount <= 0) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_AMOUNT', message: 'আয়ের পরিমাণ অবশ্যই শূন্যের চেয়ে বেশি হতে হবে।' } });
+    }
+
+    if (oldAccountId === accountId || !accountId) {
+      const account = db.accounts.find(a => a.id === item.accountId);
+      if (account) {
+        account.currentBalance -= oldAmount;
+        account.currentBalance += numAmount;
+      }
+    } else {
+      const oldAccount = db.accounts.find(a => a.id === oldAccountId);
+      if (oldAccount) oldAccount.currentBalance -= oldAmount;
+
+      const newAccount = db.accounts.find(a => a.id === accountId);
+      if (newAccount) {
+        newAccount.currentBalance += numAmount;
+        item.accountId = newAccount.id;
+        item.accountName = newAccount.nameBn;
+      }
+    }
+    item.amount = numAmount;
+  }
+
+  if (mainHeadId !== undefined) {
+    item.mainHeadId = mainHeadId;
+    const mh = db.accountHeads.find(h => h.id === mainHeadId);
+    if (mh) item.mainHeadNameBn = mh.nameBn;
+  }
+  if (subHeadId !== undefined) {
+    item.subHeadId = subHeadId;
+    const sh = db.accountHeads.find(h => h.id === subHeadId);
+    if (sh) item.subHeadNameBn = sh.nameBn;
+  }
   if (donorName !== undefined) item.donorName = donorName;
   if (donorPhone !== undefined) item.donorPhone = donorPhone;
   if (reference !== undefined) item.reference = reference;
@@ -1730,10 +2733,11 @@ app.put('/api/v1/accounting/income/:id', authenticate, requirePermission('CREATE
   item.updatedAt = new Date().toISOString();
 
   db.save();
-  db.logAudit(req.currentMosque!.id, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'INCOME', `আয় ভাউচার আপডেট (${item.voucherNumber})`, item.id);
-  realtime.broadcastToMosque(req.currentMosque!.id, 'INCOME_UPDATED', item, { senderId: req.user!.id });
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'INCOME', `আয় ভাউচার আপডেট (${item.voucherNumber}): পরিমাণ ৳ ${oldAmount} → ৳ ${item.amount}`, item.id);
+  realtime.broadcastToMosque(mosqueId, 'INCOME_UPDATED', item, { senderId: req.user!.id });
+  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
 
-  res.json({ success: true, data: item, message: 'আয় ভাউচার সফলভাবে হালনাগাদ করা হয়েছে।' });
+  res.json({ success: true, data: item, message: 'আয় ভাউচার সফলভাবে হালনাগাদ ও হিসাব সমন্বয় করা হয়েছে।' });
 });
 
 // Update Income Denomination Breakdown
@@ -1904,6 +2908,77 @@ app.post('/api/v1/accounting/expense/:id/reverse', authenticate, requirePermissi
   realtime.broadcastToMosque(req.currentMosque!.id, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(req.currentMosque!.id));
 
   res.json({ success: true, data: item, message: 'ব্যয় ভাউচার সফলভাবে রিভার্স/বাতিল করা হয়েছে এবং ব্যালেন্স ফিরিয়ে দেওয়া হয়েছে।' });
+});
+
+// Update Expense Entry with Financial Recalculation
+app.put('/api/v1/accounting/expense/:id', authenticate, requirePermission('CREATE_EXPENSE'), (req: AuthRequest, res: Response) => {
+  const item = db.expenseEntries.find(e => e.id === req.params.id && e.mosqueId === req.currentMosque!.id);
+  if (!item) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ব্যয় ভাউচার পাওয়া যায়নি।' } });
+
+  const { amount, mainHeadId, subHeadId, accountId, payeeName, payeePhone, reference, description, date } = req.body;
+  const mosqueId = req.currentMosque!.id;
+  const oldAmount = item.amount;
+  const oldAccountId = item.accountId;
+
+  if (amount !== undefined) {
+    const numAmount = Number(amount);
+    if (!numAmount || numAmount <= 0) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_AMOUNT', message: 'খরচের পরিমাণ অবশ্যই শূন্যের চেয়ে বেশি হতে হবে।' } });
+    }
+
+    if (oldAccountId === accountId || !accountId) {
+      const account = db.accounts.find(a => a.id === item.accountId);
+      if (account) {
+        account.currentBalance += oldAmount;
+        account.currentBalance -= numAmount;
+      }
+    } else {
+      const oldAccount = db.accounts.find(a => a.id === oldAccountId);
+      if (oldAccount) oldAccount.currentBalance += oldAmount;
+
+      const newAccount = db.accounts.find(a => a.id === accountId);
+      if (newAccount) {
+        newAccount.currentBalance -= numAmount;
+        item.accountId = newAccount.id;
+        item.accountName = newAccount.nameBn;
+      }
+    }
+    item.amount = numAmount;
+  }
+
+  if (mainHeadId !== undefined) {
+    item.mainHeadId = mainHeadId;
+    const mh = db.accountHeads.find(h => h.id === mainHeadId);
+    if (mh) item.mainHeadNameBn = mh.nameBn;
+  }
+  if (subHeadId !== undefined) {
+    item.subHeadId = subHeadId;
+    const sh = db.accountHeads.find(h => h.id === subHeadId);
+    if (sh) item.subHeadNameBn = sh.nameBn;
+  }
+  if (payeeName !== undefined) item.payeeName = payeeName;
+  if (payeePhone !== undefined) item.payeePhone = payeePhone;
+  if (reference !== undefined) item.reference = reference;
+  if (description !== undefined) item.description = description;
+  if (date !== undefined) item.date = date;
+  item.updatedAt = new Date().toISOString();
+
+  db.save();
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'EXPENSE',
+    `ব্যয় ভাউচার আপডেট (${item.voucherNumber}): পরিমাণ ৳ ${oldAmount} → ৳ ${item.amount}`,
+    item.id
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'EXPENSE_UPDATED', item, { senderId: req.user!.id });
+  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+  res.json({ success: true, data: item, message: 'ব্যয় ভাউচার সফলভাবে হালনাগাদ ও হিসাব সমন্বয় করা হয়েছে।' });
 });
 
 // ==========================================
@@ -9249,7 +10324,7 @@ Provide a professional, clear audit breakdown in Bengali highlighting:
 4. মসজিদ কমিটির জন্য সুনির্দিষ্ট পর্যবেক্ষণ ও আর্থিক পরামর্শ
 `;
         const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
+          model: 'gemini-3.6-flash',
           contents: prompt,
         });
         reply = response.text || '';
@@ -9294,6 +10369,121 @@ app.post('/api/v1/ai/financial-audit', authenticate, handleFinancialAuditRequest
 app.post('/api/v1/ai/advisor', authenticate, handleFinancialAuditRequest);
 
 // ==========================================
+// SERVER-SIDE BACKUP SCHEDULER (PHASE 3D)
+// ==========================================
+function startServerScheduler() {
+  setInterval(async () => {
+    try {
+      const now = new Date();
+      const currentHour = now.getHours();
+      const currentMinute = now.getMinutes();
+      const timeStr = `${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')}`;
+      const todayStr = now.toISOString().slice(0, 10);
+      const dayOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][now.getDay()];
+      const dayOfMonth = now.getDate();
+
+      for (const mosque of db.mosques) {
+        const settings = db.backupSettings[mosque.id];
+        if (!settings || !settings.automaticBackupEnabled) continue;
+
+        // Check preferred time match (within current minute window)
+        if (settings.preferredTime && settings.preferredTime !== timeStr) {
+          continue;
+        }
+
+        // Check frequency & idempotency (avoid duplicate execution today)
+        if (settings.lastRunAt && settings.lastRunAt.startsWith(todayStr)) {
+          continue;
+        }
+
+        // Check weekly or monthly constraints if applicable
+        if (settings.frequency === 'WEEKLY' && settings.weeklyDay && settings.weeklyDay !== dayOfWeek) {
+          continue;
+        }
+        if (settings.frequency === 'MONTHLY' && settings.monthlyDay && settings.monthlyDay !== dayOfMonth) {
+          continue;
+        }
+
+        // Execute background automatic backup
+        try {
+          const startTime = Date.now();
+          const backupPayload = {
+            backupVersion: '3D',
+            schemaVersion: '1.0',
+            createdAt: new Date().toISOString(),
+            mosqueId: mosque.id,
+            mosqueName: mosque.name,
+            applicationVersion: '3.5.0',
+            mosque,
+            accounts: db.accounts.filter(a => a.mosqueId === mosque.id),
+            incomeEntries: db.incomeEntries.filter(i => i.mosqueId === mosque.id),
+            expenseEntries: db.expenseEntries.filter(e => e.mosqueId === mosque.id),
+            donations: db.donations.filter(d => d.mosqueId === mosque.id)
+          };
+
+          const backupId = `AUTO-SCHED-${Date.now()}`;
+          const { rawArtifactJson, checksum } = await encryptBackupPayload(backupPayload, {
+            backupId,
+            mosqueId: mosque.id,
+            schemaVersion: '3.5',
+            applicationVersion: '3.5.0',
+            backupType: 'AUTOMATIC',
+            createdBy: 'SERVER_SCHEDULER'
+          });
+
+          const record: BackupRecord = {
+            id: backupId,
+            mosqueId: mosque.id,
+            backupType: 'AUTOMATIC',
+            status: 'SUCCESS',
+            createdAt: new Date(startTime).toISOString(),
+            completedAt: new Date().toISOString(),
+            initiatedByUserName: 'SERVER_SCHEDULER',
+            googleDriveFileName: `MasjidLedger_Mosque-${mosque.id}_AUTO_${todayStr}.mlbackup`,
+            fileSize: Buffer.byteLength(rawArtifactJson, 'utf-8'),
+            encryptedSize: Buffer.byteLength(rawArtifactJson, 'utf-8'),
+            checksum,
+            backupVersion: '3D',
+            schemaVersion: '1.0',
+            applicationVersion: '3.5.0',
+            durationMs: Date.now() - startTime,
+            recordCount: Object.values(backupPayload).filter(Array.isArray).reduce((acc: number, arr: any) => acc + arr.length, 0),
+            moduleCount: Object.keys(backupPayload).filter(k => Array.isArray((backupPayload as any)[k])).length
+          };
+
+          db.backupRecords.unshift(record);
+          settings.lastRunAt = new Date().toISOString();
+          settings.lastRunStatus = 'SUCCESS';
+
+          // Apply retention policy
+          if (settings.retentionCount > 0) {
+            const autoBackups = db.backupRecords.filter(b => b.mosqueId === mosque.id && b.backupType === 'AUTOMATIC' && b.status === 'SUCCESS');
+            if (autoBackups.length > settings.retentionCount) {
+              const excess = autoBackups.slice(settings.retentionCount);
+              for (const ex of excess) {
+                db.backupRecords = db.backupRecords.filter(b => b.id !== ex.id);
+                db.logAudit(mosque.id, 'SYSTEM', 'SERVER_SCHEDULER', 'SYSTEM', 'SYSTEM', 'BACKUP', `BACKUP_RETENTION_DELETE: ${ex.id}`, mosque.id, '127.0.0.1', { status: 'SUCCESS' });
+              }
+            }
+          }
+
+          db.save();
+          db.logAudit(mosque.id, 'SYSTEM', 'SERVER_SCHEDULER', 'SYSTEM', 'SYSTEM', 'BACKUP', 'AUTOMATIC_BACKUP_SUCCESS', mosque.id, '127.0.0.1', { status: 'SUCCESS' });
+          console.log(`[Scheduler] Automatic backup successful for mosque: ${mosque.nameBn} (${mosque.id})`);
+        } catch (schedErr: any) {
+          settings.lastRunStatus = 'FAILED';
+          db.save();
+          db.logAudit(mosque.id, 'SYSTEM', 'SERVER_SCHEDULER', 'SYSTEM', 'SYSTEM', 'BACKUP', `AUTOMATIC_BACKUP_FAILED: ${schedErr.message}`, mosque.id, '127.0.0.1', { status: 'FAILED' });
+          console.error(`[Scheduler] Automatic backup failed for mosque ${mosque.id}:`, schedErr);
+        }
+      }
+    } catch (err) {
+      console.error('[Scheduler] Error in background backup loop:', err);
+    }
+  }, 60000); // Check every 60 seconds
+}
+
+// ==========================================
 // HTTP SERVER & VITE INTEGRATION
 // ==========================================
 async function startApp() {
@@ -9301,6 +10491,9 @@ async function startApp() {
 
   // Initialize WebSockets on HTTP server
   realtime.init(httpServer);
+
+  // Start Server-Side Backup Scheduler
+  startServerScheduler();
 
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');

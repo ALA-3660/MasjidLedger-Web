@@ -1,3 +1,5 @@
+export type Language = 'bn' | 'en';
+
 export type UserRole =
   | 'SUPER_ADMIN'
   | 'MOSQUE_ADMIN'
@@ -56,6 +58,8 @@ export interface User {
   updatedAt: string;
 }
 
+export type CurrentUser = User;
+
 export interface Mosque {
   id: string;
   code: string;
@@ -71,6 +75,8 @@ export interface Mosque {
   district?: string;
   division?: string;
   country: string;
+  latitude?: number;
+  longitude?: number;
   phone: string;
   email?: string;
   website?: string;
@@ -123,9 +129,139 @@ export interface Mosque {
     isha: { azan: string; jamaat: string };
     jumuah: { azan: string; khutbah: string; jamaat: string };
   };
+  prayerSettings?: MosquePrayerSettings;
   publicPortalSettings?: PublicPortalSettings;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface MosquePrayerSettings {
+  district: string;
+  division?: string;
+  upazila?: string;
+  area?: string;
+  latitude?: number;
+  longitude?: number;
+  timezone: string; // 'Asia/Dhaka'
+  calculationMethod: 'ISLAMIC_FOUNDATION_BD' | 'HANAFI_KARACHI' | 'MWL' | 'EGYPT' | 'MEKKA';
+  madhab: 'HANAFI' | 'STANDARD';
+  fajrAngle: number;
+  ishaAngle: number;
+  fajr: { adhan: string; jamaat: string; manualOffset?: number };
+  dhuhr: { adhan: string; jamaat: string; manualOffset?: number };
+  asr: { adhan: string; jamaat: string; manualOffset?: number };
+  maghrib: { adhan: string; jamaat: string; manualOffset?: number };
+  isha: { adhan: string; jamaat: string; manualOffset?: number };
+  jumuah: { adhan: string; khutbah: string; jamaat: string };
+  ishraqOffsetMinutes: number; // default 10
+  sunriseForbiddenDurationMinutes: number; // default 12
+  zawalForbiddenDurationMinutes: number; // default 10
+  sunsetForbiddenDurationMinutes: number; // default 15
+  tahajjudMode: 'MIDNIGHT_TO_FAJR' | 'LAST_THIRD';
+  warningThresholdMinutes: number; // default 10
+  timeDisplayFormat?: '24H' | '12H' | 'BOTH';
+  remindersEnabled?: boolean;
+}
+
+export interface DailyPrayerItem {
+  id: 'fajr' | 'dhuhr' | 'asr' | 'maghrib' | 'isha' | 'jumuah';
+  nameBn: string;
+  nameEn: string;
+  waqtStart: string; // "HH:mm" (24h)
+  adhan: string;     // "HH:mm" (24h)
+  jamaat: string;    // "HH:mm" (24h)
+  waqtEnd: string;   // "HH:mm" (24h)
+  status: 'UPCOMING' | 'STARTED' | 'ADHAN_DONE' | 'JAMAT_UPCOMING' | 'JAMAT_NOW' | 'JAMAT_PASSED' | 'ENDING_SOON' | 'ENDED';
+  statusLabelBn: string;
+  countdownSeconds: number;
+  countdownFormattedBn: string;
+  dynamicMessageBn: string;
+  elapsedSeconds?: number;
+  remainingSeconds?: number;
+  isCurrent: boolean;
+  isNext: boolean;
+  progressPercentage?: number;
+}
+
+export interface DailyPrayerSchedule {
+  date: string; // "YYYY-MM-DD"
+  timezone: string; // "Asia/Dhaka"
+  district: string;
+  gregorianFormattedBn: string;
+  bengaliDateBn: string;
+  hijriDateBn: string;
+  isFriday: boolean;
+  currentTimeStr: string; // "HH:mm:ss" (24h)
+  currentTime12hStr: string; // "hh:mm:ss A"
+  prayers: DailyPrayerItem[];
+  currentPrayer: DailyPrayerItem | null;
+  nextPrayer: DailyPrayerItem | null;
+  currentWaqtMessageBn: string;
+  nextWaqtMessageBn: string;
+  // Astronomical Points
+  sunriseStr: string;
+  sunsetStr: string;
+  solarNoonStr: string;
+  // Special Prayers
+  tahajjud: {
+    startTimeStr: string;
+    endTimeStr: string;
+    isActive: boolean;
+    statusMessageBn: string;
+    countdownSeconds: number;
+  };
+  ishraq: {
+    startTimeStr: string;
+    endTimeStr: string;
+    isActive: boolean;
+    statusState: 'BEFORE_SUNRISE' | 'SUNRISE_TO_ISHRAQ' | 'ACTIVE' | 'ENDED';
+    statusMessageBn: string;
+    countdownSeconds: number;
+  };
+  forbiddenTimes: {
+    isForbiddenNow: boolean;
+    currentForbiddenReasonBn?: string;
+    activeType?: 'SUNRISE' | 'ZAWAL' | 'SUNSET';
+    sunriseForbiddenStart: string;
+    sunriseForbiddenEnd: string;
+    zawalForbiddenStart: string;
+    zawalForbiddenEnd: string;
+    sunsetForbiddenStart: string;
+    sunsetForbiddenEnd: string;
+    warningMessageBn?: string;
+  };
+  jumuah?: {
+    adhan: string;
+    khutbah: string;
+    jamaat: string;
+  };
+}
+
+export interface MonthlyPrayerDay {
+  date: string; // "YYYY-MM-DD"
+  dayNumber: number;
+  dayNameBn: string;
+  dayNameEn: string;
+  isFriday: boolean;
+  hijriDateBn: string;
+  bengaliDateBn: string;
+  sehriEnd: string;
+  fajrStart: string;
+  fajrJamaat: string;
+  sunrise: string;
+  ishraq: string;
+  solarNoon: string;
+  dhuhrStart: string;
+  dhuhrJamaat: string;
+  asrStart: string;
+  asrJamaat: string;
+  sunset: string;
+  iftar: string;
+  maghribStart: string;
+  maghribJamaat: string;
+  ishaStart: string;
+  ishaJamaat: string;
+  jumuah?: string;
 }
 
 export interface PublicPortalSettings {
@@ -135,6 +271,7 @@ export interface PublicPortalSettings {
   mosqueAddress: boolean;
   mosquePhone: boolean;
   mosqueEmail: boolean;
+  locationMap?: boolean;
   waqfId: boolean;
   registrationNumber: boolean;
   establishedYear: boolean;
@@ -144,6 +281,7 @@ export interface PublicPortalSettings {
   prayerSchedule: boolean;
   jumuahSchedule: boolean;
   ramadanSchedule: boolean;
+  liveWaqtStatus?: boolean;
 
   // 3. Donation & Payment Channels
   donation: boolean;
@@ -187,8 +325,11 @@ export interface PublicPortalSettings {
   cemetery: boolean; // default OFF
 
   // 11. Display & TV Mode Settings
-  displayModeTheme?: 'EMERALD_NIGHT' | 'DARK' | 'LIGHT';
+  displayModeTheme?: 'EMERALD_NIGHT' | 'DARK' | 'LIGHT' | 'MIDNIGHT_GOLD';
   autoRefreshInterval?: number; // in seconds (e.g. 45)
+  slideDurationSec?: number; // in seconds (e.g. 15)
+  enableDisplayAudioAlert?: boolean;
+  enableAutoSlideRotation?: boolean;
 
   // Metadata
   updatedAt?: string;
@@ -202,6 +343,7 @@ export const DEFAULT_PUBLIC_PORTAL_SETTINGS: PublicPortalSettings = {
   mosqueAddress: true,
   mosquePhone: true,
   mosqueEmail: false,
+  locationMap: true,
   waqfId: true,
   registrationNumber: true,
   establishedYear: true,
@@ -211,6 +353,7 @@ export const DEFAULT_PUBLIC_PORTAL_SETTINGS: PublicPortalSettings = {
   prayerSchedule: true,
   jumuahSchedule: true,
   ramadanSchedule: false,
+  liveWaqtStatus: true,
 
   // Donation Channels
   donation: true,
@@ -254,6 +397,9 @@ export const DEFAULT_PUBLIC_PORTAL_SETTINGS: PublicPortalSettings = {
   // Display Mode & Auto Refresh
   displayModeTheme: 'EMERALD_NIGHT',
   autoRefreshInterval: 45,
+  slideDurationSec: 15,
+  enableDisplayAudioAlert: true,
+  enableAutoSlideRotation: true,
 };
 
 export interface PublicPortalData {
@@ -2062,6 +2208,68 @@ export interface UploadedFile {
   url: string;
   uploadedBy: string;
   uploadedAt: string;
+}
+
+export type BackupType = 'MANUAL' | 'AUTOMATIC' | 'PRE_RESTORE_SAFETY' | 'PRE_OPERATION_SAFETY';
+export type BackupStatus = 'STARTED' | 'UPLOADING' | 'VERIFYING' | 'SUCCESS' | 'FAILED' | 'CANCELLED';
+
+export interface BackupRecord {
+  id: string;
+  mosqueId: string;
+  backupType: BackupType;
+  status: BackupStatus;
+  createdAt: string;
+  completedAt?: string;
+  initiatedByUserId?: string;
+  initiatedByUserName?: string;
+  googleDriveFileId?: string;
+  googleDriveFileName?: string;
+  googleDriveFolderId?: string;
+  fileSize?: number;
+  encryptedSize?: number;
+  checksum?: string;
+  backupVersion?: string;
+  schemaVersion?: string;
+  applicationVersion?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  durationMs?: number;
+  recordCount?: number;
+  moduleCount?: number;
+}
+
+export type RestoreStatus = 'STARTED' | 'VALIDATING' | 'SAFETY_BACKUP' | 'RESTORING' | 'SUCCESS' | 'FAILED' | 'BLOCKED';
+
+export interface RestoreRecord {
+  restoreId: string;
+  mosqueId: string;
+  userId: string;
+  backupId?: string;
+  googleDriveFileId?: string;
+  startedAt: string;
+  completedAt?: string;
+  status: RestoreStatus;
+  checksum?: string;
+  safetyBackupId?: string;
+  recordsRestored?: number;
+  modulesRestored?: number;
+  errorCode?: string;
+  errorMessage?: string;
+  durationMs?: number;
+}
+
+export type BackupFrequency = 'DAILY' | 'WEEKLY' | 'MONTHLY';
+
+export interface BackupSettings {
+  mosqueId: string;
+  automaticBackupEnabled: boolean;
+  frequency: BackupFrequency;
+  preferredTime: string; // HH:MM
+  weeklyDay?: 'Saturday' | 'Sunday' | 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday';
+  monthlyDay?: number; // 1, 5, 10, 15, 20, 25, 31
+  retentionCount: number; // 7, 15, 30, 60, 90, 0 (forever)
+  lastRunAt?: string;
+  lastRunStatus?: string;
 }
 
 export interface ApiResponse<T = any> {

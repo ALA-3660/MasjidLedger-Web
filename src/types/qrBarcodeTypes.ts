@@ -53,11 +53,12 @@ export type QrActionKey =
 
 export interface QrScanResult {
   raw: string;
-  type: 'RECORD' | 'ACTION' | 'UNKNOWN';
+  type: 'RECORD' | 'ACTION' | 'TOKEN' | 'UNKNOWN';
   prefix?: UniversalPrefix | string;
   code: string;
   entityType?: QrEntityType;
   actionKey?: QrActionKey;
+  destinationType?: QRDestinationType;
   actionTitleBn?: string;
   actionTitleEn?: string;
   targetTab?: string;
@@ -65,11 +66,15 @@ export interface QrScanResult {
   recordIdOrNumber?: string;
   requiredPermission?: string;
   hasPermission?: boolean;
+  token?: string;
+  qrEntity?: QRCodeEntity;
+  isPublic?: boolean;
   error?: string;
 }
 
 export interface QrActionDefinition {
   id: QrActionKey;
+  destinationType: QRDestinationType;
   titleBn: string;
   titleEn: string;
   categoryBn: string;
@@ -81,6 +86,7 @@ export interface QrActionDefinition {
   targetSubTab?: string;
   actionModalType: string;
   requiredPermission?: string;
+  isPublic?: boolean;
 }
 
 export interface RecordSpecificAction {
@@ -141,25 +147,41 @@ export interface ResolvedRecordItem {
   targetSubTab?: string;
 }
 
-export type LabelPrintFormat = 'TAG_COMPACT' | 'TAG_STANDARD' | 'ID_CARD' | 'A4_SHEET_GRID';
+export type LabelPrintFormat = 'TAG_COMPACT' | 'TAG_STANDARD' | 'ID_CARD' | 'A4_SHEET_GRID' | 'THERMAL_80';
 
 export type QRType = 'PUBLIC' | 'OPERATIONAL';
 export type QRStatus = 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
+
 export type QRDestinationType =
+  // Public Portals & Views
   | 'PUBLIC_PORTAL'
   | 'DONATION'
   | 'PRAYER_SCHEDULE'
   | 'RAMADAN_CALENDAR'
   | 'NOTICE_BOARD'
+  | 'MOSQUE_INFO'
+  // Operational Quick Entry
   | 'INCOME_NEW'
   | 'EXPENSE_NEW'
   | 'JUMUAH_COLLECTION'
   | 'DONATION_BOX_COLLECTION'
+  | 'DONATION_NEW'
+  | 'FUND_TRANSFER'
   | 'STAFF_SALARY'
+  | 'STAFF_FESTIVAL'
+  | 'WAQF_PROPERTY'
   | 'WAQF_RENT'
   | 'ASSET_SERVICE'
+  | 'ASSET_NEW'
   | 'CEMETERY_BURIAL'
-  | 'COMMITTEE_MEETING';
+  | 'COMMITTEE_MEETING'
+  // Operational Reports
+  | 'REPORT_INCOME'
+  | 'REPORT_EXPENSE'
+  | 'REPORT_DONATION_BOX'
+  | 'REPORT_JUMUAH'
+  | 'REPORT_STAFF_SALARY'
+  | 'REPORT_WAQF';
 
 export interface QRCodeEntity {
   id: string;
@@ -170,9 +192,33 @@ export interface QRCodeEntity {
   token: string;
   status: QRStatus;
   description?: string;
+  targetRecordId?: string;
+  targetRecordCode?: string;
+  targetCustomTitle?: string;
   useCount?: number;
   lastUsedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
 
+export interface DenominationBreakdown {
+  notes: {
+    1000?: number;
+    500?: number;
+    200?: number;
+    100?: number;
+    50?: number;
+    20?: number;
+    10?: number;
+    5?: number;
+    2?: number;
+  };
+  coins: {
+    5?: number;
+    2?: number;
+    1?: number;
+  };
+  totalNotes: number;
+  totalCoins: number;
+  grandTotal: number;
+}

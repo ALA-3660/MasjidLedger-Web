@@ -30,6 +30,9 @@ import {
   PublicPortalData,
   DEFAULT_PUBLIC_PORTAL_SETTINGS,
   QRCodeEntity,
+  DailyPrayerSchedule,
+  MosquePrayerSettings,
+  MonthlyPrayerDay,
 } from '../types';
 
 class ApiService {
@@ -261,6 +264,33 @@ class ApiService {
     return res.data!;
   }
 
+  async deleteQrCode(id: string): Promise<boolean> {
+    const res = await this.request<boolean>(`/qr/${id}`, { method: 'DELETE' });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to delete QR');
+    return true;
+  }
+
+  async bulkCreateQrCodes(list: Partial<QRCodeEntity>[]): Promise<QRCodeEntity[]> {
+    const res = await this.request<QRCodeEntity[]>('/qr/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ list }),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to bulk create QR codes');
+    return res.data || [];
+  }
+
+  async regenerateQrToken(id: string): Promise<QRCodeEntity> {
+    const res = await this.request<QRCodeEntity>(`/qr/${id}/regenerate-token`, { method: 'POST' });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to regenerate QR token');
+    return res.data!;
+  }
+
+  async resolveQrToken(token: string): Promise<QRCodeEntity> {
+    const res = await this.request<QRCodeEntity>(`/qr/resolve/${encodeURIComponent(token)}`);
+    if (!res.success) throw new Error(res.error?.message || 'QR code is invalid or expired');
+    return res.data!;
+  }
+
   async updateMosqueSettings(data: Partial<Mosque>): Promise<Mosque> {
     const res = await this.request<Mosque>('/mosques/current', {
       method: 'PUT',
@@ -274,71 +304,7 @@ class ApiService {
     const endpoint = mosqueIdOrCode ? `/public/portal/${encodeURIComponent(mosqueIdOrCode)}` : '/public/portal';
     const res = await this.request<PublicPortalData>(endpoint);
     if (!res.success || !res.data) {
-      return {
-        mosque: {
-          id: 'mosque-mamun-001',
-          code: 'MASJID-001',
-          nameBn: 'বাইতুল আমান জামে মসজিদ',
-          nameEn: 'Baytul Aman Jame Masjid',
-          address: 'কেন্দ্রীয় রোড, সদর',
-          district: 'কক্সবাজার',
-          country: 'বাংলাদেশ',
-          phone: '01811223344',
-          email: 'info@baytulamanmasjid.org',
-          website: 'https://masjidledger.org',
-          logoUrl: 'https://images.unsplash.com/photo-1564769625405-2af4ab607b75?auto=format&fit=crop&q=80&w=200',
-          waqfEstateName: 'ওয়াকফ এস্টেট নং ৪১২',
-          registrationNumber: 'REG-2023-889',
-          establishedDate: '১৯৯৫',
-          islamicTagline: '"যারা আল্লাহর ঘরে সালাত কায়েম করে এবং যাকাত দেয়—তারাই তো আল্লাহর মসজিদসমূহ আবাদ করে।"'
-        },
-        prayerTimes: [
-          { nameBn: 'ফজর (Fajr)', nameEn: 'Fajr', adhan: '০৪:৫০', iqamah: '০৫:১৫' },
-          { nameBn: 'যোহর (Dhuhr)', nameEn: 'Dhuhr', adhan: '১২:১৫', iqamah: '০১:১৫' },
-          { nameBn: 'আসর (Asr)', nameEn: 'Asr', adhan: '০৪:৩০', iqamah: '০৪:৪৫' },
-          { nameBn: 'মাগরিব (Maghrib)', nameEn: 'Maghrib', adhan: '০৬:২৫', iqamah: '০৬:৩০' },
-          { nameBn: 'এশা (Isha)', nameEn: 'Isha', adhan: '০৭:৪৫', iqamah: '০৮:১৫' }
-        ],
-        jumuahTime: { adhan: '১২:৩০', khutbah: '০১:০০', iqamah: '০১:৩০' },
-        donationChannels: {
-          bankAccounts: [
-            { id: 'acc-1', nameBn: 'প্রধান মসজিদ ফান্ড', bankName: 'ইসলামী ব্যাংক বাংলাদেশ পিএলসি', branchName: 'কক্সবাজার শাখা', accountNumber: '20501230200123', accountTitle: 'Baytul Aman Jame Masjid Fund' }
-          ],
-          mobileBanking: { bkash: '01711223344 (মার্চেন্ট)', nagad: '01811223344 (মার্চেন্ট)' },
-          qrCodeUrl: 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=https://masjidledger.org/donate',
-          instructionsBn: 'বিকাশ বা নগদ অ্যাপের মার্চেন্ট বা পেমেন্ট অপশনে গিয়ে মসজিদের তহবিলে আপনার সাদাকাহ/দান সরাসরি পাঠাতে পারেন।'
-        },
-        financialTransparency: {
-          currentMonthNameBn: 'আগস্ট ২০২৬',
-          monthlyIncome: 125000,
-          monthlyExpense: 98000,
-          monthlySurplus: 27000,
-          currentBalance: 345000,
-          totalDonationsReceived: 110000
-        },
-        notices: [
-          { id: 'not-1', title: 'আসন্ন জুমুআহ বয়ান ও বিশেষ দোয়া', description: 'আগামী জুমুআহ নামাজে পবিত্র রমজানের প্রস্তুতি ও দানশীলতা বিষয়ে গুরুত্বপূর্ণ বয়ান পেশ করবেন খতিব সাহেব। সকলের উপস্থিতি কামনা করছি।', publishDate: '2026-08-28', priority: 'HIGH', isEmergency: false }
-        ],
-        projects: [
-          { id: 'proj-1', planNumber: 'PRJ-01', title: 'মসজিদ ২য় তলা সম্প্রসারণ ও ছাদ ঢালাই কাজ', description: 'নামাজির সংখ্যা বৃদ্ধিতে দ্বিতীয় তলার ছাদ ঢালাই ও টাইলস স্থাপন কাজ চলমান।', status: 'চলমান', progressPercentage: 64, targetDate: '2026-10-15', approvedBudget: 5000000, actualExpense: 3200000, remainingBudget: 1800000 }
-        ],
-        waqfSummary: [
-          { id: 'wq-1', propertyCode: 'WQF-01', name: 'মার্কেট ভবন (নিচতলা ও ২য় তলা)', category: 'বাণিজ্যিক দোকান', location: 'স্টেশন রোড, কক্সবাজার', status: 'ভাড়া দেওয়া আছে', description: 'মাসিক ভাড়ার আয় সরাসরি মসজিদ তহবিলে জমা হয়।' }
-        ],
-        committee: {
-          termTitle: 'পরিচালনা কমিটি ২০২৪-২০২৬',
-          members: [
-            { id: 'm-1', name: 'আলহাজ্ব মোহাম্মদ ইউনুস', designation: 'সভাপতি', role: 'সভাপতি' },
-            { id: 'm-2', name: 'প্রকৌশলী আব্দুল মালেক', designation: 'সাধারণ সম্পাদক', role: 'সাধারণ সম্পাদক' },
-            { id: 'm-3', name: 'হাফেজ মাওলানা জহিরুল ইসলাম', designation: 'খতিব / ইমাম', role: 'খতিব / ইমাম' }
-          ]
-        },
-        subCommittees: [],
-        staff: [],
-        cemetery: undefined,
-        settings: DEFAULT_PUBLIC_PORTAL_SETTINGS,
-        serverTime: new Date().toISOString()
-      };
+      throw new Error(res.error?.message || 'পাবলিক পোর্টাল ডাটা পাওয়া যায়নি (No public portal data available)');
     }
     return res.data;
   }
@@ -368,6 +334,52 @@ class ApiService {
     });
     if (!res.success || !res.data) {
       throw new Error(res.error?.message || 'পাবলিক পোর্টাল সেটিংস রিসেট করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  // Prayer Times API Methods
+  async getPrayerSchedule(params?: { district?: string; date?: string; mosqueId?: string }): Promise<DailyPrayerSchedule> {
+    const query = new URLSearchParams();
+    if (params?.district) query.set('district', params.district);
+    if (params?.date) query.set('date', params.date);
+    if (params?.mosqueId) query.set('mosqueId', params.mosqueId);
+    
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    const res = await this.request<DailyPrayerSchedule>(`/prayer/schedule${qs}`);
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'নামাজের সময়সূচী লোড করা সম্ভব হয়নি');
+    }
+    return res.data;
+  }
+
+  async getMonthlyPrayerSchedule(params?: { year?: number; month?: number; district?: string; mosqueId?: string }): Promise<{
+    year: number;
+    month: number;
+    district: string;
+    days: MonthlyPrayerDay[];
+  }> {
+    const query = new URLSearchParams();
+    if (params?.year) query.set('year', params.year.toString());
+    if (params?.month) query.set('month', params.month.toString());
+    if (params?.district) query.set('district', params.district);
+    if (params?.mosqueId) query.set('mosqueId', params.mosqueId);
+
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    const res = await this.request<{ year: number; month: number; district: string; days: MonthlyPrayerDay[] }>(`/prayer/monthly${qs}`);
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'মাসিক নামাজের সময়সূচী লোড করা সম্ভব হয়নি');
+    }
+    return res.data;
+  }
+
+  async updatePrayerSettings(settings: Partial<MosquePrayerSettings>): Promise<Mosque> {
+    const res = await this.request<Mosque>('/mosques/current/prayer-settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'নামাজের সময় সেটিংস সংরক্ষণ করতে ব্যর্থ হয়েছে');
     }
     return res.data;
   }
@@ -674,6 +686,10 @@ class ApiService {
     return this.transferFunds(data);
   }
 
+  async createFundTransfer(data: any) {
+    return this.transferFunds(data);
+  }
+
   // Committee
   async getCommitteeTerms(): Promise<CommitteeTerm[]> {
     const res = await this.request<{ terms: CommitteeTerm[]; members: CommitteeMember[]; meetings: CommitteeMeeting[] }>('/committee');
@@ -946,6 +962,10 @@ class ApiService {
     });
     if (!res.success) throw new Error(res.error?.message || 'Failed to pay staff');
     return res.data!;
+  }
+
+  async createStaffPayment(data: any): Promise<StaffPayment> {
+    return this.payStaffSalary(data);
   }
 
   async updateStaffPayment(id: string, data: any): Promise<StaffPayment> {

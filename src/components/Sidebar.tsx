@@ -24,6 +24,7 @@ import {
   Calculator,
   QrCode,
   Scale,
+  Clock,
 } from 'lucide-react';
 import { Language, translations } from '../lib/i18n';
 
@@ -45,12 +46,14 @@ export type NavTab =
   | 'property'
   | 'cemetery'
   | 'notices'
+  | 'prayerTimes'
   | 'reports'
   | 'users'
   | 'admin'
   | 'audit'
   | 'publicPortal'
-  | 'qrManagement';
+  | 'qrManagement'
+  | 'quickEntry';
 
 export interface SidebarProps {
   activeTab?: NavTab | string;
@@ -130,6 +133,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       title: language === 'bn' ? 'রিপোর্টিং ও পাবলিক' : 'Reports & Public',
       items: [
+        { id: 'prayerTimes' as NavTab, label: language === 'bn' ? 'নামাজের সময়সূচি' : 'Prayer Schedule', icon: Clock, badge: 'লাইভ', color: 'text-indigo-600' },
         { id: 'reports' as NavTab, label: t.reports, icon: FileBarChart, badge: '20+' },
         { id: 'publicPortal' as NavTab, label: t.publicPortal, icon: ExternalLink },
       ],

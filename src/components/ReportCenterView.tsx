@@ -13,6 +13,9 @@ import {
   Sparkles,
   Eye,
   CheckCircle2,
+  CloudUpload,
+  RefreshCw,
+  Cloud,
 } from 'lucide-react';
 import {
   IncomeEntry,
@@ -35,6 +38,7 @@ import {
   User,
 } from '../types';
 import { Language, translations } from '../lib/i18n';
+import { googleDriveService } from '../services/googleDriveService';
 import {
   ResponsiveContainer,
   BarChart,
@@ -299,6 +303,67 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
     document.body.removeChild(link);
   };
 
+  const [isUploadingDrive, setIsUploadingDrive] = useState(false);
+  const [driveStatusMsg, setDriveStatusMsg] = useState<string | null>(null);
+
+  const handleUploadToDrive = async () => {
+    setDriveStatusMsg(null);
+    const token = googleDriveService.getAccessToken();
+    if (!token) {
+      // Initialize or request token
+      const success = googleDriveService.initClient(
+        async (newToken) => {
+          await executeDriveUpload(newToken);
+        },
+        (err) => {
+          console.error(err);
+          setDriveStatusMsg('গুগল ড্রাইভ অথেন্টিকেশন ব্যর্থ হয়েছে।');
+        }
+      );
+      if (success) {
+        googleDriveService.requestAccessToken();
+        return;
+      } else {
+        setDriveStatusMsg('গুগল সাইন-ইন স্ক্রিপ্ট লোড হয়নি। অনুগ্রহ করে পেজ রিফ্রেশ করুন।');
+        return;
+      }
+    } else {
+      await executeDriveUpload(token);
+    }
+  };
+
+  const executeDriveUpload = async (token: string) => {
+    setIsUploadingDrive(true);
+    setDriveStatusMsg('গুগল ড্রাইভে রিপোর্ট আপলোড করা হচ্ছে...');
+    try {
+      const reportPayload = {
+        reportType,
+        title: REPORT_TITLES[reportType]?.titleBn || reportType,
+        fromDate,
+        toDate,
+        totalIncome,
+        totalExpense,
+        netSurplus,
+        incomesCount: filteredIncomes.length,
+        expensesCount: filteredExpenses.length,
+        mosque: currentMosque?.nameBn || 'Mosque',
+        generatedAt: new Date().toISOString(),
+      };
+
+      const jsonContent = JSON.stringify(reportPayload, null, 2);
+      const fileName = `MasjidReport_${reportType}_${fromDate}_to_${toDate}.json`;
+
+      await googleDriveService.uploadReport(jsonContent, fileName, 'application/json');
+      setDriveStatusMsg('সফলভাবে রিপোর্ট গুগল ড্রাইভে আপলোড করা হয়েছে!');
+      setTimeout(() => setDriveStatusMsg(null), 4000);
+    } catch (err: any) {
+      console.error('Drive upload error:', err);
+      setDriveStatusMsg(`আপলোড ব্যর্থ হয়েছে: ${err.message}`);
+    } finally {
+      setIsUploadingDrive(false);
+    }
+  };
+
   const currentReportMeta = REPORT_TITLES[reportType] || {
     titleBn: reportType,
     subtitleBn: '',
@@ -307,6 +372,19 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
 
   return (
     <div className="report-center-container space-y-5 max-w-7xl mx-auto pb-12 font-baloo">
+      {driveStatusMsg && (
+        <div className={`p-3.5 rounded-xl text-xs flex items-center gap-2 font-medium print:hidden ${
+          driveStatusMsg.includes('সফলভাবে') ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' :
+          driveStatusMsg.includes('ব্যর্থ') ? 'bg-rose-50 text-rose-800 border border-rose-200' :
+          'bg-blue-50 text-blue-800 border border-blue-200'
+        }`}>
+          {driveStatusMsg.includes('সফলভাবে') ? <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" /> :
+           driveStatusMsg.includes('ব্যর্থ') ? <CheckCircle2 className="w-4 h-4 shrink-0 text-rose-600" /> :
+           <RefreshCw className="w-4 h-4 shrink-0 text-blue-600 animate-spin" />}
+          <span>{driveStatusMsg}</span>
+        </div>
+      )}
+
       {/* ============================================================
           1. TOP BANNER & ACTION BAR (PRINT HIDDEN)
           ============================================================ */}
@@ -346,6 +424,20 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
           >
             <Download className="w-3.5 h-3.5" />
             <span>CSV এক্সপোর্ট</span>
+          </button>
+
+          <button
+            id="btn-upload-drive"
+            onClick={handleUploadToDrive}
+            disabled={isUploadingDrive}
+            className="px-3.5 py-2 border border-blue-300 bg-blue-50 hover:bg-blue-100 disabled:opacity-50 text-blue-700 text-xs font-bold rounded-xl flex items-center space-x-1.5 transition-colors cursor-pointer"
+          >
+            {isUploadingDrive ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <CloudUpload className="w-3.5 h-3.5" />
+            )}
+            <span>ড্রাইভে আপলোড</span>
           </button>
 
           <button

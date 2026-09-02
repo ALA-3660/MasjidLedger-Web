@@ -32,12 +32,16 @@ import {
   Sparkles,
   Layers,
   HelpCircle,
-  Eye
+  Eye,
+  Compass,
 } from 'lucide-react';
 import { Mosque, User } from '../types';
 import { Language, translations } from '../lib/i18n';
 import { api } from '../lib/api';
 import { PublicPortalSettingsView } from './PublicPortalSettingsView';
+import { GoogleDriveBackupView } from './GoogleDriveBackupView';
+import { MosqueLocationPrayerSettings } from './MosqueLocationPrayerSettings';
+import { buildDailyPrayerSchedule, toBanglaDigits } from '../lib/prayerEngine';
 
 interface MosqueSettingsViewProps {
   currentMosque: Mosque | null;
@@ -56,7 +60,7 @@ export const MosqueSettingsView: React.FC<MosqueSettingsViewProps> = ({
 }) => {
   const t = translations[language] || translations.bn;
 
-  const [activeTab, setActiveTab] = useState<'general' | 'address' | 'branding' | 'signatures' | 'vouchers' | 'qr' | 'publicPortal' | 'jamaat' | 'system'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'address' | 'branding' | 'signatures' | 'vouchers' | 'qr' | 'publicPortal' | 'jamaat' | 'googleDrive' | 'system'>('general');
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -78,6 +82,43 @@ export const MosqueSettingsView: React.FC<MosqueSettingsViewProps> = ({
     isDanger?: boolean;
     onConfirm: () => void;
   } | null>(null);
+
+  const [isClearingDemo, setIsClearingDemo] = useState(false);
+
+  const handleClearDemoDataClick = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'ডেমু ডাটা মুছে নতুন ডাটা এন্ট্রি শুরু করুন',
+      message: 'সতর্কতা: এই অপশনটি ব্যবহার করলে সমস্ত পূর্ববর্তী ডেমু লেনদেন, আয়-ব্যয়, স্টাফ তালিকা, কমিটি সদস্য এবং প্রপার্টি রেকর্ড মুছে যাবে এবং সকল একাউন্টের ব্যালেন্স শূন্য (0) হয়ে যাবে। তবে আপনার মসজিদের তথ্য এবং একাউন্ট হেডসমূহ অক্ষত থাকবে। আপনি কি নিশ্চিতভাবে ডেমু ডাটা মুছে নতুন এন্ট্রি শুরু করতে চান?',
+      confirmText: 'হ্যাঁ, ডেমু ডাটা মুছে ফেলুন',
+      isDanger: true,
+      onConfirm: async () => {
+        setConfirmModal(null);
+        setIsClearingDemo(true);
+        try {
+          const res = await fetch('/api/v1/mosques/current/clear-demo-data', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+          });
+          const data = await res.json();
+          if (data.success) {
+            setSaveSuccess(true);
+            setLogoActionSuccess('সমস্ত ডেমু ডাটা সফলভাবে মুছে ফেলা হয়েছে। এখন আপনি প্রকৃত ডাটা এন্ট্রি শুরু করতে পারেন।');
+            setTimeout(() => {
+              window.location.reload();
+            }, 1500);
+          } else {
+            throw new Error(data.error?.message || 'Failed to clear demo data');
+          }
+        } catch (err: any) {
+          console.error(err);
+          setErrorMessage(err.message || 'ডেমু ডাটা মুছতে ব্যর্থ হয়েছে।');
+        } finally {
+          setIsClearingDemo(false);
+        }
+      }
+    });
+  };
 
   // Form State
   const [formData, setFormData] = useState<Partial<Mosque>>({
@@ -412,6 +453,39 @@ export const MosqueSettingsView: React.FC<MosqueSettingsViewProps> = ({
       return;
     }
 
+    const isValidTimeFormat = (timeStr: string) => {
+      if (!timeStr || !timeStr.trim()) return true;
+      const cleaned = timeStr.trim();
+      const timeRegex = /^([0-1]?[0-9]|2[0-3]|[০-৯]{1,2}):([0-5][0-9]|[০-৯]{2})$/;
+      return timeRegex.test(cleaned);
+    };
+
+    if (formData.jamaatSettings) {
+      const prayers = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'] as const;
+      for (const p of prayers) {
+        const jTime = formData.jamaatSettings[p]?.jamaat;
+        if (jTime && !isValidTimeFormat(jTime)) {
+          setErrorMessage(`সতর্কতা: জামাতের সময় ফরম্যাট সঠিক নয় (সঠিক ফরম্যাট: HH:MM, যেমন: 05:15 বা ০৫:১৫)।`);
+          return;
+        }
+      }
+      const jumuah = formData.jamaatSettings.jumuah;
+      if (jumuah) {
+        if (jumuah.azan && !isValidTimeFormat(jumuah.azan)) {
+          setErrorMessage('সতর্কতা: জুমার আজানের সময় ফরম্যাট সঠিক নয়।');
+          return;
+        }
+        if (jumuah.khutbah && !isValidTimeFormat(jumuah.khutbah)) {
+          setErrorMessage('সতর্কতা: জুমার খুতবার সময় ফরম্যাট সঠিক নয়।');
+          return;
+        }
+        if (jumuah.jamaat && !isValidTimeFormat(jumuah.jamaat)) {
+          setErrorMessage('সতর্কতা: জুমার জামাতের সময় ফরম্যাট সঠিক নয়।');
+          return;
+        }
+      }
+    }
+
     setIsSaving(true);
     setErrorMessage('');
     try {
@@ -606,10 +680,26 @@ export const MosqueSettingsView: React.FC<MosqueSettingsViewProps> = ({
               : 'hover:text-slate-900 hover:bg-slate-200/60'
           }`}
         >
-          <Calendar className="w-4 h-4 text-purple-600" />
-          <span>জামাতের সময়সূচি</span>
-          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-800">
-            নতুন
+          <Compass className="w-4 h-4 text-emerald-600" />
+          <span>অবস্থান ও নামাজের সময়সূচি</span>
+          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
+            Hanafi
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('googleDrive')}
+          className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg transition-all shrink-0 cursor-pointer ${
+            activeTab === 'googleDrive'
+              ? 'bg-white text-blue-700 shadow-xs'
+              : 'hover:text-slate-900 hover:bg-slate-200/60'
+          }`}
+        >
+          <CloudDownload className="w-4 h-4 text-blue-600" />
+          <span>গুগল ড্রাইভ ব্যাকআপ</span>
+          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">
+            Cloud
           </span>
         </button>
 
@@ -629,175 +719,24 @@ export const MosqueSettingsView: React.FC<MosqueSettingsViewProps> = ({
 
       {/* Main Form Body */}
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Tab: Jamaat Time Settings */}
+        {/* Tab: Google Drive Backup */}
+        {activeTab === 'googleDrive' && (
+          <GoogleDriveBackupView currentMosque={currentMosque} language={language} />
+        )}
+        {/* Tab: Location & Hanafi Prayer Settings */}
         {activeTab === 'jamaat' && (
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-6">
-            <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-purple-600" />
-                  <span>🕌 জামাতের সময়সূচি ও ওয়াক্ত কনফিগারেশন (Jamaat Time Settings)</span>
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  আজান ও ওয়াক্ত জেলাভিত্তিক হানাফি ক্যালেন্ডার অনুযায়ী স্বয়ংক্রিয়ভাবে নির্ধারিত হয়, তবে প্রতিটি ওয়াক্তের জামাতের নির্দিষ্ট সময় এখান থেকে মসজিদ কমিটি নির্ধারণ বা পরিবর্তন করতে পারে।
-                </p>
-              </div>
-              <span className="text-xs bg-purple-50 text-purple-700 font-bold px-3 py-1 rounded-lg border border-purple-200">
-                মসজিদ ভিত্তিক নির্দিষ্ট সময়
-              </span>
-            </div>
-
-            <div className="space-y-4">
-              {/* Table of prayers */}
-              <div className="overflow-x-auto rounded-xl border border-slate-200">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead className="bg-slate-50 text-slate-700 border-b border-slate-200 font-bold">
-                    <tr>
-                      <th className="p-3.5">নামাজ / ওয়াক্ত</th>
-                      <th className="p-3.5">আজান / ওয়াক্ত শুরু (ক্যালেন্ডার)</th>
-                      <th className="p-3.5">জামাতের নির্ধারিত সময়</th>
-                      <th className="p-3.5">অবস্থা ও সতর্কতা</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-slate-800">
-                    {(['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'] as const).map((prayerKey) => {
-                      const prayerNames: Record<string, { bn: string; defaultAzan: string }> = {
-                        fajr: { bn: 'ফজর (Fajr)', defaultAzan: '০৪:৫০' },
-                        dhuhr: { bn: 'যোহর (Dhuhr)', defaultAzan: '১২:১৫' },
-                        asr: { bn: 'আসর (Asr)', defaultAzan: '০৪:৩০' },
-                        maghrib: { bn: 'মাগরিব (Maghrib)', defaultAzan: '০৬:২৫' },
-                        isha: { bn: 'এশা (Isha)', defaultAzan: '০৭:৪৫' },
-                      };
-                      const setting = formData.jamaatSettings?.[prayerKey] || { azan: 'Auto', jamaat: '' };
-                      const isInvalid = setting.azan !== 'Auto' && setting.azan && setting.jamaat && setting.jamaat < setting.azan;
-
-                      return (
-                        <tr key={prayerKey} className="hover:bg-slate-50/50">
-                          <td className="p-3.5 font-bold text-slate-900">
-                            {prayerNames[prayerKey].bn}
-                          </td>
-                          <td className="p-3.5">
-                            <div className="flex items-center space-x-2">
-                              <span className="px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg font-mono font-medium">
-                                {setting.azan === 'Auto' ? 'Auto (হানাফি ক্যালেন্ডার)' : setting.azan}
-                              </span>
-                              <select
-                                disabled={!canEdit}
-                                value={setting.azan || 'Auto'}
-                                onChange={(e) => {
-                                  const updated = { ...(formData.jamaatSettings || {}) };
-                                  updated[prayerKey] = { ...(updated[prayerKey] || {}), azan: e.target.value };
-                                  setFormData(prev => ({ ...prev, jamaatSettings: updated }));
-                                }}
-                                className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs text-slate-600 focus:outline-hidden"
-                              >
-                                <option value="Auto">Auto (হানাফি)</option>
-                                <option value={prayerNames[prayerKey].defaultAzan}>{prayerNames[prayerKey].defaultAzan}</option>
-                              </select>
-                            </div>
-                          </td>
-                          <td className="p-3.5">
-                            <div className="flex items-center space-x-2">
-                              <input
-                                type="text"
-                                disabled={!canEdit}
-                                value={setting.jamaat || ''}
-                                onChange={(e) => {
-                                  const updated = { ...(formData.jamaatSettings || {}) };
-                                  updated[prayerKey] = { ...(updated[prayerKey] || {}), jamaat: e.target.value };
-                                  setFormData(prev => ({ ...prev, jamaatSettings: updated }));
-                                }}
-                                placeholder="যেমন: ০৫:১৫ বা 05:15"
-                                className={`w-36 px-3 py-2 bg-white border rounded-xl text-xs font-mono font-medium focus:ring-2 focus:outline-hidden ${
-                                  isInvalid ? 'border-rose-500 focus:ring-rose-200 bg-rose-50/30' : 'border-slate-200 focus:ring-purple-500'
-                                }`}
-                              />
-                            </div>
-                          </td>
-                          <td className="p-3.5">
-                            {isInvalid ? (
-                              <div className="flex items-center space-x-1.5 text-rose-600 font-semibold text-[11px] bg-rose-50 p-2 rounded-lg border border-rose-200">
-                                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-                                <span>সতর্কতা: জামাতের সময় আজানের সময়ের আগে হতে পারে না। অনুগ্রহ করে সময় যাচাই করুন।</span>
-                              </div>
-                            ) : (
-                              <div className="flex items-center space-x-1 text-emerald-700 text-[11px] font-medium">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                                <span>সময়সূচি সঠিক আছে</span>
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-
-                    {/* Jumu'ah Special Row */}
-                    <tr className="bg-purple-50/40 hover:bg-purple-50/60">
-                      <td className="p-3.5 font-bold text-purple-900">
-                        জুমার নামাজ (Jumu'ah)
-                      </td>
-                      <td colSpan={2} className="p-3.5">
-                        <div className="grid grid-cols-3 gap-3">
-                          <div>
-                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">আজান:</label>
-                            <input
-                              type="text"
-                              disabled={!canEdit}
-                              value={formData.jamaatSettings?.jumuah?.azan || '১২:৩০'}
-                              onChange={(e) => {
-                                const updated = { ...(formData.jamaatSettings || {}) };
-                                updated.jumuah = { ...(updated.jumuah || {}), azan: e.target.value };
-                                setFormData(prev => ({ ...prev, jamaatSettings: updated }));
-                              }}
-                              className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-medium"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">খুতবা শুরু:</label>
-                            <input
-                              type="text"
-                              disabled={!canEdit}
-                              value={formData.jamaatSettings?.jumuah?.khutbah || '০১:০০'}
-                              onChange={(e) => {
-                                const updated = { ...(formData.jamaatSettings || {}) };
-                                updated.jumuah = { ...(updated.jumuah || {}), khutbah: e.target.value };
-                                setFormData(prev => ({ ...prev, jamaatSettings: updated }));
-                              }}
-                              className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-medium"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">জামাত:</label>
-                            <input
-                              type="text"
-                              disabled={!canEdit}
-                              value={formData.jamaatSettings?.jumuah?.jamaat || '০১:৩০'}
-                              onChange={(e) => {
-                                const updated = { ...(formData.jamaatSettings || {}) };
-                                updated.jumuah = { ...(updated.jumuah || {}), jamaat: e.target.value };
-                                setFormData(prev => ({ ...prev, jamaatSettings: updated }));
-                              }}
-                              className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-medium"
-                            />
-                          </div>
-                        </div>
-                      </td>
-                      <td className="p-3.5">
-                        <span className="text-[11px] text-purple-800 font-medium">বিশেষ জুমার সময়সূচি কনফিগারেশন</span>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-start space-x-2.5">
-                <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-bold">নোট:</span> এখানে নির্ধারিত জামাতের সময়গুলো সরাসরি পাবলিক পোর্টাল, লাইভ ওয়াক্ত ডিসপ্লে এবং প্রিন্টেবল সময়সূচিতে স্বয়ংক্রিয়ভাবে কার্যকর হবে।
-                </div>
-              </div>
-            </div>
-          </div>
+          <MosqueLocationPrayerSettings
+            currentMosque={currentMosque}
+            currentUser={currentUser}
+            language={language}
+            onSave={async (updatedData) => {
+              await api.updateMosqueSettings(updatedData);
+              setFormData(prev => ({ ...prev, ...updatedData }));
+              if (onSaveSettings) {
+                await onSaveSettings(updatedData);
+              }
+            }}
+          />
         )}
         {/* Tab 1: General Info */}
         {activeTab === 'general' && (
@@ -2026,6 +1965,39 @@ export const MosqueSettingsView: React.FC<MosqueSettingsViewProps> = ({
                   defaultValue={5000}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
                 />
+              </div>
+            </div>
+
+            {/* Clear Demo Data for Real Data Entry */}
+            <div className="pt-6 border-t border-slate-100 mt-6 space-y-3">
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <h4 className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                    <Trash2 className="w-4 h-4 text-amber-700" />
+                    <span>ডেমু ডাটা মুছে নতুন প্রকৃত ডাটা এন্ট্রি শুরু করুন</span>
+                  </h4>
+                  <p className="text-[11px] text-amber-800">
+                    সকল ডেমু লেনদেন, আয়, ব্যয়, স্টাফ ও কমিটি রেকর্ড মুছে সকল একাউন্ট ব্যালেন্স শূন্য করে দিয়ে সম্পূর্ণ নতুনভাবে আসল ডাটা এন্ট্রির উপযোগী করুন।
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={!canEdit || isClearingDemo}
+                  onClick={handleClearDemoDataClick}
+                  className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-xs transition-colors shrink-0 cursor-pointer flex items-center gap-2"
+                >
+                  {isClearingDemo ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>মুছে ফেলা হচ্ছে...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>ডেমু ডাটা মুছে ফেলুন</span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </div>

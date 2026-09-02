@@ -41,7 +41,7 @@ import {
 export interface RecentScanItem {
   id: string;
   code: string;
-  type: 'ACTION' | 'RECORD' | 'UNKNOWN';
+  type: 'ACTION' | 'RECORD' | 'TOKEN' | 'UNKNOWN';
   titleBn: string;
   titleEn?: string;
   timestamp: number;

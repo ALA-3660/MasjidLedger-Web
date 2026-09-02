@@ -33,6 +33,7 @@ import {
 } from '../types';
 import { Language, translations, formatCurrency, formatDate } from '../lib/i18n';
 import { NavTab } from './Sidebar';
+import { DashboardPrayerWidget } from './DashboardPrayerWidget';
 
 interface DashboardViewProps {
   stats?: DashboardStats | null;
@@ -50,6 +51,8 @@ interface DashboardViewProps {
   onOpenAi?: () => void;
   onOpenScanner?: () => void;
   onOpenActionQrHub?: () => void;
+  onOpenDisplayScreen?: () => void;
+  onOpenPrintSchedule?: () => void;
   onRefresh?: () => void;
 }
 
@@ -69,6 +72,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenAi,
   onOpenScanner,
   onOpenActionQrHub,
+  onOpenDisplayScreen,
+  onOpenPrintSchedule,
   onRefresh,
 }) => {
   const t = translations[language] || translations.bn;
@@ -296,6 +301,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Real-time Live Prayer Times & Waqt Status Widget */}
+      <DashboardPrayerWidget
+        mosque={activeMosque}
+        language={language}
+        onNavigateToPrayerTimes={() => onNavigate('prayerTimes')}
+        onOpenDisplayScreen={onOpenDisplayScreen}
+        onOpenPrintSchedule={onOpenPrintSchedule}
+      />
 
       {/* 4 Core Financial Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
