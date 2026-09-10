@@ -130,8 +130,8 @@ const requirePermission = (permission: Permission) => {
 // 1. AUTH & USER ENDPOINTS
 // ==========================================
 app.post('/api/v1/auth/login', (req: Request, res: Response) => {
-  const { phoneOrEmail, identifier, password, mosqueId } = req.body;
-  const loginId = identifier || phoneOrEmail;
+  const { phoneOrEmail, identifier, phone, password, mosqueId } = req.body;
+  const loginId = identifier || phoneOrEmail || phone || '';
   const user = db.users.find(
     u => (u.phone === loginId || u.email === loginId) && (u.passwordHash === password || password === 'admin123')
   );
@@ -1297,7 +1297,7 @@ app.post('/api/v1/qr/:id/archive', authenticate, (req: AuthRequest, res: Respons
 app.post('/api/v1/qr/bulk', authenticate, (req: AuthRequest, res: Response) => {
   try {
     const list = req.body.list || [];
-    const mosqueId = req.currentMosque?.id || 'mosque-mamun-001';
+    const mosqueId = req.currentMosque?.id || db.mosques[0]?.id || 'mosque-main';
     const prepared = list.map((item: any) => ({ ...item, mosqueId }));
     const created = db.bulkCreateQrCodes(prepared);
     res.json({ success: true, data: created });

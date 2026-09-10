@@ -96,7 +96,9 @@ export const PrayerScheduleView: React.FC<PrayerScheduleViewProps> = ({
       now,
       currentMosque?.prayerSettings || editSettings,
       currentMosque?.jamaatSettings,
-      selectedDistrict
+      selectedDistrict,
+      currentMosque?.latitude,
+      currentMosque?.longitude
     );
   }, [now, currentMosque, editSettings, selectedDistrict]);
 
@@ -106,7 +108,9 @@ export const PrayerScheduleView: React.FC<PrayerScheduleViewProps> = ({
       calendarYear,
       calendarMonth,
       currentMosque?.prayerSettings || editSettings,
-      selectedDistrict
+      selectedDistrict,
+      currentMosque?.latitude,
+      currentMosque?.longitude
     );
   }, [calendarYear, calendarMonth, currentMosque, editSettings, selectedDistrict]);
 
@@ -762,9 +766,9 @@ export const PrayerScheduleView: React.FC<PrayerScheduleViewProps> = ({
       {activeTab === 'MONTHLY' && (
         <div className="bg-white rounded-2xl p-6 shadow-xs border border-slate-200 space-y-6">
           {/* Calendar Header Controls */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pb-4 border-b border-slate-200">
-            <div className="flex items-center space-x-3">
-              <div className="flex items-center space-x-2">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4 pb-4 border-b border-slate-200">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center space-x-1.5">
                 <button
                   onClick={() => {
                     if (calendarMonth === 1) {
@@ -775,13 +779,30 @@ export const PrayerScheduleView: React.FC<PrayerScheduleViewProps> = ({
                     }
                   }}
                   className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
+                  title="পূর্বের মাস"
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
 
-                <h3 className="text-lg font-bold text-slate-900 min-w-[160px] text-center">
-                  {monthNamesBn[calendarMonth - 1]} {toBanglaDigits(calendarYear)}
-                </h3>
+                <select
+                  value={calendarMonth}
+                  onChange={(e) => setCalendarMonth(parseInt(e.target.value, 10))}
+                  className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-bold text-slate-800 text-sm cursor-pointer focus:outline-hidden"
+                >
+                  {monthNamesBn.map((name, idx) => (
+                    <option key={idx} value={idx + 1}>{name}</option>
+                  ))}
+                </select>
+
+                <select
+                  value={calendarYear}
+                  onChange={(e) => setCalendarYear(parseInt(e.target.value, 10))}
+                  className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-bold text-slate-800 text-sm cursor-pointer focus:outline-hidden"
+                >
+                  {Array.from({ length: 30 }, (_, i) => new Date().getFullYear() - 5 + i).map((y) => (
+                    <option key={y} value={y}>{toBanglaDigits(y)}</option>
+                  ))}
+                </select>
 
                 <button
                   onClick={() => {
@@ -793,8 +814,20 @@ export const PrayerScheduleView: React.FC<PrayerScheduleViewProps> = ({
                     }
                   }}
                   className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
+                  title="পরের মাস"
                 >
                   <ChevronRight className="w-4 h-4" />
+                </button>
+
+                <button
+                  onClick={() => {
+                    const today = new Date();
+                    setCalendarMonth(today.getMonth() + 1);
+                    setCalendarYear(today.getFullYear());
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs border border-emerald-200 transition cursor-pointer"
+                >
+                  বর্তমান মাস
                 </button>
               </div>
 

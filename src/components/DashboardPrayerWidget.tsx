@@ -131,7 +131,7 @@ export const DashboardPrayerWidget: React.FC<DashboardPrayerWidgetProps> = ({
             </span>
             <span className="text-slate-400 text-xs">|</span>
             <span className="text-xs text-slate-300 font-mono">
-              ঘড়ি: <strong className="text-white font-bold">{waqtStatus.currentTime24}</strong>
+              ঘড়ি: <strong className="text-white font-bold">{waqtStatus.currentTime12}</strong>
             </span>
           </div>
           <h4 className="text-base sm:text-lg font-bold text-white">
@@ -147,7 +147,7 @@ export const DashboardPrayerWidget: React.FC<DashboardPrayerWidgetProps> = ({
         {/* Next Waqt Countdown Box */}
         <div className="bg-white/10 backdrop-blur-md px-4 py-2.5 rounded-xl border border-white/15 text-center shrink-0">
           <span className="text-[11px] text-indigo-200 block font-medium">
-            পরবর্তী নামাজ: {waqtStatus.nextWaqtBn}
+            পরবর্তী নামাজ: {waqtStatus.nextWaqtBn} ({waqtStatus.nextAdhanTimeStr12})
           </span>
           <div className="text-xl font-black text-emerald-300 font-mono tracking-wider">
             {formatDurationDigital(waqtStatus.nextWaqtStartsInSeconds, true)}
@@ -193,11 +193,11 @@ export const DashboardPrayerWidget: React.FC<DashboardPrayerWidgetProps> = ({
               <div className="mt-2 space-y-0.5">
                 <div className="flex justify-between text-[11px] text-slate-600">
                   <span>আজান:</span>
-                  <span className="font-mono font-semibold text-slate-800">{p.adhan}</span>
+                  <span className="font-mono font-semibold text-slate-800">{p.adhan12 || p.adhan}</span>
                 </div>
                 <div className="flex justify-between text-[11px] text-slate-900 font-bold">
                   <span>জামাত:</span>
-                  <span className="font-mono text-emerald-800">{p.jamaat}</span>
+                  <span className="font-mono text-emerald-800">{p.jamaat12 || p.jamaat}</span>
                 </div>
               </div>
             </div>
@@ -209,23 +209,23 @@ export const DashboardPrayerWidget: React.FC<DashboardPrayerWidgetProps> = ({
       <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2 text-xs text-slate-600">
         <div className="flex items-center space-x-1.5">
           <Moon className="w-3.5 h-3.5 text-indigo-600" />
-          <span>তাহাজ্জুদ শেষ: <strong className="text-slate-800 font-mono">{waqtStatus.tahajjudEndTimeStr}</strong></span>
+          <span>তাহাজ্জুদ শেষ: <strong className="text-slate-800 font-mono">{waqtStatus.tahajjudEndTimeStr12}</strong></span>
         </div>
         <div className="flex items-center space-x-1.5">
           <Sun className="w-3.5 h-3.5 text-amber-500" />
-          <span>সূর্যোদয়: <strong className="text-slate-800 font-mono">{waqtStatus.sunriseTimeStr}</strong></span>
+          <span>সূর্যোদয়: <strong className="text-slate-800 font-mono">{waqtStatus.sunriseTimeStr12}</strong></span>
         </div>
         <div className="flex items-center space-x-1.5">
           <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-          <span>ইশরাক: <strong className="text-slate-800 font-mono">{waqtStatus.ishraqTimeStr}</strong></span>
+          <span>ইশরাক: <strong className="text-slate-800 font-mono">{waqtStatus.ishraqTimeStr12}</strong></span>
         </div>
         <div className="flex items-center space-x-1.5">
           <Compass className="w-3.5 h-3.5 text-blue-500" />
-          <span>ঠিক দুপুর: <strong className="text-slate-800 font-mono">{waqtStatus.solarNoonTimeStr}</strong></span>
+          <span>ঠিক দুপুর: <strong className="text-slate-800 font-mono">{waqtStatus.solarNoonTimeStr12}</strong></span>
         </div>
         <div className="flex items-center space-x-1.5">
           <Sun className="w-3.5 h-3.5 text-rose-500" />
-          <span>সূর্যাস্ত/ইফতার: <strong className="text-slate-800 font-mono">{waqtStatus.sunsetTimeStr}</strong></span>
+          <span>সূর্যাস্ত/ইফতার: <strong className="text-slate-800 font-mono">{waqtStatus.sunsetTimeStr12}</strong></span>
         </div>
       </div>
     </div>

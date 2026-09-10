@@ -58,7 +58,7 @@ class RealtimeServer {
 
       // Find user from query or fallback to default admin
       const user = db.users.find(u => u.id === userIdParam || (token && token.includes(u.id))) || db.users[0];
-      const mosqueId = mosqueIdParam || user?.mosqueId || db.mosques[0]?.id || 'mosque-mamun-001';
+      const mosqueId = mosqueIdParam || user?.mosqueId || db.mosques[0]?.id || 'mosque-main';
 
       const clientId = `ws-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       const client: ClientConnection = {

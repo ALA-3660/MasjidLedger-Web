@@ -48,6 +48,7 @@ import { QuickEntryView } from './components/QuickEntryView';
 import { PrayerScheduleView } from './components/PrayerScheduleView';
 import { PrayerTimesView } from './components/PrayerTimesView';
 import { AdminLoginScreen } from './components/AdminLoginScreen';
+import { PwaManager } from './components/PwaManager';
 import { MoneyReceiptModal, VoucherModal, PrintFormat } from './components/PrintModals';
 import { ChangeCalculatorModal } from './components/ChangeCalculatorModal';
 import { UniversalScannerModal } from './components/UniversalScannerModal';
@@ -1734,6 +1735,9 @@ export default function App() {
         recordItem={activePrintLabel}
         mosque={mosque}
       />
+
+      {/* PwaManager for offline, install, and update notifications */}
+      <PwaManager />
     </div>
   );
 }

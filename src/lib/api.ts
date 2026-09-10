@@ -37,8 +37,8 @@ import {
 
 class ApiService {
   private token: string | null = null;
-  private currentUserId: string = 'usr-admin-1';
-  private currentMosqueId: string = 'mosque-mamun-001';
+  private currentUserId: string = '';
+  private currentMosqueId: string = '';
   private inFlightRequests = new Map<string, Promise<ApiResponse<any>>>();
 
   constructor() {
@@ -63,8 +63,11 @@ class ApiService {
 
   clearAuth() {
     this.token = null;
+    this.currentUserId = '';
+    this.currentMosqueId = '';
     localStorage.removeItem('ml_token');
     localStorage.removeItem('ml_user_id');
+    localStorage.removeItem('ml_mosque_id');
     this.inFlightRequests.clear();
   }
 
@@ -195,13 +198,20 @@ class ApiService {
   }
 
   // Auth & Mosque
-  async login(credentials: { identifier: string; password: string; mosqueId?: string }): Promise<{ user: User; token: string }> {
+  async login(credentials: { identifier?: string; phone?: string; phoneOrEmail?: string; password: string; mosqueId?: string }): Promise<{ user: User; token: string }> {
+    const payload = {
+      identifier: credentials.identifier || credentials.phone || credentials.phoneOrEmail || '',
+      phone: credentials.phone || credentials.identifier || '',
+      phoneOrEmail: credentials.phoneOrEmail || credentials.identifier || credentials.phone || '',
+      password: credentials.password,
+      mosqueId: credentials.mosqueId,
+    };
     const res = await this.request<{ user: User; token: string }>('/auth/login', {
       method: 'POST',
-      body: JSON.stringify(credentials),
+      body: JSON.stringify(payload),
     });
     if (!res.success || !res.data) {
-      throw new Error(res.error?.message || 'Login failed');
+      throw new Error(res.error?.message || 'লগইন ব্যর্থ হয়েছে। সঠিক তথ্য প্রদান করুন।');
     }
     this.setAuth(res.data.user.id, res.data.user.mosqueId, res.data.token);
     return res.data;
@@ -1281,11 +1291,18 @@ class ApiService {
     return res.data!;
   }
 
-  // WebSocket Real-time Listener
+  // WebSocket Real-time Listener & Manager State
   private ws: WebSocket | null = null;
   private wsListeners: Set<(event: { type: string; mosqueId?: string; data?: any }) => void> = new Set();
   private reconnectTimeout: any = null;
-  private reconnectDelay: number = 3000;
+  private reconnectDelay: number = 1000; // Start at 1s per requirements
+  private maxReconnectDelay: number = 30000; // Max delay
+  private wsState: 'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'RECONNECTING' | 'ERROR' = 'DISCONNECTED';
+  private isExplicitlyClosed: boolean = false;
+
+  getWsState() {
+    return this.wsState;
+  }
 
   connectWebSocket(onEvent?: (event: any) => void) {
     if (onEvent) {
@@ -1296,45 +1313,105 @@ class ApiService {
       return;
     }
 
-    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
-      return;
+    // Prevent duplicate connections if already open or connecting
+    if (this.ws) {
+      if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
+        return;
+      }
     }
 
+    this.isExplicitlyClosed = false;
+    this.wsState = 'CONNECTING';
+
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws?userId=${encodeURIComponent(this.currentUserId)}&mosqueId=${encodeURIComponent(this.currentMosqueId)}`;
+    const wsUrl = `${protocol}//${window.location.host}/ws?userId=${encodeURIComponent(this.currentUserId || '')}&mosqueId=${encodeURIComponent(this.currentMosqueId || '')}`;
 
     try {
       this.ws = new WebSocket(wsUrl);
 
       this.ws.onopen = () => {
-        this.reconnectDelay = 3000;
+        this.wsState = 'CONNECTED';
+        this.reconnectDelay = 1000; // Reset retry counter on successful connection (1s -> 2s -> 4s ...)
+        if (this.reconnectTimeout) {
+          clearTimeout(this.reconnectTimeout);
+          this.reconnectTimeout = null;
+        }
         console.log('[WebSocket] Connected to MasjidLedger Realtime Server');
       };
 
       this.ws.onmessage = (e) => {
         try {
           const parsed = JSON.parse(e.data);
-          this.wsListeners.forEach(listener => listener(parsed));
+          this.wsListeners.forEach(listener => {
+            try {
+              listener(parsed);
+            } catch (err) {
+              console.warn('[WebSocket] Listener error:', err);
+            }
+          });
         } catch (err) {
           console.warn('[WebSocket] Error parsing message:', err);
         }
       };
 
-      this.ws.onclose = () => {
-        if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
+      this.ws.onclose = (event) => {
+        this.wsState = 'DISCONNECTED';
+        if (this.isExplicitlyClosed) return;
+
+        if (this.reconnectTimeout) {
+          clearTimeout(this.reconnectTimeout);
+        }
+
         const nextDelay = this.reconnectDelay;
-        this.reconnectDelay = Math.min(this.reconnectDelay * 1.5, 30000);
+        // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s max
+        this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay);
+        this.wsState = 'RECONNECTING';
+
+        console.debug(`[WebSocket] Disconnected (code: ${event.code}). Reconnecting in ${nextDelay}ms...`);
+
         this.reconnectTimeout = setTimeout(() => {
-          this.connectWebSocket();
+          if (!this.isExplicitlyClosed) {
+            this.connectWebSocket();
+          }
         }, nextDelay);
       };
 
       this.ws.onerror = (err) => {
-        console.debug('[WebSocket] Notice: Realtime connection unavailable, falling back to polling.', err);
+        this.wsState = 'ERROR';
+        // Prevent unhandled promise rejection or uncaught error by catching gracefully
+        console.debug('[WebSocket] Connection notice or temporary failure:', err);
       };
     } catch (err) {
+      this.wsState = 'ERROR';
       console.debug('[WebSocket] Realtime connection could not be opened:', err);
+      this.wsState = 'RECONNECTING';
+      
+      if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
+      const nextDelay = this.reconnectDelay;
+      this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay);
+      this.reconnectTimeout = setTimeout(() => {
+        if (!this.isExplicitlyClosed) {
+          this.connectWebSocket();
+        }
+      }, nextDelay);
     }
+  }
+
+  disconnectWebSocket() {
+    this.isExplicitlyClosed = true;
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+    if (this.ws) {
+      try {
+        this.ws.close();
+      } catch (e) {
+        // ignore
+      }
+      this.ws = null;
+    }
+    this.wsState = 'DISCONNECTED';
   }
 
   onWsEvent(callback: (event: { type: string; mosqueId?: string; data?: any }) => void) {

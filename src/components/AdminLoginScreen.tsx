@@ -10,7 +10,6 @@ import {
   Eye,
   EyeOff,
   UserCheck,
-  Sparkles,
   ArrowRight,
 } from 'lucide-react';
 import { Mosque, UserRole } from '../types';
@@ -59,11 +58,6 @@ export const AdminLoginScreen: React.FC<AdminLoginScreenProps> = ({
     }
   };
 
-  const handleQuickDemoLogin = (phoneVal: string, passVal: string, roleName: string) => {
-    setIdentifier(phoneVal);
-    setPassword(passVal);
-  };
-
   const selectedMosque = mosques.find((m) => m.id === selectedMosqueId) || currentMosque || mosques[0];
 
   return (
@@ -78,7 +72,7 @@ export const AdminLoginScreen: React.FC<AdminLoginScreenProps> = ({
           <Building className="w-8 h-8 text-white" />
         </div>
         <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
-          {selectedMosque?.nameBn || 'মসজিদুল মামুর কমপ্লেক্স'}
+          {selectedMosque?.nameBn || selectedMosque?.name || 'মসজিদলেজার পোর্টাল'}
         </h1>
         <p className="text-xs text-emerald-200/80 font-medium tracking-wide">
           স্মার্ট মসজিদ ও ওয়াকফ ফাইন্যান্সিয়াল ম্যানেজমেন্ট সিস্টেম
@@ -200,37 +194,11 @@ export const AdminLoginScreen: React.FC<AdminLoginScreenProps> = ({
             </button>
           </form>
 
-          {/* Quick Demo Switcher */}
-          <div className="pt-3 border-t border-slate-800/80 space-y-2">
-            <div className="flex items-center justify-between text-[11px] text-slate-400">
-              <span className="flex items-center space-x-1">
-                <Sparkles className="w-3 h-3 text-amber-400" />
-                <span>ডেমো ও টেস্ট রোল কুইক-সুইচার:</span>
-              </span>
-            </div>
-            <div className="grid grid-cols-3 gap-1.5 text-[10px]">
-              <button
-                type="button"
-                onClick={() => handleQuickDemoLogin('01711000001', 'admin123', 'সুপার অ্যাডমিন')}
-                className="p-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-300 font-medium text-center border border-slate-700 transition-colors"
-              >
-                সুপার অ্যাডমিন
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickDemoLogin('01711000002', 'admin123', 'হিসাবরক্ষক')}
-                className="p-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-300 font-medium text-center border border-slate-700 transition-colors"
-              >
-                হিসাবরক্ষক
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickDemoLogin('01711000003', 'admin123', 'কমিটি অ্যাডমিন')}
-                className="p-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-300 font-medium text-center border border-slate-700 transition-colors"
-              >
-                কমিটি অ্যাডমিন
-              </button>
-            </div>
+          {/* System Access Information */}
+          <div className="pt-3 border-t border-slate-800/80 text-center space-y-1">
+            <p className="text-[11px] text-slate-400">
+              অনুমোদিত মসজিদ অ্যাডমিন বা দায়িত্বপ্রাপ্ত কর্মকর্তার অ্যাকাউন্ট দিয়ে প্রবেশ করুন।
+            </p>
           </div>
         </div>
 

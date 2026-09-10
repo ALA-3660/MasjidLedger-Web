@@ -243,10 +243,10 @@ export const PublicPortalView: React.FC<PublicPortalViewProps> = ({
 
   // Resolved Display Data based on backend sanitized responses and whitelist settings
   const mosqueInfo = portalData?.mosque || {
-    id: propMosque?.id || 'mosque-001',
-    code: propMosque?.code || 'MOSQUE-WAQF',
-    nameBn: propMosque?.nameBn || 'বায়তুল মামুর জামে মসজিদ',
-    nameEn: propMosque?.nameEn || 'Baitul Mamur Jame Masjid',
+    id: propMosque?.id || 'mosque-main',
+    code: propMosque?.code || '',
+    nameBn: propMosque?.nameBn || propMosque?.name || 'মসজিদ পোর্টাল',
+    nameEn: propMosque?.nameEn || '',
     address: activeSettings.mosqueAddress ? propMosque?.address : undefined,
     district: activeSettings.mosqueAddress ? propMosque?.district : undefined,
     phone: activeSettings.mosquePhone ? propMosque?.phone : undefined,
@@ -285,10 +285,23 @@ export const PublicPortalView: React.FC<PublicPortalViewProps> = ({
     iqamah: toBanglaDigits(waqtStatus.jumuahJamaatTimeStr),
   } : undefined);
 
-  // Daily Solar Hanafi Schedule calculated for the selected district
+  // Daily Solar Hanafi Schedule calculated for the selected district and mosque coordinates
   const dailyHanafiCalc = useMemo(() => {
-    return calculateHanafiDailyTimes(currentTime, selectedDistrict);
-  }, [currentTime, selectedDistrict]);
+    return calculateHanafiDailyTimes(currentTime, {
+      districtName: selectedDistrict,
+      latitude: propMosque?.latitude,
+      longitude: propMosque?.longitude,
+      madhab: propMosque?.prayerSettings?.madhab || 'HANAFI',
+      fajrAngle: propMosque?.prayerSettings?.fajrAngle || 18,
+      ishaAngle: propMosque?.prayerSettings?.ishaAngle || 18,
+      ishraqOffsetMins: (propMosque?.prayerSettings as any)?.ishraqOffsetMinutes ?? propMosque?.prayerSettings?.ishraqOffsetMins ?? 10,
+      fajrOffset: (propMosque?.prayerSettings as any)?.fajr?.manualOffset ?? 0,
+      dhuhrOffset: (propMosque?.prayerSettings as any)?.dhuhr?.manualOffset ?? 0,
+      asrOffset: (propMosque?.prayerSettings as any)?.asr?.manualOffset ?? 0,
+      maghribOffset: (propMosque?.prayerSettings as any)?.maghrib?.manualOffset ?? 0,
+      ishaOffset: (propMosque?.prayerSettings as any)?.isha?.manualOffset ?? 0,
+    });
+  }, [currentTime, selectedDistrict, propMosque]);
 
   const donationChannels = portalData?.donationChannels;
   const financialTransparency = portalData?.financialTransparency;
@@ -477,7 +490,7 @@ export const PublicPortalView: React.FC<PublicPortalViewProps> = ({
               بِسْمِ ٱللَّٰهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ
             </div>
             <h1 className="text-2xl sm:text-4xl font-black tracking-tight leading-tight">
-              {mosqueInfo?.nameBn || 'বায়তুল মামুর জামে মসজিদ'}
+              {mosqueInfo?.nameBn || mosqueInfo?.nameEn || 'মসজিদ পোর্টাল'}
             </h1>
             {mosqueInfo?.nameEn && (
               <p className="text-xs sm:text-sm text-emerald-200 font-sans tracking-wide">
@@ -1019,6 +1032,13 @@ export const PublicPortalView: React.FC<PublicPortalViewProps> = ({
                     </div>
                   </div>
                 )}
+
+                {/* Empty State when no donation channels configured */}
+                {!donationChannels?.qrCodeUrl && !donationChannels?.mobileBanking?.bkash && !donationChannels?.mobileBanking?.nagad && (!donationChannels?.bankAccounts || donationChannels.bankAccounts.length === 0) && (
+                  <div className="bg-slate-50 border border-dashed border-slate-200 rounded-3xl p-6 text-center text-slate-400">
+                    <p className="text-sm font-medium">অনলাইন দানের তথ্য এখনো সেটআপ করা হয়নি</p>
+                  </div>
+                )}
               </div>
             </div>
           </section>
@@ -1124,7 +1144,7 @@ export const PublicPortalView: React.FC<PublicPortalViewProps> = ({
         {/* -------------------------------------------------------------
             SECTION 4: NOTICES & ANNOUNCEMENTS
             ------------------------------------------------------------- */}
-        {activeSettings.notices && publicNotices.length > 0 && (
+        {activeSettings.notices && (
           <section id="section-notices" className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-6">
             <div className="flex items-center space-x-3 border-b border-slate-100 pb-4">
               <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
@@ -1136,48 +1156,55 @@ export const PublicPortalView: React.FC<PublicPortalViewProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {publicNotices.map((n) => (
-                <div key={n.id} className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 flex flex-col justify-between">
-                  <div className="space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <h3 className="text-sm sm:text-base font-bold text-slate-900 leading-snug">{n.title}</h3>
-                      {n.priority && (
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase shrink-0 ${
-                          n.priority === 'URGENT' ? 'bg-rose-100 text-rose-800' : 'bg-slate-200 text-slate-700'
-                        }`}>
-                          {n.priority}
-                        </span>
-                      )}
+            {publicNotices.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {publicNotices.map((n) => (
+                  <div key={n.id} className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 flex flex-col justify-between">
+                    <div className="space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="text-sm sm:text-base font-bold text-slate-900 leading-snug">{n.title}</h3>
+                        {n.priority && (
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase shrink-0 ${
+                            n.priority === 'URGENT' ? 'bg-rose-100 text-rose-800' : 'bg-slate-200 text-slate-700'
+                          }`}>
+                            {n.priority}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-700 whitespace-pre-line leading-relaxed line-clamp-4">
+                        {n.description}
+                      </p>
                     </div>
-                    <p className="text-xs text-slate-700 whitespace-pre-line leading-relaxed line-clamp-4">
-                      {n.description}
-                    </p>
-                  </div>
 
-                  <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500">
-                    <span>তারিখ: {n.publishDate}</span>
-                    <button
-                      onClick={() => {
-                        setActiveNoticeForPrint(n as any);
-                        setActivePrintSheet('NOTICE');
-                      }}
-                      className="text-emerald-700 font-bold hover:underline flex items-center space-x-1"
-                    >
-                      <Printer className="w-3.5 h-3.5" />
-                      <span>প্রিন্ট করুন</span>
-                    </button>
+                    <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500">
+                      <span>তারিখ: {n.publishDate}</span>
+                      <button
+                        onClick={() => {
+                          setActiveNoticeForPrint(n as any);
+                          setActivePrintSheet('NOTICE');
+                        }}
+                        className="text-emerald-700 font-bold hover:underline flex items-center space-x-1"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        <span>প্রিন্ট করুন</span>
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="py-8 text-center text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                <Bell className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                <p className="text-sm font-medium">বর্তমানে কোনো নোটিশ নেই</p>
+              </div>
+            )}
           </section>
         )}
 
         {/* -------------------------------------------------------------
             SECTION 5: PROJECTS & WAQF
             ------------------------------------------------------------- */}
-        {((activeSettings.projects && projects.length > 0) || (activeSettings.waqfSummary && waqfList.length > 0)) && (
+        {(activeSettings.projects || activeSettings.waqfSummary) && (
           <section id="section-projects" className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-6">
             <div className="flex items-center space-x-3 border-b border-slate-100 pb-4">
               <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
@@ -1189,38 +1216,45 @@ export const PublicPortalView: React.FC<PublicPortalViewProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {projects.map((p) => (
-                <div key={p.id} className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-                  <div className="flex justify-between items-start">
-                    <h3 className="text-sm sm:text-base font-bold text-slate-900">{p.title}</h3>
-                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
-                      {p.status}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-600 line-clamp-2">{p.description}</p>
-                  <div className="space-y-1 pt-1">
-                    <div className="flex justify-between text-xs font-semibold text-slate-700">
-                      <span>অগ্রগতি</span>
-                      <span className="font-mono text-emerald-700">{toBanglaDigits(p.progressPercentage)}%</span>
+            {projects.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {projects.map((p) => (
+                  <div key={p.id} className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                    <div className="flex justify-between items-start">
+                      <h3 className="text-sm sm:text-base font-bold text-slate-900">{p.title}</h3>
+                      <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                        {p.status}
+                      </span>
                     </div>
-                    <div className="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-emerald-600 rounded-full transition-all duration-500"
-                        style={{ width: `${p.progressPercentage}%` }}
-                      />
+                    <p className="text-xs text-slate-600 line-clamp-2">{p.description}</p>
+                    <div className="space-y-1 pt-1">
+                      <div className="flex justify-between text-xs font-semibold text-slate-700">
+                        <span>অগ্রগতি</span>
+                        <span className="font-mono text-emerald-700">{toBanglaDigits(p.progressPercentage)}%</span>
+                      </div>
+                      <div className="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-emerald-600 rounded-full transition-all duration-500"
+                          style={{ width: `${p.progressPercentage}%` }}
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="py-8 text-center text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                <TrendingUp className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                <p className="text-sm font-medium">বর্তমানে কোনো চলমান উন্নয়ন প্রকল্প নেই</p>
+              </div>
+            )}
           </section>
         )}
 
         {/* -------------------------------------------------------------
             SECTION 6: COMMITTEE & STAFF
             ------------------------------------------------------------- */}
-        {((activeSettings.committee && committee) || (activeSettings.staff && staffList.length > 0)) && (
+        {(activeSettings.committee || activeSettings.staff) && (
           <section id="section-committee" className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-6">
             <div className="flex items-center space-x-3 border-b border-slate-100 pb-4">
               <div className="w-10 h-10 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center font-bold">
@@ -1234,43 +1268,55 @@ export const PublicPortalView: React.FC<PublicPortalViewProps> = ({
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Committee */}
-              {activeSettings.committee && committee && (
+              {activeSettings.committee && (
                 <div className="space-y-3">
                   <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-                    {committee.termTitle || 'পরিচালনা কমিটি'}
+                    {committee?.termTitle || 'পরিচালনা কমিটি'}
                   </span>
-                  <div className="space-y-2">
-                    {committee.members.map(m => (
-                      <div key={m.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between text-xs">
-                        <span className="font-bold text-slate-900">{m.name}</span>
-                        <span className="text-sky-700 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200 font-semibold">
-                          {m.designation}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                  {committee && committee.members && committee.members.length > 0 ? (
+                    <div className="space-y-2">
+                      {committee.members.map(m => (
+                        <div key={m.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between text-xs">
+                          <span className="font-bold text-slate-900">{m.name}</span>
+                          <span className="text-sky-700 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200 font-semibold">
+                            {m.designation}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="py-6 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                      <p className="text-xs font-medium">কমিটির তথ্য এখনো প্রকাশ করা হয়নি</p>
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* Staff */}
-              {activeSettings.staff && staffList.length > 0 && (
+              {activeSettings.staff && (
                 <div className="space-y-3">
                   <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
                     সম্মানিত ইমাম, খতিব ও মুয়াজ্জিনবৃন্দ
                   </span>
-                  <div className="space-y-2">
-                    {staffList.map(s => (
-                      <div key={s.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between text-xs">
-                        <div>
-                          <span className="font-bold text-slate-900 block">{s.name}</span>
-                          {s.joiningDate && <span className="text-[10px] text-slate-400">কার্যকাল: {s.joiningDate}</span>}
+                  {staffList.length > 0 ? (
+                    <div className="space-y-2">
+                      {staffList.map(s => (
+                        <div key={s.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between text-xs">
+                          <div>
+                            <span className="font-bold text-slate-900 block">{s.name}</span>
+                            {s.joiningDate && <span className="text-[10px] text-slate-400">কার্যকাল: {s.joiningDate}</span>}
+                          </div>
+                          <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 font-semibold">
+                            {s.designationBn}
+                          </span>
                         </div>
-                        <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 font-semibold">
-                          {s.designationBn}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="py-6 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                      <p className="text-xs font-medium">খাদেমবৃন্দের তালিকা এখনো যোগ করা হয়নি</p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1280,7 +1326,7 @@ export const PublicPortalView: React.FC<PublicPortalViewProps> = ({
         {/* -------------------------------------------------------------
             SECTION 7: LOCATION & GOOGLE MAPS
             ------------------------------------------------------------- */}
-        {(activeSettings.locationMap ?? true) && mosqueInfo?.address && (
+        {(activeSettings.locationMap ?? true) && (
           <section id="section-map" className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-4">
             <div className="flex items-center space-x-3 border-b border-slate-100 pb-4">
               <div className="w-10 h-10 rounded-2xl bg-teal-50 text-teal-700 flex items-center justify-center font-bold">
@@ -1292,57 +1338,64 @@ export const PublicPortalView: React.FC<PublicPortalViewProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-              <div className="lg:col-span-6 space-y-3">
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
-                  <div className="flex items-start space-x-2.5">
-                    <MapPin className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-                    <div>
-                      <span className="text-xs font-bold text-slate-700 block">পূর্ণ ঠিকানা</span>
-                      <p className="text-sm font-semibold text-slate-900">
-                        {mosqueInfo.address}, {mosqueInfo.district}
-                      </p>
+            {mosqueInfo?.address || propMosque?.latitude ? (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+                <div className="lg:col-span-6 space-y-3">
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                    <div className="flex items-start space-x-2.5">
+                      <MapPin className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="text-xs font-bold text-slate-700 block">পূর্ণ ঠিকানা</span>
+                        <p className="text-sm font-semibold text-slate-900">
+                          {mosqueInfo.address}{mosqueInfo.district ? `, ${mosqueInfo.district}` : ''}
+                        </p>
+                      </div>
                     </div>
+
+                    {mosqueInfo.phone && (
+                      <div className="flex items-center space-x-2.5 pt-2 border-t border-slate-200 text-xs">
+                        <Phone className="w-4 h-4 text-blue-600 shrink-0" />
+                        <span className="text-slate-600">যোগাযোগ: <strong className="font-mono text-slate-900">{mosqueInfo.phone}</strong></span>
+                      </div>
+                    )}
+
+                    {mosqueInfo.email && (
+                      <div className="flex items-center space-x-2.5 text-xs">
+                        <Mail className="w-4 h-4 text-purple-600 shrink-0" />
+                        <span className="text-slate-600">ইমেইল: <strong className="text-slate-900">{mosqueInfo.email}</strong></span>
+                      </div>
+                    )}
                   </div>
 
-                  {mosqueInfo.phone && (
-                    <div className="flex items-center space-x-2.5 pt-2 border-t border-slate-200 text-xs">
-                      <Phone className="w-4 h-4 text-blue-600 shrink-0" />
-                      <span className="text-slate-600">যোগাযোগ: <strong className="font-mono text-slate-900">{mosqueInfo.phone}</strong></span>
-                    </div>
-                  )}
-
-                  {mosqueInfo.email && (
-                    <div className="flex items-center space-x-2.5 text-xs">
-                      <Mail className="w-4 h-4 text-purple-600 shrink-0" />
-                      <span className="text-slate-600">ইমেইল: <strong className="text-slate-900">{mosqueInfo.email}</strong></span>
-                    </div>
-                  )}
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${propMosque?.latitude && propMosque?.longitude ? `${propMosque.latitude},${propMosque.longitude}` : encodeURIComponent((mosqueInfo.nameBn || '') + ' ' + (mosqueInfo.address || ''))}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center space-x-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors"
+                  >
+                    <Navigation className="w-4 h-4" />
+                    <span>গুগল ম্যাপে দিকনির্দেশনা (Get Directions)</span>
+                  </a>
                 </div>
 
-                <a
-                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((mosqueInfo.nameBn || '') + ' ' + (mosqueInfo.address || ''))}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center space-x-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors"
-                >
-                  <Navigation className="w-4 h-4" />
-                  <span>গুগল ম্যাপে দিকনির্দেশনা (Get Directions)</span>
-                </a>
-              </div>
-
-              <div className="lg:col-span-6 h-56 rounded-2xl bg-slate-100 border border-slate-200 overflow-hidden relative flex items-center justify-center">
-                <div className="text-center space-y-2 p-6">
-                  <Compass className="w-10 h-10 text-emerald-600 mx-auto animate-pulse" />
-                  <span className="text-xs font-bold text-slate-800 block">
-                    {mosqueInfo.nameBn} • {mosqueInfo.district}
-                  </span>
-                  <p className="text-[11px] text-slate-500 max-w-sm">
-                    {mosqueInfo.address}
-                  </p>
+                <div className="lg:col-span-6 h-56 rounded-2xl bg-slate-100 border border-slate-200 overflow-hidden relative flex items-center justify-center">
+                  <div className="text-center space-y-2 p-6">
+                    <Compass className="w-10 h-10 text-emerald-600 mx-auto animate-pulse" />
+                    <span className="text-xs font-bold text-slate-800 block">
+                      {mosqueInfo.nameBn} {mosqueInfo.district && `• ${mosqueInfo.district}`}
+                    </span>
+                    <p className="text-[11px] text-slate-500 max-w-sm">
+                      {mosqueInfo.address || 'সঠিক ভৌগোলিক অবস্থান ও মানচিত্র'}
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="py-8 text-center text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                <MapPin className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                <p className="text-sm font-medium">মসজিদের অবস্থান এখনো সেট করা হয়নি</p>
+              </div>
+            )}
           </section>
         )}
 

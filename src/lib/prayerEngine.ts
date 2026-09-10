@@ -27,7 +27,7 @@
 import { MosquePrayerSettings, DailyPrayerSchedule, DailyPrayerItem, MonthlyPrayerDay } from '../types';
 
 export type PrayerKey = 'fajr' | 'dhuhr' | 'asr' | 'maghrib' | 'isha';
-export type SpecialPrayerKey = 'tahajjud' | 'sunrise' | 'ishraq' | 'solarNoon' | 'sunset' | 'jumuah';
+export type SpecialPrayerKey = 'tahajjud' | 'sunrise' | 'ishraq' | 'duha' | 'solarNoon' | 'sunset' | 'jumuah';
 
 export interface PrayerTimeItem {
   nameBn: string;
@@ -37,6 +37,10 @@ export interface PrayerTimeItem {
   adhan: string; // 24-hr "HH:mm"
   jamaat: string; // 24-hr "HH:mm"
   waqtEnd: string; // 24-hr "HH:mm"
+  waqtStart12: string; // 12-hr "h:mm A"
+  adhan12: string; // 12-hr "h:mm A"
+  jamaat12: string; // 12-hr "h:mm A"
+  waqtEnd12: string; // 12-hr "h:mm A"
   status: 'ENDED' | 'ONGOING' | 'NEXT' | 'UPCOMING';
   statusBn: 'শেষ' | 'চলছে' | 'পরবর্তী' | 'অপেক্ষমাণ';
   countdownTextBn: string;
@@ -53,6 +57,8 @@ export interface SpecialPrayerItem {
   nameEn: string;
   timeStr: string; // 24-hr "HH:mm"
   endTimeStr?: string; // 24-hr "HH:mm"
+  timeStr12: string; // 12-hr "h:mm A"
+  endTimeStr12?: string; // 12-hr "h:mm A"
   statusBn: string;
   isActive: boolean;
   timeMin: number;
@@ -67,6 +73,8 @@ export interface ForbiddenPeriod {
   endMin: number;
   startTimeStr: string;
   endTimeStr: string;
+  startTimeStr12: string;
+  endTimeStr12: string;
   isActive: boolean;
   remainingSeconds: number;
   statusBn: string;
@@ -97,6 +105,8 @@ export interface WaqtStatus {
   // Adhan & Jamaat Status for Current/Upcoming
   currentAdhanTimeStr: string;
   currentJamaatTimeStr: string;
+  currentAdhanTimeStr12: string;
+  currentJamaatTimeStr12: string;
   adhanRemainingSeconds: number;
   jamaatRemainingSeconds: number;
   adhanCountdownStrBn: string;
@@ -115,6 +125,8 @@ export interface WaqtStatus {
   nextWaqtStartsInStrBn: string;
   nextAdhanTimeStr: string;
   nextJamaatTimeStr: string;
+  nextAdhanTimeStr12: string;
+  nextJamaatTimeStr12: string;
 
   // Primary 5-State / Contextual Dynamic Banner Message
   dynamicStatusMessageBn: string;
@@ -122,21 +134,41 @@ export interface WaqtStatus {
 
   // Special Times & Solar Marks
   sunriseTimeStr: string;
+  sunriseTimeStr12: string;
   sunsetTimeStr: string;
+  sunsetTimeStr12: string;
   solarNoonTimeStr: string;
+  solarNoonTimeStr12: string;
   ishraqTimeStr: string;
+  ishraqTimeStr12: string;
   ishraqEndTimeStr: string;
+  ishraqEndTimeStr12: string;
   ishraqStatusBn: string;
   isIshraqActive: boolean;
+  duhaTimeStr: string;
+  duhaTimeStr12: string;
+  duhaEndTimeStr: string;
+  duhaEndTimeStr12: string;
+  duhaStatusBn: string;
+  isDuhaActive: boolean;
   tahajjudStartTimeStr: string;
+  tahajjudStartTimeStr12: string;
   tahajjudEndTimeStr: string;
+  tahajjudEndTimeStr12: string;
+  tahajjudLastThirdTimeStr: string;
+  tahajjudLastThirdTimeStr12: string;
   tahajjudStatusBn: string;
   isTahajjudActive: boolean;
   jumuahTimeStr: string;
+  jumuahTimeStr12: string;
   jumuahKhutbahTimeStr: string;
+  jumuahKhutbahTimeStr12: string;
   jumuahJamaatTimeStr: string;
+  jumuahJamaatTimeStr12: string;
   sehriEndTimeStr: string;
+  sehriEndTimeStr12: string;
   iftarTimeStr: string;
+  iftarTimeStr12: string;
 
   // Forbidden Times
   isForbiddenNow: boolean;
@@ -203,6 +235,44 @@ export const parseTimeToMinutes = (timeStr?: string, isPMHint?: boolean): number
   }
 
   return (hours % 24) * 60 + (minutes % 60);
+};
+
+/**
+ * Centralized 12-Hour Formatter: formatTime12Hour()
+ * Accepts a Date, number (minutes from midnight), or string (e.g. "13:30", "1:30 PM", "1:30 PMPM", "১৩:৩০")
+ * and outputs a sanitized 12-hour formatted time: e.g. "1:30 PM", "5:15 AM", "12:00 AM", "12:00 PM".
+ * Guaranteed to prevent "PMPM", "AMAM", and invalid mixed casing.
+ */
+export const formatTime12Hour = (
+  input?: Date | number | string | null,
+  options?: { banglaDigits?: boolean }
+): string => {
+  if (input === null || input === undefined) return '--:--';
+
+  let mins = -1;
+
+  if (input instanceof Date) {
+    mins = input.getHours() * 60 + input.getMinutes();
+  } else if (typeof input === 'number') {
+    mins = input;
+  } else if (typeof input === 'string') {
+    // Strip duplicate meridians (e.g. "PMPM", "AMAM", "pm pm", "am am")
+    let cleaned = input.trim();
+    cleaned = cleaned.replace(/\b(AM|PM|am|pm)\s*(AM|PM|am|pm)+\b/gi, '$1');
+    mins = parseTimeToMinutes(cleaned);
+  }
+
+  if (mins < 0) return typeof input === 'string' ? input : '--:--';
+
+  const formatted = formatMinutesTo12h(mins);
+  return options?.banglaDigits ? toBanglaDigits(formatted) : formatted;
+};
+
+/**
+ * Converts any time string (e.g., "13:30", "05:15", "5:15 AM", "13:30:00", "১৩:৩০", "1:30 PMPM") into standard 12-hour format ("1:30 PM", "5:15 AM").
+ */
+export const timeStringTo12h = (timeStr?: string, options?: { banglaDigits?: boolean }): string => {
+  return formatTime12Hour(timeStr, options);
 };
 
 /**
@@ -396,6 +466,8 @@ export interface HanafiDailyTimes {
   fajrMin: number;
   sunriseMin: number;
   ishraqMin: number;
+  duhaMin: number;
+  duhaEndMin: number;
   zawalStartMin: number;
   solarNoonMin: number;
   dhuhrMin: number;
@@ -403,6 +475,8 @@ export interface HanafiDailyTimes {
   sunsetMin: number;
   maghribMin: number;
   ishaMin: number;
+  midnightMin: number;
+  tahajjudLastThirdMin: number;
   tahajjudStartMin: number;
   tahajjudEndMin: number;
   sehriEndMin: number;
@@ -421,6 +495,11 @@ export interface CalculationOptions {
   forbiddenSunriseMins?: number; // default 15
   forbiddenSolarNoonMins?: number; // default 10
   forbiddenSunsetMins?: number; // default 15
+  fajrOffset?: number;
+  dhuhrOffset?: number;
+  asrOffset?: number;
+  maghribOffset?: number;
+  ishaOffset?: number;
 }
 
 export const calculateHanafiDailyTimes = (
@@ -472,29 +551,38 @@ export const calculateHanafiDailyTimes = (
   const sunriseMin = Math.round(rawSolarNoonMin - halfDayMins);
   const sunsetMin = Math.round(rawSolarNoonMin + halfDayMins);
 
-  // Fajr: 18° astronomical twilight
+  // Fajr: 18° astronomical twilight + optional manual offset
   const fajrHourAngle = getHourAngle(-fajrAngle);
-  const fajrMin = Math.round(rawSolarNoonMin - (fajrHourAngle / 15) * 60);
+  const fajrMin = Math.round(rawSolarNoonMin - (fajrHourAngle / 15) * 60) + (opts.fajrOffset || 0);
 
-  // Isha: 18° twilight
+  // Isha: 18° twilight + optional manual offset
   const ishaHourAngle = getHourAngle(-ishaAngle);
-  const ishaMin = Math.round(rawSolarNoonMin + (ishaHourAngle / 15) * 60);
+  const ishaMin = Math.round(rawSolarNoonMin + (ishaHourAngle / 15) * 60) + (opts.ishaOffset || 0);
 
-  // Asr: Shadow = multiplier * object height + noon shadow
+  // Asr: Shadow = multiplier * object height + noon shadow (multiplier: 2.0 for Hanafi, 1.0 for Shafi) + optional offset
   const noonShadow = Math.tan(Math.abs(latRad - decRad));
   const asrShadow = asrShadowMultiplier + noonShadow;
   const asrAltitudeRad = Math.atan(1.0 / asrShadow);
   const asrAltitudeDeg = (asrAltitudeRad * 180) / Math.PI;
   const asrHourAngle = getHourAngle(asrAltitudeDeg);
-  const asrMin = Math.round(rawSolarNoonMin + (asrHourAngle / 15) * 60);
+  const asrMin = Math.round(rawSolarNoonMin + (asrHourAngle / 15) * 60) + (opts.asrOffset || 0);
 
   // Derived marks
   const ishraqMin = sunriseMin + ishraqOffset; // Default: 10 mins after sunrise
-  const zawalStartMin = Math.round(solarNoonMin - 7);
-  const dhuhrMin = Math.round(solarNoonMin + 2); // Dhuhr starts when sun passes zenith
-  const maghribMin = sunsetMin;
+  // Duha / Chasht: starts approx 25 mins after Ishraq (or ~45m after sunrise), ends at Zawal Start
+  const duhaMin = sunriseMin + Math.max(45, ishraqOffset + 25);
+  const zawalDuration = opts.forbiddenSolarNoonMins || 10;
+  const zawalStartMin = Math.round(solarNoonMin - Math.round(zawalDuration * 0.7));
+  const duhaEndMin = zawalStartMin;
+  const dhuhrMin = Math.round(solarNoonMin + 2) + (opts.dhuhrOffset || 0); // Dhuhr starts when sun passes zenith
+  const maghribMin = sunsetMin + (opts.maghribOffset || 0);
   const sehriEndMin = fajrMin - 5;
-  const tahajjudStartMin = 0; // 00:00 or last third
+  
+  // Dynamic Night Calculation (Sunset to Fajr)
+  const nightDurationMin = ((1440 - sunsetMin + fajrMin) % 1440);
+  const midnightMin = (sunsetMin + Math.round(nightDurationMin / 2)) % 1440;
+  const tahajjudLastThirdMin = (sunsetMin + Math.round((2 * nightDurationMin) / 3)) % 1440;
+  const tahajjudStartMin = 0; // Standard window 00:00 or midnight
   const tahajjudEndMin = fajrMin - 10;
   const iftarMin = maghribMin;
   const jumuahMin = dhuhrMin;
@@ -503,6 +591,8 @@ export const calculateHanafiDailyTimes = (
     fajrMin,
     sunriseMin,
     ishraqMin,
+    duhaMin,
+    duhaEndMin,
     zawalStartMin,
     solarNoonMin,
     dhuhrMin,
@@ -510,6 +600,8 @@ export const calculateHanafiDailyTimes = (
     sunsetMin,
     maghribMin,
     ishaMin,
+    midnightMin,
+    tahajjudLastThirdMin,
     tahajjudStartMin,
     tahajjudEndMin,
     sehriEndMin,
@@ -682,11 +774,11 @@ export const calculateLiveWaqt = (
   const totalCurrentSec = currentMinutes * 60 + currentSeconds;
   const isFriday = now.getDay() === 5; // Friday = 5
 
-  const district = mosqueData?.district || 'ঢাকা';
-  const latitude = mosqueData?.latitude;
-  const longitude = mosqueData?.longitude;
-  const ishraqOffsetMins = mosqueData?.prayerSettings?.ishraqOffsetMins ?? mosqueData?.jamaatSettings?.ishraqOffsetMins ?? 10;
-  const warningMins = mosqueData?.prayerSettings?.endOfWaqtWarningMins ?? 10;
+  const district = mosqueData?.district || (mosqueData?.prayerSettings as any)?.district || 'ঢাকা';
+  const latitude = mosqueData?.latitude ?? (mosqueData?.prayerSettings as any)?.latitude;
+  const longitude = mosqueData?.longitude ?? (mosqueData?.prayerSettings as any)?.longitude;
+  const ishraqOffsetMins = mosqueData?.prayerSettings?.ishraqOffsetMins ?? (mosqueData?.prayerSettings as any)?.ishraqOffsetMinutes ?? mosqueData?.jamaatSettings?.ishraqOffsetMins ?? 10;
+  const warningMins = mosqueData?.prayerSettings?.endOfWaqtWarningMins ?? (mosqueData?.prayerSettings as any)?.warningThresholdMinutes ?? 10;
 
   const calc = calculateHanafiDailyTimes(now, {
     districtName: district,
@@ -696,6 +788,14 @@ export const calculateLiveWaqt = (
     fajrAngle: mosqueData?.prayerSettings?.fajrAngle || 18.0,
     ishaAngle: mosqueData?.prayerSettings?.ishaAngle || 18.0,
     ishraqOffsetMins,
+    forbiddenSunriseMins: (mosqueData?.prayerSettings as any)?.sunriseForbiddenDurationMinutes ?? mosqueData?.prayerSettings?.forbiddenSunriseMins ?? 15,
+    forbiddenSolarNoonMins: (mosqueData?.prayerSettings as any)?.zawalForbiddenDurationMinutes ?? mosqueData?.prayerSettings?.forbiddenSolarNoonMins ?? 10,
+    forbiddenSunsetMins: (mosqueData?.prayerSettings as any)?.sunsetForbiddenDurationMinutes ?? mosqueData?.prayerSettings?.forbiddenSunsetMins ?? 15,
+    fajrOffset: (mosqueData?.prayerSettings as any)?.fajr?.manualOffset ?? 0,
+    dhuhrOffset: (mosqueData?.prayerSettings as any)?.dhuhr?.manualOffset ?? 0,
+    asrOffset: (mosqueData?.prayerSettings as any)?.asr?.manualOffset ?? 0,
+    maghribOffset: (mosqueData?.prayerSettings as any)?.maghrib?.manualOffset ?? 0,
+    ishaOffset: (mosqueData?.prayerSettings as any)?.isha?.manualOffset ?? 0,
   });
 
   const jamaatConfig = mosqueData?.jamaatSettings || {};
@@ -785,6 +885,8 @@ export const calculateLiveWaqt = (
       endMin: sunriseForbiddenEndMin,
       startTimeStr: formatMinutesTo24h(calc.sunriseMin),
       endTimeStr: formatMinutesTo24h(sunriseForbiddenEndMin),
+      startTimeStr12: formatMinutesTo12h(calc.sunriseMin),
+      endTimeStr12: formatMinutesTo12h(sunriseForbiddenEndMin),
       isActive: isSunriseForbidden,
       remainingSeconds: isSunriseForbidden ? (sunriseForbiddenEndMin * 60 - totalCurrentSec) : 0,
       statusBn: isSunriseForbidden ? '⚠️ এখন চলছে' : 'আসন্ন',
@@ -797,6 +899,8 @@ export const calculateLiveWaqt = (
       endMin: solarNoonForbiddenEndMin,
       startTimeStr: formatMinutesTo24h(solarNoonForbiddenStartMin),
       endTimeStr: formatMinutesTo24h(solarNoonForbiddenEndMin),
+      startTimeStr12: formatMinutesTo12h(solarNoonForbiddenStartMin),
+      endTimeStr12: formatMinutesTo12h(solarNoonForbiddenEndMin),
       isActive: isSolarNoonForbidden,
       remainingSeconds: isSolarNoonForbidden ? (solarNoonForbiddenEndMin * 60 - totalCurrentSec) : 0,
       statusBn: isSolarNoonForbidden ? '⚠️ এখন চলছে' : 'আসন্ন',
@@ -809,6 +913,8 @@ export const calculateLiveWaqt = (
       endMin: sunsetForbiddenEndMin,
       startTimeStr: formatMinutesTo24h(sunsetForbiddenStartMin),
       endTimeStr: formatMinutesTo24h(sunsetForbiddenEndMin),
+      startTimeStr12: formatMinutesTo12h(sunsetForbiddenStartMin),
+      endTimeStr12: formatMinutesTo12h(sunsetForbiddenEndMin),
       isActive: isSunsetForbidden,
       remainingSeconds: isSunsetForbidden ? (sunsetForbiddenEndMin * 60 - totalCurrentSec) : 0,
       statusBn: isSunsetForbidden ? '⚠️ এখন চলছে' : 'আসন্ন',
@@ -816,12 +922,9 @@ export const calculateLiveWaqt = (
   ];
 
   // -------------------------------------------------------------
-  // SPECIAL PRAYERS STATUS (Ishraq, Tahajjud)
+  // SPECIAL PRAYERS STATUS (Ishraq, Duha/Chasht, Tahajjud)
   // -------------------------------------------------------------
   // Ishraq Dynamic Status:
-  // - Before sunrise: "ইশরাকের সময় শুরু হতে: ২৫ মিনিট বাকি"
-  // - After sunrise but before configured interval: "ইশরাকের নামাজ ৫ মিনিট পর পড়ুন" / "ইশরাকের সময় শুরু হতে: ৫ মিনিট বাকি"
-  // - After interval until Zawal: "এখন ইশরাকের নামাজ পড়তে পারবেন"
   let ishraqStatusBn = '';
   const isIshraqActive = currentMinutes >= calc.ishraqMin && currentMinutes < solarNoonForbiddenStartMin;
 
@@ -835,6 +938,18 @@ export const calculateLiveWaqt = (
     ishraqStatusBn = 'এখন ইশরাকের নামাজ পড়তে পারবেন';
   } else {
     ishraqStatusBn = 'আজকের ইশরাকের সময় শেষ হয়েছে';
+  }
+
+  // Duha (Chasht) Dynamic Status:
+  let duhaStatusBn = '';
+  const isDuhaActive = currentMinutes >= calc.duhaMin && currentMinutes < solarNoonForbiddenStartMin;
+  if (currentMinutes < calc.duhaMin) {
+    const diffSec = calc.duhaMin * 60 - totalCurrentSec;
+    duhaStatusBn = `চাশত শুরু হতে: ${formatDurationToBangla(diffSec)} বাকি`;
+  } else if (isDuhaActive) {
+    duhaStatusBn = 'এখন চাশতের (সালাতুত দুহা) নামাজ পড়ার উত্তম সময়';
+  } else {
+    duhaStatusBn = 'আজকের চাশতের সময় শেষ হয়েছে';
   }
 
   // Tahajjud Dynamic Status:
@@ -1065,24 +1180,24 @@ export const calculateLiveWaqt = (
       : 'নিষিদ্ধ সময় শেষ হওয়ার পর নামাজ আদায় করুন।';
   } else if (isJamaatNow) {
     dynamicStatusMessageBn = `🕌 ${currentWaqtBn}-এর জামাত শুরু হচ্ছে — কাতার সোজা করুন`;
-    dynamicSubMessageBn = `জামাতের সময়: ${formatMinutesTo24h(currentJamaatMin)}`;
+    dynamicSubMessageBn = `জামাতের সময়: ${formatMinutesTo12h(currentJamaatMin)}`;
   } else if (isJamaatApproaching) {
     dynamicStatusMessageBn = `📢 ${currentWaqtBn}-এর জামাত হতে: ${jamaatCountdownStrBn} বাকি`;
-    dynamicSubMessageBn = `জামাত: ${formatMinutesTo24h(currentJamaatMin)} | ওয়াক্ত শেষ হতে: ${waqtRemainingStrBn} বাকি`;
+    dynamicSubMessageBn = `জামাত: ${formatMinutesTo12h(currentJamaatMin)} | ওয়াক্ত শেষ হতে: ${waqtRemainingStrBn} বাকি`;
   } else if (isEndingSoon) {
     dynamicStatusMessageBn = `⚠️ ${currentWaqtBn} ওয়াক্ত শেষ হতে ${waqtRemainingStrBn} বাকি`;
-    dynamicSubMessageBn = `পরবর্তী নামাজ: ${nextWaqtBn} (শুরু: ${formatMinutesTo24h(nextWaqtStartMin)})`;
+    dynamicSubMessageBn = `পরবর্তী নামাজ: ${nextWaqtBn} (শুরু: ${formatMinutesTo12h(nextWaqtStartMin)})`;
   } else if (isWaqtActive) {
     dynamicStatusMessageBn = `${currentWaqtBn} ওয়াক্ত শুরু হয়েছে — ${waqtElapsedStrBn} আগে`;
     if (jamaatRemainingSeconds > 0) {
-      dynamicSubMessageBn = `আজান: ${formatMinutesTo24h(currentAdhanMin)} | জামাত হতে: ${jamaatCountdownStrBn} বাকি | ওয়াক্ত শেষ হতে: ${waqtRemainingStrBn} বাকি`;
+      dynamicSubMessageBn = `আজান: ${formatMinutesTo12h(currentAdhanMin)} | জামাত হতে: ${jamaatCountdownStrBn} বাকি | ওয়াক্ত শেষ হতে: ${waqtRemainingStrBn} বাকি`;
     } else {
-      dynamicSubMessageBn = `আজান: ${formatMinutesTo24h(currentAdhanMin)} | জামাত: ${formatMinutesTo24h(currentJamaatMin)} (সম্পন্ন) | ওয়াক্ত শেষ হতে: ${waqtRemainingStrBn} বাকি`;
+      dynamicSubMessageBn = `আজান: ${formatMinutesTo12h(currentAdhanMin)} | জামাত: ${formatMinutesTo12h(currentJamaatMin)} (সম্পন্ন) | ওয়াক্ত শেষ হতে: ${waqtRemainingStrBn} বাকি`;
     }
   } else {
     // Between waqts (e.g. Sunrise..Dhuhr)
     dynamicStatusMessageBn = `${nextWaqtBn} ওয়াক্ত শুরু হতে: ${nextWaqtStartsInStrBn} বাকি`;
-    dynamicSubMessageBn = `আজান: ${formatMinutesTo24h(nextAdhanMin)} | জামাত: ${formatMinutesTo24h(nextJamaatMin)}`;
+    dynamicSubMessageBn = `আজান: ${formatMinutesTo12h(nextAdhanMin)} | জামাত: ${formatMinutesTo12h(nextJamaatMin)}`;
   }
 
   // -------------------------------------------------------------
@@ -1140,6 +1255,10 @@ export const calculateLiveWaqt = (
       adhan: formatMinutesTo24h(adhanMin),
       jamaat: formatMinutesTo24h(jamaatMin),
       waqtEnd: formatMinutesTo24h(endMin),
+      waqtStart12: formatMinutesTo12h(startMin),
+      adhan12: formatMinutesTo12h(adhanMin),
+      jamaat12: formatMinutesTo12h(jamaatMin),
+      waqtEnd12: formatMinutesTo12h(endMin),
       status,
       statusBn,
       countdownTextBn,
@@ -1169,7 +1288,7 @@ export const calculateLiveWaqt = (
   ];
 
   // -------------------------------------------------------------
-  // BUILD SPECIAL PRAYERS LIST (Tahajjud, Sunrise, Ishraq, Solar Noon, Sunset, Jumuah)
+  // BUILD SPECIAL PRAYERS LIST (Tahajjud, Sunrise, Ishraq, Duha, Solar Noon, Sunset, Jumuah)
   // -------------------------------------------------------------
   const specialList: SpecialPrayerItem[] = [
     {
@@ -1178,6 +1297,8 @@ export const calculateLiveWaqt = (
       nameEn: 'Tahajjud',
       timeStr: '00:00',
       endTimeStr: formatMinutesTo24h(calc.tahajjudEndMin),
+      timeStr12: '12:00 AM',
+      endTimeStr12: formatMinutesTo12h(calc.tahajjudEndMin),
       statusBn: tahajjudStatusBn,
       isActive: isTahajjudActive,
       timeMin: 0,
@@ -1188,6 +1309,7 @@ export const calculateLiveWaqt = (
       nameBn: 'সূর্যোদয়',
       nameEn: 'Sunrise',
       timeStr: formatMinutesTo24h(calc.sunriseMin),
+      timeStr12: formatMinutesTo12h(calc.sunriseMin),
       statusBn: isSunriseForbidden ? '⚠️ নিষিদ্ধ সময় চলছে' : 'সূর্যোদয় সম্পন্ন',
       isActive: isSunriseForbidden,
       timeMin: calc.sunriseMin,
@@ -1198,16 +1320,32 @@ export const calculateLiveWaqt = (
       nameEn: 'Ishraq',
       timeStr: formatMinutesTo24h(calc.ishraqMin),
       endTimeStr: formatMinutesTo24h(solarNoonForbiddenStartMin),
+      timeStr12: formatMinutesTo12h(calc.ishraqMin),
+      endTimeStr12: formatMinutesTo12h(solarNoonForbiddenStartMin),
       statusBn: ishraqStatusBn,
       isActive: isIshraqActive,
       timeMin: calc.ishraqMin,
       endTimeMin: solarNoonForbiddenStartMin,
     },
     {
+      key: 'duha',
+      nameBn: 'চাশত (সালাতুত দুহা)',
+      nameEn: 'Duha (Chasht)',
+      timeStr: formatMinutesTo24h(calc.duhaMin),
+      endTimeStr: formatMinutesTo24h(calc.duhaEndMin),
+      timeStr12: formatMinutesTo12h(calc.duhaMin),
+      endTimeStr12: formatMinutesTo12h(calc.duhaEndMin),
+      statusBn: duhaStatusBn,
+      isActive: isDuhaActive,
+      timeMin: calc.duhaMin,
+      endTimeMin: calc.duhaEndMin,
+    },
+    {
       key: 'solarNoon',
       nameBn: 'ঠিক দুপুর / জাওয়াল',
       nameEn: 'Solar Noon (Zawal)',
       timeStr: formatMinutesTo24h(calc.solarNoonMin),
+      timeStr12: formatMinutesTo12h(calc.solarNoonMin),
       statusBn: isSolarNoonForbidden ? '⚠️ নিষিদ্ধ সময় চলছে' : 'দ্বিপ্রহর',
       isActive: isSolarNoonForbidden,
       timeMin: calc.solarNoonMin,
@@ -1217,6 +1355,7 @@ export const calculateLiveWaqt = (
       nameBn: 'সূর্যাস্ত',
       nameEn: 'Sunset',
       timeStr: formatMinutesTo24h(calc.sunsetMin),
+      timeStr12: formatMinutesTo12h(calc.sunsetMin),
       statusBn: isSunsetForbidden ? '⚠️ নিষিদ্ধ সময় চলছে' : 'সূর্যাস্ত সম্পন্ন',
       isActive: isSunsetForbidden,
       timeMin: calc.sunsetMin,
@@ -1227,6 +1366,8 @@ export const calculateLiveWaqt = (
       nameEn: 'Jumu\'ah (Friday)',
       timeStr: formatMinutesTo24h(jumuahAzanMin),
       endTimeStr: formatMinutesTo24h(jumuahJamaatMin),
+      timeStr12: formatMinutesTo12h(jumuahAzanMin),
+      endTimeStr12: formatMinutesTo12h(jumuahJamaatMin),
       statusBn: isFriday ? (isWaqtActive && currentWaqtKey === 'dhuhr' ? 'আজ জুমার দিন' : 'আসন্ন') : 'প্রতি শুক্রবার',
       isActive: isFriday,
       timeMin: jumuahAzanMin,
@@ -1249,7 +1390,7 @@ export const calculateLiveWaqt = (
   return {
     currentTime24: formatMinutesTo24h(currentMinutes),
     currentTime12: formatMinutesTo12h(currentMinutes),
-    currentTimeBn: toBanglaDigits(formatMinutesTo24h(currentMinutes)),
+    currentTimeBn: toBanglaDigits(formatMinutesTo12h(currentMinutes)),
     currentSeconds,
     dateStr,
     dateBn,
@@ -1268,6 +1409,8 @@ export const calculateLiveWaqt = (
 
     currentAdhanTimeStr: formatMinutesTo24h(currentAdhanMin),
     currentJamaatTimeStr: formatMinutesTo24h(currentJamaatMin),
+    currentAdhanTimeStr12: formatMinutesTo12h(currentAdhanMin),
+    currentJamaatTimeStr12: formatMinutesTo12h(currentJamaatMin),
     adhanRemainingSeconds,
     jamaatRemainingSeconds,
     adhanCountdownStrBn,
@@ -1285,26 +1428,48 @@ export const calculateLiveWaqt = (
     nextWaqtStartsInStrBn,
     nextAdhanTimeStr: formatMinutesTo24h(nextAdhanMin),
     nextJamaatTimeStr: formatMinutesTo24h(nextJamaatMin),
+    nextAdhanTimeStr12: formatMinutesTo12h(nextAdhanMin),
+    nextJamaatTimeStr12: formatMinutesTo12h(nextJamaatMin),
 
     dynamicStatusMessageBn,
     dynamicSubMessageBn,
 
     sunriseTimeStr: formatMinutesTo24h(calc.sunriseMin),
+    sunriseTimeStr12: formatMinutesTo12h(calc.sunriseMin),
     sunsetTimeStr: formatMinutesTo24h(calc.sunsetMin),
+    sunsetTimeStr12: formatMinutesTo12h(calc.sunsetMin),
     solarNoonTimeStr: formatMinutesTo24h(calc.solarNoonMin),
+    solarNoonTimeStr12: formatMinutesTo12h(calc.solarNoonMin),
     ishraqTimeStr: formatMinutesTo24h(calc.ishraqMin),
+    ishraqTimeStr12: formatMinutesTo12h(calc.ishraqMin),
     ishraqEndTimeStr: formatMinutesTo24h(solarNoonForbiddenStartMin),
+    ishraqEndTimeStr12: formatMinutesTo12h(solarNoonForbiddenStartMin),
     ishraqStatusBn,
     isIshraqActive,
+    duhaTimeStr: formatMinutesTo24h(calc.duhaMin),
+    duhaTimeStr12: formatMinutesTo12h(calc.duhaMin),
+    duhaEndTimeStr: formatMinutesTo24h(calc.duhaEndMin),
+    duhaEndTimeStr12: formatMinutesTo12h(calc.duhaEndMin),
+    duhaStatusBn,
+    isDuhaActive,
     tahajjudStartTimeStr: '00:00',
+    tahajjudStartTimeStr12: '12:00 AM',
     tahajjudEndTimeStr: formatMinutesTo24h(calc.tahajjudEndMin),
+    tahajjudEndTimeStr12: formatMinutesTo12h(calc.tahajjudEndMin),
+    tahajjudLastThirdTimeStr: formatMinutesTo24h(calc.tahajjudLastThirdMin),
+    tahajjudLastThirdTimeStr12: formatMinutesTo12h(calc.tahajjudLastThirdMin),
     tahajjudStatusBn,
     isTahajjudActive,
     jumuahTimeStr: formatMinutesTo24h(jumuahAzanMin),
+    jumuahTimeStr12: formatMinutesTo12h(jumuahAzanMin),
     jumuahKhutbahTimeStr: formatMinutesTo24h(jumuahKhutbahMin),
+    jumuahKhutbahTimeStr12: formatMinutesTo12h(jumuahKhutbahMin),
     jumuahJamaatTimeStr: formatMinutesTo24h(jumuahJamaatMin),
+    jumuahJamaatTimeStr12: formatMinutesTo12h(jumuahJamaatMin),
     sehriEndTimeStr: formatMinutesTo24h(calc.sehriEndMin),
+    sehriEndTimeStr12: formatMinutesTo12h(calc.sehriEndMin),
     iftarTimeStr: formatMinutesTo24h(calc.iftarMin),
+    iftarTimeStr12: formatMinutesTo12h(calc.iftarMin),
 
     isForbiddenNow,
     forbiddenReasonBn,
@@ -1317,8 +1482,8 @@ export const calculateLiveWaqt = (
     currentPrayerEn: currentWaqtEn,
     nextPrayerBn: nextWaqtBn,
     nextPrayerEn: nextWaqtEn,
-    nextPrayerTime: formatMinutesTo24h(nextAdhanMin),
-    nextWaqtTime: formatMinutesTo24h(nextWaqtStartMin),
+    nextPrayerTime: formatMinutesTo12h(nextAdhanMin),
+    nextWaqtTime: formatMinutesTo12h(nextWaqtStartMin),
     isJamaatApproachingWarning: isEndingSoon ? `⚠️ ${currentWaqtBn} ওয়াক্ত শেষ হতে ${waqtRemainingStrBn} বাকি` : undefined,
 
     prayerList,
@@ -1341,6 +1506,7 @@ export interface MonthlyDayPrayerItem {
   fajr: string;
   sunrise: string;
   ishraq: string;
+  duha: string;
   solarNoon: string;
   dhuhr: string;
   asr: string;
@@ -1348,6 +1514,17 @@ export interface MonthlyDayPrayerItem {
   maghrib: string;
   isha: string;
   tahajjudEnd: string;
+  fajr12: string;
+  sunrise12: string;
+  ishraq12: string;
+  duha12: string;
+  solarNoon12: string;
+  dhuhr12: string;
+  asr12: string;
+  sunset12: string;
+  maghrib12: string;
+  isha12: string;
+  tahajjudEnd12: string;
 }
 
 export const generateMonthlyPrayerTimes = (
@@ -1355,7 +1532,8 @@ export const generateMonthlyPrayerTimes = (
   month: number, // 0-indexed (0 = Jan, 8 = Sep)
   districtName?: string,
   latitude?: number,
-  longitude?: number
+  longitude?: number,
+  options?: CalculationOptions
 ): MonthlyDayPrayerItem[] => {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const today = new Date();
@@ -1369,6 +1547,7 @@ export const generateMonthlyPrayerTimes = (
       districtName,
       latitude,
       longitude,
+      ...options,
     });
 
     const isToday =
@@ -1390,6 +1569,7 @@ export const generateMonthlyPrayerTimes = (
       fajr: formatMinutesTo24h(times.fajrMin),
       sunrise: formatMinutesTo24h(times.sunriseMin),
       ishraq: formatMinutesTo24h(times.ishraqMin),
+      duha: formatMinutesTo24h(times.duhaMin),
       solarNoon: formatMinutesTo24h(times.solarNoonMin),
       dhuhr: formatMinutesTo24h(times.dhuhrMin),
       asr: formatMinutesTo24h(times.asrMin),
@@ -1397,6 +1577,81 @@ export const generateMonthlyPrayerTimes = (
       maghrib: formatMinutesTo24h(times.maghribMin),
       isha: formatMinutesTo24h(times.ishaMin),
       tahajjudEnd: formatMinutesTo24h(times.tahajjudEndMin),
+      fajr12: formatMinutesTo12h(times.fajrMin),
+      sunrise12: formatMinutesTo12h(times.sunriseMin),
+      ishraq12: formatMinutesTo12h(times.ishraqMin),
+      duha12: formatMinutesTo12h(times.duhaMin),
+      solarNoon12: formatMinutesTo12h(times.solarNoonMin),
+      dhuhr12: formatMinutesTo12h(times.dhuhrMin),
+      asr12: formatMinutesTo12h(times.asrMin),
+      sunset12: formatMinutesTo12h(times.sunsetMin),
+      maghrib12: formatMinutesTo12h(times.maghribMin),
+      isha12: formatMinutesTo12h(times.ishaMin),
+      tahajjudEnd12: formatMinutesTo12h(times.tahajjudEndMin),
+    });
+  }
+
+  return result;
+};
+
+/**
+ * 30-Day Consecutive Prayer Calendar Generator
+ * Calculates dynamic Hanafi prayer times for 30 days starting from startDate
+ */
+export const generate30DayPrayerTimes = (
+  startDate: Date = new Date(),
+  districtName?: string,
+  latitude?: number,
+  longitude?: number,
+  options?: CalculationOptions
+): MonthlyDayPrayerItem[] => {
+  const result: MonthlyDayPrayerItem[] = [];
+  const dayNamesBn = ['রবি', 'সোম', 'মঙ্গল', 'বুধ', 'বৃহঃ', 'শুক্র', 'শনি'];
+
+  for (let i = 0; i < 30; i++) {
+    const date = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate() + i, 12, 0, 0);
+    const times = calculateHanafiDailyTimes(date, {
+      districtName,
+      latitude,
+      longitude,
+      ...options,
+    });
+
+    const isToday = i === 0;
+    const isFriday = date.getDay() === 5;
+    const bDate = getBengaliDate(date);
+    const hDate = getHijriDate(date);
+
+    result.push({
+      day: date.getDate(),
+      dateStr: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`,
+      dayNameBn: dayNamesBn[date.getDay()],
+      bengaliDateBn: `${bDate.day} ${bDate.month}`,
+      hijriDateBn: `${hDate.day} ${hDate.month}`,
+      isToday,
+      isFriday,
+      fajr: formatMinutesTo24h(times.fajrMin),
+      sunrise: formatMinutesTo24h(times.sunriseMin),
+      ishraq: formatMinutesTo24h(times.ishraqMin),
+      duha: formatMinutesTo24h(times.duhaMin),
+      solarNoon: formatMinutesTo24h(times.solarNoonMin),
+      dhuhr: formatMinutesTo24h(times.dhuhrMin),
+      asr: formatMinutesTo24h(times.asrMin),
+      sunset: formatMinutesTo24h(times.sunsetMin),
+      maghrib: formatMinutesTo24h(times.maghribMin),
+      isha: formatMinutesTo24h(times.ishaMin),
+      tahajjudEnd: formatMinutesTo24h(times.tahajjudEndMin),
+      fajr12: formatMinutesTo12h(times.fajrMin),
+      sunrise12: formatMinutesTo12h(times.sunriseMin),
+      ishraq12: formatMinutesTo12h(times.ishraqMin),
+      duha12: formatMinutesTo12h(times.duhaMin),
+      solarNoon12: formatMinutesTo12h(times.solarNoonMin),
+      dhuhr12: formatMinutesTo12h(times.dhuhrMin),
+      asr12: formatMinutesTo12h(times.asrMin),
+      sunset12: formatMinutesTo12h(times.sunsetMin),
+      maghrib12: formatMinutesTo12h(times.maghribMin),
+      isha12: formatMinutesTo12h(times.ishaMin),
+      tahajjudEnd12: formatMinutesTo12h(times.tahajjudEndMin),
     });
   }
 
@@ -1452,11 +1707,17 @@ export const buildDailyPrayerSchedule = (
   now: Date = new Date(),
   prayerSettings?: Partial<MosquePrayerSettings> | null,
   jamaatSettings?: any,
-  districtOverride?: string
+  districtOverride?: string,
+  latitude?: number,
+  longitude?: number
 ): DailyPrayerSchedule => {
   const district = districtOverride || prayerSettings?.district || 'ঢাকা';
+  const lat = latitude ?? (prayerSettings as any)?.latitude;
+  const lng = longitude ?? (prayerSettings as any)?.longitude;
   const waqtStatus = calculateLiveWaqt(now, null, {
     district,
+    latitude: lat,
+    longitude: lng,
     prayerSettings: prayerSettings as any,
     jamaatSettings,
   });
@@ -1574,10 +1835,31 @@ export const buildMonthlyPrayerCalendar = (
   year: number,
   month: number, // 1-12
   prayerSettings?: Partial<MosquePrayerSettings> | null,
-  districtOverride?: string
+  districtOverride?: string,
+  latitude?: number,
+  longitude?: number
 ): MonthlyPrayerDay[] => {
   const district = districtOverride || prayerSettings?.district || 'ঢাকা';
-  const monthlyItems = generateMonthlyPrayerTimes(year, month - 1, district);
+  const lat = latitude ?? (prayerSettings as any)?.latitude;
+  const lng = longitude ?? (prayerSettings as any)?.longitude;
+  const monthlyItems = generateMonthlyPrayerTimes(
+    year,
+    month - 1,
+    district,
+    lat,
+    lng,
+    {
+      madhab: (prayerSettings as any)?.madhab || 'HANAFI',
+      fajrAngle: (prayerSettings as any)?.fajrAngle || 18,
+      ishaAngle: (prayerSettings as any)?.ishaAngle || 18,
+      ishraqOffsetMins: (prayerSettings as any)?.ishraqOffsetMinutes ?? (prayerSettings as any)?.ishraqOffsetMins ?? 10,
+      fajrOffset: (prayerSettings as any)?.fajr?.manualOffset ?? 0,
+      dhuhrOffset: (prayerSettings as any)?.dhuhr?.manualOffset ?? 0,
+      asrOffset: (prayerSettings as any)?.asr?.manualOffset ?? 0,
+      maghribOffset: (prayerSettings as any)?.maghrib?.manualOffset ?? 0,
+      ishaOffset: (prayerSettings as any)?.isha?.manualOffset ?? 0,
+    }
+  );
 
   const dayNamesEn = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 

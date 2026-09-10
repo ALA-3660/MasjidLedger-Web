@@ -18,6 +18,8 @@ import {
   Volume2,
   VolumeX,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Info,
   CalendarDays,
   ShieldAlert,
@@ -33,6 +35,7 @@ import {
   getDistrictGeo,
   toBanglaDigits,
   formatMinutesTo24h,
+  formatTime12Hour,
   formatDurationDigital,
   playPrayerNotificationSound,
   WaqtStatus,
@@ -141,7 +144,18 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
       selectedMonth,
       selectedDistrict,
       currentMosque?.latitude,
-      currentMosque?.longitude
+      currentMosque?.longitude,
+      {
+        madhab: currentMosque?.prayerSettings?.madhab || 'HANAFI',
+        fajrAngle: currentMosque?.prayerSettings?.fajrAngle || 18,
+        ishaAngle: currentMosque?.prayerSettings?.ishaAngle || 18,
+        ishraqOffsetMins: (currentMosque?.prayerSettings as any)?.ishraqOffsetMinutes ?? currentMosque?.prayerSettings?.ishraqOffsetMins ?? 10,
+        fajrOffset: (currentMosque?.prayerSettings as any)?.fajr?.manualOffset ?? 0,
+        dhuhrOffset: (currentMosque?.prayerSettings as any)?.dhuhr?.manualOffset ?? 0,
+        asrOffset: (currentMosque?.prayerSettings as any)?.asr?.manualOffset ?? 0,
+        maghribOffset: (currentMosque?.prayerSettings as any)?.maghrib?.manualOffset ?? 0,
+        ishaOffset: (currentMosque?.prayerSettings as any)?.isha?.manualOffset ?? 0,
+      }
     );
   }, [selectedYear, selectedMonth, selectedDistrict, currentMosque]);
 
@@ -230,10 +244,10 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
               <div>
                 <div className="text-2xl font-bold text-white font-mono tracking-wider flex items-baseline space-x-1">
                   <span>{waqtStatus.currentTimeBn}</span>
-                  <span className="text-xs text-emerald-300 font-sans ml-1">{waqtStatus.currentTime12.split(' ')[1]}</span>
+                  <span className="text-xs text-emerald-300 font-sans ml-1 font-semibold">{waqtStatus.currentTime12.split(' ')[1] || 'BST'}</span>
                 </div>
                 <div className="text-[10px] text-slate-300">
-                  ২৪ ঘণ্টা ফরম্যাট: <span className="font-mono text-white font-bold">{waqtStatus.currentTime24}</span>
+                  ১২ ঘণ্টার ঘড়ি: <span className="font-mono text-emerald-300 font-bold">{waqtStatus.currentTime12}</span>
                 </div>
               </div>
             </div>
@@ -387,14 +401,14 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
             <div className="bg-slate-50/80 p-3 rounded-xl">
               <span className="text-[11px] text-slate-500 block font-semibold">আজানের সময়</span>
               <span className="text-base font-bold text-slate-900 font-mono">
-                {waqtStatus.currentAdhanTimeStr !== '--:--' ? waqtStatus.currentAdhanTimeStr : 'অটো'}
+                {waqtStatus.currentAdhanTimeStr12 !== '--:--' ? waqtStatus.currentAdhanTimeStr12 : 'অটো'}
               </span>
             </div>
 
             <div className="bg-slate-50/80 p-3 rounded-xl">
               <span className="text-[11px] text-slate-500 block font-semibold">জামাতের সময়</span>
               <span className="text-base font-bold text-emerald-700 font-mono">
-                {waqtStatus.currentJamaatTimeStr !== '--:--' ? waqtStatus.currentJamaatTimeStr : 'অনির্ধারিত'}
+                {waqtStatus.currentJamaatTimeStr12 !== '--:--' ? waqtStatus.currentJamaatTimeStr12 : 'অনির্ধারিত'}
               </span>
             </div>
 
@@ -430,7 +444,7 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
               {waqtStatus.nextWaqtBn}
             </h3>
             <p className="text-xs text-indigo-200 mt-0.5">
-              ওয়াক্ত শুরু হবে: <span className="font-mono font-bold text-white">{waqtStatus.nextAdhanTimeStr}</span>
+              ওয়াক্ত শুরু হবে: <span className="font-mono font-bold text-white">{waqtStatus.nextAdhanTimeStr12}</span>
             </p>
 
             {/* Countdown Box */}
@@ -449,13 +463,13 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
 
           <div className="mt-5 pt-3 border-t border-white/10 flex items-center justify-between text-xs text-indigo-200">
             <span>জামাতের সময়:</span>
-            <span className="font-mono font-bold text-white text-sm">{waqtStatus.nextJamaatTimeStr}</span>
+            <span className="font-mono font-bold text-white text-sm">{waqtStatus.nextJamaatTimeStr12}</span>
           </div>
         </div>
       </div>
 
-      {/* 4. Special Solar Milestones Grid (Tahajjud, Sunrise, Ishraq, Solar Noon, Sunset, Jumuah) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
+      {/* 4. Special Solar & Nafl Milestones Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3.5">
         {/* Tahajjud */}
         <div className={`p-4 rounded-xl border transition-all ${
           waqtStatus.isTahajjudActive ? 'bg-indigo-50 border-indigo-300 shadow-xs' : 'bg-white border-slate-200'
@@ -464,8 +478,8 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
             <span className="text-xs font-bold text-slate-700">তাহাজ্জুদ</span>
             <Moon className="w-4 h-4 text-indigo-600" />
           </div>
-          <div className="text-lg font-bold text-slate-900 font-mono mt-2">
-            ০০:০০ - {waqtStatus.tahajjudEndTimeStr}
+          <div className="text-base font-bold text-slate-900 font-mono mt-2">
+            ১২:০০ AM - {waqtStatus.tahajjudEndTimeStr12}
           </div>
           <p className="text-[11px] text-slate-500 mt-1 truncate">
             {waqtStatus.tahajjudStatusBn}
@@ -478,11 +492,11 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
             <span className="text-xs font-bold text-slate-700">সূর্যোদয়</span>
             <Sun className="w-4 h-4 text-amber-500" />
           </div>
-          <div className="text-lg font-bold text-slate-900 font-mono mt-2">
-            {waqtStatus.sunriseTimeStr}
+          <div className="text-base font-bold text-slate-900 font-mono mt-2">
+            {waqtStatus.sunriseTimeStr12}
           </div>
           <p className="text-[11px] text-slate-500 mt-1">
-            ফজর শেষ: {waqtStatus.sunriseTimeStr}
+            ফজর শেষ: {waqtStatus.sunriseTimeStr12}
           </p>
         </div>
 
@@ -494,11 +508,27 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
             <span className="text-xs font-bold text-slate-700">ইশরাক</span>
             <Sparkles className="w-4 h-4 text-amber-600" />
           </div>
-          <div className="text-lg font-bold text-slate-900 font-mono mt-2">
-            {waqtStatus.ishraqTimeStr}
+          <div className="text-base font-bold text-slate-900 font-mono mt-2">
+            {waqtStatus.ishraqTimeStr12}
           </div>
           <p className="text-[11px] text-slate-500 mt-1 truncate" title={waqtStatus.ishraqStatusBn}>
             {waqtStatus.ishraqStatusBn}
+          </p>
+        </div>
+
+        {/* Duha / Chasht */}
+        <div className={`p-4 rounded-xl border transition-all ${
+          waqtStatus.isDuhaActive ? 'bg-emerald-50 border-emerald-300 shadow-xs' : 'bg-white border-slate-200'
+        }`}>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-700">চাশত / দুহা</span>
+            <Sun className="w-4 h-4 text-emerald-600" />
+          </div>
+          <div className="text-base font-bold text-slate-900 font-mono mt-2">
+            {waqtStatus.duhaTimeStr12}
+          </div>
+          <p className="text-[11px] text-slate-500 mt-1 truncate" title={waqtStatus.duhaStatusBn}>
+            {waqtStatus.duhaStatusBn}
           </p>
         </div>
 
@@ -508,11 +538,11 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
             <span className="text-xs font-bold text-slate-700">ঠিক দুপুর</span>
             <Compass className="w-4 h-4 text-blue-500" />
           </div>
-          <div className="text-lg font-bold text-slate-900 font-mono mt-2">
-            {waqtStatus.solarNoonTimeStr}
+          <div className="text-base font-bold text-slate-900 font-mono mt-2">
+            {waqtStatus.solarNoonTimeStr12}
           </div>
           <p className="text-[11px] text-slate-500 mt-1">
-            জাওয়াল শুরু: {waqtStatus.solarNoonTimeStr}
+            জাওয়াল শুরু: {waqtStatus.solarNoonTimeStr12}
           </p>
         </div>
 
@@ -522,8 +552,8 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
             <span className="text-xs font-bold text-slate-700">সূর্যাস্ত ও ইফতার</span>
             <Sun className="w-4 h-4 text-rose-500" />
           </div>
-          <div className="text-lg font-bold text-slate-900 font-mono mt-2">
-            {waqtStatus.sunsetTimeStr}
+          <div className="text-base font-bold text-slate-900 font-mono mt-2">
+            {waqtStatus.sunsetTimeStr12}
           </div>
           <p className="text-[11px] text-slate-500 mt-1">
             মাগরিব ওয়াক্ত শুরু
@@ -536,11 +566,11 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
             <span className="text-xs font-bold text-purple-900">জুমার নামাজ</span>
             <span className="text-[10px] bg-purple-200 text-purple-800 font-bold px-1.5 py-0.5 rounded-sm">শুক্র</span>
           </div>
-          <div className="text-lg font-bold text-purple-900 font-mono mt-2">
-            {waqtStatus.jumuahJamaatTimeStr}
+          <div className="text-base font-bold text-purple-900 font-mono mt-2">
+            {waqtStatus.jumuahJamaatTimeStr12}
           </div>
           <p className="text-[11px] text-purple-700 mt-1">
-            খুতবা: {waqtStatus.jumuahKhutbahTimeStr}
+            খুতবা: {waqtStatus.jumuahKhutbahTimeStr12}
           </p>
         </div>
       </div>
@@ -576,7 +606,23 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
 
           {/* Month Selector for Monthly View */}
           {activeTab === 'monthly' && (
-            <div className="flex items-center space-x-2 text-xs">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectedMonth === 0) {
+                    setSelectedMonth(11);
+                    setSelectedYear((prev) => prev - 1);
+                  } else {
+                    setSelectedMonth((prev) => prev - 1);
+                  }
+                }}
+                className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
+                title="পূর্বের মাস"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
               <select
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(parseInt(e.target.value, 10))}
@@ -586,15 +632,44 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
                   <option key={idx} value={idx}>{name}</option>
                 ))}
               </select>
+
               <select
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))}
                 className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-bold text-slate-700 cursor-pointer focus:outline-hidden"
               >
-                {[2024, 2025, 2026, 2027, 2028].map((y) => (
+                {Array.from({ length: 30 }, (_, i) => new Date().getFullYear() - 5 + i).map((y) => (
                   <option key={y} value={y}>{toBanglaDigits(y)}</option>
                 ))}
               </select>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectedMonth === 11) {
+                    setSelectedMonth(0);
+                    setSelectedYear((prev) => prev + 1);
+                  } else {
+                    setSelectedMonth((prev) => prev + 1);
+                  }
+                }}
+                className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
+                title="পরের মাস"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const curr = new Date();
+                  setSelectedMonth(curr.getMonth());
+                  setSelectedYear(curr.getFullYear());
+                }}
+                className="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold border border-emerald-200 transition cursor-pointer"
+              >
+                বর্তমান মাস
+              </button>
             </div>
           )}
         </div>
@@ -639,21 +714,21 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
                       </td>
 
                       <td className="px-6 py-4 font-mono font-medium text-slate-800">
-                        {prayer.waqtStart}
+                        {prayer.waqtStart12 || prayer.waqtStart}
                       </td>
 
                       <td className="px-6 py-4 font-mono font-medium text-slate-800">
-                        {prayer.adhan}
+                        {prayer.adhan12 || prayer.adhan}
                       </td>
 
                       <td className="px-6 py-4">
                         <span className="font-mono font-bold text-slate-900 bg-white border border-slate-200 px-2.5 py-1 rounded-lg shadow-2xs">
-                          {prayer.jamaat}
+                          {prayer.jamaat12 || prayer.jamaat}
                         </span>
                       </td>
 
                       <td className="px-6 py-4 font-mono font-medium text-slate-600">
-                        {prayer.waqtEnd}
+                        {prayer.waqtEnd12 || prayer.waqtEnd}
                       </td>
 
                       <td className="px-6 py-4 text-center">
@@ -695,6 +770,7 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
                   <th className="px-3 py-3">ফজর</th>
                   <th className="px-3 py-3">সূর্যোদয়</th>
                   <th className="px-3 py-3">ইশরাক</th>
+                  <th className="px-3 py-3">চাশত</th>
                   <th className="px-3 py-3">ঠিক দুপুর</th>
                   <th className="px-3 py-3">যোহর</th>
                   <th className="px-3 py-3">আসর</th>
@@ -726,14 +802,15 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
                     <td className="px-3 py-2.5 font-sans text-slate-600">
                       {item.hijriDateBn}
                     </td>
-                    <td className="px-3 py-2.5">{item.fajr}</td>
-                    <td className="px-3 py-2.5 text-slate-500">{item.sunrise}</td>
-                    <td className="px-3 py-2.5 text-amber-700">{item.ishraq}</td>
-                    <td className="px-3 py-2.5 text-slate-500">{item.solarNoon}</td>
-                    <td className="px-3 py-2.5 font-semibold text-slate-900">{item.dhuhr}</td>
-                    <td className="px-3 py-2.5">{item.asr}</td>
-                    <td className="px-3 py-2.5 font-semibold text-rose-700">{item.maghrib}</td>
-                    <td className="px-3 py-2.5">{item.isha}</td>
+                    <td className="px-3 py-2.5">{item.fajr12 || item.fajr}</td>
+                    <td className="px-3 py-2.5 text-slate-500">{item.sunrise12 || item.sunrise}</td>
+                    <td className="px-3 py-2.5 text-amber-700">{item.ishraq12 || item.ishraq}</td>
+                    <td className="px-3 py-2.5 text-emerald-700">{item.duha12 || item.duha || '—'}</td>
+                    <td className="px-3 py-2.5 text-slate-500">{item.solarNoon12 || item.solarNoon}</td>
+                    <td className="px-3 py-2.5 font-semibold text-slate-900">{item.dhuhr12 || item.dhuhr}</td>
+                    <td className="px-3 py-2.5">{item.asr12 || item.asr}</td>
+                    <td className="px-3 py-2.5 font-semibold text-rose-700">{item.maghrib12 || item.maghrib}</td>
+                    <td className="px-3 py-2.5">{item.isha12 || item.isha}</td>
                   </tr>
                 ))}
               </tbody>
