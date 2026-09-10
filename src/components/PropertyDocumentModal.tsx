@@ -45,6 +45,7 @@ export const PropertyDocumentModal: React.FC<PropertyDocumentModalProps> = ({
   const [description, setDescription] = useState('');
   const [fileName, setFileName] = useState('');
   const [fileUrl, setFileUrl] = useState('');
+  const [fileSize, setFileSize] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,10 +70,17 @@ export const PropertyDocumentModal: React.FC<PropertyDocumentModalProps> = ({
         documentTypeBn: typeObj?.labelBn || documentType,
         issueDate,
         description,
-        fileUrl: fileUrl || `/uploads/doc-${Date.now()}.pdf`,
+        fileUrl: fileUrl || '',
         fileName: fileName || `${title.trim()}.pdf`,
-        fileSize: 2450000
+        fileSize: fileSize || 500000
       });
+      // Reset form
+      setTitle('');
+      setIssueDate('');
+      setDescription('');
+      setFileName('');
+      setFileUrl('');
+      setFileSize(0);
       onClose();
     } catch (err: any) {
       setError(err?.message || 'দলিল আপলোড ব্যর্থ হয়েছে।');
@@ -170,14 +178,19 @@ export const PropertyDocumentModal: React.FC<PropertyDocumentModalProps> = ({
                 const file = e.target.files?.[0];
                 if (file) {
                   setFileName(file.name);
-                  setFileUrl(URL.createObjectURL(file));
+                  setFileSize(file.size);
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    setFileUrl(reader.result as string);
+                  };
+                  reader.readAsDataURL(file);
                 }
               }}
               className="text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
             />
             {fileName && (
               <p className="text-emerald-700 font-bold text-xs mt-1">
-                নির্বাচিত ফাইল: {fileName}
+                নির্বাচিত ফাইল: {fileName} ({Math.round(fileSize / 1024)} KB)
               </p>
             )}
           </div>

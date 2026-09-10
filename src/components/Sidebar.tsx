@@ -25,6 +25,7 @@ import {
   QrCode,
   Scale,
   Clock,
+  BookOpen,
 } from 'lucide-react';
 import { Language, translations } from '../lib/i18n';
 
@@ -53,7 +54,8 @@ export type NavTab =
   | 'audit'
   | 'publicPortal'
   | 'qrManagement'
-  | 'quickEntry';
+  | 'quickEntry'
+  | 'userManual';
 
 export interface SidebarProps {
   activeTab?: NavTab | string;
@@ -145,6 +147,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'qrManagement' as NavTab, label: language === 'bn' ? 'QR ও কুইক এন্ট্রি' : 'QR Management', icon: QrCode, color: 'text-teal-600' },
         { id: 'admin' as NavTab, label: t.mosqueSettings, icon: Settings },
         { id: 'audit' as NavTab, label: t.auditLogs, icon: ShieldAlert },
+      ],
+    },
+    {
+      title: language === 'bn' ? 'সহায়িকা ও সাহায্য' : 'Help & Guide',
+      items: [
+        {
+          id: 'userManual' as NavTab,
+          label: language === 'bn' ? 'ব্যবহার বিধি ও সহায়িকা' : 'User Manual & Guide',
+          icon: BookOpen,
+          badge: 'গাইড',
+          color: 'text-emerald-700',
+        },
       ],
     },
   ];

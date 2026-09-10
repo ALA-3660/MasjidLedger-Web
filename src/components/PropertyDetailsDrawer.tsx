@@ -38,6 +38,8 @@ interface PropertyDetailsDrawerProps {
   onTerminateTenant: (property: MosqueProperty, tenantId: string) => void;
   onAddInspection: (property: MosqueProperty) => void;
   onAddLegalCase: (property: MosqueProperty) => void;
+  onAddDocument?: (property: MosqueProperty) => void;
+  onDeleteDocument?: (property: MosqueProperty, documentId: string) => void;
   language: Language;
 }
 
@@ -52,9 +54,11 @@ export const PropertyDetailsDrawer: React.FC<PropertyDetailsDrawerProps> = ({
   onTerminateTenant,
   onAddInspection,
   onAddLegalCase,
+  onAddDocument,
+  onDeleteDocument,
   language
 }) => {
-  const [activeTab, setActiveTab] = useState<'details' | 'tenants' | 'inspections' | 'legal'>('details');
+  const [activeTab, setActiveTab] = useState<'details' | 'documents' | 'tenants' | 'inspections' | 'legal'>('details');
 
   if (!isOpen || !property) return null;
 
@@ -148,6 +152,15 @@ export const PropertyDetailsDrawer: React.FC<PropertyDetailsDrawerProps> = ({
           >
             <FileText className="w-4 h-4" />
             সম্পত্তির পূর্ণ তথ্য ও দাগ-খতিয়ান
+          </button>
+          <button
+            onClick={() => setActiveTab('documents')}
+            className={`py-3 px-3 border-b-2 flex items-center gap-1.5 whitespace-nowrap transition-colors ${
+              activeTab === 'documents' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <FileText className="w-4 h-4 text-blue-600" />
+            ওয়াকফ ও রেকর্ড দলিলপত্র ({property.documents?.length || 0})
           </button>
           <button
             onClick={() => setActiveTab('tenants')}
@@ -600,6 +613,111 @@ export const PropertyDetailsDrawer: React.FC<PropertyDetailsDrawerProps> = ({
                           <strong>আদালতের আদেশ:</strong> {cs.courtOrders}
                         </div>
                       )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 5: DOCUMENTS & TITLE DEEDS */}
+          {activeTab === 'documents' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900">ওয়াকফ ও রেকর্ড দলিলপত্র</h4>
+                  <p className="text-xs text-slate-500">মূল ওয়াকফনামা, খতিয়ান, পর্চা, নামজারি ডিসিআর ও চুক্তিপত্র ডিজিটাল সংরক্ষণ</p>
+                </div>
+                <button
+                  onClick={() => onAddDocument?.(property)}
+                  className="px-3 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl flex items-center gap-1.5 shadow-xs transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  নতুন দলিল / নথি যোগ করুন
+                </button>
+              </div>
+
+              {(!property.documents || property.documents.length === 0) ? (
+                <div className="p-8 text-center bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">
+                    <FileText className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h5 className="font-bold text-slate-800 text-sm">কোনো দলিল বা নথি এখনো আপলোড করা হয়নি</h5>
+                    <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                      ওয়াকফ দলিল, খতিয়ান, পর্চা, নামজারি ডিসিআর, খাজনা দাখিলা বা আদালতের অর্ডার সংরক্ষণ করতে উপরের বাটনে ক্লিক করুন।
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => onAddDocument?.(property)}
+                    className="px-4 py-2 text-xs font-bold bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-xl transition-colors shadow-xs"
+                  >
+                    + প্রথম দলিল যুক্ত করুন
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {property.documents.map((doc) => (
+                    <div
+                      key={doc.id}
+                      className="p-4 rounded-xl border border-slate-200 bg-white hover:border-blue-300 transition-all shadow-xs space-y-2"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-3">
+                          <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl shrink-0 mt-0.5">
+                            <FileText className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h5 className="font-bold text-slate-900 text-sm">{doc.title}</h5>
+                              <span className="px-2 py-0.5 text-[10px] font-bold bg-blue-100 text-blue-800 rounded-md">
+                                {doc.documentTypeBn || doc.documentType}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-1 flex-wrap">
+                              {doc.issueDate && (
+                                <span>জারির তারিখ: {doc.issueDate}</span>
+                              )}
+                              {doc.fileSize && (
+                                <span>সাইজ: {Math.round(doc.fileSize / 1024)} KB</span>
+                              )}
+                              <span>সংরক্ষণ: {new Date(doc.createdAt).toLocaleDateString('bn-BD')}</span>
+                            </div>
+                            {doc.description && (
+                              <p className="text-xs text-slate-600 mt-2 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                                {doc.description}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          {doc.fileUrl && (
+                            <a
+                              href={doc.fileUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-3 py-1.5 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg flex items-center gap-1 transition-colors"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                              নথি দেখুন
+                            </a>
+                          )}
+                          {onDeleteDocument && (
+                            <button
+                              onClick={() => {
+                                if (confirm(`আপনি কি "${doc.title}" দলিলটি মুছে ফেলতে চান?`)) {
+                                  onDeleteDocument(property, doc.id);
+                                }
+                              }}
+                              title="দলিল মুছুন"
+                              className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>

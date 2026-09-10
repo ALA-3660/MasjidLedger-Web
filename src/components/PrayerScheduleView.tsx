@@ -980,20 +980,20 @@ export const PrayerScheduleView: React.FC<PrayerScheduleViewProps> = ({
                         fajr: { ...editSettings.fajr, adhan: e.target.value } as any,
                       })}
                       className="w-full mt-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                      placeholder="Auto অথবা 05:00"
+                      placeholder="Auto অথবা 4:30 AM"
                     />
                   </div>
                   <div>
                     <label className="text-xs text-slate-500 font-medium">জামাত (Jamaat)</label>
                     <input
                       type="text"
-                      value={editSettings.fajr?.jamaat || '05:15'}
+                      value={editSettings.fajr?.jamaat || '5:15 AM'}
                       onChange={(e) => setEditSettings({
                         ...editSettings,
                         fajr: { ...editSettings.fajr, jamaat: e.target.value } as any,
                       })}
                       className="w-full mt-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm font-mono font-bold text-emerald-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                      placeholder="05:15"
+                      placeholder="5:15 AM"
                     />
                   </div>
                 </div>
@@ -1013,20 +1013,20 @@ export const PrayerScheduleView: React.FC<PrayerScheduleViewProps> = ({
                         dhuhr: { ...editSettings.dhuhr, adhan: e.target.value } as any,
                       })}
                       className="w-full mt-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                      placeholder="Auto অথবা 13:10"
+                      placeholder="Auto অথবা 12:30 PM"
                     />
                   </div>
                   <div>
                     <label className="text-xs text-slate-500 font-medium">জামাত (Jamaat)</label>
                     <input
                       type="text"
-                      value={editSettings.dhuhr?.jamaat || '13:30'}
+                      value={editSettings.dhuhr?.jamaat || '1:30 PM'}
                       onChange={(e) => setEditSettings({
                         ...editSettings,
                         dhuhr: { ...editSettings.dhuhr, jamaat: e.target.value } as any,
                       })}
                       className="w-full mt-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm font-mono font-bold text-emerald-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                      placeholder="13:30"
+                      placeholder="1:30 PM"
                     />
                   </div>
                 </div>
@@ -1046,20 +1046,20 @@ export const PrayerScheduleView: React.FC<PrayerScheduleViewProps> = ({
                         asr: { ...editSettings.asr, adhan: e.target.value } as any,
                       })}
                       className="w-full mt-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                      placeholder="Auto অথবা 16:30"
+                      placeholder="Auto অথবা 4:21 PM"
                     />
                   </div>
                   <div>
                     <label className="text-xs text-slate-500 font-medium">জামাত (Jamaat)</label>
                     <input
                       type="text"
-                      value={editSettings.asr?.jamaat || '16:45'}
+                      value={editSettings.asr?.jamaat || '4:45 PM'}
                       onChange={(e) => setEditSettings({
                         ...editSettings,
                         asr: { ...editSettings.asr, jamaat: e.target.value } as any,
                       })}
                       className="w-full mt-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm font-mono font-bold text-emerald-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                      placeholder="16:45"
+                      placeholder="4:45 PM"
                     />
                   </div>
                 </div>
@@ -1079,20 +1079,20 @@ export const PrayerScheduleView: React.FC<PrayerScheduleViewProps> = ({
                         maghrib: { ...editSettings.maghrib, adhan: e.target.value } as any,
                       })}
                       className="w-full mt-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                      placeholder="Auto অথবা 18:20"
+                      placeholder="Auto অথবা 6:05 PM"
                     />
                   </div>
                   <div>
                     <label className="text-xs text-slate-500 font-medium">জামাত (Jamaat)</label>
                     <input
                       type="text"
-                      value={editSettings.maghrib?.jamaat || '18:25'}
+                      value={editSettings.maghrib?.jamaat || '6:30 PM'}
                       onChange={(e) => setEditSettings({
                         ...editSettings,
                         maghrib: { ...editSettings.maghrib, jamaat: e.target.value } as any,
                       })}
                       className="w-full mt-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm font-mono font-bold text-emerald-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                      placeholder="18:25"
+                      placeholder="6:30 PM"
                     />
                   </div>
                 </div>
@@ -1112,20 +1112,20 @@ export const PrayerScheduleView: React.FC<PrayerScheduleViewProps> = ({
                         isha: { ...editSettings.isha, adhan: e.target.value } as any,
                       })}
                       className="w-full mt-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                      placeholder="Auto অথবা 19:45"
+                      placeholder="Auto অথবা 7:21 PM"
                     />
                   </div>
                   <div>
                     <label className="text-xs text-slate-500 font-medium">জামাত (Jamaat)</label>
                     <input
                       type="text"
-                      value={editSettings.isha?.jamaat || '20:00'}
+                      value={editSettings.isha?.jamaat || '8:15 PM'}
                       onChange={(e) => setEditSettings({
                         ...editSettings,
                         isha: { ...editSettings.isha, jamaat: e.target.value } as any,
                       })}
                       className="w-full mt-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm font-mono font-bold text-emerald-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                      placeholder="20:00"
+                      placeholder="8:15 PM"
                     />
                   </div>
                 </div>
@@ -1140,26 +1140,26 @@ export const PrayerScheduleView: React.FC<PrayerScheduleViewProps> = ({
                       <label className="text-[11px] text-slate-500 font-medium">১ম আজান</label>
                       <input
                         type="text"
-                        value={editSettings.jumuah?.adhan || '13:15'}
+                        value={editSettings.jumuah?.adhan || '12:30 PM'}
                         onChange={(e) => setEditSettings({
                           ...editSettings,
                           jumuah: { ...editSettings.jumuah, adhan: e.target.value } as any,
                         })}
                         className="w-full mt-1 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono"
-                        placeholder="13:15"
+                        placeholder="12:30 PM"
                       />
                     </div>
                     <div>
                       <label className="text-[11px] text-slate-500 font-medium">খুতবা</label>
                       <input
                         type="text"
-                        value={editSettings.jumuah?.khutbah || '13:25'}
+                        value={editSettings.jumuah?.khutbah || '1:00 PM'}
                         onChange={(e) => setEditSettings({
                           ...editSettings,
                           jumuah: { ...editSettings.jumuah, khutbah: e.target.value } as any,
                         })}
                         className="w-full mt-1 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono"
-                        placeholder="13:25"
+                        placeholder="1:00 PM"
                       />
                     </div>
                   </div>
@@ -1167,13 +1167,13 @@ export const PrayerScheduleView: React.FC<PrayerScheduleViewProps> = ({
                     <label className="text-xs text-slate-500 font-medium">জুমার জামাত</label>
                     <input
                       type="text"
-                      value={editSettings.jumuah?.jamaat || '13:45'}
+                      value={editSettings.jumuah?.jamaat || '1:30 PM'}
                       onChange={(e) => setEditSettings({
                         ...editSettings,
                         jumuah: { ...editSettings.jumuah, jamaat: e.target.value } as any,
                       })}
                       className="w-full mt-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm font-mono font-bold text-emerald-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                      placeholder="13:45"
+                      placeholder="1:30 PM"
                     />
                   </div>
                 </div>

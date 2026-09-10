@@ -73,16 +73,23 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
-  // Quick edit form state
+  // Quick edit form state (12-hour format)
+  const normTime = (t: string | undefined, def: string) => (!t ? def : formatTime12Hour(t));
+
   const [editFormData, setEditFormData] = useState({
-    fajrJamaat: currentMosque?.jamaatSettings?.fajr?.jamaat || '05:15',
-    dhuhrJamaat: currentMosque?.jamaatSettings?.dhuhr?.jamaat || '13:30',
-    asrJamaat: currentMosque?.jamaatSettings?.asr?.jamaat || '16:50',
-    maghribJamaat: currentMosque?.jamaatSettings?.maghrib?.jamaat || '18:35',
-    ishaJamaat: currentMosque?.jamaatSettings?.isha?.jamaat || '20:00',
-    jumuahAzan: currentMosque?.jamaatSettings?.jumuah?.azan || '12:30',
-    jumuahKhutbah: currentMosque?.jamaatSettings?.jumuah?.khutbah || '13:00',
-    jumuahJamaat: currentMosque?.jamaatSettings?.jumuah?.jamaat || '13:30',
+    fajrAzan: normTime(currentMosque?.jamaatSettings?.fajr?.azan, '4:28 AM'),
+    fajrJamaat: normTime(currentMosque?.jamaatSettings?.fajr?.jamaat, '5:15 AM'),
+    dhuhrAzan: normTime(currentMosque?.jamaatSettings?.dhuhr?.azan, '12:30 PM'),
+    dhuhrJamaat: normTime(currentMosque?.jamaatSettings?.dhuhr?.jamaat, '1:30 PM'),
+    asrAzan: normTime(currentMosque?.jamaatSettings?.asr?.azan, '4:21 PM'),
+    asrJamaat: normTime(currentMosque?.jamaatSettings?.asr?.jamaat, '4:45 PM'),
+    maghribAzan: normTime(currentMosque?.jamaatSettings?.maghrib?.azan, '6:05 PM'),
+    maghribJamaat: normTime(currentMosque?.jamaatSettings?.maghrib?.jamaat, '6:30 PM'),
+    ishaAzan: normTime(currentMosque?.jamaatSettings?.isha?.azan, '7:21 PM'),
+    ishaJamaat: normTime(currentMosque?.jamaatSettings?.isha?.jamaat, '8:15 PM'),
+    jumuahAzan: normTime(currentMosque?.jamaatSettings?.jumuah?.azan, '12:30 PM'),
+    jumuahKhutbah: normTime(currentMosque?.jamaatSettings?.jumuah?.khutbah, '1:00 PM'),
+    jumuahJamaat: normTime(currentMosque?.jamaatSettings?.jumuah?.jamaat, '1:30 PM'),
   });
 
   // Real-time ticking state
@@ -107,14 +114,19 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
     if (currentMosque?.jamaatSettings) {
       const j = currentMosque.jamaatSettings;
       setEditFormData({
-        fajrJamaat: j.fajr?.jamaat || '05:15',
-        dhuhrJamaat: j.dhuhr?.jamaat || '13:30',
-        asrJamaat: j.asr?.jamaat || '16:50',
-        maghribJamaat: j.maghrib?.jamaat || '18:35',
-        ishaJamaat: j.isha?.jamaat || '20:00',
-        jumuahAzan: j.jumuah?.azan || '12:30',
-        jumuahKhutbah: j.jumuah?.khutbah || '13:00',
-        jumuahJamaat: j.jumuah?.jamaat || '13:30',
+        fajrAzan: normTime(j.fajr?.azan, '4:28 AM'),
+        fajrJamaat: normTime(j.fajr?.jamaat, '5:15 AM'),
+        dhuhrAzan: normTime(j.dhuhr?.azan, '12:30 PM'),
+        dhuhrJamaat: normTime(j.dhuhr?.jamaat, '1:30 PM'),
+        asrAzan: normTime(j.asr?.azan, '4:21 PM'),
+        asrJamaat: normTime(j.asr?.jamaat, '4:45 PM'),
+        maghribAzan: normTime(j.maghrib?.azan, '6:05 PM'),
+        maghribJamaat: normTime(j.maghrib?.jamaat, '6:30 PM'),
+        ishaAzan: normTime(j.isha?.azan, '7:21 PM'),
+        ishaJamaat: normTime(j.isha?.jamaat, '8:15 PM'),
+        jumuahAzan: normTime(j.jumuah?.azan, '12:30 PM'),
+        jumuahKhutbah: normTime(j.jumuah?.khutbah, '1:00 PM'),
+        jumuahJamaat: normTime(j.jumuah?.jamaat, '1:30 PM'),
       });
     }
   }, [currentMosque?.jamaatSettings]);
@@ -172,20 +184,35 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
       setIsSaving(true);
       const updatedJamaat = {
         ...(currentMosque?.jamaatSettings || {}),
-        fajr: { ...(currentMosque?.jamaatSettings?.fajr || {}), jamaat: editFormData.fajrJamaat },
-        dhuhr: { ...(currentMosque?.jamaatSettings?.dhuhr || {}), jamaat: editFormData.dhuhrJamaat },
-        asr: { ...(currentMosque?.jamaatSettings?.asr || {}), jamaat: editFormData.asrJamaat },
-        maghrib: { ...(currentMosque?.jamaatSettings?.maghrib || {}), jamaat: editFormData.maghribJamaat },
-        isha: { ...(currentMosque?.jamaatSettings?.isha || {}), jamaat: editFormData.ishaJamaat },
+        fajr: {
+          azan: formatTime12Hour(editFormData.fajrAzan),
+          jamaat: formatTime12Hour(editFormData.fajrJamaat),
+        },
+        dhuhr: {
+          azan: formatTime12Hour(editFormData.dhuhrAzan),
+          jamaat: formatTime12Hour(editFormData.dhuhrJamaat),
+        },
+        asr: {
+          azan: formatTime12Hour(editFormData.asrAzan),
+          jamaat: formatTime12Hour(editFormData.asrJamaat),
+        },
+        maghrib: {
+          azan: formatTime12Hour(editFormData.maghribAzan),
+          jamaat: formatTime12Hour(editFormData.maghribJamaat),
+        },
+        isha: {
+          azan: formatTime12Hour(editFormData.ishaAzan),
+          jamaat: formatTime12Hour(editFormData.ishaJamaat),
+        },
         jumuah: {
-          azan: editFormData.jumuahAzan,
-          khutbah: editFormData.jumuahKhutbah,
-          jamaat: editFormData.jumuahJamaat,
+          azan: formatTime12Hour(editFormData.jumuahAzan),
+          khutbah: formatTime12Hour(editFormData.jumuahKhutbah),
+          jamaat: formatTime12Hour(editFormData.jumuahJamaat),
         },
       };
 
       await onSaveJamaatTimes(updatedJamaat);
-      setSaveSuccessMsg('জামাতের নির্ধারিত সময় সফলভাবে সংরক্ষিত ও আপডেট হয়েছে।');
+      setSaveSuccessMsg('আজান ও জামাতের নির্ধারিত ১২-ঘণ্টার সময়সূচি সফলভাবে সংরক্ষিত হয়েছে।');
       setTimeout(() => {
         setSaveSuccessMsg(null);
         setIsQuickEditOpen(false);
@@ -826,10 +853,10 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div>
                 <h3 className="text-lg font-bold text-slate-900">
-                  ✏️ জামাতের সময়সূচি নির্ধারণ ও আপডেট
+                  ✏️ আজান ও জামাতের সময়সূচি নির্ধারণ (১২-ঘণ্টা)
                 </h3>
                 <p className="text-xs text-slate-500">
-                  ২৪ ঘণ্টার সময় ফরম্যাট (যেমন: ০৫:১৫, ১৩:৩০, ১৬:৫০, ১৮:৩৫, ২০:০০) ব্যবহার করুন
+                  ১২ ঘণ্টার সময় ফরম্যাট (যেমন: 4:28 AM, 1:30 PM, 6:30 PM) ব্যবহার করে হাতে সেট করুন
                 </p>
               </div>
               <button
@@ -849,89 +876,198 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
             )}
 
             <form onSubmit={handleSaveQuickEdit} className="mt-5 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    ফজর জামাত:
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editFormData.fajrJamaat}
-                    onChange={(e) => setEditFormData({ ...editFormData, fajrJamaat: e.target.value })}
-                    placeholder="05:15"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-                  />
+              <div className="space-y-3">
+                {/* FAJR */}
+                <div className="grid grid-cols-2 gap-3 p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      ফজর আজান:
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editFormData.fajrAzan}
+                      onChange={(e) => setEditFormData({ ...editFormData, fajrAzan: e.target.value })}
+                      placeholder="4:28 AM"
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-medium text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-purple-700 mb-1">
+                      ফজর জামাত:
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editFormData.fajrJamaat}
+                      onChange={(e) => setEditFormData({ ...editFormData, fajrJamaat: e.target.value })}
+                      placeholder="5:15 AM"
+                      className="w-full px-3 py-1.5 bg-purple-50/60 border border-purple-300 rounded-lg text-xs font-mono font-bold text-purple-900 focus:outline-hidden focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    যোহর জামাত:
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editFormData.dhuhrJamaat}
-                    onChange={(e) => setEditFormData({ ...editFormData, dhuhrJamaat: e.target.value })}
-                    placeholder="13:30"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-                  />
+                {/* DHUHR */}
+                <div className="grid grid-cols-2 gap-3 p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      যোহর আজান:
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editFormData.dhuhrAzan}
+                      onChange={(e) => setEditFormData({ ...editFormData, dhuhrAzan: e.target.value })}
+                      placeholder="12:30 PM"
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-medium text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-purple-700 mb-1">
+                      যোহর জামাত:
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editFormData.dhuhrJamaat}
+                      onChange={(e) => setEditFormData({ ...editFormData, dhuhrJamaat: e.target.value })}
+                      placeholder="1:30 PM"
+                      className="w-full px-3 py-1.5 bg-purple-50/60 border border-purple-300 rounded-lg text-xs font-mono font-bold text-purple-900 focus:outline-hidden focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    আসর জামাত:
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editFormData.asrJamaat}
-                    onChange={(e) => setEditFormData({ ...editFormData, asrJamaat: e.target.value })}
-                    placeholder="16:50"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-                  />
+                {/* ASR */}
+                <div className="grid grid-cols-2 gap-3 p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      আসর আজান:
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editFormData.asrAzan}
+                      onChange={(e) => setEditFormData({ ...editFormData, asrAzan: e.target.value })}
+                      placeholder="4:21 PM"
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-medium text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-purple-700 mb-1">
+                      আসর জামাত:
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editFormData.asrJamaat}
+                      onChange={(e) => setEditFormData({ ...editFormData, asrJamaat: e.target.value })}
+                      placeholder="4:45 PM"
+                      className="w-full px-3 py-1.5 bg-purple-50/60 border border-purple-300 rounded-lg text-xs font-mono font-bold text-purple-900 focus:outline-hidden focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    মাগরিব জামাত:
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editFormData.maghribJamaat}
-                    onChange={(e) => setEditFormData({ ...editFormData, maghribJamaat: e.target.value })}
-                    placeholder="18:35"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-                  />
+                {/* MAGHRIB */}
+                <div className="grid grid-cols-2 gap-3 p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      মাগরিব আজান:
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editFormData.maghribAzan}
+                      onChange={(e) => setEditFormData({ ...editFormData, maghribAzan: e.target.value })}
+                      placeholder="6:05 PM"
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-medium text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-purple-700 mb-1">
+                      মাগরিব জামাত:
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editFormData.maghribJamaat}
+                      onChange={(e) => setEditFormData({ ...editFormData, maghribJamaat: e.target.value })}
+                      placeholder="6:30 PM"
+                      className="w-full px-3 py-1.5 bg-purple-50/60 border border-purple-300 rounded-lg text-xs font-mono font-bold text-purple-900 focus:outline-hidden focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    এশা জামাত:
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editFormData.ishaJamaat}
-                    onChange={(e) => setEditFormData({ ...editFormData, ishaJamaat: e.target.value })}
-                    placeholder="20:00"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-                  />
+                {/* ISHA */}
+                <div className="grid grid-cols-2 gap-3 p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      এশা আজান:
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editFormData.ishaAzan}
+                      onChange={(e) => setEditFormData({ ...editFormData, ishaAzan: e.target.value })}
+                      placeholder="7:21 PM"
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-medium text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-purple-700 mb-1">
+                      এশা জামাত:
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editFormData.ishaJamaat}
+                      onChange={(e) => setEditFormData({ ...editFormData, ishaJamaat: e.target.value })}
+                      placeholder="8:15 PM"
+                      className="w-full px-3 py-1.5 bg-purple-50/60 border border-purple-300 rounded-lg text-xs font-mono font-bold text-purple-900 focus:outline-hidden focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-purple-900 mb-1">
-                    জুমার জামাত (শুক্রবার):
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editFormData.jumuahJamaat}
-                    onChange={(e) => setEditFormData({ ...editFormData, jumuahJamaat: e.target.value })}
-                    placeholder="13:30"
-                    className="w-full px-3 py-2 bg-purple-50 border border-purple-200 rounded-xl text-xs font-mono font-bold text-purple-900 focus:outline-hidden focus:ring-2 focus:ring-purple-500"
-                  />
+                {/* JUMUAH */}
+                <div className="grid grid-cols-3 gap-2.5 p-2.5 rounded-xl bg-purple-50/40 border border-purple-200">
+                  <div>
+                    <label className="block text-[11px] font-bold text-purple-900 mb-1">
+                      জুমা আজান:
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editFormData.jumuahAzan}
+                      onChange={(e) => setEditFormData({ ...editFormData, jumuahAzan: e.target.value })}
+                      placeholder="12:30 PM"
+                      className="w-full px-2 py-1.5 bg-white border border-purple-200 rounded-lg text-xs font-mono text-slate-800"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-purple-900 mb-1">
+                      খুতবা:
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editFormData.jumuahKhutbah}
+                      onChange={(e) => setEditFormData({ ...editFormData, jumuahKhutbah: e.target.value })}
+                      placeholder="1:00 PM"
+                      className="w-full px-2 py-1.5 bg-white border border-purple-200 rounded-lg text-xs font-mono text-slate-800"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-purple-900 mb-1">
+                      জুমা জামাত:
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editFormData.jumuahJamaat}
+                      onChange={(e) => setEditFormData({ ...editFormData, jumuahJamaat: e.target.value })}
+                      placeholder="1:30 PM"
+                      className="w-full px-2 py-1.5 bg-purple-100/70 border border-purple-300 rounded-lg text-xs font-mono font-bold text-purple-900"
+                    />
+                  </div>
                 </div>
               </div>
 

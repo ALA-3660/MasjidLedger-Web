@@ -31,6 +31,8 @@ import {
   buildDailyPrayerSchedule,
   formatMinutesToBanglaTime,
   formatMinutesTo24h,
+  formatMinutesTo12h,
+  formatTime12Hour,
   toBanglaDigits,
   formatDurationToBangla,
 } from '../lib/prayerEngine';
@@ -105,57 +107,64 @@ export const MosqueLocationPrayerSettings: React.FC<MosqueLocationPrayerSettings
     currentMosque?.prayerSettings?.sunsetForbiddenDurationMinutes ?? 15
   );
 
-  // Adhan & Jamaat Times State
+  // Helper to normalize initial times to 12-hour format
+  const normTime = (timeVal: string | undefined, defVal: string) => {
+    if (!timeVal) return defVal;
+    if (timeVal.toLowerCase() === 'auto') return 'Auto';
+    return formatTime12Hour(timeVal);
+  };
+
+  // Adhan & Jamaat Times State (12-hour format)
   const [fajrAdhan, setFajrAdhan] = useState(
-    currentMosque?.prayerSettings?.fajr?.adhan || currentMosque?.jamaatSettings?.fajr?.azan || 'Auto'
+    normTime(currentMosque?.prayerSettings?.fajr?.adhan || currentMosque?.jamaatSettings?.fajr?.azan, 'Auto')
   );
   const [fajrJamaat, setFajrJamaat] = useState(
-    currentMosque?.prayerSettings?.fajr?.jamaat || currentMosque?.jamaatSettings?.fajr?.jamaat || '05:15'
+    normTime(currentMosque?.prayerSettings?.fajr?.jamaat || currentMosque?.jamaatSettings?.fajr?.jamaat, '5:15 AM')
   );
   const [fajrOffset, setFajrOffset] = useState<number>(currentMosque?.prayerSettings?.fajr?.manualOffset || 0);
 
   const [dhuhrAdhan, setDhuhrAdhan] = useState(
-    currentMosque?.prayerSettings?.dhuhr?.adhan || currentMosque?.jamaatSettings?.dhuhr?.azan || 'Auto'
+    normTime(currentMosque?.prayerSettings?.dhuhr?.adhan || currentMosque?.jamaatSettings?.dhuhr?.azan, 'Auto')
   );
   const [dhuhrJamaat, setDhuhrJamaat] = useState(
-    currentMosque?.prayerSettings?.dhuhr?.jamaat || currentMosque?.jamaatSettings?.dhuhr?.jamaat || '13:30'
+    normTime(currentMosque?.prayerSettings?.dhuhr?.jamaat || currentMosque?.jamaatSettings?.dhuhr?.jamaat, '1:30 PM')
   );
   const [dhuhrOffset, setDhuhrOffset] = useState<number>(currentMosque?.prayerSettings?.dhuhr?.manualOffset || 0);
 
   const [asrAdhan, setAsrAdhan] = useState(
-    currentMosque?.prayerSettings?.asr?.adhan || currentMosque?.jamaatSettings?.asr?.azan || 'Auto'
+    normTime(currentMosque?.prayerSettings?.asr?.adhan || currentMosque?.jamaatSettings?.asr?.azan, 'Auto')
   );
   const [asrJamaat, setAsrJamaat] = useState(
-    currentMosque?.prayerSettings?.asr?.jamaat || currentMosque?.jamaatSettings?.asr?.jamaat || '16:45'
+    normTime(currentMosque?.prayerSettings?.asr?.jamaat || currentMosque?.jamaatSettings?.asr?.jamaat, '4:45 PM')
   );
   const [asrOffset, setAsrOffset] = useState<number>(currentMosque?.prayerSettings?.asr?.manualOffset || 0);
 
   const [maghribAdhan, setMaghribAdhan] = useState(
-    currentMosque?.prayerSettings?.maghrib?.adhan || currentMosque?.jamaatSettings?.maghrib?.azan || 'Auto'
+    normTime(currentMosque?.prayerSettings?.maghrib?.adhan || currentMosque?.jamaatSettings?.maghrib?.azan, 'Auto')
   );
   const [maghribJamaat, setMaghribJamaat] = useState(
-    currentMosque?.prayerSettings?.maghrib?.jamaat || currentMosque?.jamaatSettings?.maghrib?.jamaat || '18:35'
+    normTime(currentMosque?.prayerSettings?.maghrib?.jamaat || currentMosque?.jamaatSettings?.maghrib?.jamaat, '6:30 PM')
   );
   const [maghribOffset, setMaghribOffset] = useState<number>(
     currentMosque?.prayerSettings?.maghrib?.manualOffset || 0
   );
 
   const [ishaAdhan, setIshaAdhan] = useState(
-    currentMosque?.prayerSettings?.isha?.adhan || currentMosque?.jamaatSettings?.isha?.azan || 'Auto'
+    normTime(currentMosque?.prayerSettings?.isha?.adhan || currentMosque?.jamaatSettings?.isha?.azan, 'Auto')
   );
   const [ishaJamaat, setIshaJamaat] = useState(
-    currentMosque?.prayerSettings?.isha?.jamaat || currentMosque?.jamaatSettings?.isha?.jamaat || '20:00'
+    normTime(currentMosque?.prayerSettings?.isha?.jamaat || currentMosque?.jamaatSettings?.isha?.jamaat, '8:15 PM')
   );
   const [ishaOffset, setIshaOffset] = useState<number>(currentMosque?.prayerSettings?.isha?.manualOffset || 0);
 
   const [jumuahAdhan, setJumuahAdhan] = useState(
-    currentMosque?.prayerSettings?.jumuah?.adhan || currentMosque?.jamaatSettings?.jumuah?.azan || '12:30'
+    normTime(currentMosque?.prayerSettings?.jumuah?.adhan || currentMosque?.jamaatSettings?.jumuah?.azan, '12:30 PM')
   );
   const [jumuahKhutbah, setJumuahKhutbah] = useState(
-    currentMosque?.prayerSettings?.jumuah?.khutbah || currentMosque?.jamaatSettings?.jumuah?.khutbah || '13:00'
+    normTime(currentMosque?.prayerSettings?.jumuah?.khutbah || currentMosque?.jamaatSettings?.jumuah?.khutbah, '1:00 PM')
   );
   const [jumuahJamaat, setJumuahJamaat] = useState(
-    currentMosque?.prayerSettings?.jumuah?.jamaat || currentMosque?.jamaatSettings?.jumuah?.jamaat || '13:30'
+    normTime(currentMosque?.prayerSettings?.jumuah?.jamaat || currentMosque?.jamaatSettings?.jumuah?.jamaat, '1:30 PM')
   );
 
   // UI / Action States
@@ -262,6 +271,23 @@ export const MosqueLocationPrayerSettings: React.FC<MosqueLocationPrayerSettings
     setSaveSuccessMsg(null);
 
     try {
+      const cleanAdhan = (val: string) => (!val || val.trim().toLowerCase() === 'auto' ? 'Auto' : formatTime12Hour(val.trim()));
+      const cleanJamaat = (val: string, fallback: string) => (val && val.trim() ? formatTime12Hour(val.trim()) : fallback);
+
+      const savedFajrAdhan = cleanAdhan(fajrAdhan);
+      const savedFajrJamaat = cleanJamaat(fajrJamaat, '5:15 AM');
+      const savedDhuhrAdhan = cleanAdhan(dhuhrAdhan);
+      const savedDhuhrJamaat = cleanJamaat(dhuhrJamaat, '1:30 PM');
+      const savedAsrAdhan = cleanAdhan(asrAdhan);
+      const savedAsrJamaat = cleanJamaat(asrJamaat, '4:45 PM');
+      const savedMaghribAdhan = cleanAdhan(maghribAdhan);
+      const savedMaghribJamaat = cleanJamaat(maghribJamaat, '6:30 PM');
+      const savedIshaAdhan = cleanAdhan(ishaAdhan);
+      const savedIshaJamaat = cleanJamaat(ishaJamaat, '8:15 PM');
+      const savedJumuahAdhan = cleanJamaat(jumuahAdhan, '12:30 PM');
+      const savedJumuahKhutbah = cleanJamaat(jumuahKhutbah, '1:00 PM');
+      const savedJumuahJamaat = cleanJamaat(jumuahJamaat, '1:30 PM');
+
       const updatedPrayerSettings: MosquePrayerSettings = {
         division,
         district,
@@ -280,21 +306,21 @@ export const MosqueLocationPrayerSettings: React.FC<MosqueLocationPrayerSettings
         zawalForbiddenDurationMinutes: Number(zawalForbiddenMins) || 10,
         sunsetForbiddenDurationMinutes: Number(sunsetForbiddenMins) || 15,
         warningThresholdMinutes: 10,
-        fajr: { adhan: fajrAdhan, jamaat: fajrJamaat, manualOffset: Number(fajrOffset) || 0 },
-        dhuhr: { adhan: dhuhrAdhan, jamaat: dhuhrJamaat, manualOffset: Number(dhuhrOffset) || 0 },
-        asr: { adhan: asrAdhan, jamaat: asrJamaat, manualOffset: Number(asrOffset) || 0 },
-        maghrib: { adhan: maghribAdhan, jamaat: maghribJamaat, manualOffset: Number(maghribOffset) || 0 },
-        isha: { adhan: ishaAdhan, jamaat: ishaJamaat, manualOffset: Number(ishaOffset) || 0 },
-        jumuah: { adhan: jumuahAdhan, khutbah: jumuahKhutbah, jamaat: jumuahJamaat },
+        fajr: { adhan: savedFajrAdhan, jamaat: savedFajrJamaat, manualOffset: Number(fajrOffset) || 0 },
+        dhuhr: { adhan: savedDhuhrAdhan, jamaat: savedDhuhrJamaat, manualOffset: Number(dhuhrOffset) || 0 },
+        asr: { adhan: savedAsrAdhan, jamaat: savedAsrJamaat, manualOffset: Number(asrOffset) || 0 },
+        maghrib: { adhan: savedMaghribAdhan, jamaat: savedMaghribJamaat, manualOffset: Number(maghribOffset) || 0 },
+        isha: { adhan: savedIshaAdhan, jamaat: savedIshaJamaat, manualOffset: Number(ishaOffset) || 0 },
+        jumuah: { adhan: savedJumuahAdhan, khutbah: savedJumuahKhutbah, jamaat: savedJumuahJamaat },
       };
 
       const updatedJamaatSettings = {
-        fajr: { azan: fajrAdhan, jamaat: fajrJamaat },
-        dhuhr: { azan: dhuhrAdhan, jamaat: dhuhrJamaat },
-        asr: { azan: asrAdhan, jamaat: asrJamaat },
-        maghrib: { azan: maghribAdhan, jamaat: maghribJamaat },
-        isha: { azan: ishaAdhan, jamaat: ishaJamaat },
-        jumuah: { azan: jumuahAdhan, khutbah: jumuahKhutbah, jamaat: jumuahJamaat },
+        fajr: { azan: savedFajrAdhan, jamaat: savedFajrJamaat },
+        dhuhr: { azan: savedDhuhrAdhan, jamaat: savedDhuhrJamaat },
+        asr: { azan: savedAsrAdhan, jamaat: savedAsrJamaat },
+        maghrib: { azan: savedMaghribAdhan, jamaat: savedMaghribJamaat },
+        isha: { azan: savedIshaAdhan, jamaat: savedIshaJamaat },
+        jumuah: { azan: savedJumuahAdhan, khutbah: savedJumuahKhutbah, jamaat: savedJumuahJamaat },
       };
 
       const payload: Partial<Mosque> = {
@@ -716,7 +742,7 @@ export const MosqueLocationPrayerSettings: React.FC<MosqueLocationPrayerSettings
                 <th className="p-3.5">ওয়াক্ত (Prayer)</th>
                 <th className="p-3.5">জ্যোতির্বৈজ্ঞানিক ওয়াক্ত শুরু</th>
                 <th className="p-3.5">আজানের সময়</th>
-                <th className="p-3.5">মসজিদ জামাতের সময় (২৪-ঘণ্টা)</th>
+                <th className="p-3.5">মসজিদ জামাতের সময় (১২-ঘণ্টা)</th>
                 <th className="p-3.5">ওয়াক্ত শেষ</th>
                 <th className="p-3.5">ম্যানুয়াল সমন্বয় (মিনিট)</th>
               </tr>
@@ -729,7 +755,7 @@ export const MosqueLocationPrayerSettings: React.FC<MosqueLocationPrayerSettings
                   <span>ফজর (Fajr)</span>
                 </td>
                 <td className="p-3.5 font-mono text-emerald-700 font-bold">
-                  {formatMinutesTo24h(liveCalculatedTimes.fajrMin)}
+                  {formatMinutesTo12h(liveCalculatedTimes.fajrMin)}
                 </td>
                 <td className="p-3.5">
                   <input
@@ -737,7 +763,7 @@ export const MosqueLocationPrayerSettings: React.FC<MosqueLocationPrayerSettings
                     value={fajrAdhan}
                     disabled={!canEdit}
                     onChange={(e) => setFajrAdhan(e.target.value)}
-                    placeholder="Auto বা 05:00"
+                    placeholder="Auto বা 4:28 AM"
                     className="w-24 px-2 py-1.5 font-mono text-xs font-semibold rounded-lg border border-slate-200 bg-white"
                   />
                 </td>
@@ -747,12 +773,12 @@ export const MosqueLocationPrayerSettings: React.FC<MosqueLocationPrayerSettings
                     value={fajrJamaat}
                     disabled={!canEdit}
                     onChange={(e) => setFajrJamaat(e.target.value)}
-                    placeholder="05:15"
+                    placeholder="5:15 AM"
                     className="w-24 px-2 py-1.5 font-mono text-xs font-bold text-purple-700 rounded-lg border border-purple-300 bg-purple-50/50"
                   />
                 </td>
                 <td className="p-3.5 font-mono text-slate-500">
-                  {formatMinutesTo24h(liveCalculatedTimes.sunriseMin)} (সূর্যোদয়)
+                  {formatMinutesTo12h(liveCalculatedTimes.sunriseMin)} (সূর্যোদয়)
                 </td>
                 <td className="p-3.5">
                   <input
@@ -772,7 +798,7 @@ export const MosqueLocationPrayerSettings: React.FC<MosqueLocationPrayerSettings
                   <span>যোহর (Dhuhr)</span>
                 </td>
                 <td className="p-3.5 font-mono text-emerald-700 font-bold">
-                  {formatMinutesTo24h(liveCalculatedTimes.dhuhrMin)}
+                  {formatMinutesTo12h(liveCalculatedTimes.dhuhrMin)}
                 </td>
                 <td className="p-3.5">
                   <input
@@ -780,7 +806,7 @@ export const MosqueLocationPrayerSettings: React.FC<MosqueLocationPrayerSettings
                     value={dhuhrAdhan}
                     disabled={!canEdit}
                     onChange={(e) => setDhuhrAdhan(e.target.value)}
-                    placeholder="Auto বা 13:15"
+                    placeholder="Auto বা 12:30 PM"
                     className="w-24 px-2 py-1.5 font-mono text-xs font-semibold rounded-lg border border-slate-200 bg-white"
                   />
                 </td>
@@ -790,12 +816,12 @@ export const MosqueLocationPrayerSettings: React.FC<MosqueLocationPrayerSettings
                     value={dhuhrJamaat}
                     disabled={!canEdit}
                     onChange={(e) => setDhuhrJamaat(e.target.value)}
-                    placeholder="13:30"
+                    placeholder="1:30 PM"
                     className="w-24 px-2 py-1.5 font-mono text-xs font-bold text-purple-700 rounded-lg border border-purple-300 bg-purple-50/50"
                   />
                 </td>
                 <td className="p-3.5 font-mono text-slate-500">
-                  {formatMinutesTo24h(liveCalculatedTimes.asrMin)}
+                  {formatMinutesTo12h(liveCalculatedTimes.asrMin)}
                 </td>
                 <td className="p-3.5">
                   <input
@@ -815,7 +841,7 @@ export const MosqueLocationPrayerSettings: React.FC<MosqueLocationPrayerSettings
                   <span>আসর (Asr - Hanafi 2x)</span>
                 </td>
                 <td className="p-3.5 font-mono text-emerald-700 font-bold">
-                  {formatMinutesTo24h(liveCalculatedTimes.asrMin)}
+                  {formatMinutesTo12h(liveCalculatedTimes.asrMin)}
                 </td>
                 <td className="p-3.5">
                   <input
@@ -823,7 +849,7 @@ export const MosqueLocationPrayerSettings: React.FC<MosqueLocationPrayerSettings
                     value={asrAdhan}
                     disabled={!canEdit}
                     onChange={(e) => setAsrAdhan(e.target.value)}
-                    placeholder="Auto বা 16:45"
+                    placeholder="Auto বা 4:21 PM"
                     className="w-24 px-2 py-1.5 font-mono text-xs font-semibold rounded-lg border border-slate-200 bg-white"
                   />
                 </td>
@@ -833,12 +859,12 @@ export const MosqueLocationPrayerSettings: React.FC<MosqueLocationPrayerSettings
                     value={asrJamaat}
                     disabled={!canEdit}
                     onChange={(e) => setAsrJamaat(e.target.value)}
-                    placeholder="16:50"
+                    placeholder="4:45 PM"
                     className="w-24 px-2 py-1.5 font-mono text-xs font-bold text-purple-700 rounded-lg border border-purple-300 bg-purple-50/50"
                   />
                 </td>
                 <td className="p-3.5 font-mono text-slate-500">
-                  {formatMinutesTo24h(liveCalculatedTimes.sunsetMin)} (সূর্যাস্ত)
+                  {formatMinutesTo12h(liveCalculatedTimes.sunsetMin)} (সূর্যাস্ত)
                 </td>
                 <td className="p-3.5">
                   <input
@@ -858,7 +884,7 @@ export const MosqueLocationPrayerSettings: React.FC<MosqueLocationPrayerSettings
                   <span>মাগরিব (Maghrib)</span>
                 </td>
                 <td className="p-3.5 font-mono text-emerald-700 font-bold">
-                  {formatMinutesTo24h(liveCalculatedTimes.maghribMin)}
+                  {formatMinutesTo12h(liveCalculatedTimes.maghribMin)}
                 </td>
                 <td className="p-3.5">
                   <input
@@ -866,7 +892,7 @@ export const MosqueLocationPrayerSettings: React.FC<MosqueLocationPrayerSettings
                     value={maghribAdhan}
                     disabled={!canEdit}
                     onChange={(e) => setMaghribAdhan(e.target.value)}
-                    placeholder="Auto বা 18:30"
+                    placeholder="Auto বা 6:05 PM"
                     className="w-24 px-2 py-1.5 font-mono text-xs font-semibold rounded-lg border border-slate-200 bg-white"
                   />
                 </td>
@@ -876,12 +902,12 @@ export const MosqueLocationPrayerSettings: React.FC<MosqueLocationPrayerSettings
                     value={maghribJamaat}
                     disabled={!canEdit}
                     onChange={(e) => setMaghribJamaat(e.target.value)}
-                    placeholder="18:35"
+                    placeholder="6:30 PM"
                     className="w-24 px-2 py-1.5 font-mono text-xs font-bold text-purple-700 rounded-lg border border-purple-300 bg-purple-50/50"
                   />
                 </td>
                 <td className="p-3.5 font-mono text-slate-500">
-                  {formatMinutesTo24h(liveCalculatedTimes.ishaMin)}
+                  {formatMinutesTo12h(liveCalculatedTimes.ishaMin)}
                 </td>
                 <td className="p-3.5">
                   <input
@@ -901,7 +927,7 @@ export const MosqueLocationPrayerSettings: React.FC<MosqueLocationPrayerSettings
                   <span>এশা (Isha)</span>
                 </td>
                 <td className="p-3.5 font-mono text-emerald-700 font-bold">
-                  {formatMinutesTo24h(liveCalculatedTimes.ishaMin)}
+                  {formatMinutesTo12h(liveCalculatedTimes.ishaMin)}
                 </td>
                 <td className="p-3.5">
                   <input
@@ -909,7 +935,7 @@ export const MosqueLocationPrayerSettings: React.FC<MosqueLocationPrayerSettings
                     value={ishaAdhan}
                     disabled={!canEdit}
                     onChange={(e) => setIshaAdhan(e.target.value)}
-                    placeholder="Auto বা 19:45"
+                    placeholder="Auto বা 7:21 PM"
                     className="w-24 px-2 py-1.5 font-mono text-xs font-semibold rounded-lg border border-slate-200 bg-white"
                   />
                 </td>
@@ -919,12 +945,12 @@ export const MosqueLocationPrayerSettings: React.FC<MosqueLocationPrayerSettings
                     value={ishaJamaat}
                     disabled={!canEdit}
                     onChange={(e) => setIshaJamaat(e.target.value)}
-                    placeholder="20:00"
+                    placeholder="8:15 PM"
                     className="w-24 px-2 py-1.5 font-mono text-xs font-bold text-purple-700 rounded-lg border border-purple-300 bg-purple-50/50"
                   />
                 </td>
                 <td className="p-3.5 font-mono text-slate-500">
-                  {formatMinutesTo24h(liveCalculatedTimes.fajrMin)} (ফজর শুরু)
+                  {formatMinutesTo12h(liveCalculatedTimes.fajrMin)} (ফজর শুরু)
                 </td>
                 <td className="p-3.5">
                   <input
@@ -944,7 +970,7 @@ export const MosqueLocationPrayerSettings: React.FC<MosqueLocationPrayerSettings
                   <span>জুমুআ (Jumu'ah - শুক্রবার)</span>
                 </td>
                 <td className="p-3.5 font-mono text-purple-700 font-bold">
-                  {formatMinutesTo24h(liveCalculatedTimes.dhuhrMin)}
+                  {formatMinutesTo12h(liveCalculatedTimes.dhuhrMin)}
                 </td>
                 <td className="p-3.5">
                   <input
@@ -952,7 +978,7 @@ export const MosqueLocationPrayerSettings: React.FC<MosqueLocationPrayerSettings
                     value={jumuahAdhan}
                     disabled={!canEdit}
                     onChange={(e) => setJumuahAdhan(e.target.value)}
-                    placeholder="12:30"
+                    placeholder="12:30 PM"
                     className="w-24 px-2 py-1.5 font-mono text-xs font-semibold rounded-lg border border-slate-200 bg-white"
                   />
                 </td>
@@ -964,7 +990,7 @@ export const MosqueLocationPrayerSettings: React.FC<MosqueLocationPrayerSettings
                       value={jumuahKhutbah}
                       disabled={!canEdit}
                       onChange={(e) => setJumuahKhutbah(e.target.value)}
-                      placeholder="13:00"
+                      placeholder="1:00 PM"
                       className="w-20 px-1.5 py-1 font-mono text-xs rounded border border-slate-200 bg-white"
                     />
                   </div>
@@ -975,13 +1001,13 @@ export const MosqueLocationPrayerSettings: React.FC<MosqueLocationPrayerSettings
                       value={jumuahJamaat}
                       disabled={!canEdit}
                       onChange={(e) => setJumuahJamaat(e.target.value)}
-                      placeholder="13:30"
+                      placeholder="1:30 PM"
                       className="w-20 px-1.5 py-1 font-mono text-xs font-bold text-purple-700 rounded border border-purple-300 bg-purple-50"
                     />
                   </div>
                 </td>
                 <td className="p-3.5 font-mono text-slate-500">
-                  {formatMinutesTo24h(liveCalculatedTimes.asrMin)}
+                  {formatMinutesTo12h(liveCalculatedTimes.asrMin)}
                 </td>
                 <td className="p-3.5 text-center text-slate-400 font-mono">-</td>
               </tr>
@@ -994,35 +1020,35 @@ export const MosqueLocationPrayerSettings: React.FC<MosqueLocationPrayerSettings
           <div className="p-2.5 rounded-lg bg-white border border-slate-200">
             <span className="text-slate-500 text-[11px] block">সূর্যোদয় (Sunrise)</span>
             <span className="font-mono font-bold text-slate-900 text-sm">
-              {formatMinutesTo24h(liveCalculatedTimes.sunriseMin)}
+              {formatMinutesTo12h(liveCalculatedTimes.sunriseMin)}
             </span>
           </div>
 
           <div className="p-2.5 rounded-lg bg-white border border-slate-200">
             <span className="text-slate-500 text-[11px] block">ইশরাক শুরু (Ishraq)</span>
             <span className="font-mono font-bold text-emerald-700 text-sm">
-              {formatMinutesTo24h(liveCalculatedTimes.ishraqMin)}
+              {formatMinutesTo12h(liveCalculatedTimes.ishraqMin)}
             </span>
           </div>
 
           <div className="p-2.5 rounded-lg bg-white border border-slate-200">
             <span className="text-slate-500 text-[11px] block">সোলার নুন / জাওয়াল (Zawal)</span>
             <span className="font-mono font-bold text-amber-700 text-sm">
-              {formatMinutesTo24h(liveCalculatedTimes.solarNoonMin)}
+              {formatMinutesTo12h(liveCalculatedTimes.solarNoonMin)}
             </span>
           </div>
 
           <div className="p-2.5 rounded-lg bg-white border border-slate-200">
             <span className="text-slate-500 text-[11px] block">সূর্যাস্ত / ইফতার (Sunset)</span>
             <span className="font-mono font-bold text-rose-700 text-sm">
-              {formatMinutesTo24h(liveCalculatedTimes.sunsetMin)}
+              {formatMinutesTo12h(liveCalculatedTimes.sunsetMin)}
             </span>
           </div>
 
           <div className="p-2.5 rounded-lg bg-white border border-slate-200">
             <span className="text-slate-500 text-[11px] block">তাহাজ্জুদ শেষ (Tahajjud End)</span>
             <span className="font-mono font-bold text-indigo-700 text-sm">
-              {formatMinutesTo24h(liveCalculatedTimes.tahajjudEndMin)}
+              {formatMinutesTo12h(liveCalculatedTimes.tahajjudEndMin)}
             </span>
           </div>
         </div>

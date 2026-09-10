@@ -1227,6 +1227,23 @@ class ApiService {
     return res.data!;
   }
 
+  async addPropertyDocument(propertyId: string, data: any): Promise<any> {
+    const res = await this.request<any>(`/properties/${propertyId}/documents`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to add document');
+    return res.data!;
+  }
+
+  async deletePropertyDocument(propertyId: string, documentId: string): Promise<any> {
+    const res = await this.request<any>(`/properties/${propertyId}/documents/${documentId}`, {
+      method: 'DELETE',
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to delete document');
+    return res.data!;
+  }
+
   async getCemeteryRecords(): Promise<CemeteryRecord[]> {
     const res = await this.request<CemeteryRecord[]>('/cemetery');
     return res.data || [];

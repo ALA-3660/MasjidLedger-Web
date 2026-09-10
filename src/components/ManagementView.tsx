@@ -72,6 +72,7 @@ import { AssetServiceModal } from './AssetServiceModal';
 import { AssetRegisterModal } from './AssetRegisterModal';
 import { PropertyFormModal, PROPERTY_CATEGORIES, POSSESSION_STATUSES, PROPERTY_STATUSES } from './PropertyFormModal';
 import { PropertyTenantModal } from './PropertyTenantModal';
+import { PropertyDocumentModal } from './PropertyDocumentModal';
 import { PropertyInspectionModal } from './PropertyInspectionModal';
 import { PropertyLegalCaseModal } from './PropertyLegalCaseModal';
 import { PropertyDetailsDrawer } from './PropertyDetailsDrawer';
@@ -126,6 +127,8 @@ interface ManagementViewProps {
   onTerminatePropertyTenant?: (propertyId: string, tenantId: string) => Promise<void>;
   onAddPropertyInspection?: (propertyId: string, data: any) => Promise<void>;
   onAddPropertyLegalCase?: (propertyId: string, data: any) => Promise<void>;
+  onAddPropertyDocument?: (propertyId: string, data: any) => Promise<void>;
+  onDeletePropertyDocument?: (propertyId: string, documentId: string) => Promise<void>;
   onAddCemeteryRecord: (data: any) => Promise<void>;
   onUpdateCemeteryRecord?: (id: string, data: any) => Promise<void>;
   onArchiveCemeteryRecord?: (id: string, isArchived: boolean, reason?: string) => Promise<void>;
@@ -171,6 +174,8 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
   onTerminatePropertyTenant,
   onAddPropertyInspection,
   onAddPropertyLegalCase,
+  onAddPropertyDocument,
+  onDeletePropertyDocument,
   onAddCemeteryRecord,
   onUpdateCemeteryRecord,
   onArchiveCemeteryRecord,
@@ -233,6 +238,7 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
   const [selectedPropertyForDetails, setSelectedPropertyForDetails] = useState<MosqueProperty | null>(null);
   const [selectedPropertyForPrint, setSelectedPropertyForPrint] = useState<MosqueProperty | null>(null);
   const [selectedPropertyForTenant, setSelectedPropertyForTenant] = useState<MosqueProperty | null>(null);
+  const [selectedPropertyForDocument, setSelectedPropertyForDocument] = useState<MosqueProperty | null>(null);
   const [selectedPropertyForInspection, setSelectedPropertyForInspection] = useState<MosqueProperty | null>(null);
   const [selectedPropertyForLegalCase, setSelectedPropertyForLegalCase] = useState<MosqueProperty | null>(null);
   const [isPropertyReportsOpen, setIsPropertyReportsOpen] = useState(false);
@@ -563,6 +569,31 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
     if (!selectedPropertyForLegalCase) return;
     if (onAddPropertyLegalCase) {
       await onAddPropertyLegalCase(selectedPropertyForLegalCase.id, caseData);
+    }
+  };
+
+  const handleSavePropertyDocument = async (docData: any) => {
+    if (!selectedPropertyForDocument) return;
+    if (onAddPropertyDocument) {
+      await onAddPropertyDocument(selectedPropertyForDocument.id, docData);
+      if (selectedPropertyForDetails && selectedPropertyForDetails.id === selectedPropertyForDocument.id) {
+        setSelectedPropertyForDetails({
+          ...selectedPropertyForDetails,
+          documents: [docData, ...(selectedPropertyForDetails.documents || [])],
+        });
+      }
+    }
+  };
+
+  const handleDeletePropertyDocumentAction = async (prop: MosqueProperty, documentId: string) => {
+    if (onDeletePropertyDocument) {
+      await onDeletePropertyDocument(prop.id, documentId);
+      if (selectedPropertyForDetails && selectedPropertyForDetails.id === prop.id) {
+        setSelectedPropertyForDetails({
+          ...selectedPropertyForDetails,
+          documents: (selectedPropertyForDetails.documents || []).filter((d) => d.id !== documentId),
+        });
+      }
     }
   };
 
@@ -3296,6 +3327,10 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
         onAddLegalCase={(prop) => {
           setSelectedPropertyForLegalCase(prop);
         }}
+        onAddDocument={(prop) => {
+          setSelectedPropertyForDocument(prop);
+        }}
+        onDeleteDocument={handleDeletePropertyDocumentAction}
         language={language}
       />
 
@@ -3315,6 +3350,17 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
           onClose={() => setSelectedPropertyForTenant(null)}
           property={selectedPropertyForTenant}
           onSubmit={handleSavePropertyTenant}
+          language={language}
+        />
+      )}
+
+      {/* Property Document Modal */}
+      {selectedPropertyForDocument && (
+        <PropertyDocumentModal
+          isOpen={!!selectedPropertyForDocument}
+          onClose={() => setSelectedPropertyForDocument(null)}
+          property={selectedPropertyForDocument}
+          onSubmit={handleSavePropertyDocument}
           language={language}
         />
       )}

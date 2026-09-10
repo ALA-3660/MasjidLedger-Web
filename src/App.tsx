@@ -52,6 +52,7 @@ import { PwaManager } from './components/PwaManager';
 import { MoneyReceiptModal, VoucherModal, PrintFormat } from './components/PrintModals';
 import { ChangeCalculatorModal } from './components/ChangeCalculatorModal';
 import { UniversalScannerModal } from './components/UniversalScannerModal';
+import { UserManualView } from './components/UserManualView';
 import { QrActionCardsModal } from './components/QrActionCardsModal';
 import { RecordActionModal } from './components/RecordActionModal';
 import { RecordPrintLabelModal } from './components/RecordPrintLabelModal';
@@ -892,6 +893,16 @@ export default function App() {
     await loadData(false);
   };
 
+  const handleAddPropertyDocument = async (propertyId: string, data: any) => {
+    await api.addPropertyDocument(propertyId, data);
+    await loadData(false);
+  };
+
+  const handleDeletePropertyDocument = async (propertyId: string, documentId: string) => {
+    await api.deletePropertyDocument(propertyId, documentId);
+    await loadData(false);
+  };
+
   const handleAddUser = async (data: any) => {
     await api.createUser(data);
     await loadData(false);
@@ -1186,6 +1197,8 @@ export default function App() {
           onTerminatePropertyTenant={handleTerminatePropertyTenant}
           onAddPropertyInspection={handleAddPropertyInspection}
           onAddPropertyLegalCase={handleAddPropertyLegalCase}
+          onAddPropertyDocument={handleAddPropertyDocument}
+          onDeletePropertyDocument={handleDeletePropertyDocument}
           onAddCemeteryRecord={handleAddCemetery}
           onUpdateCemeteryRecord={handleUpdateCemetery}
           onArchiveCemeteryRecord={handleArchiveCemetery}
@@ -1326,6 +1339,13 @@ export default function App() {
           onSaveJamaatTimes={async (jamaatSettings) => {
             await handleSaveMosqueSettings({ jamaatSettings });
           }}
+        />
+      )}
+
+      {/* 16. Comprehensive User Manual & Guides */}
+      {currentTab === 'userManual' && (
+        <UserManualView
+          onNavigate={(tab) => setCurrentTab(tab)}
         />
       )}
     </>
