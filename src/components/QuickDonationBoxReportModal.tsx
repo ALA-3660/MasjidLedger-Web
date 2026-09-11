@@ -9,6 +9,7 @@ import {
 } from '../types';
 import { Language, formatCurrency, formatDate, toBanglaNumber } from '../lib/i18n';
 import { numberToBanglaWords } from '../lib/banglaNumberToWords';
+import { printElement } from '../lib/printUtils';
 import {
   Printer,
   Calendar,
@@ -285,10 +286,13 @@ export const QuickDonationBoxReportModal: React.FC<QuickDonationBoxReportModalPr
     }
   }, [isOpen]);
 
-  // Trigger Native Print Dialog
+  // Trigger Isolated Print Dialog
   const handlePrint = () => {
-    document.body.classList.add('print-modal-active', 'print-box-report-active');
-    window.print();
+    printElement('donation-box-report-paper', {
+      title: `${currentMosque?.nameBn || 'মসজিদ'} - দানবাক্স কালেকশন রিপোর্ট`,
+      pageSize: 'A4',
+      pageOrientation,
+    });
   };
 
   if (!isOpen) return null;

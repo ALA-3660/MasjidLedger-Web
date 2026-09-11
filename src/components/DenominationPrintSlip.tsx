@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Printer,
   X,
@@ -16,6 +17,7 @@ import {
 import { CashDenominationData, Mosque } from '../types';
 import { Language, formatDate, formatCurrency } from '../lib/i18n';
 import { numberToBengaliWords, NOTE_DENOMINATIONS, COIN_DENOMINATIONS } from './ChangeCalculatorModal';
+import { printElement } from '../lib/printUtils';
 
 export interface DenominationPrintSlipProps {
   isOpen: boolean;
@@ -39,7 +41,11 @@ export const DenominationPrintSlip: React.FC<DenominationPrintSlipProps> = ({
   if (!isOpen || !denominationData) return null;
 
   const handlePrint = () => {
-    window.print();
+    printElement('denomination-slip-paper', {
+      title: `${mosque?.nameBn || 'MasjidLedger'} - Cash Denomination Slip`,
+      pageSize: 'A4',
+      pageOrientation: 'portrait',
+    });
   };
 
   const {
@@ -77,7 +83,7 @@ export const DenominationPrintSlip: React.FC<DenominationPrintSlipProps> = ({
     }
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto single-invoice-print-wrapper">
       <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden my-auto single-invoice-print-card font-sans">
         {/* Print Controls Bar - Hidden on Print */}
@@ -123,7 +129,7 @@ export const DenominationPrintSlip: React.FC<DenominationPrintSlipProps> = ({
         </div>
 
         {/* Printable Document Body */}
-        <div className="p-5 sm:p-7 bg-white text-slate-900">
+        <div id="denomination-slip-paper" className="p-5 sm:p-7 bg-white text-slate-900">
           {/* Mosque Letterhead */}
           {includeLetterhead && (
             <div className="border-b-2 border-emerald-900 pb-3 mb-4 text-center">
@@ -319,6 +325,7 @@ export const DenominationPrintSlip: React.FC<DenominationPrintSlipProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

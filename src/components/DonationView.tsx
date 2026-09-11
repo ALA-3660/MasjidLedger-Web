@@ -49,6 +49,7 @@ import {
 } from '../types';
 import { Language, translations, formatCurrency, formatDate } from '../lib/i18n';
 import { numberToBanglaWords } from '../lib/banglaNumberToWords';
+import { printElement } from '../lib/printUtils';
 import { ChangeCalculatorModal } from './ChangeCalculatorModal';
 import { DenominationDetailModal } from './DenominationDetailModal';
 import { api } from '../lib/api';
@@ -562,6 +563,13 @@ export const DonationView: React.FC<DonationViewProps> = ({
     } else if (calculatorTarget === 'BOX') {
       setBoxAmount(calculatedTotal.toString());
       if (denominationData) setBoxDenominationData(denominationData);
+      // If collection modal was not opened (e.g. user initiated from box tab toolbar), open it
+      if (!isBoxModalOpen && donationBoxes.length > 0) {
+        if (!selectedBoxId && donationBoxes[0]) {
+          setSelectedBoxId(donationBoxes[0].id);
+        }
+        setIsBoxModalOpen(true);
+      }
     } else if (calculatorTarget === 'JUMA') {
       setJumaAmount(calculatedTotal.toString());
       if (denominationData) setJumaDenominationData(denominationData);
@@ -959,6 +967,19 @@ export const DonationView: React.FC<DonationViewProps> = ({
                 </p>
               </div>
               <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                <button
+                  type="button"
+                  id="btn-open-box-calculator"
+                  onClick={() => {
+                    setCalculatorTarget('BOX');
+                    setIsCalculatorOpen(true);
+                  }}
+                  className="text-xs font-bold text-teal-800 bg-teal-50 hover:bg-teal-100 border border-teal-200 px-3 py-1.5 rounded-xl flex items-center space-x-1.5 transition-all shadow-xs cursor-pointer"
+                  title="দানবাক্স খোলার পর ভাংতি টাকা ও ক্যাশ নোট গণনা করুন"
+                >
+                  <Banknote className="w-3.5 h-3.5 text-teal-700" />
+                  <span>ভাংতি টাকা গণনা</span>
+                </button>
                 <button
                   type="button"
                   id="btn-open-donation-box-quick-report"
@@ -2566,7 +2587,14 @@ export const DonationView: React.FC<DonationViewProps> = ({
               <div className="flex items-center space-x-2">
                 <button
                   type="button"
-                  onClick={() => window.print()}
+                  id="btn-print-box-list-now"
+                  onClick={() =>
+                    printElement('donation-box-master-list-paper', {
+                      title: `${currentMosque?.nameBn || 'মসজিদ'} - দানবাক্স মাস্টার রেজিস্টার তালিকা`,
+                      pageSize: 'A4',
+                      pageOrientation: 'landscape',
+                    })
+                  }
                   className="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs rounded-xl flex items-center space-x-1.5 shadow-sm transition-all cursor-pointer"
                 >
                   <Printer className="w-4 h-4" />
@@ -2583,7 +2611,7 @@ export const DonationView: React.FC<DonationViewProps> = ({
             </div>
 
             {/* Document Body (Printable) */}
-            <div className="p-6 sm:p-8 overflow-y-auto flex-1 bg-white text-slate-900 space-y-5 font-sans report-modal-print-body print:p-0 print:m-0 print:overflow-visible print:h-auto print:max-h-none print:block print:shadow-none">
+            <div id="donation-box-master-list-paper" className="p-6 sm:p-8 overflow-y-auto flex-1 bg-white text-slate-900 space-y-5 font-sans report-modal-print-body print:p-0 print:m-0 print:overflow-visible print:h-auto print:max-h-none print:block print:shadow-none">
               {/* Structured Official Report Header */}
               <div className="border-2 border-slate-900 bg-white p-3.5 rounded-none overflow-hidden">
                 <div className="grid grid-cols-12 items-center gap-3">
@@ -2836,7 +2864,14 @@ export const DonationView: React.FC<DonationViewProps> = ({
               <div className="flex items-center space-x-2">
                 <button
                   type="button"
-                  onClick={() => window.print()}
+                  id="btn-print-juma-register-now"
+                  onClick={() =>
+                    printElement('juma-collection-register-paper', {
+                      title: `${currentMosque?.nameBn || 'মসজিদ'} - পবিত্র জুমার জামাত কালেকশন রেজিস্টার প্রতিবেদন`,
+                      pageSize: 'A4',
+                      pageOrientation: 'landscape',
+                    })
+                  }
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center space-x-1.5 shadow-sm transition-all cursor-pointer"
                 >
                   <Printer className="w-4 h-4" />
@@ -2853,7 +2888,7 @@ export const DonationView: React.FC<DonationViewProps> = ({
             </div>
 
             {/* Document Body (Printable) */}
-            <div className="p-6 sm:p-8 overflow-y-auto flex-1 bg-white text-slate-900 space-y-5 font-sans report-modal-print-body print:p-0 print:m-0 print:overflow-visible print:h-auto print:max-h-none print:block print:shadow-none">
+            <div id="juma-collection-register-paper" className="p-6 sm:p-8 overflow-y-auto flex-1 bg-white text-slate-900 space-y-5 font-sans report-modal-print-body print:p-0 print:m-0 print:overflow-visible print:h-auto print:max-h-none print:block print:shadow-none">
               {/* Structured Official Report Header */}
               <div className="border-2 border-slate-900 bg-white p-3.5 rounded-none overflow-hidden">
                 <div className="grid grid-cols-12 items-center gap-3">
@@ -3115,9 +3150,9 @@ export const DonationView: React.FC<DonationViewProps> = ({
         }
         witnessesInitial={
           calculatorTarget === 'BOX'
-            ? witnesses.split(',').map((s) => s.trim()).filter(Boolean)
+            ? witnesses
             : calculatorTarget === 'JUMA'
-            ? jumaWitness.split(',').map((s) => s.trim()).filter(Boolean)
+            ? jumaWitness
             : undefined
         }
         mosque={currentMosque}

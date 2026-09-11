@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Banknote,
   X,
@@ -37,8 +38,14 @@ export interface ChangeCalculatorModalProps {
   collectionType?: 'JUMA' | 'DONATION' | 'DONATION_BOX' | 'INCOME' | 'WAQF_RENT' | 'OTHER';
   reference?: string;
   countedByInitial?: string;
-  witnessesInitial?: string;
+  witnessesInitial?: string | string[];
   mosque?: Mosque | null;
+}
+
+export function normalizeWitnesses(val?: string | string[]): string {
+  if (!val) return '';
+  if (Array.isArray(val)) return val.filter(Boolean).map(String).join(', ');
+  return String(val);
 }
 
 export const NOTE_DENOMINATIONS = [1000, 500, 200, 100, 50, 20, 10, 5, 2];
@@ -165,8 +172,8 @@ export const ChangeCalculatorModal: React.FC<ChangeCalculatorModalProps> = ({
   });
 
   // Meta information
-  const [countedBy, setCountedBy] = useState<string>(countedByInitial || '');
-  const [witnesses, setWitnesses] = useState<string>(witnessesInitial || '');
+  const [countedBy, setCountedBy] = useState<string>(() => (countedByInitial ? String(countedByInitial) : ''));
+  const [witnesses, setWitnesses] = useState<string>(() => normalizeWitnesses(witnessesInitial));
   const [countingDateTime, setCountingDateTime] = useState<string>(() => new Date().toISOString().slice(0, 16));
   const [notes, setNotes] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'ALL' | 'NOTES' | 'COINS'>('ALL');
@@ -183,25 +190,32 @@ export const ChangeCalculatorModal: React.FC<ChangeCalculatorModalProps> = ({
       if (!isInitializedRef.current) {
         if (initialData) {
           const notesState: Record<number, number> = {};
-          NOTE_DENOMINATIONS.forEach((d) => (notesState[d] = initialData.noteBreakdown?.[d] || 0));
+          NOTE_DENOMINATIONS.forEach((d) => (notesState[d] = Number(initialData.noteBreakdown?.[d]) || 0));
           setNoteCounts(notesState);
 
           const coinsState: Record<number, number> = {};
-          COIN_DENOMINATIONS.forEach((d) => (coinsState[d] = initialData.coinBreakdown?.[d] || 0));
+          COIN_DENOMINATIONS.forEach((d) => (coinsState[d] = Number(initialData.coinBreakdown?.[d]) || 0));
           setCoinCounts(coinsState);
 
-          setCountedBy(initialData.countedBy || countedByInitial || '');
-          setWitnesses(initialData.witnesses ? initialData.witnesses.join(', ') : (witnessesInitial || ''));
-          setCountingDateTime(initialData.countingDateTime || new Date().toISOString().slice(0, 16));
-          setNotes(initialData.notes || '');
+          setCountedBy(initialData.countedBy ? String(initialData.countedBy) : (countedByInitial ? String(countedByInitial) : ''));
+          setWitnesses(
+            initialData.witnesses
+              ? normalizeWitnesses(initialData.witnesses)
+              : normalizeWitnesses(witnessesInitial)
+          );
+          setCountingDateTime(initialData.countingDateTime ? String(initialData.countingDateTime) : new Date().toISOString().slice(0, 16));
+          setNotes(initialData.notes ? String(initialData.notes) : '');
         } else if (initialCounts && Object.keys(initialCounts).length > 0) {
           const notesState: Record<number, number> = {};
-          NOTE_DENOMINATIONS.forEach((d) => (notesState[d] = initialCounts[d] || 0));
+          NOTE_DENOMINATIONS.forEach((d) => (notesState[d] = Number(initialCounts[d]) || 0));
           setNoteCounts(notesState);
 
           const coinsState: Record<number, number> = {};
-          COIN_DENOMINATIONS.forEach((d) => (coinsState[d] = initialCounts[d] || 0));
+          COIN_DENOMINATIONS.forEach((d) => (coinsState[d] = Number(initialCounts[d]) || 0));
           setCoinCounts(coinsState);
+
+          setCountedBy(countedByInitial ? String(countedByInitial) : '');
+          setWitnesses(normalizeWitnesses(witnessesInitial));
         } else {
           const emptyNotes: Record<number, number> = {};
           NOTE_DENOMINATIONS.forEach((d) => (emptyNotes[d] = 0));
@@ -211,8 +225,9 @@ export const ChangeCalculatorModal: React.FC<ChangeCalculatorModalProps> = ({
           COIN_DENOMINATIONS.forEach((d) => (emptyCoins[d] = 0));
           setCoinCounts(emptyCoins);
 
-          setCountedBy(countedByInitial || '');
-          setWitnesses(witnessesInitial || '');
+          setCountedBy(countedByInitial ? String(countedByInitial) : '');
+          setWitnesses(normalizeWitnesses(witnessesInitial));
+          setNotes('');
         }
         isInitializedRef.current = true;
       }
@@ -304,14 +319,17 @@ export const ChangeCalculatorModal: React.FC<ChangeCalculatorModalProps> = ({
 
   // Build complete CashDenominationData object
   const buildDenominationData = (): CashDenominationData => {
-    const witnessList = witnesses
-      ? witnesses.split(',').map((w) => w.trim()).filter(Boolean)
-      : [];
+    const witnessList =
+      typeof witnesses === 'string'
+        ? witnesses.split(',').map((w) => w.trim()).filter(Boolean)
+        : Array.isArray(witnesses)
+        ? (witnesses as any[]).map(String).map((w) => w.trim()).filter(Boolean)
+        : [];
 
     return {
       collectionType: collectionType as CashDenominationData['collectionType'],
       reference,
-      countedBy: countedBy.trim() || 'দায়িত্বপ্রাপ্ত গণনাকারী',
+      countedBy: (countedBy || '').trim() || 'দায়িত্বপ্রাপ্ত গণনাকারী',
       countingDateTime,
       witnesses: witnessList,
       noteBreakdown: { ...noteCounts },
@@ -321,7 +339,7 @@ export const ChangeCalculatorModal: React.FC<ChangeCalculatorModalProps> = ({
       totalNotesAmount,
       totalCoinsAmount,
       grandTotal,
-      notes: notes.trim() || undefined,
+      notes: (notes || '').trim() || undefined,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -355,7 +373,8 @@ export const ChangeCalculatorModal: React.FC<ChangeCalculatorModalProps> = ({
     lines.push(`সর্বমোট পিস: ${totalPieces} টি`);
     lines.push(`সর্বমোট নগদ টাকা: ৳ ${grandTotal.toLocaleString('en-IN')}`);
     lines.push(`কথায়: ${numberToBengaliWords(grandTotal)}`);
-    if (witnesses) lines.push(`সাক্ষীবৃন্দ: ${witnesses}`);
+    const witnessStr = typeof witnesses === 'string' ? witnesses : Array.isArray(witnesses) ? (witnesses as any[]).join(', ') : '';
+    if (witnessStr) lines.push(`সাক্ষীবৃন্দ: ${witnessStr}`);
     if (notes) lines.push(`মন্তব্য: ${notes}`);
 
     navigator.clipboard?.writeText(lines.join('\n'));
@@ -374,7 +393,7 @@ export const ChangeCalculatorModal: React.FC<ChangeCalculatorModalProps> = ({
 
   const currentDenomData = buildDenominationData();
 
-  return (
+  return createPortal(
     <>
       <div
         id="modal-universal-cash-counter"
@@ -921,6 +940,7 @@ export const ChangeCalculatorModal: React.FC<ChangeCalculatorModalProps> = ({
           language={language}
         />
       )}
-    </>
+    </>,
+    document.body
   );
 };

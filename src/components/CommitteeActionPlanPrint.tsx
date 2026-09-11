@@ -20,6 +20,7 @@ import {
   Mosque
 } from '../types';
 import { Language, formatDate } from '../lib/i18n';
+import { printElement } from '../lib/printUtils';
 
 interface CommitteeActionPlanPrintProps {
   isOpen: boolean;
@@ -58,8 +59,11 @@ export const CommitteeActionPlanPrint: React.FC<CommitteeActionPlanPrintProps> =
   if (!isOpen) return null;
 
   const handlePrint = () => {
-    document.body.classList.add('print-modal-active', 'print-action-plan-active');
-    window.print();
+    printElement('action-plan-report-paper', {
+      title: `${mosque?.nameBn || mosque?.name || 'মসজিদ'} - ${reportTitle}`,
+      pageSize: 'A4',
+      pageOrientation: 'portrait',
+    });
   };
 
   const toBnNum = (num: number | string | undefined): string => {
