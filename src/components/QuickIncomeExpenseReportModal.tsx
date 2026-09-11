@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
   IncomeEntry,
@@ -302,7 +302,17 @@ export const QuickIncomeExpenseReportModal: React.FC<QuickIncomeExpenseReportMod
     return accountHeads.filter((h) => h.type === type && !h.parentId);
   }, [accountHeads, type]);
 
+  useEffect(() => {
+    if (isOpen) {
+      document.body.classList.add('print-modal-active');
+      return () => {
+        document.body.classList.remove('print-modal-active');
+      };
+    }
+  }, [isOpen]);
+
   const handlePrint = () => {
+    document.body.classList.add('print-modal-active');
     window.print();
   };
 
@@ -311,7 +321,7 @@ export const QuickIncomeExpenseReportModal: React.FC<QuickIncomeExpenseReportMod
   const modalContent = (
     <div
       id="quick-report-modal-portal"
-      className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto print:p-0 print:bg-white print:static print:overflow-visible print-modal-portal"
+      className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto print:p-0 print:bg-white print:static print:overflow-visible print-modal-portal report-modal-print-wrapper"
     >
       {/* Dynamic Page Margins for A4 Landscape/Portrait */}
       <style>{`
@@ -319,9 +329,20 @@ export const QuickIncomeExpenseReportModal: React.FC<QuickIncomeExpenseReportMod
           size: A4 portrait !important;
           margin: 8mm 10mm !important;
         }
+        @media print {
+          #root,
+          #app-shell-root,
+          body > *:not(#quick-report-modal-portal) {
+            display: none !important;
+            visibility: hidden !important;
+            height: 0 !important;
+            width: 0 !important;
+            overflow: hidden !important;
+          }
+        }
       `}</style>
 
-      <div className="bg-white rounded-2xl max-w-5xl w-full shadow-2xl border border-slate-200 overflow-hidden my-auto flex flex-col max-h-[94vh] animate-in fade-in zoom-in-95 duration-150 print-modal-card print:max-h-none print:my-0 print:border-none print:shadow-none print:rounded-none">
+      <div className="bg-white rounded-2xl max-w-5xl w-full shadow-2xl border border-slate-200 overflow-hidden my-auto flex flex-col max-h-[94vh] animate-in fade-in zoom-in-95 duration-150 print-modal-card report-modal-print-card print:max-h-none print:my-0 print:border-none print:shadow-none print:rounded-none">
         
         {/* ============================================================
             1. MODAL TOP CONTROLS & FILTER BAR (Hidden during Print)

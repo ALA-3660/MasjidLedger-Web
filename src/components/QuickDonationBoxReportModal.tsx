@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
   DonationBox,
@@ -275,8 +275,19 @@ export const QuickDonationBoxReportModal: React.FC<QuickDonationBoxReportModalPr
     setSelectedAccountId('ALL');
   };
 
+  // Manage print classes on document.body for zero-bleed print isolation
+  useEffect(() => {
+    if (isOpen) {
+      document.body.classList.add('print-modal-active', 'print-box-report-active');
+      return () => {
+        document.body.classList.remove('print-modal-active', 'print-box-report-active');
+      };
+    }
+  }, [isOpen]);
+
   // Trigger Native Print Dialog
   const handlePrint = () => {
+    document.body.classList.add('print-modal-active', 'print-box-report-active');
     window.print();
   };
 
@@ -285,7 +296,7 @@ export const QuickDonationBoxReportModal: React.FC<QuickDonationBoxReportModalPr
   const modalContent = (
     <div
       id="donation-box-report-modal-overlay"
-      className="fixed inset-0 z-[9999] bg-slate-950/80 backdrop-blur-xs overflow-y-auto flex justify-center p-0 sm:p-4 print:p-0 print:bg-white print:static print:overflow-visible"
+      className="fixed inset-0 z-[9999] bg-slate-950/80 backdrop-blur-xs overflow-y-auto flex justify-center p-0 sm:p-4 print:p-0 print:bg-white print:static print:overflow-visible print-modal-portal report-modal-print-wrapper"
     >
       {/* Dynamic Print CSS Setup */}
       <style>{`
@@ -294,22 +305,84 @@ export const QuickDonationBoxReportModal: React.FC<QuickDonationBoxReportModalPr
           margin: ${pageOrientation === 'landscape' ? '8mm 10mm' : '10mm 12mm'} !important;
         }
         @media print {
+          /* 1. Strict Isolation: Suppress #root and all background elements */
+          #root,
+          #app-shell-root,
+          body > *:not(#donation-box-report-modal-overlay) {
+            display: none !important;
+            visibility: hidden !important;
+            height: 0 !important;
+            width: 0 !important;
+            max-height: 0 !important;
+            overflow: hidden !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+          }
+
+          /* 2. Global Print Clean Canvas */
+          html,
           body {
             background-color: #ffffff !important;
             color: #000000 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
+            overflow: visible !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
+
+          /* 3. Modal Overlay as print document root */
           #donation-box-report-modal-overlay {
             position: static !important;
+            inset: auto !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            height: auto !important;
+            min-height: 0 !important;
             background: transparent !important;
+            backdrop-filter: none !important;
             padding: 0 !important;
+            margin: 0 !important;
+            overflow: visible !important;
+            display: block !important;
+            z-index: auto !important;
+            box-shadow: none !important;
+            border: none !important;
+          }
+
+          /* 4. Modal Container Card */
+          #donation-box-report-modal-overlay > div,
+          .report-modal-print-card {
+            position: static !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            background: #ffffff !important;
             overflow: visible !important;
             display: block !important;
           }
-          .print\\:hidden, .no-print {
+
+          /* 5. Hide screen-only controls and bars */
+          .print\\:hidden,
+          .no-print,
+          .print-controls-bar {
             display: none !important;
+            visibility: hidden !important;
+            height: 0 !important;
+            width: 0 !important;
+            overflow: hidden !important;
           }
+
+          /* 6. Document Paper */
           #donation-box-report-paper {
             width: 100% !important;
             max-width: 100% !important;
@@ -318,8 +391,13 @@ export const QuickDonationBoxReportModal: React.FC<QuickDonationBoxReportModalPr
             box-shadow: none !important;
             border: none !important;
             border-radius: 0 !important;
+            background: #ffffff !important;
+            overflow: visible !important;
+            display: block !important;
           }
+
           table {
+            width: 100% !important;
             page-break-inside: auto;
           }
           tr {
@@ -339,7 +417,7 @@ export const QuickDonationBoxReportModal: React.FC<QuickDonationBoxReportModalPr
       `}</style>
 
       {/* Main Container */}
-      <div className="bg-white w-full max-w-6xl rounded-none sm:rounded-2xl shadow-2xl flex flex-col my-auto border border-slate-200 print:border-none print:shadow-none print:w-full print:max-w-none print:rounded-none">
+      <div className="bg-white w-full max-w-6xl rounded-none sm:rounded-2xl shadow-2xl flex flex-col my-auto border border-slate-200 print:border-none print:shadow-none print:w-full print:max-w-none print:rounded-none report-modal-print-card">
         {/* ============================================================
             1. TOP TOOLBAR & CONTROLS (Hidden during printing)
             ============================================================ */}
@@ -636,7 +714,7 @@ export const QuickDonationBoxReportModal: React.FC<QuickDonationBoxReportModalPr
             ============================================================ */}
         <div
           id="donation-box-report-paper"
-          className="p-6 sm:p-8 bg-white text-slate-950 flex-1 overflow-y-auto print:p-0 print:overflow-visible print:text-black font-sans"
+          className="p-6 sm:p-8 bg-white text-slate-950 flex-1 overflow-y-auto print:p-0 print:overflow-visible print:text-black font-sans print-modal-paper report-modal-print-body"
         >
           {/* 3.1 OFFICIAL MOSQUE LETTERHEAD */}
           {showLetterhead ? (

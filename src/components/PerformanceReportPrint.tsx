@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Printer,
   X,
@@ -45,14 +46,20 @@ export const PerformanceReportPrint: React.FC<PerformanceReportPrintProps> = ({
   const [includeSignatures, setIncludeSignatures] = useState(true);
   const [includeMonthlyTrend, setIncludeMonthlyTrend] = useState(true);
 
+  useEffect(() => {
+    if (isOpen) {
+      document.body.classList.add('print-modal-active', 'print-action-plan-active');
+      return () => {
+        document.body.classList.remove('print-modal-active', 'print-action-plan-active');
+      };
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const handlePrint = () => {
-    document.body.classList.add('print-action-plan-active');
+    document.body.classList.add('print-modal-active', 'print-action-plan-active');
     window.print();
-    setTimeout(() => {
-      document.body.classList.remove('print-action-plan-active');
-    }, 500);
   };
 
   const getStarText = (stars: number) => {
@@ -66,10 +73,72 @@ export const PerformanceReportPrint: React.FC<PerformanceReportPrintProps> = ({
     return memberScores;
   }, [memberScores, selectedReportType]);
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
+  const modalContent = (
+    <div
+      id="performance-report-modal-overlay"
+      className="fixed inset-0 z-[9999] overflow-y-auto bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 print:p-0 print:bg-white print:static print:overflow-visible print-modal-portal report-modal-print-wrapper"
+    >
+      <style>{`
+        @page {
+          size: A4 portrait !important;
+          margin: 10mm 12mm !important;
+        }
+        @media print {
+          #root,
+          #app-shell-root,
+          body > *:not(#performance-report-modal-overlay) {
+            display: none !important;
+            visibility: hidden !important;
+            height: 0 !important;
+            width: 0 !important;
+            max-height: 0 !important;
+            overflow: hidden !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+          }
+          html,
+          body {
+            background-color: #ffffff !important;
+            color: #000000 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+            height: auto !important;
+            overflow: visible !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          #performance-report-modal-overlay {
+            position: static !important;
+            width: 100% !important;
+            background: transparent !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            overflow: visible !important;
+            display: block !important;
+          }
+          #performance-report-modal-overlay > div,
+          .report-modal-print-card {
+            position: static !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            background: #ffffff !important;
+            overflow: visible !important;
+            display: block !important;
+          }
+          .print\\:hidden,
+          .no-print {
+            display: none !important;
+          }
+        }
+      `}</style>
       {/* Controls Bar (Hidden on print) */}
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl overflow-hidden flex flex-col max-h-[96vh]">
+      <div className="bg-white rounded-none sm:rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl overflow-hidden flex flex-col max-h-[96vh] print:max-h-none print:border-none print:shadow-none print:rounded-none report-modal-print-card">
         <div className="print:hidden flex items-center justify-between p-4 bg-slate-800 text-white flex-wrap gap-2">
           <div className="flex items-center space-x-2">
             <Award className="w-5 h-5 text-amber-400" />
@@ -550,4 +619,6 @@ export const PerformanceReportPrint: React.FC<PerformanceReportPrintProps> = ({
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 };

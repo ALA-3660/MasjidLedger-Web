@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Printer,
   X,
@@ -43,16 +44,22 @@ export const CommitteeActionPlanPrint: React.FC<CommitteeActionPlanPrintProps> =
   mosque,
   language = 'bn'
 }) => {
+  const [includeLetterhead, setIncludeLetterhead] = useState<boolean>(true);
+
+  useEffect(() => {
+    if (isOpen) {
+      document.body.classList.add('print-modal-active', 'print-action-plan-active');
+      return () => {
+        document.body.classList.remove('print-modal-active', 'print-action-plan-active');
+      };
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
-  const [includeLetterhead, setIncludeLetterhead] = React.useState<boolean>(true);
-
   const handlePrint = () => {
-    document.body.classList.add('print-action-plan-active');
+    document.body.classList.add('print-modal-active', 'print-action-plan-active');
     window.print();
-    setTimeout(() => {
-      document.body.classList.remove('print-action-plan-active');
-    }, 500);
   };
 
   const toBnNum = (num: number | string | undefined): string => {
@@ -94,11 +101,131 @@ export const CommitteeActionPlanPrint: React.FC<CommitteeActionPlanPrintProps> =
   const totalActual = itemsToPrint.reduce((s, p) => s + (Number(p.actualCost) || 0), 0);
   const completedCount = itemsToPrint.filter(p => p.status === 'COMPLETED').length;
 
-  return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto print:p-0 print:bg-white print:static print:h-auto">
-      <div className="bg-white rounded-2xl max-w-4xl w-full p-4 sm:p-6 shadow-2xl border border-slate-200 space-y-4 my-auto print:border-none print:shadow-none print:p-0 print:max-w-none print:rounded-none">
+  const modalContent = (
+    <div
+      id="action-plan-report-modal-overlay"
+      className="fixed inset-0 z-[9999] bg-slate-950/80 backdrop-blur-xs overflow-y-auto flex justify-center p-0 sm:p-4 print:p-0 print:bg-white print:static print:overflow-visible print-modal-portal report-modal-print-wrapper"
+    >
+      {/* Dynamic Print CSS Setup */}
+      <style>{`
+        @page {
+          size: A4 portrait !important;
+          margin: 10mm 12mm !important;
+        }
+        @media print {
+          /* 1. Strict Isolation: Suppress #root and all background elements */
+          #root,
+          #app-shell-root,
+          body > *:not(#action-plan-report-modal-overlay) {
+            display: none !important;
+            visibility: hidden !important;
+            height: 0 !important;
+            width: 0 !important;
+            max-height: 0 !important;
+            overflow: hidden !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+          }
+
+          /* 2. Global Print Clean Canvas */
+          html,
+          body {
+            background-color: #ffffff !important;
+            color: #000000 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
+            overflow: visible !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
+          /* 3. Modal Overlay as print document root */
+          #action-plan-report-modal-overlay {
+            position: static !important;
+            inset: auto !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            height: auto !important;
+            min-height: 0 !important;
+            background: transparent !important;
+            backdrop-filter: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            overflow: visible !important;
+            display: block !important;
+            z-index: auto !important;
+            box-shadow: none !important;
+            border: none !important;
+          }
+
+          /* 4. Modal Container Card */
+          #action-plan-report-modal-overlay > div,
+          .report-modal-print-card {
+            position: static !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            background: #ffffff !important;
+            overflow: visible !important;
+            display: block !important;
+          }
+
+          /* 5. Hide screen-only controls and bars */
+          .print\\:hidden,
+          .no-print,
+          .print-controls-bar {
+            display: none !important;
+            visibility: hidden !important;
+            height: 0 !important;
+            width: 0 !important;
+            overflow: hidden !important;
+          }
+
+          /* 6. Document Paper */
+          #action-plan-report-paper,
+          .print-content,
+          .report-print-root {
+            width: 100% !important;
+            max-width: 100% !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            box-shadow: none !important;
+            border: none !important;
+            border-radius: 0 !important;
+            background: #ffffff !important;
+            overflow: visible !important;
+            display: block !important;
+          }
+
+          table {
+            width: 100% !important;
+            page-break-inside: auto;
+          }
+          tr {
+            page-break-inside: avoid;
+            page-break-after: auto;
+          }
+          thead {
+            display: table-header-group;
+          }
+          tfoot {
+            display: table-footer-group;
+          }
+        }
+      `}</style>
+
+      <div className="bg-white rounded-none sm:rounded-2xl max-w-4xl w-full p-4 sm:p-6 shadow-2xl border border-slate-200 space-y-4 my-auto print:border-none print:shadow-none print:p-0 print:max-w-none print:rounded-none report-modal-print-card">
         {/* Modal Controls (Hidden in Print) */}
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3 print:hidden">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3 print:hidden print-controls-bar">
           <div className="flex items-center space-x-2">
             <div className="p-2 bg-emerald-100 text-emerald-800 rounded-xl">
               <Printer className="w-5 h-5" />
@@ -140,7 +267,10 @@ export const CommitteeActionPlanPrint: React.FC<CommitteeActionPlanPrintProps> =
         </div>
 
         {/* Printable Document Sheet (A4 Layout) */}
-        <div className="print-content report-print-root space-y-5 p-4 sm:p-8 bg-white border border-slate-200 rounded-xl print:border-none print:p-0">
+        <div
+          id="action-plan-report-paper"
+          className="print-content report-print-root space-y-5 p-4 sm:p-8 bg-white border border-slate-200 rounded-xl print:border-none print:p-0 print-modal-paper report-modal-print-body"
+        >
           {/* Mosque Official Letterhead */}
           {includeLetterhead && (
             <div className="text-center border-b-2 border-emerald-800 pb-4 space-y-1">
@@ -333,4 +463,6 @@ export const CommitteeActionPlanPrint: React.FC<CommitteeActionPlanPrintProps> =
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 };

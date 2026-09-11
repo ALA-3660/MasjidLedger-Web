@@ -391,10 +391,21 @@ aside button,
   }
 
   /* When portal modal is active outside #root */
-  body.print-modal-active #root:not(:has(.single-invoice-print-wrapper):not(:has(.report-modal-print-wrapper))),
-  body:has(.print-modal-portal) #root:not(:has(.single-invoice-print-wrapper):not(:has(.report-modal-print-wrapper))) {
+  body.print-modal-active #root,
+  body.print-box-report-active #root,
+  body.print-action-plan-active #root,
+  body:has(.print-modal-portal) #root,
+  body:has(#donation-box-report-modal-overlay) #root,
+  body:has(#action-plan-report-modal-overlay) #root,
+  body:has(#performance-report-modal-overlay) #root,
+  body:has(#quick-report-modal-portal) #root,
+  body:has(.report-modal-print-wrapper:not(#root *)) #root {
     display: none !important;
     visibility: hidden !important;
+    height: 0 !important;
+    max-height: 0 !important;
+    overflow: hidden !important;
+    opacity: 0 !important;
   }
 
   /* Reset all modal containers to clean, unconstrained block document */
