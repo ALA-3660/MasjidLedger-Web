@@ -255,7 +255,7 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
   return (
     <div
       id="printable-report-document"
-      className="report-print-root bg-white text-slate-900 font-baloo w-full max-w-full box-border p-4 sm:p-6"
+      className="report-print-root printable-content bg-white text-slate-900 font-baloo w-full max-w-full box-border p-4 sm:p-6"
       style={{
         boxSizing: 'border-box',
         width: '100%',

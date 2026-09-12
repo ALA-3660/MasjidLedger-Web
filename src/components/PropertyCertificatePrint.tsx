@@ -13,6 +13,7 @@ import {
 import { MosqueProperty, MosqueProfile } from '../types';
 import { Language, formatCurrency } from '../lib/i18n';
 import { PROPERTY_CATEGORIES, POSSESSION_STATUSES } from './PropertyFormModal';
+import { printElement } from '../lib/printUtils';
 
 interface PropertyCertificatePrintProps {
   property: MosqueProperty | null;
@@ -38,7 +39,12 @@ export const PropertyCertificatePrint: React.FC<PropertyCertificatePrintProps> =
   const possessionObj = POSSESSION_STATUSES.find(p => p.id === property.possessionStatus);
 
   const handlePrint = () => {
-    window.print();
+    printElement('printable-property-certificate', {
+      title: `${mosque?.nameBn || mosque?.name || 'মসজিদ'}_ওয়াকফ_সম্পত্তি_সনদ_${property?.propertyCode || ''}`,
+      pageSize: 'A4',
+      pageOrientation: 'portrait',
+      margin: '10mm 12mm',
+    });
   };
 
   return (
@@ -86,8 +92,9 @@ export const PropertyCertificatePrint: React.FC<PropertyCertificatePrintProps> =
         {/* A4 Printable Sheet */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-100 print:bg-white print:p-0">
           <div
+            id="printable-property-certificate"
             ref={printRef}
-            className="w-full max-w-[210mm] mx-auto bg-white p-8 sm:p-10 shadow-lg print:shadow-none print:p-6 border border-slate-200 print:border-none text-slate-900 font-sans"
+            className="w-full max-w-[210mm] mx-auto bg-white p-8 sm:p-10 shadow-lg print:shadow-none print:p-6 border border-slate-200 print:border-none text-slate-900 font-sans printable-content"
             style={{ minHeight: '297mm' }}
           >
             {/* Mosque Header */}

@@ -28,6 +28,7 @@ import {
   Tv
 } from 'lucide-react';
 import { NavTab } from './Sidebar';
+import { printElement } from '../lib/printUtils';
 
 interface UserManualViewProps {
   onNavigate?: (tab: NavTab) => void;
@@ -345,11 +346,16 @@ export const UserManualView: React.FC<UserManualViewProps> = ({ onNavigate }) =>
   }, [selectedCategory, searchQuery]);
 
   const handlePrintManual = () => {
-    window.print();
+    printElement('user-manual-print-container', {
+      title: 'মসজিদলেজার_ব্যবহার_নির্দেশিকা',
+      pageSize: 'A4',
+      pageOrientation: 'portrait',
+      margin: '10mm 12mm',
+    });
   };
 
   return (
-    <div className="space-y-6 pb-16 font-siliguri">
+    <div id="user-manual-print-container" className="space-y-6 pb-16 font-siliguri printable-content">
       {/* Top Header */}
       <div className="bg-gradient-to-r from-emerald-800 via-teal-800 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-lg relative overflow-hidden print:bg-none print:text-black print:p-2">
         <div className="relative z-10 max-w-3xl space-y-3">

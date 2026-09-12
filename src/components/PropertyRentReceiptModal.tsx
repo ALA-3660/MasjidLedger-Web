@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { MosqueProperty, PropertyRentCollection, MosqueProfile, Mosque } from '../types';
 import { Language, formatCurrency, formatDate } from '../lib/i18n';
+import { printElement } from '../lib/printUtils';
 
 interface PropertyRentReceiptModalProps {
   collection: PropertyRentCollection | null;
@@ -38,7 +39,12 @@ export const PropertyRentReceiptModal: React.FC<PropertyRentReceiptModalProps> =
   if (!isOpen || !collection) return null;
 
   const handlePrint = () => {
-    window.print();
+    printElement('property-rent-receipt-paper', {
+      title: `ভাড়া_রসিদ_${collection.receiptNumber || collection.tenantName}`,
+      pageSize: 'A4',
+      pageOrientation: 'portrait',
+      margin: '10mm 12mm',
+    });
   };
 
   const getMethodLabel = (method: string) => {
@@ -98,8 +104,9 @@ export const PropertyRentReceiptModal: React.FC<PropertyRentReceiptModalProps> =
         {/* Printable Receipt Paper */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-100 print:bg-white print:p-0">
           <div
+            id="property-rent-receipt-paper"
             ref={printRef}
-            className="w-full max-w-[200mm] mx-auto bg-white p-6 sm:p-8 shadow-lg print:shadow-none print:p-4 border border-slate-200 print:border-none text-slate-900 font-sans"
+            className="w-full max-w-[200mm] mx-auto bg-white p-6 sm:p-8 shadow-lg print:shadow-none print:p-4 border border-slate-200 print:border-none text-slate-900 font-sans printable-content"
           >
             {/* Mosque Letterhead Header */}
             {includeLetterhead && (

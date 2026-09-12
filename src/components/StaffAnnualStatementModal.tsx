@@ -4,6 +4,7 @@ import { X, Printer, Calendar, Building, User, CheckCircle2, DollarSign } from '
 import { Staff, StaffPayment, Mosque } from '../types';
 import { Language, formatDate } from '../lib/i18n';
 import { numberToBanglaWords } from '../lib/banglaNumberToWords';
+import { printElement } from '../lib/printUtils';
 
 interface StaffAnnualStatementModalProps {
   isOpen: boolean;
@@ -45,8 +46,12 @@ export const StaffAnnualStatementModal: React.FC<StaffAnnualStatementModalProps>
   if (!isOpen) return null;
 
   const handlePrint = () => {
-    document.body.classList.add('print-modal-active', 'print-landscape-active');
-    window.print();
+    printElement('annual-statement-printable', {
+      title: `${selectedStaff?.name || 'স্টাফ'}_বার্ষিক_বিবরণী_${selectedYear}`,
+      pageSize: 'A4',
+      pageOrientation: 'landscape',
+      margin: '8mm 10mm',
+    });
   };
 
   const selectedStaff = staffList.find((s) => s.id === selectedStaffId) || staffList[0] || null;
@@ -164,7 +169,7 @@ export const StaffAnnualStatementModal: React.FC<StaffAnnualStatementModalProps>
         </div>
 
         {/* Printable Paper (A4 Landscape) */}
-        <div id="annual-statement-printable" className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-5 text-slate-900 bg-white font-baloo text-xs print-modal-paper print:p-0 print:overflow-visible print:space-y-4">
+        <div id="annual-statement-printable" className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-5 text-slate-900 bg-white font-baloo text-xs print-modal-paper print:p-0 print:overflow-visible print:space-y-4 printable-content">
           {/* Header Block with Horizontally Centered Mosque Name & Left Logo */}
           {showLetterhead ? (
             <div className="relative pb-4 border-b-2 border-slate-900 text-center">

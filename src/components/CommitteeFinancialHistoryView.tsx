@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { CommitteeTerm, Mosque } from '../types';
 import { Language, translations, formatDate } from '../lib/i18n';
+import { printElement } from '../lib/printUtils';
 
 interface CommitteeFinancialHistoryViewProps {
   terms: CommitteeTerm[];
@@ -470,7 +471,14 @@ export const CommitteeFinancialHistoryView: React.FC<CommitteeFinancialHistoryVi
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => window.print()}
+                  onClick={() => {
+                    printElement('printable-financial-handover', {
+                      title: `${mosque?.nameBn || mosque?.name || 'মসজিদ কমিটি'}_আর্থিক_হিসাব_ও_দায়িত্ব_হস্তান্তর_বিবরণী`,
+                      pageSize: 'A4',
+                      pageOrientation: 'portrait',
+                      margin: '10mm 12mm',
+                    });
+                  }}
                   className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 flex items-center gap-1.5 shadow-sm"
                 >
                   <Printer className="w-4 h-4" />
@@ -483,7 +491,7 @@ export const CommitteeFinancialHistoryView: React.FC<CommitteeFinancialHistoryVi
             </div>
 
             {/* Printable A4 Content */}
-            <div className="p-10 space-y-6 text-slate-900 bg-white printable-content">
+            <div id="printable-financial-handover" className="p-10 space-y-6 text-slate-900 bg-white printable-content">
               {useLetterhead && (
                 <div className="text-center border-b-2 border-emerald-600 pb-4 space-y-1">
                   <div className="text-sm font-arabic text-emerald-700">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</div>

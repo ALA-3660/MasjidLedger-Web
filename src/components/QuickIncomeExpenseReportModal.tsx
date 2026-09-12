@@ -9,6 +9,7 @@ import {
   AccountHead,
 } from '../types';
 import { Language, formatCurrency, formatDate, toBanglaNumber } from '../lib/i18n';
+import { printElement } from '../lib/printUtils';
 import {
   Printer,
   Calendar,
@@ -312,8 +313,12 @@ export const QuickIncomeExpenseReportModal: React.FC<QuickIncomeExpenseReportMod
   }, [isOpen]);
 
   const handlePrint = () => {
-    document.body.classList.add('print-modal-active');
-    window.print();
+    printElement('quick-income-expense-printable', {
+      title: `${currentMosque?.name || 'মসজিদ'}_${type === 'INCOME' ? 'আয়' : 'ব্যয়'}_রিপোর্ট`,
+      pageSize: 'A4',
+      pageOrientation: 'portrait',
+      margin: '8mm 10mm',
+    });
   };
 
   if (!isOpen) return null;
@@ -554,7 +559,7 @@ export const QuickIncomeExpenseReportModal: React.FC<QuickIncomeExpenseReportMod
             ============================================================ */}
         <div
           id="quick-income-expense-printable"
-          className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-4 text-slate-900 bg-white font-baloo text-xs print-modal-paper print:p-0 print:overflow-visible print:space-y-3"
+          className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-4 text-slate-900 bg-white font-baloo text-xs print-modal-paper print:p-0 print:overflow-visible print:space-y-3 printable-content"
         >
           {/* Header Block: Software Letterhead vs Pad Margin */}
           {showLetterhead ? (

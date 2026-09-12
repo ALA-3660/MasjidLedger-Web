@@ -2,6 +2,7 @@ import React from 'react';
 import { Mosque, PublicPortalData } from '../types';
 import { getBengaliDate, getHijriDate } from '../lib/prayerEngine';
 import { Printer, X } from 'lucide-react';
+import { printElement } from '../lib/printUtils';
 
 interface PublicPrayerSchedulePrintProps {
   mosque: PublicPortalData['mosque'] | null;
@@ -21,7 +22,12 @@ export const PublicPrayerSchedulePrint: React.FC<PublicPrayerSchedulePrintProps>
   const hijriDate = getHijriDate(today);
 
   const handlePrint = () => {
-    window.print();
+    printElement('public-prayer-schedule-canvas', {
+      title: `নামাজের_সময়সূচি_${mosque?.nameBn || mosque?.name || ''}`,
+      pageSize: 'A4',
+      pageOrientation: 'portrait',
+      margin: '10mm 12mm',
+    });
   };
 
   return (
@@ -44,7 +50,10 @@ export const PublicPrayerSchedulePrint: React.FC<PublicPrayerSchedulePrintProps>
       </div>
 
       {/* A4 Sheet Container */}
-      <div className="bg-white w-full max-w-[210mm] min-h-[297mm] p-8 sm:p-12 shadow-2xl rounded-2xl print:rounded-none print:shadow-none print:m-0 print:p-8 text-slate-900 font-siliguri flex flex-col justify-between">
+      <div
+        id="public-prayer-schedule-canvas"
+        className="bg-white w-full max-w-[210mm] min-h-[297mm] p-8 sm:p-12 shadow-2xl rounded-2xl print:rounded-none print:shadow-none print:m-0 print:p-8 text-slate-900 font-siliguri flex flex-col justify-between printable-content"
+      >
         <div className="space-y-6">
           {/* Mosque Header */}
           <div className="text-center border-b-2 border-slate-900 pb-5 space-y-1">

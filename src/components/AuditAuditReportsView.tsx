@@ -20,6 +20,7 @@ import {
   Mosque
 } from '../types';
 import { Language, translations, formatCurrency, formatDate } from '../lib/i18n';
+import { printElement } from '../lib/printUtils';
 
 interface AuditAuditReportsViewProps {
   mosque: Mosque | null;
@@ -71,7 +72,18 @@ export const AuditReportsView: React.FC<AuditAuditReportsViewProps> = ({
   });
 
   const handlePrint = () => {
-    window.print();
+    const targetId =
+      activeReportTab === 'summary'
+        ? 'printable-financial-statement'
+        : activeReportTab === 'headwise'
+        ? 'printable-headwise-analysis'
+        : 'printable-audit-trail';
+    printElement(targetId, {
+      title: `অডিট_আর্থিক_রিপোর্ট_${activeReportTab}`,
+      pageSize: 'A4',
+      pageOrientation: activeReportTab === 'audit' ? 'landscape' : 'portrait',
+      margin: '10mm 12mm',
+    });
   };
 
   return (
@@ -138,7 +150,7 @@ export const AuditReportsView: React.FC<AuditAuditReportsViewProps> = ({
       {activeReportTab === 'summary' && (
         <div className="space-y-6">
           {/* Printable Report Canvas */}
-          <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6" id="printable-financial-statement">
+          <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6 printable-content" id="printable-financial-statement">
             {/* Header */}
             <div className="text-center pb-6 border-b border-slate-200">
               <h2 className="text-xl sm:text-2xl font-bold text-slate-900">
@@ -255,7 +267,7 @@ export const AuditReportsView: React.FC<AuditAuditReportsViewProps> = ({
 
       {/* 2. HEAD-WISE ANALYSIS */}
       {activeReportTab === 'headwise' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div id="printable-headwise-analysis" className="grid grid-cols-1 md:grid-cols-2 gap-6 printable-content">
           {/* Income Breakdown */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="p-4 bg-emerald-50 border-b border-emerald-100 flex items-center justify-between">
@@ -314,7 +326,7 @@ export const AuditReportsView: React.FC<AuditAuditReportsViewProps> = ({
 
       {/* 3. AUDIT TRAIL / IMMUTABLE SYSTEM LOGS */}
       {activeReportTab === 'audit' && (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div id="printable-audit-trail" className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden printable-content">
           <div className="p-4 border-b border-slate-100 flex items-center justify-between">
             <div>
               <h2 className="text-sm font-bold text-slate-900">অপরিবর্তনীয় অডিট ট্রেইল (Immutable Audit Logs)</h2>

@@ -4,6 +4,7 @@ import { X, Printer, Users, Building, Filter, CheckCircle2, AlertCircle } from '
 import { Staff, Mosque } from '../types';
 import { Language, formatDate } from '../lib/i18n';
 import { numberToBanglaWords } from '../lib/banglaNumberToWords';
+import { printElement } from '../lib/printUtils';
 
 interface StaffMasterRegisterModalProps {
   isOpen: boolean;
@@ -38,8 +39,12 @@ export const StaffMasterRegisterModal: React.FC<StaffMasterRegisterModalProps> =
   if (!isOpen) return null;
 
   const handlePrint = () => {
-    document.body.classList.add('print-modal-active', 'print-landscape-active');
-    window.print();
+    printElement('master-register-printable', {
+      title: `${currentMosque?.nameBn || currentMosque?.name || 'মসজিদ'}_স্টাফ_মাস্টার_রেজিস্টার`,
+      pageSize: 'A4',
+      pageOrientation: 'landscape',
+      margin: '8mm 10mm',
+    });
   };
 
   // Filter staff
@@ -153,7 +158,7 @@ export const StaffMasterRegisterModal: React.FC<StaffMasterRegisterModalProps> =
         </div>
 
         {/* Printable Master Register Paper (A4 Landscape) */}
-        <div id="master-register-printable" className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-5 text-slate-900 bg-white font-baloo text-xs print-modal-paper print:p-0 print:overflow-visible print:space-y-4">
+        <div id="master-register-printable" className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-5 text-slate-900 bg-white font-baloo text-xs print-modal-paper print:p-0 print:overflow-visible print:space-y-4 printable-content">
           {/* Header Block with Horizontally Centered Mosque Name & Left Logo */}
           {showLetterhead ? (
             <div className="relative pb-4 border-b-2 border-slate-900 text-center">

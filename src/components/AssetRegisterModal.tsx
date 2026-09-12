@@ -4,6 +4,7 @@ import { X, Printer, Download, Package, ShieldCheck } from 'lucide-react';
 import { MosqueAsset, MosqueProfile } from '../types';
 import { Language, translations } from '../lib/i18n';
 import { ASSET_CATEGORIES, ASSET_CONDITIONS } from './AssetFormModal';
+import { printElement } from '../lib/printUtils';
 
 interface AssetRegisterModalProps {
   isOpen: boolean;
@@ -43,8 +44,12 @@ export const AssetRegisterModal: React.FC<AssetRegisterModalProps> = ({
   );
 
   const handlePrint = () => {
-    document.body.classList.add('print-modal-active');
-    window.print();
+    printElement('printable-asset-register-doc', {
+      title: `${currentMosque?.nameBn || currentMosque?.name || 'মসজিদ'}_সম্পদ_রেজিস্ট্রি_রিপোর্ট`,
+      pageSize: 'A4',
+      pageOrientation: 'landscape',
+      margin: '8mm 10mm',
+    });
   };
 
   const modalContent = (
@@ -74,7 +79,7 @@ export const AssetRegisterModal: React.FC<AssetRegisterModalProps> = ({
         </div>
 
         {/* Printable Document Content */}
-        <div className="p-8 overflow-y-auto space-y-6 text-xs text-slate-800 font-sans print-modal-paper print:p-0 print:overflow-visible">
+        <div id="printable-asset-register-doc" className="p-8 overflow-y-auto space-y-6 text-xs text-slate-800 font-sans print-modal-paper print:p-0 print:overflow-visible printable-content">
           {/* Header */}
           <div className="text-center border-b-2 border-slate-900 pb-4 space-y-1">
             <h1 className="text-xl font-bold text-slate-900 font-siliguri">

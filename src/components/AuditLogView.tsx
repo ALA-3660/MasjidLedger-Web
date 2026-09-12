@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { AuditLog, Mosque, User } from '../types';
 import { Language, translations } from '../lib/i18n';
+import { printElement } from '../lib/printUtils';
 
 interface AuditLogViewProps {
   logs: AuditLog[];
@@ -293,7 +294,12 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({
 
   // Print Handler
   const handlePrint = () => {
-    window.print();
+    printElement('audit-log-printable-section', {
+      title: 'মসজিদলেজার_অডিট_লগ_রিপোর্ট',
+      pageSize: 'A4',
+      pageOrientation: 'landscape',
+      margin: '8mm 10mm',
+    });
   };
 
   // Permission Guard Screen
@@ -506,8 +512,10 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({
         </div>
       </div>
 
-      {/* Print-Only Header (Appears ONLY when printing) */}
-      <div className="hidden print:block text-center border-b-2 border-slate-900 pb-4 mb-6">
+      {/* Printable Section Wrapper */}
+      <div id="audit-log-printable-section" className="printable-content space-y-4">
+        {/* Print-Only Header (Appears ONLY when printing) */}
+        <div className="hidden print:block text-center border-b-2 border-slate-900 pb-4 mb-6">
         <h1 className="text-2xl font-black text-slate-900">{currentMosque?.nameBn || 'মসজিদুল মামুর কমপ্লেক্স ওয়াকফ এস্টেট'}</h1>
         <p className="text-xs text-slate-600 mt-1">{currentMosque?.address || 'মিরপুর-১২, ঢাকা-১২১৬'}</p>
         <div className="my-3 py-1.5 bg-slate-100 border border-slate-300 font-bold text-sm">
@@ -626,6 +634,7 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({
             </tbody>
           </table>
         </div>
+      </div>
       </div>
 
       {/* READ-ONLY AUDIT DETAIL MODAL */}

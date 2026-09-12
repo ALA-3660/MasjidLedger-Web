@@ -19,6 +19,7 @@ import {
   Briefcase
 } from 'lucide-react';
 import { MeetingResolution, Mosque } from '../types';
+import { printElement } from '../lib/printUtils';
 
 interface MeetingResolutionPrintProps {
   resolution?: MeetingResolution | null;
@@ -55,7 +56,12 @@ export const MeetingResolutionPrint: React.FC<MeetingResolutionPrintProps> = ({
         onAuditLog('PRINT', `রেজোলিউশন প্রিন্ট: ${resolution.resolutionNumber}`);
       }
     }
-    window.print();
+    printElement('meeting-resolution-print-canvas', {
+      title: isBookMode ? (title || 'রেজোলিউশন_বই') : `রেজোলিউশন_${resolution?.resolutionNumber || ''}`,
+      pageSize: 'A4',
+      pageOrientation: 'portrait',
+      margin: '10mm 12mm',
+    });
   };
 
   const getStatusBadgeBn = (st: string) => {
@@ -117,8 +123,9 @@ export const MeetingResolutionPrint: React.FC<MeetingResolutionPrintProps> = ({
 
         {/* Printable Document A4 Canvas */}
         <div
+          id="meeting-resolution-print-canvas"
           ref={printRef}
-          className="p-6 sm:p-12 print:p-8 max-h-[82vh] overflow-y-auto print:max-h-none print:overflow-visible font-tiro bg-white text-slate-900"
+          className="p-6 sm:p-12 print:p-8 max-h-[82vh] overflow-y-auto print:max-h-none print:overflow-visible font-tiro bg-white text-slate-900 printable-content"
         >
           {itemsToPrint.map((res, resIdx) => {
             const statusBadge = getStatusBadgeBn(res.status);

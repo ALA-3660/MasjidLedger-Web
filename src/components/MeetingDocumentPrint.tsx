@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { Printer, X, Download, ShieldCheck, FileText, CheckCircle2, History, AlertCircle, Building2 } from 'lucide-react';
 import { CommitteeMeeting, CommitteeMember, Mosque } from '../types';
 import { formatDate, Language } from '../lib/i18n';
+import { printElement } from '../lib/printUtils';
 
 interface MeetingDocumentPrintProps {
   isOpen?: boolean;
@@ -37,14 +38,24 @@ export const MeetingDocumentPrint: React.FC<MeetingDocumentPrintProps> = ({
     if (onAuditLog && meeting.id) {
       onAuditLog(meeting.id, 'PRINT', `মিটিং কার্যবিবরণী প্রিন্ট: ${meeting.documentNumber || meeting.meetingNumber}`);
     }
-    window.print();
+    printElement('meeting-document-print-paper', {
+      title: `মিটিং_কার্যবিবরণী_${meeting.documentNumber || meeting.meetingNumber}`,
+      pageSize: 'A4',
+      pageOrientation: 'portrait',
+      margin: '10mm 12mm',
+    });
   };
 
   const handleDownloadPdf = () => {
     if (onAuditLog && meeting.id) {
       onAuditLog(meeting.id, 'PDF_DOWNLOAD', `মিটিং কার্যবিবরণী PDF ডাউনলোড: ${meeting.documentNumber || meeting.meetingNumber}`);
     }
-    window.print();
+    printElement('meeting-document-print-paper', {
+      title: `মিটিং_কার্যবিবরণী_${meeting.documentNumber || meeting.meetingNumber}`,
+      pageSize: 'A4',
+      pageOrientation: 'portrait',
+      margin: '10mm 12mm',
+    });
   };
 
   // Convert English numbers to Bengali numbers
@@ -141,7 +152,10 @@ export const MeetingDocumentPrint: React.FC<MeetingDocumentPrintProps> = ({
 
         {/* Official A4 Document Container */}
         <div className="p-6 sm:p-10 max-h-[85vh] overflow-y-auto print:overflow-visible print:max-h-none print:p-0 bg-slate-50/50 print:bg-white report-modal-print-body font-print-body text-slate-900">
-          <div className="max-w-[210mm] mx-auto bg-white p-8 sm:p-12 shadow-sm border border-slate-200 print:border-none print:shadow-none print:p-6 min-h-[297mm] flex flex-col justify-between relative">
+          <div
+            id="meeting-document-print-paper"
+            className="max-w-[210mm] mx-auto bg-white p-8 sm:p-12 shadow-sm border border-slate-200 print:border-none print:shadow-none print:p-6 min-h-[297mm] flex flex-col justify-between relative printable-content"
+          >
             
             {/* Draft Watermark */}
             {isDraft && (

@@ -41,6 +41,7 @@ import {
   User
 } from '../types';
 import { Language, translations, formatDate, toBanglaNumber } from '../lib/i18n';
+import { printElement } from '../lib/printUtils';
 
 interface SubCommitteesViewProps {
   subCommittees: SubCommittee[];
@@ -1658,7 +1659,14 @@ export const SubCommitteesView: React.FC<SubCommitteesViewProps> = ({
                 <button
                   id="btn-trigger-browser-print"
                   type="button"
-                  onClick={() => window.print()}
+                  onClick={() => {
+                    printElement('printable-subcommittees-doc', {
+                      title: `${mosque?.nameBn || mosque?.name || 'মসজিদ'}_সাব-কমিটি_প্রতিবেদন`,
+                      pageSize: 'A4',
+                      pageOrientation: 'portrait',
+                      margin: '10mm 12mm',
+                    });
+                  }}
                   className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-xs cursor-pointer"
                 >
                   <Printer className="w-4 h-4" />
@@ -1675,7 +1683,7 @@ export const SubCommitteesView: React.FC<SubCommitteesViewProps> = ({
             </div>
 
             {/* Print Content Document */}
-            <div className="bg-white text-slate-900 space-y-6">
+            <div id="printable-subcommittees-doc" className="bg-white text-slate-900 space-y-6 printable-content">
               {/* Optional Letterhead Header */}
               {showLetterhead && (
                 <div className="text-center pb-5 border-b-2 border-emerald-700">

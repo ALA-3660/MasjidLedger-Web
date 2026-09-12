@@ -25,6 +25,7 @@ import { Language, translations, formatCurrency, formatDate } from '../lib/i18n'
 import { numberToBanglaWords } from '../lib/banglaNumberToWords';
 import { QrScanResult } from '../types/qrBarcodeTypes';
 import { OpeningBalanceModal } from './OpeningBalanceModal';
+import { printElement } from '../lib/printUtils';
 
 interface CashBankViewProps {
   accounts: FinancialAccount[];
@@ -1366,7 +1367,14 @@ export const CashBankView: React.FC<CashBankViewProps> = ({
               </div>
               <div className="flex items-center space-x-2">
                 <button
-                  onClick={() => window.print()}
+                  onClick={() =>
+                    printElement('cashbook-ledger-printable-body', {
+                      title: 'নগদ_ক্যাশ_বই_প্রতিবেদন',
+                      pageSize: 'A4',
+                      pageOrientation: 'landscape',
+                      margin: '8mm 10mm',
+                    })
+                  }
                   className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg flex items-center space-x-1.5 transition-all cursor-pointer shadow-xs"
                 >
                   <Printer className="w-4 h-4" />
@@ -1382,7 +1390,7 @@ export const CashBankView: React.FC<CashBankViewProps> = ({
             </div>
 
             {/* Document Body (Printable) */}
-            <div className="p-6 sm:p-8 overflow-y-auto flex-1 bg-white text-slate-900 space-y-5 font-sans report-modal-print-body print:p-0 print:m-0 print:overflow-visible print:h-auto print:max-h-none print:block print:shadow-none">
+            <div id="cashbook-ledger-printable-body" className="printable-content p-6 sm:p-8 overflow-y-auto flex-1 bg-white text-slate-900 space-y-5 font-sans report-modal-print-body print:p-0 print:m-0 print:overflow-visible print:h-auto print:max-h-none print:block print:shadow-none">
               {/* Official Mosque Header */}
               <div className="border-2 border-slate-900 bg-white p-3.5 rounded-none overflow-hidden">
                 <div className="grid grid-cols-12 items-center gap-3">
@@ -1659,7 +1667,14 @@ export const CashBankView: React.FC<CashBankViewProps> = ({
               </div>
               <div className="flex items-center space-x-2">
                 <button
-                  onClick={() => window.print()}
+                  onClick={() =>
+                    printElement('bankbook-ledger-printable-body', {
+                      title: 'ব্যাংক_খতিয়ান_স্টেটমেন্ট_প্রতিবেদন',
+                      pageSize: 'A4',
+                      pageOrientation: 'landscape',
+                      margin: '8mm 10mm',
+                    })
+                  }
                   className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg flex items-center space-x-1.5 transition-all cursor-pointer shadow-xs"
                 >
                   <Printer className="w-4 h-4" />
@@ -1675,7 +1690,7 @@ export const CashBankView: React.FC<CashBankViewProps> = ({
             </div>
 
             {/* Document Body (Printable) */}
-            <div className="p-6 sm:p-8 overflow-y-auto flex-1 bg-white text-slate-900 space-y-5 font-sans report-modal-print-body print:p-0 print:m-0 print:overflow-visible print:h-auto print:max-h-none print:block print:shadow-none">
+            <div id="bankbook-ledger-printable-body" className="printable-content p-6 sm:p-8 overflow-y-auto flex-1 bg-white text-slate-900 space-y-5 font-sans report-modal-print-body print:p-0 print:m-0 print:overflow-visible print:h-auto print:max-h-none print:block print:shadow-none">
               {/* Official Mosque Header */}
               <div className="border-2 border-slate-900 bg-white p-3.5 rounded-none overflow-hidden">
                 <div className="grid grid-cols-12 items-center gap-3">

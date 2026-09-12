@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { CommitteeMeetingNotice, Mosque, CommitteeMember } from '../types';
 import { formatDate, Language } from '../lib/i18n';
+import { printElement } from '../lib/printUtils';
 
 interface MeetingNoticeModalProps {
   isOpen: boolean;
@@ -395,7 +396,12 @@ export const MeetingNoticePrintModal: React.FC<MeetingNoticePrintModalProps> = (
   };
 
   const handlePrint = () => {
-    window.print();
+    printElement('meeting-notice-document-paper', {
+      title: `মিটিং_নোটিশ_${memoNo || noticeDate}`,
+      pageSize: 'A4',
+      pageOrientation: 'portrait',
+      margin: '10mm 12mm',
+    });
   };
 
   const president = (members || []).find(m => m.position === 'PRESIDENT');
@@ -443,7 +449,10 @@ export const MeetingNoticePrintModal: React.FC<MeetingNoticePrintModalProps> = (
 
         {/* Official Document Body */}
         <div className="p-6 sm:p-10 max-h-[85vh] overflow-y-auto print:overflow-visible print:max-h-none print:p-0 bg-slate-50/50 print:bg-white report-modal-print-body font-print-body text-slate-900">
-          <div className="max-w-[210mm] mx-auto bg-white p-8 sm:p-12 shadow-sm border border-slate-200 print:border-none print:shadow-none print:p-6 min-h-[297mm] flex flex-col justify-between">
+          <div
+            id="meeting-notice-document-paper"
+            className="max-w-[210mm] mx-auto bg-white p-8 sm:p-12 shadow-sm border border-slate-200 print:border-none print:shadow-none print:p-6 min-h-[297mm] flex flex-col justify-between printable-content"
+          >
             <div>
               {/* Bismillah */}
               <div className="text-center mb-3">

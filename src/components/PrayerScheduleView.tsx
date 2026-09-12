@@ -39,6 +39,7 @@ import {
   formatDurationDigital,
 } from '../lib/prayerEngine';
 import { api } from '../lib/api';
+import { printElement } from '../lib/printUtils';
 
 interface PrayerScheduleViewProps {
   currentMosque?: Mosque | null;
@@ -141,7 +142,12 @@ export const PrayerScheduleView: React.FC<PrayerScheduleViewProps> = ({
   };
 
   const handlePrintSchedule = () => {
-    window.print();
+    printElement('prayer-monthly-calendar-container', {
+      title: `নামাজের_সময়সূচি_${monthNamesBn[calendarMonth - 1]}_${calendarYear}`,
+      pageSize: 'A4',
+      pageOrientation: 'landscape',
+      margin: '8mm 10mm',
+    });
   };
 
   const handleExportCsv = () => {
@@ -764,7 +770,7 @@ export const PrayerScheduleView: React.FC<PrayerScheduleViewProps> = ({
       {/* TAB 2: 30-DAY MONTHLY PRAYER CALENDAR */}
       {/* ========================================================================= */}
       {activeTab === 'MONTHLY' && (
-        <div className="bg-white rounded-2xl p-6 shadow-xs border border-slate-200 space-y-6">
+        <div id="prayer-monthly-calendar-container" className="bg-white rounded-2xl p-6 shadow-xs border border-slate-200 space-y-6 printable-content">
           {/* Calendar Header Controls */}
           <div className="flex flex-col md:flex-row items-center justify-between gap-4 pb-4 border-b border-slate-200">
             <div className="flex flex-wrap items-center gap-3">

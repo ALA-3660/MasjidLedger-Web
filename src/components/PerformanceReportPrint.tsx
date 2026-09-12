@@ -16,6 +16,7 @@ import {
 import { Mosque, CommitteeTerm, MemberEvaluationScoreResult } from '../types';
 import { formatDate } from '../lib/i18n';
 import { toBanglaNumber } from './CommitteeView';
+import { printElement } from '../lib/printUtils';
 
 interface PerformanceReportPrintProps {
   isOpen: boolean;
@@ -58,8 +59,12 @@ export const PerformanceReportPrint: React.FC<PerformanceReportPrintProps> = ({
   if (!isOpen) return null;
 
   const handlePrint = () => {
-    document.body.classList.add('print-modal-active', 'print-action-plan-active');
-    window.print();
+    printElement('printable-performance-report', {
+      title: `${mosque?.nameBn || mosque?.name || 'কমিটি পারফরম্যান্স মূল্যায়ন'}_প্রতিবেদন`,
+      pageSize: 'A4',
+      pageOrientation: 'portrait',
+      margin: '10mm 12mm',
+    });
   };
 
   const getStarText = (stars: number) => {

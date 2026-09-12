@@ -16,6 +16,7 @@ import { Language, translations, formatCurrency, formatDate } from '../lib/i18n'
 import { numberToBanglaWords, numberToEnglishWords } from '../lib/banglaNumberToWords';
 import { PosThermalDocument } from './PosThermalDocument';
 import { getJumaDisplayDetails } from '../lib/jumaHelper';
+import { printElement } from '../lib/printUtils';
 
 export type PrintFormat = 'A4' | 'POS_80' | 'POS_58';
 

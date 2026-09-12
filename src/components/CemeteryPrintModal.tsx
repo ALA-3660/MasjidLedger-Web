@@ -16,6 +16,7 @@ import {
 import { CemeteryRecord, Mosque, MosqueProfile } from '../types';
 import { Language, formatDate, formatCurrency } from '../lib/i18n';
 import { GRAVE_TYPES, PLOT_STATUSES } from './CemeteryFormModal';
+import { printElement } from '../lib/printUtils';
 
 interface CemeteryPrintModalProps {
   isOpen: boolean;
@@ -43,7 +44,13 @@ export const CemeteryPrintModal: React.FC<CemeteryPrintModalProps> = ({
   const plotStatusObj = PLOT_STATUSES.find((s) => s.id === record.plotStatus);
 
   const handlePrint = () => {
-    window.print();
+    const targetId = printFormat === 'POS' ? 'cemetery-print-pos-document' : 'cemetery-print-a4-document';
+    printElement(targetId, {
+      title: `${mosque?.name || 'মসজিদ'}_দাফন_প্রত্যয়ন_${record.recordNumber || record.plotNumber}`,
+      pageSize: printFormat === 'POS' ? 'POS_80' : 'A4',
+      pageOrientation: 'portrait',
+      margin: printFormat === 'POS' ? '2mm 3mm' : '10mm 12mm',
+    });
   };
 
   return (
@@ -129,8 +136,8 @@ export const CemeteryPrintModal: React.FC<CemeteryPrintModalProps> = ({
           {/* FORMAT 1: A4 CERTIFICATE & RECORD */}
           {printFormat === 'A4' && (
             <div
-              id="cemetery-print-document"
-              className="w-full max-w-[210mm] bg-white min-h-[297mm] p-8 sm:p-12 shadow-xl border border-slate-300 rounded-sm text-slate-900 flex flex-col justify-between"
+              id="cemetery-print-a4-document"
+              className="w-full max-w-[210mm] bg-white min-h-[297mm] p-8 sm:p-12 shadow-xl border border-slate-300 rounded-sm text-slate-900 flex flex-col justify-between printable-content"
               style={{ fontFamily: "'Noto Serif Bengali', 'SolaimanLipi', serif" }}
             >
               <div>
@@ -352,8 +359,8 @@ export const CemeteryPrintModal: React.FC<CemeteryPrintModalProps> = ({
           {/* FORMAT 2: POS THERMAL RECEIPT (80mm) */}
           {printFormat === 'POS' && (
             <div
-              id="cemetery-print-document"
-              className="w-[80mm] bg-white p-4 shadow-xl border border-slate-300 rounded-sm text-slate-900 font-mono text-[11px] leading-tight flex flex-col"
+              id="cemetery-print-pos-document"
+              className="w-[80mm] bg-white p-4 shadow-xl border border-slate-300 rounded-sm text-slate-900 font-mono text-[11px] leading-tight flex flex-col printable-content"
             >
               {/* POS Header */}
               <div className="text-center pb-2 border-b border-dashed border-slate-400 mb-2">

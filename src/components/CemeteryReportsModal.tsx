@@ -16,6 +16,7 @@ import {
 import { CemeteryRecord, Mosque, MosqueProfile } from '../types';
 import { Language, formatDate, formatCurrency } from '../lib/i18n';
 import { DEFAULT_BLOCKS, GRAVE_TYPES, PLOT_STATUSES } from './CemeteryFormModal';
+import { printElement } from '../lib/printUtils';
 
 export type CemeteryReportType =
   | 'TODAY'
@@ -165,7 +166,12 @@ export const CemeteryReportsModal: React.FC<CemeteryReportsModalProps> = ({
   };
 
   const handlePrint = () => {
-    window.print();
+    printElement('cemetery-print-document', {
+      title: `${mosque?.name || 'মসজিদ'}_${getReportTitle()}`,
+      pageSize: 'A4',
+      pageOrientation: orientation,
+      margin: orientation === 'landscape' ? '8mm 10mm' : '10mm 12mm',
+    });
   };
 
   const handleExportCSV = () => {
@@ -442,7 +448,7 @@ export const CemeteryReportsModal: React.FC<CemeteryReportsModalProps> = ({
         <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-200/60 flex justify-center">
           <div
             id="cemetery-print-document"
-            className={`w-full bg-white p-6 sm:p-10 shadow-xl border border-slate-300 rounded-sm text-slate-900 flex flex-col justify-between ${
+            className={`w-full bg-white p-6 sm:p-10 shadow-xl border border-slate-300 rounded-sm text-slate-900 flex flex-col justify-between printable-content ${
               orientation === 'landscape' ? 'max-w-[297mm]' : 'max-w-[210mm]'
             }`}
             style={{ fontFamily: "'Noto Serif Bengali', 'SolaimanLipi', serif" }}

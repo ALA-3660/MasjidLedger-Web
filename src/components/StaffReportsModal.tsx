@@ -21,6 +21,7 @@ import {
 import { Staff, StaffPayment, Mosque, StaffBankTransferLetter } from '../types';
 import { Language, translations, formatDate } from '../lib/i18n';
 import { numberToBanglaWords } from '../lib/banglaNumberToWords';
+import { printElement } from '../lib/printUtils';
 
 export type StaffReportType =
   | 'MASTER_REGISTER'
@@ -85,8 +86,13 @@ export const StaffReportsModal: React.FC<StaffReportsModalProps> = ({
   if (!isOpen) return null;
 
   const handlePrint = () => {
-    document.body.classList.add('print-modal-active', 'print-landscape-active');
-    window.print();
+    const activeDef = reportDefinitions.find((r) => r.id === selectedReport);
+    printElement('staff-reports-printable-canvas', {
+      title: `${currentMosque?.nameBn || currentMosque?.name || 'মসজিদ'}_${activeDef?.titleBn || 'স্টাফ_রিপোর্ট'}`,
+      pageSize: 'A4',
+      pageOrientation: 'landscape',
+      margin: '8mm 10mm',
+    });
   };
 
   const reportDefinitions: { id: StaffReportType; titleBn: string; titleEn: string; icon: any; category: string }[] = [
@@ -265,7 +271,10 @@ export const StaffReportsModal: React.FC<StaffReportsModalProps> = ({
         </div>
 
         {/* Printable Report Canvas (A4 Landscape Formatted) */}
-        <div className="p-6 sm:p-8 space-y-5 text-slate-900 bg-white font-sans text-xs flex-1 overflow-y-auto print:p-4 print:overflow-visible">
+        <div
+          id="staff-reports-printable-canvas"
+          className="p-6 sm:p-8 space-y-5 text-slate-900 bg-white font-sans text-xs flex-1 overflow-y-auto print:p-4 print:overflow-visible printable-content"
+        >
           {/* Header Block */}
           {showLetterhead ? (
             <div className="text-center space-y-1 pb-3 border-b-2 border-slate-900">

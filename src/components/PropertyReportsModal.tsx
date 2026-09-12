@@ -24,6 +24,7 @@ import {
 import { MosqueProperty, MosqueProfile, Mosque } from '../types';
 import { Language, formatCurrency, formatDate } from '../lib/i18n';
 import { PROPERTY_CATEGORIES, POSSESSION_STATUSES, PROPERTY_STATUSES } from './PropertyFormModal';
+import { printElement } from '../lib/printUtils';
 
 export type PropertyReportType =
   | 'PROPERTY_REGISTER'
@@ -103,7 +104,12 @@ export const PropertyReportsModal: React.FC<PropertyReportsModalProps> = ({
   });
 
   const handlePrint = () => {
-    window.print();
+    printElement('printable-property-reports-canvas', {
+      title: `${mosque?.nameBn || mosque?.name || 'মসজিদ'}_ওয়াকফ_সম্পত্তি_রিপোর্ট`,
+      pageSize: 'A4',
+      pageOrientation: 'portrait',
+      margin: '10mm 12mm',
+    });
   };
 
   const handleExportCSV = () => {
@@ -292,8 +298,9 @@ export const PropertyReportsModal: React.FC<PropertyReportsModalProps> = ({
           {/* Right Printable Canvas Area */}
           <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-100 print:bg-white print:p-0">
             <div
+              id="printable-property-reports-canvas"
               ref={printRef}
-              className="report-print-root w-full max-w-[210mm] mx-auto bg-white p-8 sm:p-10 shadow-lg print:shadow-none print:p-4 border border-slate-200 print:border-none text-slate-900 font-sans"
+              className="report-print-root w-full max-w-[210mm] mx-auto bg-white p-8 sm:p-10 shadow-lg print:shadow-none print:p-4 border border-slate-200 print:border-none text-slate-900 font-sans printable-content"
               style={{ minHeight: '297mm' }}
             >
               

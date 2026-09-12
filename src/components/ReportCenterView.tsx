@@ -53,6 +53,7 @@ import {
   Cell,
 } from 'recharts';
 import { ReportPrintDocument, REPORT_TITLES } from './ReportPrintDocument';
+import { printElement } from '../lib/printUtils';
 
 interface ReportCenterViewProps {
   incomes: IncomeEntry[];
@@ -261,7 +262,12 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
   };
 
   const handlePrint = () => {
-    window.print();
+    printElement('printable-report-document', {
+      title: `${currentReportMeta.titleBn.replace(/\s+/g, '_')}_${fromDate}_to_${toDate}`,
+      pageSize: 'A4',
+      pageOrientation: currentReportMeta.isLandscape ? 'landscape' : 'portrait',
+      margin: '10mm',
+    });
   };
 
   const handleExportCSV = () => {

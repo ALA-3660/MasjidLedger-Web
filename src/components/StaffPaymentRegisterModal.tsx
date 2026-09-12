@@ -4,6 +4,7 @@ import { X, Printer, DollarSign, Building, Filter, Calendar, Users } from 'lucid
 import { Staff, StaffPayment, Mosque } from '../types';
 import { Language, formatDate } from '../lib/i18n';
 import { numberToBanglaWords } from '../lib/banglaNumberToWords';
+import { printElement } from '../lib/printUtils';
 
 interface StaffPaymentRegisterModalProps {
   isOpen: boolean;
@@ -42,8 +43,12 @@ export const StaffPaymentRegisterModal: React.FC<StaffPaymentRegisterModalProps>
   if (!isOpen) return null;
 
   const handlePrint = () => {
-    document.body.classList.add('print-modal-active', 'print-landscape-active');
-    window.print();
+    printElement('payment-register-printable', {
+      title: `${currentMosque?.nameBn || currentMosque?.name || 'মসজিদ'}_বেতন_হাদিয়া_রেজিস্টার_${selectedMonth}`,
+      pageSize: 'A4',
+      pageOrientation: 'landscape',
+      margin: '8mm 10mm',
+    });
   };
 
   // Get unique months from payments
@@ -142,7 +147,7 @@ export const StaffPaymentRegisterModal: React.FC<StaffPaymentRegisterModalProps>
         </div>
 
         {/* Printable Paper (A4 Landscape) */}
-        <div id="payment-register-printable" className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-5 text-slate-900 bg-white font-baloo text-xs print-modal-paper print:p-0 print:overflow-visible print:space-y-4">
+        <div id="payment-register-printable" className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-5 text-slate-900 bg-white font-baloo text-xs print-modal-paper print:p-0 print:overflow-visible print:space-y-4 printable-content">
           {/* Header Block with Centered Mosque Name and Left-Anchored Logo */}
           {showLetterhead ? (
             <div className="relative pb-4 border-b-2 border-slate-900 text-center">

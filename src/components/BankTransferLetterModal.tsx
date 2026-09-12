@@ -23,6 +23,7 @@ import { Staff, StaffPayment, FinancialAccount, Mosque, CommitteeTerm, StaffBank
 import { Language, formatDate, formatCurrency } from '../lib/i18n';
 import { numberToBanglaWords } from '../lib/banglaNumberToWords';
 import { api } from '../lib/api';
+import { printElement } from '../lib/printUtils';
 
 interface BankTransferLetterModalProps {
   isOpen: boolean;
@@ -399,8 +400,12 @@ export const BankTransferLetterModal: React.FC<BankTransferLetterModalProps> = (
 
   // Handle Print
   const handlePrint = () => {
-    document.body.classList.add('print-modal-active');
-    window.print();
+    printElement('bank-letter-print-canvas', {
+      title: `${currentMosque?.name || 'মসজিদ'}_ব্যাংক_ট্রান্সফার_লেটার_${memoNumber || paymentMonth}`,
+      pageSize: 'A4',
+      pageOrientation: 'portrait',
+      margin: '10mm 12mm',
+    });
   };
 
   // Switch to creating a new letter
@@ -902,7 +907,7 @@ export const BankTransferLetterModal: React.FC<BankTransferLetterModalProps> = (
             {/* Real A4 Canvas Document Wrapper */}
             <div
               id="bank-letter-print-canvas"
-              className="bg-white text-slate-900 w-full max-w-[210mm] min-h-[297mm] shadow-lg rounded-xl p-8 sm:p-12 space-y-6 relative font-sans leading-relaxed print-modal-paper print:shadow-none print:rounded-none print:m-0 print:p-8"
+              className="bg-white text-slate-900 w-full max-w-[210mm] min-h-[297mm] shadow-lg rounded-xl p-8 sm:p-12 space-y-6 relative font-sans leading-relaxed print-modal-paper print:shadow-none print:rounded-none print:m-0 print:p-8 printable-content"
               style={{
                 fontFamily: 'var(--font-secondary, "Baloo Da 2", system-ui, sans-serif)',
               }}

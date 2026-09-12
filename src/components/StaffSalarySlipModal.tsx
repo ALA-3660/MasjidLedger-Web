@@ -4,6 +4,7 @@ import { X, Printer, CheckCircle, Building, Phone, Mail, FileText, Check } from 
 import { Staff, StaffPayment, Mosque } from '../types';
 import { Language, formatDate } from '../lib/i18n';
 import { numberToBanglaWords } from '../lib/banglaNumberToWords';
+import { printElement } from '../lib/printUtils';
 
 interface StaffSalarySlipModalProps {
   isOpen: boolean;
@@ -38,8 +39,12 @@ export const StaffSalarySlipModal: React.FC<StaffSalarySlipModalProps> = ({
   if (!isOpen || !staff || !payment) return null;
 
   const handlePrint = () => {
-    document.body.classList.add('print-modal-active');
-    window.print();
+    printElement('salary-slip-printable', {
+      title: `${staff.name}_বেতন_রসিদ_${payment.month || ''}`,
+      pageSize: 'A4',
+      pageOrientation: 'portrait',
+      margin: '10mm 12mm',
+    });
   };
 
   const basic = payment.basicSalary || staff.monthlySalary || 0;
@@ -94,7 +99,7 @@ export const StaffSalarySlipModal: React.FC<StaffSalarySlipModalProps> = ({
         </div>
 
         {/* Printable Slip Paper (A4 Optimized) */}
-        <div id="salary-slip-printable" className="p-8 sm:p-10 space-y-6 text-slate-900 bg-white font-sans text-xs print-modal-paper print:p-8">
+        <div id="salary-slip-printable" className="p-8 sm:p-10 space-y-6 text-slate-900 bg-white font-sans text-xs print-modal-paper print:p-8 printable-content">
           {/* Header Block */}
           {showLetterhead ? (
             <div className="text-center space-y-1 pb-4 border-b-2 border-slate-900">
