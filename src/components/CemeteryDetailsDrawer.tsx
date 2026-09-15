@@ -25,6 +25,7 @@ import {
 import { CemeteryRecord, Mosque, MosqueProfile } from '../types';
 import { Language, formatDate, formatCurrency } from '../lib/i18n';
 import { GRAVE_TYPES, PLOT_STATUSES } from './CemeteryFormModal';
+import { DocumentSection } from './DocumentSection';
 
 interface CemeteryDetailsDrawerProps {
   record: CemeteryRecord | null;
@@ -51,7 +52,7 @@ export const CemeteryDetailsDrawer: React.FC<CemeteryDetailsDrawerProps> = ({
   mosque,
   language,
 }) => {
-  const [activeTab, setActiveTab] = useState<'details' | 'plot' | 'heir' | 'audit'>('details');
+  const [activeTab, setActiveTab] = useState<'details' | 'plot' | 'heir' | 'audit' | 'documents'>('details');
 
   if (!isOpen || !record) return null;
 
@@ -181,6 +182,17 @@ export const CemeteryDetailsDrawer: React.FC<CemeteryDetailsDrawerProps> = ({
           >
             <Shield className="w-3.5 h-3.5" />
             <span>অডিট ও ইতিহাস</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('documents')}
+            className={`py-3 border-b-2 transition-all flex items-center gap-1.5 ${
+              activeTab === 'documents'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>সংযুক্ত নথি ও সনদ</span>
           </button>
         </div>
 
@@ -445,6 +457,17 @@ export const CemeteryDetailsDrawer: React.FC<CemeteryDetailsDrawerProps> = ({
                   )}
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* TAB 5: DOCUMENTS & ATTACHMENTS */}
+          {activeTab === 'documents' && (
+            <div className="space-y-4 animate-in fade-in duration-150">
+              <DocumentSection
+                entityType="CEMETERY"
+                entityId={record.id}
+                entityTitle={`${record.deceasedName} (কবর নং #${record.plotNumber})`}
+              />
             </div>
           )}
         </div>

@@ -35,6 +35,9 @@ import {
   Layers,
   Stamp,
   ClipboardList,
+  User,
+  Heart,
+  Shield,
 } from 'lucide-react';
 import {
   CommitteeTerm,
@@ -58,6 +61,10 @@ import { CommitteePerformanceView } from './CommitteePerformanceView';
 import { CommitteeActionPlanView } from './CommitteeActionPlanView';
 import { CommitteeFinancialHistoryView } from './CommitteeFinancialHistoryView';
 import { SubCommitteesView } from './SubCommitteesView';
+import { MemberFormModal } from './MemberFormModal';
+import { MemberProfileModal } from './MemberProfileModal';
+import { AdvisoryCouncilView } from './AdvisoryCouncilView';
+import { DocumentSection } from './DocumentSection';
 
 interface CommitteeViewProps {
   terms: CommitteeTerm[];
@@ -279,7 +286,7 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
   onArchiveSubCommittee,
 }) => {
   const t = translations[language];
-  const [activeTab, setActiveTab] = useState<'members' | 'terms' | 'meetings' | 'action-plans' | 'performance' | 'financial-history' | 'sub-committees'>('members');
+  const [activeTab, setActiveTab] = useState<'members' | 'terms' | 'meetings' | 'action-plans' | 'performance' | 'financial-history' | 'sub-committees' | 'advisory-council'>('members');
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
   // Search & Filter for members
@@ -379,18 +386,21 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
     }
   };
 
-  // Add Member modal
+  // Comprehensive Member Profile & Form Modals
   const [isMemberModalOpen, setIsMemberModalOpen] = useState(false);
-  const [selectedTermId, setSelectedTermId] = useState('');
-  const [memberName, setMemberName] = useState('');
-  const [memberNid, setMemberNid] = useState('');
-  const [memberPhone, setMemberPhone] = useState('');
-  const [memberAddress, setMemberAddress] = useState('');
-  const [memberPosition, setMemberPosition] = useState<CommitteeMember['position']>('MEMBER');
-  const [memberPositionCustom, setMemberPositionCustom] = useState('');
-  const [memberStatus, setMemberStatus] = useState<'ACTIVE' | 'INACTIVE'>('ACTIVE');
-  const [memberNotes, setMemberNotes] = useState('');
-  const [memberError, setMemberError] = useState('');
+  const [memberToEdit, setMemberToEdit] = useState<CommitteeMember | null>(null);
+  const [selectedProfileMember, setSelectedProfileMember] = useState<CommitteeMember | null>(null);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+
+  // Sync profile member when members collection updates
+  useEffect(() => {
+    if (selectedProfileMember) {
+      const updated = members.find((m) => m.id === selectedProfileMember.id);
+      if (updated) {
+        setSelectedProfileMember(updated);
+      }
+    }
+  }, [members]);
 
   // Meeting Notice Modal
   const [isNoticeModalOpen, setIsNoticeModalOpen] = useState(false);
@@ -447,21 +457,6 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
     setIsNoticePrintOpen(true);
   };
 
-  // Edit Member Modal
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
-  const [editTermId, setEditTermId] = useState('');
-  const [editName, setEditName] = useState('');
-  const [editNid, setEditNid] = useState('');
-  const [editPhone, setEditPhone] = useState('');
-  const [editAddress, setEditAddress] = useState('');
-  const [editPosition, setEditPosition] = useState<CommitteeMember['position']>('MEMBER');
-  const [editPositionCustom, setEditPositionCustom] = useState('');
-  const [editStatus, setEditStatus] = useState<'ACTIVE' | 'INACTIVE' | 'RESIGNED' | 'DECEASED'>('ACTIVE');
-  const [editNotes, setEditNotes] = useState('');
-  const [editError, setEditError] = useState('');
-  const [isSavingEdit, setIsSavingEdit] = useState(false);
-
   // Delete Member Confirm Modal
   const [deletingMember, setDeletingMember] = useState<CommitteeMember | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -517,105 +512,19 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
     }
   };
 
-  const handleMemberSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setMemberError('');
-    try {
-      const termToUse = selectedTermId || activeTerm?.id || terms[0]?.id;
-      if (!termToUse) {
-        setMemberError('অনুগ্রহ করে একটি কমিটির মেয়াদকাল নির্বাচন করুন।');
-        return;
-      }
-      if (!memberName.trim()) {
-        setMemberError('সদস্যের পুরো নাম আবশ্যক।');
-        return;
-      }
-      if (!memberPhone.trim()) {
-        setMemberError('মোবাইল নম্বর আবশ্যক।');
-        return;
-      }
-
-      const posBn = memberPositionCustom?.trim() || POSITION_MAP_BN[memberPosition] || 'কার্যনির্বাহী সদস্য';
-
-      await onAddMember({
-        termId: termToUse,
-        name: memberName.trim(),
-        nid: memberNid.trim(),
-        phone: memberPhone.trim(),
-        address: memberAddress.trim(),
-        position: memberPosition,
-        positionCustomBn: posBn,
-        designation: memberPosition,
-        designationBn: posBn,
-        status: memberStatus,
-        notes: memberNotes.trim() || undefined,
-      });
-      setIsMemberModalOpen(false);
-      setMemberName('');
-      setMemberNid('');
-      setMemberPhone('');
-      setMemberAddress('');
-      setMemberPosition('MEMBER');
-      setMemberPositionCustom('');
-      setMemberStatus('ACTIVE');
-      setMemberNotes('');
-    } catch (err: any) {
-      setMemberError(err.message || 'সদস্য অন্তর্ভুক্তি করতে ব্যর্থ হয়েছে।');
-    }
+  const handleOpenAddMember = () => {
+    setMemberToEdit(null);
+    setIsMemberModalOpen(true);
   };
 
   const handleOpenEditMember = (mem: CommitteeMember) => {
-    setEditingMemberId(mem.id);
-    setEditTermId(mem.termId || activeTerm?.id || '');
-    setEditName(mem.name || '');
-    setEditNid(mem.nid || '');
-    setEditPhone(mem.phone || '');
-    setEditAddress(mem.address || '');
-    setEditPosition(mem.position || 'MEMBER');
-    setEditPositionCustom(mem.positionCustomBn || '');
-    setEditStatus(mem.status || 'ACTIVE');
-    setEditNotes(mem.notes || '');
-    setEditError('');
-    setIsEditModalOpen(true);
+    setMemberToEdit(mem);
+    setIsMemberModalOpen(true);
   };
 
-  const handleSaveEditMember = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingMemberId || !onUpdateMember) return;
-
-    if (!editName.trim()) {
-      setEditError('সদস্যের পুরো নাম আবশ্যক।');
-      return;
-    }
-    if (!editPhone.trim()) {
-      setEditError('মোবাইল নম্বর আবশ্যক।');
-      return;
-    }
-
-    setEditError('');
-    setIsSavingEdit(true);
-    try {
-      const posBn = editPositionCustom?.trim() || POSITION_MAP_BN[editPosition] || 'কার্যনির্বাহী সদস্য';
-      await onUpdateMember(editingMemberId, {
-        termId: editTermId,
-        name: editName.trim(),
-        nid: editNid.trim(),
-        phone: editPhone.trim(),
-        address: editAddress.trim(),
-        position: editPosition,
-        positionCustomBn: posBn,
-        designation: editPosition,
-        designationBn: posBn,
-        status: editStatus,
-        notes: editNotes.trim() || undefined,
-      });
-      setIsEditModalOpen(false);
-      setEditingMemberId(null);
-    } catch (err: any) {
-      setEditError(err.message || 'সদস্য তথ্য আপডেট করতে সমস্যা হয়েছে।');
-    } finally {
-      setIsSavingEdit(false);
-    }
+  const handleOpenProfile = (mem: CommitteeMember) => {
+    setSelectedProfileMember(mem);
+    setIsProfileModalOpen(true);
   };
 
   const handleToggleStatus = async (mem: CommitteeMember) => {
@@ -645,7 +554,7 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
   };
 
   // Enhanced Meeting & Minutes State
-  const [meetingSubTab, setMeetingSubTab] = useState<'notices' | 'minutes' | 'resolutions'>('notices');
+  const [meetingSubTab, setMeetingSubTab] = useState<'notices' | 'minutes' | 'resolutions' | 'documents'>('notices');
   const [meetingSearchText, setMeetingSearchText] = useState('');
   const [meetingTypeFilter, setMeetingTypeFilter] = useState('ALL');
   const [meetingStatusFilter, setMeetingStatusFilter] = useState('ALL');
@@ -1058,6 +967,22 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
               {subCommittees.filter(sc => !sc.isArchived).length}
             </span>
           </button>
+
+          <button
+            id="tab-btn-advisory-council"
+            onClick={() => setActiveTab('advisory-council')}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'advisory-council'
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Shield className="w-4 h-4 text-indigo-300" />
+            <span>উপদেষ্টা পরিষদ</span>
+            <span className="ml-1 bg-indigo-800 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+              স্বতন্ত্র
+            </span>
+          </button>
         </div>
 
         <div className="flex items-center space-x-2">
@@ -1073,11 +998,7 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
               </button>
               <button
                 id="btn-open-add-member"
-                onClick={() => {
-                  setSelectedTermId(activeTerm?.id || terms[0]?.id || '');
-                  setMemberError('');
-                  setIsMemberModalOpen(true);
-                }}
+                onClick={handleOpenAddMember}
                 className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center space-x-1.5 shadow-sm transition-all cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
@@ -1281,7 +1202,7 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
                 return (
                   <div
                     key={mem.id}
-                    className={`bg-white p-5 rounded-xl border shadow-sm space-y-3 transition-all flex flex-col justify-between ${
+                    className={`bg-white p-5 rounded-xl border shadow-xs hover:shadow-md space-y-3 transition-all flex flex-col justify-between ${
                       isActive
                         ? 'border-slate-200 hover:border-blue-300'
                         : 'border-slate-200 bg-slate-50/50 opacity-90'
@@ -1290,32 +1211,65 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
                     <div>
                       {/* Card Header: Avatar, Name, Position & Status Badge */}
                       <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center space-x-3">
-                          <div
-                            className={`w-11 h-11 rounded-full font-bold text-sm flex items-center justify-center border-2 shrink-0 ${
-                              isActive
-                                ? 'bg-blue-100 text-blue-900 border-blue-200'
-                                : 'bg-slate-200 text-slate-600 border-slate-300'
-                            }`}
-                          >
-                            {mem.name.charAt(0)}
-                          </div>
+                        <div
+                          onClick={() => handleOpenProfile(mem)}
+                          className="flex items-center space-x-3 cursor-pointer group"
+                          title="পূর্ণাঙ্গ প্রোফাইল দেখতে ক্লিক করুন"
+                        >
+                          {mem.photoUrl ? (
+                            <img
+                              src={mem.photoUrl}
+                              alt={mem.name}
+                              className="w-12 h-12 rounded-full object-cover border-2 border-blue-200 shadow-xs shrink-0 group-hover:scale-105 transition-transform"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <div
+                              className={`w-12 h-12 rounded-full font-bold text-sm flex items-center justify-center border-2 shrink-0 group-hover:scale-105 transition-transform ${
+                                isActive
+                                  ? 'bg-blue-100 text-blue-900 border-blue-200'
+                                  : 'bg-slate-200 text-slate-600 border-slate-300'
+                              }`}
+                            >
+                              {mem.name.charAt(0)}
+                            </div>
+                          )}
                           <div>
                             <div className="flex items-center space-x-1.5">
-                              <h3 className="font-bold text-slate-900 text-sm leading-snug">{mem.name}</h3>
+                              <h3 className="font-bold text-slate-900 text-sm leading-snug group-hover:text-blue-600 transition-colors">
+                                {mem.name}
+                              </h3>
                             </div>
-                            <span className="inline-block bg-blue-50 text-blue-700 text-[11px] font-semibold px-2 py-0.5 rounded-md mt-0.5 border border-blue-100">
-                              {mem.positionCustomBn || mem.position}
-                            </span>
+                            <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                              <span className="inline-block bg-blue-50 text-blue-700 text-[11px] font-semibold px-2 py-0.5 rounded-md border border-blue-100">
+                                {mem.positionCustomBn || mem.position}
+                              </span>
+                              {mem.bloodGroup && (
+                                <span className="inline-flex items-center space-x-0.5 bg-rose-50 text-rose-700 text-[10px] font-bold px-1.5 py-0.5 rounded border border-rose-100">
+                                  <Heart className="w-2.5 h-2.5 fill-rose-500 text-rose-500" />
+                                  <span>{mem.bloodGroup}</span>
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
 
                         {/* Status Badge */}
                         <div>
-                          {isActive ? (
+                          {mem.status === 'ACTIVE' ? (
                             <span className="inline-flex items-center space-x-1 bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-md text-[10px] font-bold">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                               <span>সক্রিয়</span>
+                            </span>
+                          ) : mem.status === 'RESIGNED' ? (
+                            <span className="inline-flex items-center space-x-1 bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-md text-[10px] font-bold">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                              <span>অব্যাহতি</span>
+                            </span>
+                          ) : mem.status === 'DECEASED' ? (
+                            <span className="inline-flex items-center space-x-1 bg-slate-800 text-white border border-slate-900 px-2 py-0.5 rounded-md text-[10px] font-bold">
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                              <span>মরহুম</span>
                             </span>
                           ) : (
                             <span className="inline-flex items-center space-x-1 bg-slate-100 text-slate-600 border border-slate-300 px-2 py-0.5 rounded-md text-[10px] font-bold">
@@ -1328,9 +1282,19 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
 
                       {/* Member Details */}
                       <div className="text-xs text-slate-600 space-y-1.5 pt-3 mt-3 border-t border-slate-100">
-                        <div className="flex items-center space-x-2">
-                          <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <span className="font-mono text-slate-800 font-semibold">{mem.phone}</span>
+                        {mem.fatherName && (
+                          <div className="text-[11px] text-slate-500 truncate">
+                            <span className="text-slate-400">পিতা:</span> {mem.fatherName}
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-1.5">
+                            <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span className="font-mono text-slate-800 font-semibold">{mem.phone}</span>
+                          </div>
+                          {mem.altPhone && (
+                            <span className="font-mono text-[11px] text-slate-500">/{mem.altPhone}</span>
+                          )}
                         </div>
                         {mem.nid && (
                           <div className="flex items-center space-x-2">
@@ -1347,32 +1311,43 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
                           </div>
                         )}
                         {mem.notes && (
-                          <div className="text-[11px] text-slate-500 bg-slate-50 px-2 py-1 rounded border border-slate-100 mt-1">
+                          <div className="text-[11px] text-slate-500 bg-slate-50 px-2 py-1 rounded border border-slate-100 mt-1 line-clamp-2">
                             {mem.notes}
                           </div>
                         )}
                       </div>
                     </div>
 
-                    {/* Action Buttons: Status Toggle, Edit, Delete */}
-                    <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                      {/* Quick Status Toggle Button */}
+                    {/* Action Buttons: Profile, Status Toggle, Edit, Delete */}
+                    <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-1.5">
+                      {/* View Profile Button */}
                       <button
-                        id={`btn-toggle-status-${mem.id}`}
-                        onClick={() => handleToggleStatus(mem)}
-                        disabled={isToggling}
-                        title={isActive ? 'সদস্যকে নিষ্ক্রিয় করতে ক্লিক করুন' : 'সদস্যকে সক্রিয় করতে ক্লিক করুন'}
-                        className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                          isActive
-                            ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200'
-                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
-                        }`}
+                        id={`btn-view-profile-${mem.id}`}
+                        onClick={() => handleOpenProfile(mem)}
+                        title="সদস্যের পূর্ণাঙ্গ প্রোফাইল ও নথি দেখুন"
+                        className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-all cursor-pointer shadow-xs"
                       >
-                        <Power className={`w-3.5 h-3.5 ${isActive ? 'text-emerald-600' : 'text-slate-400'}`} />
-                        <span>{isToggling ? 'প্রসেসিং...' : isActive ? 'সক্রিয়' : 'নিষ্ক্রিয়'}</span>
+                        <User className="w-3.5 h-3.5" />
+                        <span>প্রোফাইল</span>
                       </button>
 
-                      <div className="flex items-center space-x-1.5">
+                      <div className="flex items-center space-x-1">
+                        {/* Quick Status Toggle Button */}
+                        <button
+                          id={`btn-toggle-status-${mem.id}`}
+                          onClick={() => handleToggleStatus(mem)}
+                          disabled={isToggling}
+                          title={isActive ? 'সদস্যকে নিষ্ক্রিয় করতে ক্লিক করুন' : 'সদস্যকে সক্রিয় করতে ক্লিক করুন'}
+                          className={`flex items-center space-x-1 px-2 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                            isActive
+                              ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
+                          }`}
+                        >
+                          <Power className={`w-3.5 h-3.5 ${isActive ? 'text-emerald-600' : 'text-slate-400'}`} />
+                          <span className="hidden sm:inline">{isToggling ? '...' : isActive ? 'সক্রিয়' : 'নিষ্ক্রিয়'}</span>
+                        </button>
+
                         {/* Edit Button */}
                         <button
                           id={`btn-edit-member-${mem.id}`}
@@ -1708,6 +1683,19 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
                   {toBanglaNumber((resolutions || []).length)}
                 </span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => setMeetingSubTab('documents')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
+                  meetingSubTab === 'documents'
+                    ? 'bg-blue-700 text-white shadow-sm ring-2 ring-blue-300'
+                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                }`}
+              >
+                <FileText className="w-4 h-4" />
+                <span>৪. কমিটি ও রেজোলিউশন নথি</span>
+              </button>
             </div>
 
             <div className="flex items-center space-x-2">
@@ -1745,7 +1733,7 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
           </div>
 
           {/* Search & Filter Bar (for Notices & Minutes) */}
-          {meetingSubTab !== 'resolutions' && (
+          {meetingSubTab !== 'resolutions' && meetingSubTab !== 'documents' && (
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 {/* Search input */}
@@ -2382,6 +2370,26 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
               onUpdateProgress={handleUpdateResolutionProgress}
             />
           )}
+
+          {/* SUBTAB 4: COMMITTEE & RESOLUTION DOCUMENTS */}
+          {meetingSubTab === 'documents' && (
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs animate-in fade-in duration-150">
+              <div className="mb-4 pb-3 border-b border-slate-100">
+                <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                  <FileText className="w-4 h-4 text-blue-600" />
+                  <span>কমিটি গঠন, সরকারি গেজেট, গঠনতন্ত্র ও রেজোলিউশন নথি ভাণ্ডার</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  কার্যনির্বাহী কমিটির অনুমোদনপত্র, নির্বাচন/মনোনয়ন সংক্রান্ত চিঠি, গঠনতন্ত্র, রেজোলিউশনের স্ক্যান কপি ও মিটিং রেকর্ড সংরক্ষণ করুন।
+                </p>
+              </div>
+              <DocumentSection
+                entityType="COMMITTEE"
+                entityId={terms.find((t) => t.status === 'ACTIVE')?.id || 'COMMITTEE_CENTRAL'}
+                entityTitle="পরিচালনা পরিষদ ও রেজোলিউশন নথি"
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -2449,6 +2457,11 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
           onUpdateSubCommittee={onUpdateSubCommittee}
           onArchiveSubCommittee={onArchiveSubCommittee}
         />
+      )}
+
+      {/* 8. INDEPENDENT ADVISORY COUNCIL (স্বতন্ত্র উপদেষ্টা পরিষদ) */}
+      {activeTab === 'advisory-council' && (
+        <AdvisoryCouncilView mosque={mosque} />
       )}
       </div>
 
@@ -2534,433 +2547,47 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
         </div>
       )}
 
-      {/* CREATE MEMBER MODAL */}
-      {isMemberModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="font-bold text-base text-slate-900">কমিটিতে নতুন সদস্য অন্তর্ভুক্তি</h3>
-              <button
-                onClick={() => setIsMemberModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {/* COMPREHENSIVE MEMBER FORM MODAL (ADD & EDIT) */}
+      <MemberFormModal
+        isOpen={isMemberModalOpen}
+        onClose={() => {
+          setIsMemberModalOpen(false);
+          setMemberToEdit(null);
+        }}
+        memberToEdit={memberToEdit}
+        terms={terms}
+        activeTermId={activeTerm?.id}
+        onSave={async (data) => {
+          if (memberToEdit) {
+            if (onUpdateMember) {
+              await onUpdateMember(memberToEdit.id, data);
+              if (selectedProfileMember?.id === memberToEdit.id) {
+                setSelectedProfileMember((prev) => (prev ? ({ ...prev, ...data } as CommitteeMember) : null));
+              }
+            }
+          } else {
+            await onAddMember(data);
+          }
+        }}
+      />
 
-            {memberError && (
-              <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-rose-800 text-xs flex items-center space-x-2">
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                <span>{memberError}</span>
-              </div>
-            )}
-            <form onSubmit={handleMemberSubmit} className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">কমিটি মেয়াদ *</label>
-                <select
-                  id="select-member-term"
-                  value={selectedTermId || activeTerm?.id || terms[0]?.id || ''}
-                  onChange={(e) => setSelectedTermId(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-white focus:ring-1 focus:ring-blue-500 font-medium"
-                >
-                  {terms.map((tm) => (
-                    <option key={tm.id} value={tm.id}>
-                      {tm.title} ({tm.status})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">সদস্যের পুরো নাম *</label>
-                <input
-                  id="input-member-name"
-                  type="text"
-                  placeholder="e.g. আলা উদ্দীন"
-                  value={memberName}
-                  onChange={(e) => setMemberName(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">জাতীয় পরিচয়পত্র (NID)</label>
-                  <input
-                    id="input-member-nid"
-                    type="text"
-                    placeholder="19XXXXXXXXX"
-                    value={memberNid}
-                    onChange={(e) => setMemberNid(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-1 focus:ring-blue-500 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">মোবাইল নম্বর *</label>
-                  <input
-                    id="input-member-phone"
-                    type="tel"
-                    placeholder="018XXXXXXXX"
-                    value={memberPhone}
-                    onChange={(e) => setMemberPhone(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-1 focus:ring-blue-500 font-mono"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">পদবি নির্বাচন *</label>
-                <select
-                  id="select-member-position"
-                  value={memberPosition}
-                  onChange={(e) => setMemberPosition(e.target.value as any)}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-white focus:ring-1 focus:ring-blue-500 font-medium"
-                >
-                  <option value="PRESIDENT">সভাপতি (President)</option>
-                  <option value="VICE_PRESIDENT">সহ-সভাপতি (Vice President)</option>
-                  <option value="SECRETARY">সাধারণ সম্পাদক (General Secretary)</option>
-                  <option value="JOINT_SECRETARY">যুগ্ম সম্পাদক (Joint Secretary)</option>
-                  <option value="TREASURER">কোষাধ্যক্ষ (Treasurer)</option>
-                  <option value="ORGANIZING_SECRETARY">সাংগঠনিক সম্পাদক</option>
-                  <option value="MEMBER">কার্যনির্বাহী সদস্য (Member)</option>
-                  <option value="IMAM">সম্মানিত ইমাম (সদস্য)</option>
-                  <option value="ADVISOR">উপদেষ্টা (Advisor)</option>
-                  <option value="OTHER">অন্যান্য পদবি</option>
-                </select>
-              </div>
-
-              {memberPosition === 'OTHER' && (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">কাস্টম পদবি লিখুন *</label>
-                  <input
-                    id="input-member-custom-position"
-                    type="text"
-                    placeholder="e.g. প্রচার সম্পাদক"
-                    value={memberPositionCustom}
-                    onChange={(e) => setMemberPositionCustom(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">সদস্যের প্রাথমিক স্ট্যাটাস *</label>
-                <div className="flex items-center space-x-3 bg-slate-50 p-2 rounded-lg border border-slate-200 text-xs">
-                  <label className="flex items-center space-x-1.5 cursor-pointer font-semibold text-emerald-800">
-                    <input
-                      type="radio"
-                      name="memberStatus"
-                      value="ACTIVE"
-                      checked={memberStatus === 'ACTIVE'}
-                      onChange={() => setMemberStatus('ACTIVE')}
-                      className="text-emerald-600 focus:ring-emerald-500"
-                    />
-                    <span>🟢 সক্রিয় (Active)</span>
-                  </label>
-                  <label className="flex items-center space-x-1.5 cursor-pointer font-semibold text-slate-700">
-                    <input
-                      type="radio"
-                      name="memberStatus"
-                      value="INACTIVE"
-                      checked={memberStatus === 'INACTIVE'}
-                      onChange={() => setMemberStatus('INACTIVE')}
-                      className="text-slate-600 focus:ring-slate-500"
-                    />
-                    <span>⚪ নিষ্ক্রিয় (Inactive)</span>
-                  </label>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">ঠিকানা</label>
-                <input
-                  id="input-member-address"
-                  type="text"
-                  placeholder="e.g. খুরুশকুল, কক্সবাজার"
-                  value={memberAddress}
-                  onChange={(e) => setMemberAddress(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">পেশা / অতিরিক্ত নোট</label>
-                <input
-                  id="input-member-notes"
-                  type="text"
-                  placeholder="e.g. পেশা: শিক্ষকতা / সমাজসেবক"
-                  value={memberNotes}
-                  onChange={(e) => setMemberNotes(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
-
-              <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsMemberModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
-                >
-                  {t.cancel}
-                </button>
-                <button
-                  id="btn-save-member"
-                  type="submit"
-                  className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm cursor-pointer"
-                >
-                  {t.save}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* EDIT MEMBER MODAL */}
-      {isEditModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-800 flex items-center justify-center">
-                  <Edit2 className="w-4 h-4" />
-                </div>
-                <h3 className="font-bold text-base text-slate-900">সদস্যের তথ্য সম্পাদনা (Edit)</h3>
-              </div>
-              <button
-                onClick={() => setIsEditModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {editError && (
-              <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-rose-800 text-xs flex items-center space-x-2">
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                <span>{editError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleSaveEditMember} className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">কমিটি মেয়াদ *</label>
-                <select
-                  id="select-edit-member-term"
-                  value={editTermId}
-                  onChange={(e) => setEditTermId(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-white focus:ring-1 focus:ring-blue-500 font-medium"
-                >
-                  {terms.map((tm) => (
-                    <option key={tm.id} value={tm.id}>
-                      {tm.title} ({tm.status})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">সদস্যের পুরো নাম *</label>
-                <input
-                  id="input-edit-member-name"
-                  type="text"
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-1 focus:ring-blue-500 font-medium"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">জাতীয় পরিচয়পত্র (NID)</label>
-                  <input
-                    id="input-edit-member-nid"
-                    type="text"
-                    value={editNid}
-                    onChange={(e) => setEditNid(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-1 focus:ring-blue-500 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">মোবাইল নম্বর *</label>
-                  <input
-                    id="input-edit-member-phone"
-                    type="tel"
-                    value={editPhone}
-                    onChange={(e) => setEditPhone(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-1 focus:ring-blue-500 font-mono"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">পদবি নির্বাচন *</label>
-                <select
-                  id="select-edit-member-position"
-                  value={editPosition}
-                  onChange={(e) => {
-                    const pos = e.target.value as any;
-                    setEditPosition(pos);
-                    if (pos !== 'OTHER') {
-                      setEditPositionCustom(POSITION_MAP_BN[pos] || '');
-                    }
-                  }}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-white focus:ring-1 focus:ring-blue-500 font-medium"
-                >
-                  <option value="PRESIDENT">সভাপতি (President)</option>
-                  <option value="VICE_PRESIDENT">সহ-সভাপতি (Vice President)</option>
-                  <option value="SECRETARY">সাধারণ সম্পাদক (General Secretary)</option>
-                  <option value="JOINT_SECRETARY">যুগ্ম সম্পাদক (Joint Secretary)</option>
-                  <option value="TREASURER">কোষাধ্যক্ষ (Treasurer)</option>
-                  <option value="ORGANIZING_SECRETARY">সাংগঠনিক সম্পাদক</option>
-                  <option value="MEMBER">কার্যনির্বাহী সদস্য (Member)</option>
-                  <option value="IMAM">সম্মানিত ইমাম (সদস্য)</option>
-                  <option value="ADVISOR">উপদেষ্টা (Advisor)</option>
-                  <option value="OTHER">অন্যান্য পদবি</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">বাংলা পদবি (প্রদর্শনের জন্য)</label>
-                <input
-                  id="input-edit-member-custom-position"
-                  type="text"
-                  placeholder="e.g. কার্যনির্বাহী সদস্য (Member)"
-                  value={editPositionCustom}
-                  onChange={(e) => setEditPositionCustom(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
-
-              {/* Status Selector */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">সদস্যের স্ট্যাটাস / অবস্থা *</label>
-                <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-xs">
-                  <label
-                    className={`flex items-center space-x-2 p-2 rounded-md border cursor-pointer font-semibold transition-all ${
-                      editStatus === 'ACTIVE'
-                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
-                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="editStatus"
-                      value="ACTIVE"
-                      checked={editStatus === 'ACTIVE'}
-                      onChange={() => setEditStatus('ACTIVE')}
-                      className="text-emerald-600 focus:ring-emerald-500"
-                    />
-                    <span>🟢 সক্রিয় (Active)</span>
-                  </label>
-
-                  <label
-                    className={`flex items-center space-x-2 p-2 rounded-md border cursor-pointer font-semibold transition-all ${
-                      editStatus === 'INACTIVE'
-                        ? 'bg-slate-200 border-slate-400 text-slate-800'
-                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="editStatus"
-                      value="INACTIVE"
-                      checked={editStatus === 'INACTIVE'}
-                      onChange={() => setEditStatus('INACTIVE')}
-                      className="text-slate-600 focus:ring-slate-500"
-                    />
-                    <span>⚪ নিষ্ক্রিয় (Inactive)</span>
-                  </label>
-
-                  <label
-                    className={`flex items-center space-x-2 p-2 rounded-md border cursor-pointer font-semibold transition-all ${
-                      editStatus === 'RESIGNED'
-                        ? 'bg-amber-50 border-amber-300 text-amber-800'
-                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="editStatus"
-                      value="RESIGNED"
-                      checked={editStatus === 'RESIGNED'}
-                      onChange={() => setEditStatus('RESIGNED')}
-                      className="text-amber-600 focus:ring-amber-500"
-                    />
-                    <span>🟡 অব্যাহতি প্রাপ্ত</span>
-                  </label>
-
-                  <label
-                    className={`flex items-center space-x-2 p-2 rounded-md border cursor-pointer font-semibold transition-all ${
-                      editStatus === 'DECEASED'
-                        ? 'bg-slate-800 border-slate-900 text-white'
-                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="editStatus"
-                      value="DECEASED"
-                      checked={editStatus === 'DECEASED'}
-                      onChange={() => setEditStatus('DECEASED')}
-                      className="text-slate-900 focus:ring-slate-900"
-                    />
-                    <span>⚫ মরহুম</span>
-                  </label>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">ঠিকানা</label>
-                <input
-                  id="input-edit-member-address"
-                  type="text"
-                  value={editAddress}
-                  onChange={(e) => setEditAddress(e.target.value)}
-                  placeholder="e.g. খুরুশকুল, কক্সবাজার"
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">পেশা / মন্তব্য / নোট</label>
-                <input
-                  id="input-edit-member-notes"
-                  type="text"
-                  value={editNotes}
-                  onChange={(e) => setEditNotes(e.target.value)}
-                  placeholder="e.g. পেশা: ব্যবসা"
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
-
-              <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsEditModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
-                >
-                  {t.cancel}
-                </button>
-                <button
-                  id="btn-save-edit-member"
-                  type="submit"
-                  disabled={isSavingEdit}
-                  className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm cursor-pointer flex items-center space-x-1.5"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>{isSavingEdit ? 'আপডেট হচ্ছে...' : 'তথ্য আপডেট করুন'}</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* COMPREHENSIVE MEMBER PROFILE MODAL (OVERVIEW, ACTIVITIES, EVALUATIONS, A4 PRINT & EXPORT) */}
+      <MemberProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => {
+          setIsProfileModalOpen(false);
+          setSelectedProfileMember(null);
+        }}
+        member={selectedProfileMember}
+        terms={terms}
+        allMembers={members}
+        meetings={meetings}
+        mosque={mosque}
+        onEdit={(mem) => {
+          setMemberToEdit(mem);
+          setIsMemberModalOpen(true);
+        }}
+      />
 
       {/* DELETE CONFIRMATION MODAL */}
       {deletingMember && (

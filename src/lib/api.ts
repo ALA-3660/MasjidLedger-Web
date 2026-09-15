@@ -33,6 +33,10 @@ import {
   DailyPrayerSchedule,
   MosquePrayerSettings,
   MonthlyPrayerDay,
+  AdvisoryCouncilTerm,
+  AdvisorMember,
+  AdvisorConsultation,
+  CentralDocument,
 } from '../types';
 
 class ApiService {
@@ -766,6 +770,81 @@ class ApiService {
     if (!res.success) throw new Error(res.error?.message || 'Failed to delete committee member');
   }
 
+  // Advisory Council (স্বতন্ত্র উপদেষ্টা পরিষদ)
+  async getAdvisoryCouncil(): Promise<{ terms: AdvisoryCouncilTerm[]; advisors: AdvisorMember[]; consultations: AdvisorConsultation[] }> {
+    const res = await this.request<{ terms: AdvisoryCouncilTerm[]; advisors: AdvisorMember[]; consultations: AdvisorConsultation[] }>('/advisors');
+    if (!res.success) throw new Error(res.error?.message || 'উপদেষ্টা পরিষদের তথ্য লোড করতে ব্যর্থ হয়েছে');
+    return res.data || { terms: [], advisors: [], consultations: [] };
+  }
+
+  async createAdvisoryTerm(data: any): Promise<AdvisoryCouncilTerm> {
+    const res = await this.request<AdvisoryCouncilTerm>('/advisors/terms', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to add advisory term');
+    return res.data!;
+  }
+
+  async updateAdvisoryTerm(id: string, data: any): Promise<AdvisoryCouncilTerm> {
+    const res = await this.request<AdvisoryCouncilTerm>(`/advisors/terms/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to update advisory term');
+    return res.data!;
+  }
+
+  async createAdvisorMember(data: any): Promise<AdvisorMember> {
+    const res = await this.request<AdvisorMember>('/advisors/members', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to add advisor member');
+    return res.data!;
+  }
+
+  async updateAdvisorMember(id: string, data: any): Promise<AdvisorMember> {
+    const res = await this.request<AdvisorMember>(`/advisors/members/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to update advisor member');
+    return res.data!;
+  }
+
+  async deleteAdvisorMember(id: string): Promise<void> {
+    const res = await this.request<void>(`/advisors/members/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to delete advisor member');
+  }
+
+  async createAdvisorConsultation(data: any): Promise<AdvisorConsultation> {
+    const res = await this.request<AdvisorConsultation>('/advisors/consultations', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to add consultation');
+    return res.data!;
+  }
+
+  async updateAdvisorConsultation(id: string, data: any): Promise<AdvisorConsultation> {
+    const res = await this.request<AdvisorConsultation>(`/advisors/consultations/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to update consultation');
+    return res.data!;
+  }
+
+  async deleteAdvisorConsultation(id: string): Promise<void> {
+    const res = await this.request<void>(`/advisors/consultations/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to delete consultation');
+  }
+
   async createCommitteeMeeting(data: any): Promise<CommitteeMeeting> {
     const res = await this.request<CommitteeMeeting>('/committee/meetings', {
       method: 'POST',
@@ -1463,6 +1542,92 @@ class ApiService {
   async getAuditLogs(): Promise<AuditLog[]> {
     const res = await this.request<AuditLog[]>('/audit/logs');
     return res.data || [];
+  }
+
+  // ==========================================
+  // CENTRAL DOCUMENT & ATTACHMENT SYSTEM
+  // ==========================================
+  async getDocuments(params: {
+    entityType?: string;
+    entityId?: string;
+    documentType?: string;
+    visibility?: string;
+    search?: string;
+    hasFile?: boolean;
+    hasDriveLink?: boolean;
+    sortBy?: string;
+    startDate?: string;
+    endDate?: string;
+  } = {}): Promise<CentralDocument[]> {
+    const query = new URLSearchParams();
+    if (params.entityType) query.append('entityType', params.entityType);
+    if (params.entityId) query.append('entityId', params.entityId);
+    if (params.documentType) query.append('documentType', params.documentType);
+    if (params.visibility) query.append('visibility', params.visibility);
+    if (params.search) query.append('search', params.search);
+    if (params.hasFile !== undefined) query.append('hasFile', String(params.hasFile));
+    if (params.hasDriveLink !== undefined) query.append('hasDriveLink', String(params.hasDriveLink));
+    if (params.sortBy) query.append('sortBy', params.sortBy);
+    if (params.startDate) query.append('startDate', params.startDate);
+    if (params.endDate) query.append('endDate', params.endDate);
+
+    const queryString = query.toString();
+    const url = `/documents${queryString ? `?${queryString}` : ''}`;
+    const res = await this.request<CentralDocument[]>(url);
+    return res.data || [];
+  }
+
+  async getDocumentStats(): Promise<{
+    totalDocuments: number;
+    totalDirectFiles: number;
+    totalGoogleDriveLinks: number;
+    totalBothAttachments: number;
+    totalStorageBytes: number;
+    byEntityType: Record<string, number>;
+    byDocumentType: Record<string, number>;
+  }> {
+    const res = await this.request<any>('/documents/summary/stats');
+    return res.data || {
+      totalDocuments: 0,
+      totalDirectFiles: 0,
+      totalGoogleDriveLinks: 0,
+      totalBothAttachments: 0,
+      totalStorageBytes: 0,
+      byEntityType: {},
+      byDocumentType: {},
+    };
+  }
+
+  async getDocument(id: string): Promise<CentralDocument> {
+    const res = await this.request<CentralDocument>(`/documents/${id}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'ডকুমেন্ট লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async createDocument(data: Partial<CentralDocument>): Promise<CentralDocument> {
+    const res = await this.request<CentralDocument>('/documents', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'ডকুমেন্ট সংরক্ষণ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateDocument(id: string, data: Partial<CentralDocument>): Promise<CentralDocument> {
+    const res = await this.request<CentralDocument>(`/documents/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'ডকুমেন্ট হালনাগাদ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async deleteDocument(id: string): Promise<{ success: boolean; message: string }> {
+    const res = await this.request<any>(`/documents/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.success) throw new Error(res.error?.message || 'ডকুমেন্ট মুছে ফেলতে ব্যর্থ হয়েছে');
+    return res.data || { success: true, message: 'ডকুমেন্ট সফলভাবে মুছে ফেলা হয়েছে।' };
   }
 
   // AI Advisor / Financial Auditor

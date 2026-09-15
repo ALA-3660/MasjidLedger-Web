@@ -27,6 +27,7 @@ import {
 import { Staff, StaffPayment, FinancialAccount, SalaryHistoryEntry } from '../types';
 import { Language, translations, formatCurrency, formatDate } from '../lib/i18n';
 import { api } from '../lib/api';
+import { DocumentSection } from './DocumentSection';
 
 interface StaffProfileDrawerProps {
   isOpen: boolean;
@@ -61,7 +62,7 @@ export const StaffProfileDrawer: React.FC<StaffProfileDrawerProps> = ({
 }) => {
   const t = translations[language];
 
-  const [activeTab, setActiveTab] = useState<'PAYMENTS' | 'SALARY_HISTORY' | 'DETAILS'>('PAYMENTS');
+  const [activeTab, setActiveTab] = useState<'PAYMENTS' | 'SALARY_HISTORY' | 'DETAILS' | 'DOCUMENTS'>('PAYMENTS');
 
   // Salary Revision Modal
   const [isRevisionModalOpen, setIsRevisionModalOpen] = useState(false);
@@ -312,6 +313,17 @@ export const StaffProfileDrawer: React.FC<StaffProfileDrawerProps> = ({
           >
             <User className="w-3.5 h-3.5" />
             <span>পূর্ণাঙ্গ জীবনবৃত্তান্ত ও ব্যাংক তথ্য</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('DOCUMENTS')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
+              activeTab === 'DOCUMENTS'
+                ? 'bg-white text-emerald-700 shadow-2xs border border-slate-200'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>সংযুক্ত নথি ও ফাইল</span>
           </button>
         </div>
 
@@ -663,6 +675,16 @@ export const StaffProfileDrawer: React.FC<StaffProfileDrawerProps> = ({
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {activeTab === 'DOCUMENTS' && (
+            <div className="space-y-4 animate-in fade-in duration-150">
+              <DocumentSection
+                entityType="STAFF"
+                entityId={staff.id}
+                entityTitle={`${staff.name} (${staff.designation})`}
+              />
             </div>
           )}
         </div>

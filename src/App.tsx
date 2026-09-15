@@ -53,6 +53,8 @@ import { MoneyReceiptModal, VoucherModal, PrintFormat } from './components/Print
 import { ChangeCalculatorModal } from './components/ChangeCalculatorModal';
 import { UniversalScannerModal } from './components/UniversalScannerModal';
 import { UserManualView } from './components/UserManualView';
+import { AdvisoryCouncilView } from './components/AdvisoryCouncilView';
+import { DocumentCenter } from './components/DocumentCenter';
 import { QrActionCardsModal } from './components/QrActionCardsModal';
 import { RecordActionModal } from './components/RecordActionModal';
 import { RecordPrintLabelModal } from './components/RecordPrintLabelModal';
@@ -1153,6 +1155,16 @@ export default function App() {
         />
       )}
 
+      {/* 6.1 Independent Advisory Council (স্বতন্ত্র উপদেষ্টা পরিষদ) */}
+      {currentTab === 'advisors' && (
+        <AdvisoryCouncilView
+          mosque={mosque}
+          onRefresh={async () => {
+            await loadData(false);
+          }}
+        />
+      )}
+
       {/* 7. Staff, Assets, Waqf Property & Cemetery View */}
       {(currentTab === 'staff' ||
         currentTab === 'assets' ||
@@ -1204,6 +1216,14 @@ export default function App() {
           onArchiveCemeteryRecord={handleArchiveCemetery}
           onDeleteCemeteryRecord={handleDeleteCemetery}
           onAddNotice={handleAddNotice}
+        />
+      )}
+
+      {/* 7.5 Central Document & Attachment Management System */}
+      {currentTab === 'documents' && (
+        <DocumentCenter
+          currentMosque={mosque}
+          currentUser={currentUser}
         />
       )}
 

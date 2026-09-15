@@ -397,7 +397,7 @@ export const MeetingNoticePrintModal: React.FC<MeetingNoticePrintModalProps> = (
 
   const handlePrint = () => {
     printElement('meeting-notice-document-paper', {
-      title: `মিটিং_নোটিশ_${memoNo || noticeDate}`,
+      title: `মিটিং_নোটিশ_${notice.memoNo || notice.noticeDate}`,
       pageSize: 'A4',
       pageOrientation: 'portrait',
       margin: '10mm 12mm',

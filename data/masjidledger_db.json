@@ -29,12 +29,31 @@
         "instructionsBn": "বিকাশ বা নগদ অ্যাপের মার্চেন্ট পেমেন্ট অপশনে গিয়ে রেফারেন্সে আপনার নাম বা দানের খাত লিখুন।"
       },
       "jamaatSettings": {
-        "fajr": { "azan": "4:28 AM", "jamaat": "5:15 AM" },
-        "dhuhr": { "azan": "12:30 PM", "jamaat": "1:30 PM" },
-        "asr": { "azan": "4:21 PM", "jamaat": "4:45 PM" },
-        "maghrib": { "azan": "6:05 PM", "jamaat": "6:30 PM" },
-        "isha": { "azan": "7:21 PM", "jamaat": "8:15 PM" },
-        "jumuah": { "azan": "12:30 PM", "khutbah": "1:00 PM", "jamaat": "1:30 PM" }
+        "fajr": {
+          "azan": "4:28 AM",
+          "jamaat": "5:15 AM"
+        },
+        "dhuhr": {
+          "azan": "12:30 PM",
+          "jamaat": "1:30 PM"
+        },
+        "asr": {
+          "azan": "4:21 PM",
+          "jamaat": "4:45 PM"
+        },
+        "maghrib": {
+          "azan": "6:05 PM",
+          "jamaat": "6:30 PM"
+        },
+        "isha": {
+          "azan": "7:21 PM",
+          "jamaat": "8:15 PM"
+        },
+        "jumuah": {
+          "azan": "12:30 PM",
+          "khutbah": "1:00 PM",
+          "jamaat": "1:30 PM"
+        }
       },
       "prayerSettings": {
         "district": "Dhaka",
@@ -50,14 +69,82 @@
         "tahajjudMode": "LAST_THIRD",
         "timeDisplayFormat": "12H",
         "warningThresholdMinutes": 10,
-        "fajr": { "adhan": "4:28 AM", "jamaat": "5:15 AM", "manualOffset": 0 },
-        "dhuhr": { "adhan": "12:30 PM", "jamaat": "1:30 PM", "manualOffset": 0 },
-        "asr": { "adhan": "4:21 PM", "jamaat": "4:45 PM", "manualOffset": 0 },
-        "maghrib": { "adhan": "6:05 PM", "jamaat": "6:30 PM", "manualOffset": 0 },
-        "isha": { "adhan": "7:21 PM", "jamaat": "8:15 PM", "manualOffset": 0 },
-        "jumuah": { "adhan": "12:30 PM", "khutbah": "1:00 PM", "jamaat": "1:30 PM" }
+        "fajr": {
+          "adhan": "4:28 AM",
+          "jamaat": "5:15 AM",
+          "manualOffset": 0
+        },
+        "dhuhr": {
+          "adhan": "12:30 PM",
+          "jamaat": "1:30 PM",
+          "manualOffset": 0
+        },
+        "asr": {
+          "adhan": "4:21 PM",
+          "jamaat": "4:45 PM",
+          "manualOffset": 0
+        },
+        "maghrib": {
+          "adhan": "6:05 PM",
+          "jamaat": "6:30 PM",
+          "manualOffset": 0
+        },
+        "isha": {
+          "adhan": "7:21 PM",
+          "jamaat": "8:15 PM",
+          "manualOffset": 0
+        },
+        "jumuah": {
+          "adhan": "12:30 PM",
+          "khutbah": "1:00 PM",
+          "jamaat": "1:30 PM"
+        }
       },
       "publicPortalSettings": {
+        "mosqueProfile": true,
+        "mosqueLogo": true,
+        "mosqueAddress": true,
+        "mosquePhone": true,
+        "mosqueEmail": false,
+        "locationMap": true,
+        "waqfId": true,
+        "registrationNumber": true,
+        "establishedYear": true,
+        "islamicTagline": true,
+        "prayerSchedule": true,
+        "jumuahSchedule": true,
+        "ramadanSchedule": false,
+        "liveWaqtStatus": true,
+        "donation": true,
+        "onlineDonation": true,
+        "bankAccount": true,
+        "mobileBanking": true,
+        "donationQr": true,
+        "donationInstructions": true,
+        "financialSummary": true,
+        "monthlyIncome": true,
+        "monthlyExpense": true,
+        "monthlySurplus": true,
+        "currentBalance": false,
+        "cashBalance": false,
+        "bankBalance": false,
+        "totalDonationReceived": true,
+        "notices": true,
+        "emergencyNotice": true,
+        "noticeDate": true,
+        "projects": true,
+        "projectProgress": true,
+        "projectBudget": false,
+        "waqfSummary": false,
+        "committee": true,
+        "subCommittee": false,
+        "staff": true,
+        "cemetery": false,
+        "displayModeTheme": "EMERALD_NIGHT",
+        "autoRefreshInterval": 45,
+        "slideDurationSec": 15,
+        "enableDisplayAudioAlert": true,
+        "enableAutoSlideRotation": true,
         "slug": "mamun-jame-masjid",
         "isEnabled": true,
         "showDailyPrayerTimes": true,
@@ -96,16 +183,81 @@
       "phone": "+8801819887766",
       "status": "ACTIVE",
       "jamaatSettings": {
-        "fajr": { "azan": "4:28 AM", "jamaat": "5:15 AM" },
-        "dhuhr": { "azan": "12:30 PM", "jamaat": "1:30 PM" },
-        "asr": { "azan": "4:21 PM", "jamaat": "4:45 PM" },
-        "maghrib": { "azan": "6:05 PM", "jamaat": "6:30 PM" },
-        "isha": { "azan": "7:21 PM", "jamaat": "8:15 PM" },
-        "jumuah": { "azan": "12:30 PM", "khutbah": "1:00 PM", "jamaat": "1:30 PM" },
+        "fajr": {
+          "azan": "4:28 AM",
+          "jamaat": "5:15 AM"
+        },
+        "dhuhr": {
+          "azan": "12:30 PM",
+          "jamaat": "1:30 PM"
+        },
+        "asr": {
+          "azan": "4:21 PM",
+          "jamaat": "4:45 PM"
+        },
+        "maghrib": {
+          "azan": "6:05 PM",
+          "jamaat": "6:30 PM"
+        },
+        "isha": {
+          "azan": "7:21 PM",
+          "jamaat": "8:15 PM"
+        },
+        "jumuah": {
+          "azan": "12:30 PM",
+          "khutbah": "1:00 PM",
+          "jamaat": "1:30 PM"
+        },
         "ishraqOffsetMins": 10
       },
       "createdAt": "2026-01-01T00:00:00.000Z",
-      "updatedAt": "2026-01-01T00:00:00.000Z"
+      "updatedAt": "2026-01-01T00:00:00.000Z",
+      "publicPortalSettings": {
+        "mosqueProfile": true,
+        "mosqueLogo": true,
+        "mosqueAddress": true,
+        "mosquePhone": true,
+        "mosqueEmail": false,
+        "locationMap": true,
+        "waqfId": true,
+        "registrationNumber": true,
+        "establishedYear": true,
+        "islamicTagline": true,
+        "prayerSchedule": true,
+        "jumuahSchedule": true,
+        "ramadanSchedule": false,
+        "liveWaqtStatus": true,
+        "donation": true,
+        "onlineDonation": true,
+        "bankAccount": true,
+        "mobileBanking": true,
+        "donationQr": true,
+        "donationInstructions": true,
+        "financialSummary": true,
+        "monthlyIncome": true,
+        "monthlyExpense": true,
+        "monthlySurplus": true,
+        "currentBalance": false,
+        "cashBalance": false,
+        "bankBalance": false,
+        "totalDonationReceived": true,
+        "notices": true,
+        "emergencyNotice": true,
+        "noticeDate": true,
+        "projects": true,
+        "projectProgress": true,
+        "projectBudget": false,
+        "waqfSummary": false,
+        "committee": true,
+        "subCommittee": false,
+        "staff": true,
+        "cemetery": false,
+        "displayModeTheme": "EMERALD_NIGHT",
+        "autoRefreshInterval": 45,
+        "slideDurationSec": 15,
+        "enableDisplayAudioAlert": true,
+        "enableAutoSlideRotation": true
+      }
     }
   ],
   "users": [
@@ -414,7 +566,6 @@
     }
   ],
   "donationBoxCollections": [],
-  "qrCodes": [],
   "committeeTerms": [
     {
       "id": "term-2026",
@@ -437,6 +588,56 @@
   "committeeTasks": [],
   "committeeManualEvaluations": [],
   "subCommittees": [],
+  "advisoryTerms": [
+    {
+      "id": "adv-term-2026-2028",
+      "mosqueId": "mosque-mamun-001",
+      "title": "২০২৬–২০২৮ উপদেষ্টা পরিষদ",
+      "startDate": "2026-01-01",
+      "endDate": "2028-12-31",
+      "status": "ACTIVE",
+      "description": "মামুন জামে মসজিদ ওয়াক্ফ এস্টেট উপদেষ্টা পরিষদ",
+      "createdAt": "2026-09-15T09:02:37.016Z"
+    }
+  ],
+  "advisors": [
+    {
+      "id": "adv-1789462975082",
+      "mosqueId": "mosque-mamun-001",
+      "termId": "adv-term-2026-2028",
+      "name": "আলহাজ্ব ড. মো. আব্দুল বারী",
+      "fatherName": "মরহুম মৌলভী আশরাফ আলী",
+      "motherName": "মরহুমা রাবেয়া খাতুন",
+      "nid": "19652692015000123",
+      "phone": "01711223344",
+      "bloodGroup": "B+",
+      "address": "বাড়ি #১২, রোড #০৪, মিরপুর-১০, ঢাকা",
+      "photoUrl": "",
+      "advisorRole": "প্রধান উপদেষ্টা",
+      "occupation": "অবসরপ্রাপ্ত অধ্যাপক ও গবেষক",
+      "education": "পিএইচডি (ইসলামিক স্টাডিজ), ঢাবি",
+      "joinDate": "2026-09-15",
+      "status": "ACTIVE",
+      "notes": "মসজিদ সম্প্রসারণ ও ওয়াক্ফ জমি পুনরুদ্ধারে সার্বিক পরামর্শক।",
+      "createdAt": "2026-09-15T09:02:55.082Z",
+      "updatedAt": "2026-09-15T09:02:55.082Z"
+    }
+  ],
+  "advisorConsultations": [
+    {
+      "id": "adv-cons-1789462980634",
+      "mosqueId": "mosque-mamun-001",
+      "advisorId": "adv-1789462975082",
+      "advisorName": "আলহাজ্ব ড. মো. আব্দুল বারী",
+      "date": "2026-09-15",
+      "topic": "মসজিদ কমপ্লেক্সের ওয়াক্ফ সীমানা প্রাচীর ও অডিটোরিয়াম নির্মাণ সংক্রান্ত পরামর্শ",
+      "advice": "ওয়াক্ফ এস্টেটের মূল নকশা অনুযায়ী পূর্ব পাশের সীমানা প্রাচীর অবিলম্বে স্থায়ী করা এবং অনুদান সংগ্রহের জন্য একটি সুনির্দিষ্ট উপ-তহবিল খোলার দিকনির্দেশনা প্রদান করেন।",
+      "relatedContext": "২০২৬-২০২৮ উন্নয়ন পরিকল্পনা",
+      "impactOutcome": "কার্যনির্বাহী কমিটির পরবর্তী সভায় এজেন্ডাভুক্ত হয়েছে।",
+      "status": "IN_PROGRESS",
+      "createdAt": "2026-09-15T09:03:00.634Z"
+    }
+  ],
   "staffList": [],
   "staffPayments": [],
   "staffBankTransferLetters": [],
@@ -447,7 +648,36 @@
   "notifications": [],
   "transfers": [],
   "uploadedFiles": [],
+  "qrCodes": [],
   "auditLogs": [
+    {
+      "id": "aud-1789462980634-2cioy",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "CREATE",
+      "module": "ADVISOR_CONSULTATION",
+      "details": "উপদেষ্টার পরামর্শ নথিভুক্ত: মসজিদ কমপ্লেক্সের ওয়াক্ফ সীমানা প্রাচীর ও অডিটোরিয়াম নির্মাণ সংক্রান্ত পরামর্শ (আলহাজ্ব ড. মো. আব্দুল বারী)",
+      "timestamp": "2026-09-15T09:03:00.634Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "aud-1789462975083-ygkr8",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "CREATE",
+      "module": "ADVISOR_MEMBER",
+      "details": "উপদেষ্টা পরিষদে অন্তর্ভুক্তি: আলহাজ্ব ড. মো. আব্দুল বারী (প্রধান উপদেষ্টা)",
+      "timestamp": "2026-09-15T09:02:55.083Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
     {
       "id": "aud-init-001",
       "mosqueId": "mosque-mamun-001",
@@ -462,8 +692,6 @@
       "status": "SUCCESS"
     }
   ],
-  "smsLogs": [],
-  "documentTokens": [],
   "idempotencyMap": {},
   "backupRecords": [],
   "restoreRecords": [],

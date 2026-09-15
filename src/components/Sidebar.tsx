@@ -26,6 +26,8 @@ import {
   Scale,
   Clock,
   BookOpen,
+  Shield,
+  FolderOpen,
 } from 'lucide-react';
 import { Language, translations } from '../lib/i18n';
 
@@ -41,10 +43,12 @@ export type NavTab =
   | 'bank'
   | 'accountHeads'
   | 'committee'
+  | 'advisors'
   | 'meetings'
   | 'staff'
   | 'assets'
   | 'property'
+  | 'documents'
   | 'cemetery'
   | 'notices'
   | 'prayerTimes'
@@ -119,6 +123,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       title: t.committee,
       items: [
         { id: 'committee' as NavTab, label: t.currentCommittee, icon: Users2 },
+        {
+          id: 'advisors' as NavTab,
+          label: language === 'bn' ? 'উপদেষ্টা পরিষদ' : 'Advisory Council',
+          icon: Shield,
+          badge: language === 'bn' ? 'স্বতন্ত্র' : 'Independent',
+          color: 'text-indigo-600',
+        },
         { id: 'meetings' as NavTab, label: t.meetings, icon: CalendarCheck },
       ],
     },
@@ -128,6 +139,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'staff' as NavTab, label: t.staff, icon: UserCheck },
         { id: 'assets' as NavTab, label: t.assets, icon: Package },
         { id: 'property' as NavTab, label: t.property, icon: Building },
+        {
+          id: 'documents' as NavTab,
+          label: language === 'bn' ? 'ডকুমেন্ট ও ফাইল' : 'Documents',
+          icon: FolderOpen,
+          badge: language === 'bn' ? 'সেন্ট্রাল' : 'Central',
+          color: 'text-emerald-600',
+        },
         { id: 'cemetery' as NavTab, label: t.cemetery, icon: Crosshair },
         { id: 'notices' as NavTab, label: t.notices, icon: Bell },
       ],

@@ -46,7 +46,16 @@ import {
   PublicDocumentToken,
   SmsLog,
   BackupRecord,
-  RestoreRecord
+  RestoreRecord,
+  AdvisoryCouncilTerm,
+  AdvisorMember,
+  AdvisorConsultation,
+  CentralDocument,
+  DocumentEntityType,
+  DocumentCategoryType,
+  DocumentVisibility,
+  DOCUMENT_ENTITY_LABELS,
+  DOCUMENT_CATEGORY_LABELS,
 } from './src/types';
 
 const app = express();
@@ -1728,6 +1737,9 @@ app.post('/api/v1/cloud/backup/create-encrypted', authenticate, (req: AuthReques
       committeeTasks: db.committeeTasks.filter(t => t.mosqueId === mosque.id),
       committeeManualEvaluations: db.committeeManualEvaluations.filter(e => e.mosqueId === mosque.id),
       subCommittees: db.subCommittees.filter(sc => sc.mosqueId === mosque.id),
+      advisoryTerms: db.advisoryTerms.filter(t => t.mosqueId === mosque.id),
+      advisors: db.advisors.filter(a => a.mosqueId === mosque.id),
+      advisorConsultations: db.advisorConsultations.filter(c => c.mosqueId === mosque.id),
       staffList: db.staffList.filter(s => s.mosqueId === mosque.id),
       staffPayments: db.staffPayments.filter(sp => sp.mosqueId === mosque.id),
       staffBankTransferLetters: db.staffBankTransferLetters.filter(sbt => sbt.mosqueId === mosque.id),
@@ -1738,6 +1750,7 @@ app.post('/api/v1/cloud/backup/create-encrypted', authenticate, (req: AuthReques
       notifications: db.notifications.filter(n => n.mosqueId === mosque.id),
       transfers: db.transfers.filter(t => t.mosqueId === mosque.id),
       uploadedFiles: db.uploadedFiles.filter(uf => uf.mosqueId === mosque.id),
+      centralDocuments: db.centralDocuments.filter(cd => cd.mosqueId === mosque.id),
       exportDate: new Date().toISOString(),
       version: '3.5.0',
       appName: 'MasjidLedger'
@@ -1961,6 +1974,15 @@ app.post('/api/v1/cloud/backup/restore-encrypted', authenticate, async (req: Aut
     if (payload.subCommittees) {
       db.subCommittees = db.subCommittees.filter(sc => sc.mosqueId !== currentMosque.id).concat(payload.subCommittees);
     }
+    if (payload.advisoryTerms) {
+      db.advisoryTerms = db.advisoryTerms.filter(t => t.mosqueId !== currentMosque.id).concat(payload.advisoryTerms);
+    }
+    if (payload.advisors) {
+      db.advisors = db.advisors.filter(a => a.mosqueId !== currentMosque.id).concat(payload.advisors);
+    }
+    if (payload.advisorConsultations) {
+      db.advisorConsultations = db.advisorConsultations.filter(c => c.mosqueId !== currentMosque.id).concat(payload.advisorConsultations);
+    }
     if (payload.staffList) {
       db.staffList = db.staffList.filter(s => s.mosqueId !== currentMosque.id).concat(payload.staffList);
     }
@@ -1990,6 +2012,9 @@ app.post('/api/v1/cloud/backup/restore-encrypted', authenticate, async (req: Aut
     }
     if (payload.uploadedFiles) {
       db.uploadedFiles = db.uploadedFiles.filter(uf => uf.mosqueId !== currentMosque.id).concat(payload.uploadedFiles);
+    }
+    if (payload.centralDocuments) {
+      db.centralDocuments = db.centralDocuments.filter(cd => cd.mosqueId !== currentMosque.id).concat(payload.centralDocuments);
     }
 
     db.save();
@@ -3446,7 +3471,8 @@ app.get('/api/v1/accounting/denomination-summary', authenticate, (req: AuthReque
 app.get('/api/v1/committee', authenticate, (req: AuthRequest, res: Response) => {
   const mosqueId = req.currentMosque!.id;
   const terms = db.committeeTerms.filter(t => t.mosqueId === mosqueId);
-  const members = db.committeeMembers.filter(m => m.mosqueId === mosqueId);
+  // Strictly exclude any advisory position from Executive Committee members
+  const members = db.committeeMembers.filter(m => m.mosqueId === mosqueId && (m as any).position !== 'ADVISOR');
   const meetings = db.committeeMeetings.filter(m => m.mosqueId === mosqueId);
   res.json({ success: true, data: { terms, members, meetings } });
 });
@@ -3656,7 +3682,29 @@ app.post('/api/v1/committee/terms/:id/activate', authenticate, requirePermission
 });
 
 app.post('/api/v1/committee/members', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
-  const { termId, name, designation, designationBn, phone, nid, email, address, occupation, photoUrl, orderIndex, position, positionCustomBn } = req.body;
+  const {
+    termId,
+    name,
+    fatherName,
+    motherName,
+    designation,
+    designationBn,
+    phone,
+    altPhone,
+    nid,
+    email,
+    dateOfBirth,
+    bloodGroup,
+    address,
+    occupation,
+    education,
+    photoUrl,
+    orderIndex,
+    position,
+    positionCustomBn,
+    status,
+    notes
+  } = req.body;
   const mosqueId = req.currentMosque!.id;
 
   const POSITION_MAP_BN: Record<string, string> = {
@@ -3668,9 +3716,18 @@ app.post('/api/v1/committee/members', authenticate, requirePermission('MANAGE_CO
     ORGANIZING_SECRETARY: 'সাংগঠনিক সম্পাদক',
     MEMBER: 'কার্যনির্বাহী সদস্য (Member)',
     IMAM: 'ইমাম (সদস্য)',
-    ADVISOR: 'উপদেষ্টা (Advisor)',
     OTHER: 'অন্যান্য পদবি',
   };
+
+  if ((position as string) === 'ADVISOR') {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'উপদেষ্টাগণ কার্যনির্বাহী কমিটির সদস্য নন। অনুগ্রহ করে স্বতন্ত্র "উপদেষ্টা পরিষদ" মডিউল ব্যবহার করে উপদেষ্টা অন্তর্ভুক্ত করুন।'
+      }
+    });
+  }
 
   if (!name || !name.trim()) {
     return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'সদস্যের নাম আবশ্যক।' } });
@@ -3678,6 +3735,22 @@ app.post('/api/v1/committee/members', authenticate, requirePermission('MANAGE_CO
 
   if (!phone || !phone.trim()) {
     return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'মোবাইল নম্বর আবশ্যক।' } });
+  }
+
+  if (email && email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'সঠিক ই-মেইল ঠিকানা প্রদান করুন।' } });
+  }
+
+  if (dateOfBirth) {
+    const dob = new Date(dateOfBirth);
+    if (isNaN(dob.getTime())) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'সঠিক জন্ম তারিখ প্রদান করুন।' } });
+    }
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    if (dob > today) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'জন্ম তারিখ ভবিষ্যতের তারিখ হতে পারবে না।' } });
+    }
   }
 
   const finalPosition = position || designation || 'MEMBER';
@@ -3688,15 +3761,23 @@ app.post('/api/v1/committee/members', authenticate, requirePermission('MANAGE_CO
     mosqueId,
     termId: termId || db.committeeTerms.find(t => t.mosqueId === mosqueId && t.status === 'ACTIVE')?.id || db.committeeTerms.find(t => t.mosqueId === mosqueId)?.id || 'term-2024-2026',
     name: name.trim(),
-    nid: nid ? String(nid).trim() : '',
+    fatherName: fatherName ? String(fatherName).trim() : undefined,
+    motherName: motherName ? String(motherName).trim() : undefined,
+    nid: nid ? String(nid).trim() : undefined,
     phone: phone.trim(),
+    altPhone: altPhone ? String(altPhone).trim() : undefined,
+    dateOfBirth: dateOfBirth ? String(dateOfBirth).trim() : undefined,
+    bloodGroup: bloodGroup ? String(bloodGroup).trim() : undefined,
     address: address ? String(address).trim() : '',
     photoUrl: photoUrl || '',
     position: (finalPosition as any) || 'MEMBER',
     positionCustomBn: finalDesignationBn,
+    occupation: occupation ? String(occupation).trim() : undefined,
+    education: education ? String(education).trim() : undefined,
+    email: email ? String(email).trim() : undefined,
     joinDate: new Date().toISOString().split('T')[0],
-    status: 'ACTIVE',
-    notes: occupation ? `পেশা: ${occupation}` : undefined,
+    status: (status as any) || 'ACTIVE',
+    notes: notes ? String(notes).trim() : undefined,
     createdAt: new Date().toISOString()
   };
 
@@ -3721,19 +3802,78 @@ app.put('/api/v1/committee/members/:id', authenticate, requirePermission('MANAGE
     ORGANIZING_SECRETARY: 'সাংগঠনিক সম্পাদক',
     MEMBER: 'কার্যনির্বাহী সদস্য (Member)',
     IMAM: 'ইমাম (সদস্য)',
-    ADVISOR: 'উপদেষ্টা (Advisor)',
     OTHER: 'অন্যান্য পদবি',
   };
 
-  const { name, phone, nid, address, position, positionCustomBn, designation, designationBn, status, termId, notes, photoUrl } = req.body;
+  const {
+    name,
+    fatherName,
+    motherName,
+    phone,
+    altPhone,
+    nid,
+    email,
+    dateOfBirth,
+    bloodGroup,
+    address,
+    occupation,
+    education,
+    position,
+    positionCustomBn,
+    designation,
+    designationBn,
+    status,
+    termId,
+    notes,
+    photoUrl
+  } = req.body;
 
-  if (name !== undefined) member.name = String(name).trim();
-  if (phone !== undefined) member.phone = String(phone).trim();
-  if (nid !== undefined) member.nid = String(nid).trim();
+  if (name !== undefined) {
+    if (!String(name).trim()) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'সদস্যের নাম আবশ্যক।' } });
+    }
+    member.name = String(name).trim();
+  }
+  if (phone !== undefined) {
+    if (!String(phone).trim()) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'মোবাইল নম্বর আবশ্যক।' } });
+    }
+    member.phone = String(phone).trim();
+  }
+  if (fatherName !== undefined) member.fatherName = fatherName ? String(fatherName).trim() : undefined;
+  if (motherName !== undefined) member.motherName = motherName ? String(motherName).trim() : undefined;
+  if (altPhone !== undefined) member.altPhone = altPhone ? String(altPhone).trim() : undefined;
+  if (nid !== undefined) member.nid = nid ? String(nid).trim() : undefined;
+  if (email !== undefined) {
+    const trimmedEmail = String(email).trim();
+    if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'সঠিক ই-মেইল ঠিকানা প্রদান করুন।' } });
+    }
+    member.email = trimmedEmail || undefined;
+  }
+  if (dateOfBirth !== undefined) {
+    if (dateOfBirth) {
+      const dob = new Date(dateOfBirth);
+      if (isNaN(dob.getTime())) {
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'সঠিক জন্ম তারিখ প্রদান করুন।' } });
+      }
+      const today = new Date();
+      today.setHours(23, 59, 59, 999);
+      if (dob > today) {
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'জন্ম তারিখ ভবিষ্যতের তারিখ হতে পারবে না।' } });
+      }
+      member.dateOfBirth = String(dateOfBirth).trim();
+    } else {
+      member.dateOfBirth = undefined;
+    }
+  }
+  if (bloodGroup !== undefined) member.bloodGroup = bloodGroup ? String(bloodGroup).trim() : undefined;
+  if (occupation !== undefined) member.occupation = occupation ? String(occupation).trim() : undefined;
+  if (education !== undefined) member.education = education ? String(education).trim() : undefined;
   if (address !== undefined) member.address = String(address).trim();
   if (termId !== undefined) member.termId = termId;
   if (status !== undefined) member.status = status;
-  if (notes !== undefined) member.notes = notes;
+  if (notes !== undefined) member.notes = notes ? String(notes).trim() : undefined;
   if (photoUrl !== undefined) member.photoUrl = photoUrl;
 
   const finalPos = position || designation;
@@ -3762,6 +3902,339 @@ app.delete('/api/v1/committee/members/:id', authenticate, requirePermission('MAN
   realtime.broadcastToMosque(req.currentMosque!.id, 'COMMITTEE_MEMBER_DELETED', { id: removed.id }, { senderId: req.user!.id });
 
   res.json({ success: true, message: 'সদস্য সফলভাবে অপসারণ করা হয়েছে।' });
+});
+
+// ==========================================
+// 8.1. ADVISORY COUNCIL MANAGEMENT (উপদেষ্টা পরিষদ)
+// ==========================================
+app.get('/api/v1/advisors', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  
+  // Ensure at least one advisory term exists
+  let terms = (db.advisoryTerms || []).filter(t => t.mosqueId === mosqueId);
+  if (terms.length === 0) {
+    const defaultTerm: AdvisoryCouncilTerm = {
+      id: `adv-term-${Date.now()}`,
+      mosqueId,
+      title: '২০২৬–২০২৮ উপদেষ্টা পরিষদ',
+      startDate: '2026-01-01',
+      endDate: '2028-12-31',
+      status: 'ACTIVE',
+      description: 'মামুন জামে মসজিদ ওয়াক্ফ এস্টেট উপদেষ্টা পরিষদ',
+      createdAt: new Date().toISOString()
+    };
+    db.advisoryTerms.push(defaultTerm);
+    db.save();
+    terms = [defaultTerm];
+  }
+
+  const advisors = (db.advisors || []).filter(a => a.mosqueId === mosqueId);
+  const consultations = (db.advisorConsultations || []).filter(c => c.mosqueId === mosqueId);
+
+  res.json({
+    success: true,
+    data: {
+      terms,
+      advisors,
+      consultations
+    }
+  });
+});
+
+app.post('/api/v1/advisors/terms', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { title, startDate, endDate, description } = req.body;
+
+  if (!title || !title.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'উপদেষ্টা পরিষদের শিরোনাম/মেয়াদকাল আবশ্যক।' } });
+  }
+
+  const newTerm: AdvisoryCouncilTerm = {
+    id: `adv-term-${Date.now()}`,
+    mosqueId,
+    title: title.trim(),
+    startDate: startDate || new Date().toISOString().split('T')[0],
+    endDate: endDate || '',
+    status: 'ACTIVE',
+    description: description ? String(description).trim() : undefined,
+    createdAt: new Date().toISOString()
+  };
+
+  db.advisoryTerms.unshift(newTerm);
+  db.save();
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'ADVISORY_TERM', `নতুন উপদেষ্টা পরিষদ মেয়াদ যুক্ত: ${newTerm.title}`);
+  realtime.broadcastToMosque(mosqueId, 'ADVISORY_TERM_CREATED', newTerm, { senderId: req.user!.id });
+
+  res.json({ success: true, data: newTerm, message: 'উপদেষ্টা পরিষদের নতুন মেয়াদকাল সফলভাবে যুক্ত হয়েছে।' });
+});
+
+app.put('/api/v1/advisors/terms/:id', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const term = (db.advisoryTerms || []).find(t => t.id === req.params.id && t.mosqueId === mosqueId);
+  if (!term) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'উপদেষ্টা পরিষদের মেয়াদ পাওয়া যায়নি।' } });
+  }
+
+  const { title, startDate, endDate, description, status } = req.body;
+  if (title !== undefined) term.title = title.trim();
+  if (startDate !== undefined) term.startDate = startDate;
+  if (endDate !== undefined) term.endDate = endDate;
+  if (description !== undefined) term.description = description;
+  if (status !== undefined) term.status = status;
+
+  db.save();
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'ADVISORY_TERM', `উপদেষ্টা পরিষদ মেয়াদ আপডেট: ${term.title}`);
+  realtime.broadcastToMosque(mosqueId, 'ADVISORY_TERM_UPDATED', term, { senderId: req.user!.id });
+
+  res.json({ success: true, data: term, message: 'উপদেষ্টা পরিষদের মেয়াদ তথ্য আপডেট হয়েছে।' });
+});
+
+app.post('/api/v1/advisors/members', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const {
+    termId,
+    name,
+    fatherName,
+    motherName,
+    nid,
+    phone,
+    altPhone,
+    dateOfBirth,
+    bloodGroup,
+    address,
+    photoUrl,
+    advisorRole,
+    occupation,
+    education,
+    email,
+    joinDate,
+    status,
+    notes
+  } = req.body;
+
+  if (!name || !name.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'উপদেষ্টার পুরো নাম আবশ্যক।' } });
+  }
+
+  if (!phone || !phone.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'মোবাইল নম্বর আবশ্যক।' } });
+  }
+
+  if (email && email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'সঠিক ই-মেইল ঠিকানা প্রদান করুন।' } });
+  }
+
+  if (dateOfBirth) {
+    const dob = new Date(dateOfBirth);
+    if (isNaN(dob.getTime())) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'সঠিক জন্ম তারিখ প্রদান করুন।' } });
+    }
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    if (dob > today) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'জন্ম তারিখ ভবিষ্যতের তারিখ হতে পারবে না।' } });
+    }
+  }
+
+  const activeAdvTerm = (db.advisoryTerms || []).find(t => t.mosqueId === mosqueId && t.status === 'ACTIVE') || db.advisoryTerms?.[0];
+  const finalTermId = termId || activeAdvTerm?.id || 'adv-term-2026-2028';
+
+  const newAdvisor: AdvisorMember = {
+    id: `adv-${Date.now()}`,
+    mosqueId,
+    termId: finalTermId,
+    name: name.trim(),
+    fatherName: fatherName ? String(fatherName).trim() : undefined,
+    motherName: motherName ? String(motherName).trim() : undefined,
+    nid: nid ? String(nid).trim() : undefined,
+    phone: phone.trim(),
+    altPhone: altPhone ? String(altPhone).trim() : undefined,
+    dateOfBirth: dateOfBirth ? String(dateOfBirth).trim() : undefined,
+    bloodGroup: bloodGroup ? String(bloodGroup).trim() : undefined,
+    address: address ? String(address).trim() : '',
+    photoUrl: photoUrl || '',
+    advisorRole: advisorRole ? String(advisorRole).trim() : 'উপদেষ্টা',
+    occupation: occupation ? String(occupation).trim() : undefined,
+    education: education ? String(education).trim() : undefined,
+    email: email ? String(email).trim() : undefined,
+    joinDate: joinDate ? String(joinDate).trim() : new Date().toISOString().split('T')[0],
+    status: (status as any) || 'ACTIVE',
+    notes: notes ? String(notes).trim() : undefined,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  db.advisors.push(newAdvisor);
+  db.save();
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'ADVISOR_MEMBER', `উপদেষ্টা পরিষদে অন্তর্ভুক্তি: ${newAdvisor.name} (${newAdvisor.advisorRole})`);
+  realtime.broadcastToMosque(mosqueId, 'ADVISOR_MEMBER_CREATED', newAdvisor, { senderId: req.user!.id });
+
+  res.json({ success: true, data: newAdvisor, message: 'উপদেষ্টা সদস্য সফলভাবে অন্তর্ভুক্ত করা হয়েছে।' });
+});
+
+app.put('/api/v1/advisors/members/:id', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const advisor = (db.advisors || []).find(a => a.id === req.params.id && a.mosqueId === mosqueId);
+  if (!advisor) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'উপদেষ্টা সদস্য পাওয়া যায়নি।' } });
+  }
+
+  const {
+    termId,
+    name,
+    fatherName,
+    motherName,
+    nid,
+    phone,
+    altPhone,
+    dateOfBirth,
+    bloodGroup,
+    address,
+    photoUrl,
+    advisorRole,
+    occupation,
+    education,
+    email,
+    joinDate,
+    endDate,
+    status,
+    notes
+  } = req.body;
+
+  if (name !== undefined) {
+    if (!name.trim()) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'উপদেষ্টার নাম খালি রাখা যাবে না।' } });
+    advisor.name = name.trim();
+  }
+  if (phone !== undefined) {
+    if (!phone.trim()) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'মোবাইল নম্বর খালি রাখা যাবে না।' } });
+    advisor.phone = phone.trim();
+  }
+  if (email !== undefined) {
+    if (email && email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'সঠিক ই-মেইল ঠিকানা প্রদান করুন।' } });
+    }
+    advisor.email = email ? email.trim() : undefined;
+  }
+  if (dateOfBirth !== undefined) advisor.dateOfBirth = dateOfBirth ? String(dateOfBirth).trim() : undefined;
+  if (termId !== undefined) advisor.termId = termId;
+  if (fatherName !== undefined) advisor.fatherName = fatherName ? String(fatherName).trim() : undefined;
+  if (motherName !== undefined) advisor.motherName = motherName ? String(motherName).trim() : undefined;
+  if (nid !== undefined) advisor.nid = nid ? String(nid).trim() : undefined;
+  if (altPhone !== undefined) advisor.altPhone = altPhone ? String(altPhone).trim() : undefined;
+  if (bloodGroup !== undefined) advisor.bloodGroup = bloodGroup ? String(bloodGroup).trim() : undefined;
+  if (address !== undefined) advisor.address = address ? String(address).trim() : '';
+  if (photoUrl !== undefined) advisor.photoUrl = photoUrl || '';
+  if (advisorRole !== undefined) advisor.advisorRole = advisorRole ? String(advisorRole).trim() : 'উপদেষ্টা';
+  if (occupation !== undefined) advisor.occupation = occupation ? String(occupation).trim() : undefined;
+  if (education !== undefined) advisor.education = education ? String(education).trim() : undefined;
+  if (joinDate !== undefined) advisor.joinDate = joinDate ? String(joinDate).trim() : advisor.joinDate;
+  if (endDate !== undefined) advisor.endDate = endDate ? String(endDate).trim() : undefined;
+  if (status !== undefined) advisor.status = status;
+  if (notes !== undefined) advisor.notes = notes ? String(notes).trim() : undefined;
+  advisor.updatedAt = new Date().toISOString();
+
+  db.save();
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'ADVISOR_MEMBER', `উপদেষ্টা তথ্য আপডেট: ${advisor.name} (${advisor.advisorRole})`);
+  realtime.broadcastToMosque(mosqueId, 'ADVISOR_MEMBER_UPDATED', advisor, { senderId: req.user!.id });
+
+  res.json({ success: true, data: advisor, message: 'উপদেষ্টার তথ্য সফলভাবে আপডেট হয়েছে।' });
+});
+
+app.delete('/api/v1/advisors/members/:id', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const idx = (db.advisors || []).findIndex(a => a.id === req.params.id && a.mosqueId === mosqueId);
+  if (idx === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'উপদেষ্টা সদস্য পাওয়া যায়নি।' } });
+  }
+
+  const removed = db.advisors.splice(idx, 1)[0];
+  db.save();
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'DELETE', 'ADVISOR_MEMBER', `উপদেষ্টা পরিষদ থেকে অপসারণ: ${removed.name}`);
+  realtime.broadcastToMosque(mosqueId, 'ADVISOR_MEMBER_DELETED', { id: removed.id }, { senderId: req.user!.id });
+
+  res.json({ success: true, message: 'উপদেষ্টা সফলভাবে অপসারণ করা হয়েছে।' });
+});
+
+// Advisor Consultations & Guidance
+app.post('/api/v1/advisors/consultations', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { advisorId, advisorName, date, topic, advice, relatedContext, impactOutcome, status, notes } = req.body;
+
+  if (!topic || !topic.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'পরামর্শের বিষয় আবশ্যক।' } });
+  }
+  if (!advice || !advice.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'পরামর্শ ও দিকনির্দেশনা আবশ্যক।' } });
+  }
+
+  let finalAdvisorName = advisorName ? advisorName.trim() : '';
+  if (!finalAdvisorName && advisorId) {
+    const adv = (db.advisors || []).find(a => a.id === advisorId);
+    if (adv) finalAdvisorName = adv.name;
+  }
+  if (!finalAdvisorName) finalAdvisorName = 'সম্মানিত উপদেষ্টা পরিষদ';
+
+  const newConsultation: AdvisorConsultation = {
+    id: `adv-cons-${Date.now()}`,
+    mosqueId,
+    advisorId: advisorId || undefined,
+    advisorName: finalAdvisorName,
+    date: date || new Date().toISOString().split('T')[0],
+    topic: topic.trim(),
+    advice: advice.trim(),
+    relatedContext: relatedContext ? String(relatedContext).trim() : undefined,
+    impactOutcome: impactOutcome ? String(impactOutcome).trim() : undefined,
+    status: status || 'RECORDED',
+    notes: notes ? String(notes).trim() : undefined,
+    createdAt: new Date().toISOString()
+  };
+
+  db.advisorConsultations.unshift(newConsultation);
+  db.save();
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'ADVISOR_CONSULTATION', `উপদেষ্টার পরামর্শ নথিভুক্ত: ${newConsultation.topic} (${finalAdvisorName})`);
+  realtime.broadcastToMosque(mosqueId, 'ADVISOR_CONSULTATION_CREATED', newConsultation, { senderId: req.user!.id });
+
+  res.json({ success: true, data: newConsultation, message: 'উপদেষ্টার পরামর্শ সফলভাবে নথিভুক্ত হয়েছে।' });
+});
+
+app.put('/api/v1/advisors/consultations/:id', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const item = (db.advisorConsultations || []).find(c => c.id === req.params.id && c.mosqueId === mosqueId);
+  if (!item) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'পরামর্শের রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  const { advisorId, advisorName, date, topic, advice, relatedContext, impactOutcome, status, notes } = req.body;
+  if (advisorId !== undefined) item.advisorId = advisorId;
+  if (advisorName !== undefined) item.advisorName = advisorName.trim();
+  if (date !== undefined) item.date = date;
+  if (topic !== undefined) item.topic = topic.trim();
+  if (advice !== undefined) item.advice = advice.trim();
+  if (relatedContext !== undefined) item.relatedContext = relatedContext ? String(relatedContext).trim() : undefined;
+  if (impactOutcome !== undefined) item.impactOutcome = impactOutcome ? String(impactOutcome).trim() : undefined;
+  if (status !== undefined) item.status = status;
+  if (notes !== undefined) item.notes = notes ? String(notes).trim() : undefined;
+
+  db.save();
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'ADVISOR_CONSULTATION', `পরামর্শ রেকর্ড আপডেট: ${item.topic}`);
+  realtime.broadcastToMosque(mosqueId, 'ADVISOR_CONSULTATION_UPDATED', item, { senderId: req.user!.id });
+
+  res.json({ success: true, data: item, message: 'পরামর্শ রেকর্ড সফলভাবে আপডেট হয়েছে।' });
+});
+
+app.delete('/api/v1/advisors/consultations/:id', authenticate, requirePermission('MANAGE_COMMITTEE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const idx = (db.advisorConsultations || []).findIndex(c => c.id === req.params.id && c.mosqueId === mosqueId);
+  if (idx === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'পরামর্শের রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  const removed = db.advisorConsultations.splice(idx, 1)[0];
+  db.save();
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'DELETE', 'ADVISOR_CONSULTATION', `পরামর্শ রেকর্ড মুছে ফেলা: ${removed.topic}`);
+  realtime.broadcastToMosque(mosqueId, 'ADVISOR_CONSULTATION_DELETED', { id: removed.id }, { senderId: req.user!.id });
+
+  res.json({ success: true, message: 'পরামর্শ রেকর্ড মুছে ফেলা হয়েছে।' });
 });
 
 app.get('/api/v1/committee/notices', authenticate, (req: AuthRequest, res: Response) => {
@@ -9735,6 +10208,378 @@ app.post('/api/v1/upload', authenticate, (req: AuthRequest, res: Response) => {
     success: true,
     data: uploadedFile,
     message: 'ফাইল সফলভাবে আপলোড করা হয়েছে।'
+  });
+});
+
+// ==========================================
+// CENTRAL DOCUMENT & ATTACHMENT SYSTEM API
+// ==========================================
+
+// 1. Get Documents (Filtered / Paginated)
+app.get('/api/v1/documents', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const user = req.user;
+  const {
+    entityType,
+    entityId,
+    documentType,
+    visibility,
+    search,
+    hasFile,
+    hasDriveLink,
+    sortBy = 'newest',
+    startDate,
+    endDate,
+  } = req.query as Record<string, string | undefined>;
+
+  let docs = db.centralDocuments.filter(d => d.mosqueId === mosqueId);
+
+  // Security / Privacy Filter
+  const isAdmin = user && (user.role === 'SUPER_ADMIN' || user.role === 'MOSQUE_ADMIN' || user.role === 'ACCOUNTANT');
+  docs = docs.filter(d => {
+    if (d.visibility === 'PUBLIC') return true;
+    if (isAdmin) return true;
+    if (user && d.uploadedBy === user.id) return true;
+    if (d.visibility === 'RESTRICTED' && user && user.role !== 'VIEWER') return true;
+    return false;
+  });
+
+  // Filter by Entity Type (MEMBER, WAQF, EXPENSE, etc.)
+  if (entityType && entityType !== 'ALL') {
+    docs = docs.filter(d => d.entityType === entityType);
+  }
+
+  // Filter by Entity ID
+  if (entityId) {
+    docs = docs.filter(d => d.entityId === entityId);
+  }
+
+  // Filter by Document Category Type
+  if (documentType && documentType !== 'ALL') {
+    docs = docs.filter(d => d.documentType === documentType);
+  }
+
+  // Filter by Visibility
+  if (visibility && visibility !== 'ALL') {
+    docs = docs.filter(d => d.visibility === visibility);
+  }
+
+  // Filter by Attachment Type
+  if (hasFile === 'true') {
+    docs = docs.filter(d => Boolean(d.fileUrl));
+  }
+  if (hasDriveLink === 'true') {
+    docs = docs.filter(d => Boolean(d.googleDriveUrl));
+  }
+
+  // Date Range Filter
+  if (startDate) {
+    docs = docs.filter(d => (d.documentDate || d.createdAt.split('T')[0]) >= startDate);
+  }
+  if (endDate) {
+    docs = docs.filter(d => (d.documentDate || d.createdAt.split('T')[0]) <= endDate);
+  }
+
+  // Search Filter
+  if (search && search.trim()) {
+    const q = search.trim().toLowerCase();
+    docs = docs.filter(d =>
+      d.name?.toLowerCase().includes(q) ||
+      d.description?.toLowerCase().includes(q) ||
+      d.entityTitle?.toLowerCase().includes(q) ||
+      d.originalFileName?.toLowerCase().includes(q) ||
+      d.documentTypeBn?.toLowerCase().includes(q) ||
+      d.uploadedByName?.toLowerCase().includes(q)
+    );
+  }
+
+  // Sorting
+  if (sortBy === 'oldest') {
+    docs.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  } else if (sortBy === 'name') {
+    docs.sort((a, b) => a.name.localeCompare(b.name, 'bn'));
+  } else {
+    // Newest first (default)
+    docs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  res.json({
+    success: true,
+    data: docs,
+    total: docs.length,
+  });
+});
+
+// 2. Get Document Stats Summary
+app.get('/api/v1/documents/summary/stats', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const user = req.user;
+  const isAdmin = user && (user.role === 'SUPER_ADMIN' || user.role === 'MOSQUE_ADMIN' || user.role === 'ACCOUNTANT');
+
+  const docs = db.centralDocuments.filter(d => {
+    if (d.mosqueId !== mosqueId) return false;
+    if (d.visibility === 'PUBLIC') return true;
+    if (isAdmin) return true;
+    if (user && d.uploadedBy === user.id) return true;
+    if (d.visibility === 'RESTRICTED' && user && user.role !== 'VIEWER') return true;
+    return false;
+  });
+
+  const totalDocuments = docs.length;
+  const totalDirectFiles = docs.filter(d => Boolean(d.fileUrl)).length;
+  const totalGoogleDriveLinks = docs.filter(d => Boolean(d.googleDriveUrl)).length;
+  const totalBothAttachments = docs.filter(d => Boolean(d.fileUrl && d.googleDriveUrl)).length;
+  const totalStorageBytes = docs.reduce((acc, d) => acc + (d.fileSize || 0), 0);
+
+  // Group by Entity Type
+  const byEntityType: Record<string, number> = {};
+  for (const d of docs) {
+    byEntityType[d.entityType] = (byEntityType[d.entityType] || 0) + 1;
+  }
+
+  // Group by Document Type
+  const byDocumentType: Record<string, number> = {};
+  for (const d of docs) {
+    byDocumentType[d.documentType] = (byDocumentType[d.documentType] || 0) + 1;
+  }
+
+  res.json({
+    success: true,
+    data: {
+      totalDocuments,
+      totalDirectFiles,
+      totalGoogleDriveLinks,
+      totalBothAttachments,
+      totalStorageBytes,
+      byEntityType,
+      byDocumentType,
+    },
+  });
+});
+
+// 3. Get Single Document by ID
+app.get('/api/v1/documents/:id', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const doc = db.centralDocuments.find(d => d.id === req.params.id && d.mosqueId === mosqueId);
+
+  if (!doc) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ডকুমেন্ট পাওয়া যায়নি।' } });
+  }
+
+  const user = req.user;
+  const isAdmin = user && (user.role === 'SUPER_ADMIN' || user.role === 'MOSQUE_ADMIN' || user.role === 'ACCOUNTANT');
+  if (doc.visibility === 'PRIVATE' && !isAdmin && doc.uploadedBy !== user?.id) {
+    return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'এই প্রাইভেট ডকুমেন্ট দেখার অনুমতি নেই।' } });
+  }
+
+  res.json({ success: true, data: doc });
+});
+
+// 4. Create Document
+app.post('/api/v1/documents', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const user = req.user!;
+  const body = req.body;
+
+  if (!body.name || !body.name.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'MISSING_NAME', message: 'ডকুমেন্টের নাম প্রদান আবশ্যক।' } });
+  }
+
+  if (!body.entityType || !body.entityId) {
+    return res.status(400).json({ success: false, error: { code: 'MISSING_ENTITY', message: 'সম্পর্কিত মডিউল ও রেকর্ড আইডি আবশ্যক।' } });
+  }
+
+  // Validate that at least one of fileUrl, googleDriveUrl, or description exists
+  if (!body.fileUrl && !body.googleDriveUrl && !body.description) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'MISSING_CONTENT', message: 'অনুগ্রহ করে ফাইল আপলোড করুন অথবা গুগল ড্রাইভ লিংক অথবা বিবরণ যুক্ত করুন।' }
+    });
+  }
+
+  // Validate Google Drive URL if present
+  let sanitizedDriveUrl = body.googleDriveUrl?.trim() || undefined;
+  if (sanitizedDriveUrl) {
+    if (!sanitizedDriveUrl.startsWith('http://') && !sanitizedDriveUrl.startsWith('https://')) {
+      sanitizedDriveUrl = `https://${sanitizedDriveUrl}`;
+    }
+  }
+
+  const docId = `doc-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+  const now = new Date().toISOString();
+
+  const newDoc: CentralDocument = {
+    id: docId,
+    mosqueId,
+    entityType: body.entityType as DocumentEntityType,
+    entityId: body.entityId,
+    entityTitle: body.entityTitle || DOCUMENT_ENTITY_LABELS[body.entityType as DocumentEntityType] || 'রেকর্ড',
+    name: body.name.trim(),
+    originalFileName: body.originalFileName || undefined,
+    fileUrl: body.fileUrl || undefined,
+    fileType: body.fileType || undefined,
+    fileSize: body.fileSize ? Number(body.fileSize) : undefined,
+    googleDriveUrl: sanitizedDriveUrl,
+    documentDate: body.documentDate || now.split('T')[0],
+    documentType: (body.documentType as DocumentCategoryType) || 'OTHER',
+    documentTypeBn: body.documentTypeBn || DOCUMENT_CATEGORY_LABELS[(body.documentType as DocumentCategoryType) || 'OTHER'] || 'অন্যান্য',
+    description: body.description?.trim() || undefined,
+    visibility: (body.visibility as DocumentVisibility) || 'PRIVATE',
+    version: 1,
+    uploadedBy: user.id,
+    uploadedByName: user.name,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  db.centralDocuments.unshift(newDoc);
+  db.save();
+
+  // Audit Log
+  const entityLabel = DOCUMENT_ENTITY_LABELS[newDoc.entityType] || newDoc.entityType;
+  db.logAudit(
+    mosqueId,
+    user.id,
+    user.name,
+    user.role,
+    'CREATE',
+    'DOCUMENT',
+    `ডকুমেন্ট সংযুক্ত: ${newDoc.name} (${entityLabel} - ${newDoc.entityTitle})`,
+    newDoc.id,
+    req.ip || '127.0.0.1',
+    {
+      newState: JSON.stringify({
+        id: newDoc.id,
+        name: newDoc.name,
+        entityType: newDoc.entityType,
+        entityTitle: newDoc.entityTitle,
+        hasFile: Boolean(newDoc.fileUrl),
+        hasDrive: Boolean(newDoc.googleDriveUrl),
+        visibility: newDoc.visibility
+      })
+    }
+  );
+
+  res.status(201).json({
+    success: true,
+    data: newDoc,
+    message: 'ডকুমেন্ট সফলভাবে সংযুক্ত ও সংরক্ষণ করা হয়েছে।'
+  });
+});
+
+// 5. Update Document Metadata or Replace File
+app.put('/api/v1/documents/:id', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const user = req.user!;
+  const doc = db.centralDocuments.find(d => d.id === req.params.id && d.mosqueId === mosqueId);
+
+  if (!doc) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ডকুমেন্ট পাওয়া যায়নি।' } });
+  }
+
+  const isAdmin = user.role === 'SUPER_ADMIN' || user.role === 'MOSQUE_ADMIN' || user.role === 'ACCOUNTANT';
+  if (!isAdmin && doc.uploadedBy !== user.id) {
+    return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'এই ডকুমেন্ট সম্পাদনা করার অনুমতি নেই।' } });
+  }
+
+  const previousState = JSON.stringify(doc);
+  const body = req.body;
+
+  if (body.name !== undefined) doc.name = body.name.trim();
+  if (body.documentType !== undefined) {
+    doc.documentType = body.documentType as DocumentCategoryType;
+    doc.documentTypeBn = body.documentTypeBn || DOCUMENT_CATEGORY_LABELS[doc.documentType] || 'অন্যান্য';
+  }
+  if (body.documentDate !== undefined) doc.documentDate = body.documentDate;
+  if (body.description !== undefined) doc.description = body.description?.trim() || undefined;
+  if (body.visibility !== undefined) doc.visibility = body.visibility as DocumentVisibility;
+  if (body.entityTitle !== undefined) doc.entityTitle = body.entityTitle;
+
+  // File replacement
+  if (body.fileUrl !== undefined) {
+    doc.fileUrl = body.fileUrl || undefined;
+    if (body.originalFileName !== undefined) doc.originalFileName = body.originalFileName;
+    if (body.fileType !== undefined) doc.fileType = body.fileType;
+    if (body.fileSize !== undefined) doc.fileSize = Number(body.fileSize);
+    doc.version = (doc.version || 1) + 1;
+  }
+
+  // Google Drive link update
+  if (body.googleDriveUrl !== undefined) {
+    let sanitizedDriveUrl = body.googleDriveUrl?.trim() || undefined;
+    if (sanitizedDriveUrl && !sanitizedDriveUrl.startsWith('http://') && !sanitizedDriveUrl.startsWith('https://')) {
+      sanitizedDriveUrl = `https://${sanitizedDriveUrl}`;
+    }
+    doc.googleDriveUrl = sanitizedDriveUrl;
+  }
+
+  doc.updatedAt = new Date().toISOString();
+  db.save();
+
+  // Audit Log
+  db.logAudit(
+    mosqueId,
+    user.id,
+    user.name,
+    user.role,
+    'UPDATE',
+    'DOCUMENT',
+    `ডকুমেন্ট তথ্য হালনাগাদ: ${doc.name} (v${doc.version || 1})`,
+    doc.id,
+    req.ip || '127.0.0.1',
+    {
+      previousState,
+      newState: JSON.stringify(doc),
+    }
+  );
+
+  res.json({
+    success: true,
+    data: doc,
+    message: 'ডকুমেন্ট সফলভাবে হালনাগাদ করা হয়েছে।'
+  });
+});
+
+// 6. Delete Document
+app.delete('/api/v1/documents/:id', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const user = req.user!;
+  const index = db.centralDocuments.findIndex(d => d.id === req.params.id && d.mosqueId === mosqueId);
+
+  if (index === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ডকুমেন্ট পাওয়া যায়নি।' } });
+  }
+
+  const doc = db.centralDocuments[index];
+  const isAdmin = user.role === 'SUPER_ADMIN' || user.role === 'MOSQUE_ADMIN' || user.role === 'ACCOUNTANT';
+  if (!isAdmin && doc.uploadedBy !== user.id) {
+    return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'এই ডকুমেন্ট মুছে ফেলার অনুমতি নেই।' } });
+  }
+
+  const previousState = JSON.stringify(doc);
+  db.centralDocuments.splice(index, 1);
+  db.save();
+
+  // Audit Log
+  const entityLabel = DOCUMENT_ENTITY_LABELS[doc.entityType] || doc.entityType;
+  db.logAudit(
+    mosqueId,
+    user.id,
+    user.name,
+    user.role,
+    'DELETE',
+    'DOCUMENT',
+    `ডকুমেন্ট মুছে ফেলা হয়েছে: ${doc.name} (${entityLabel} - ${doc.entityTitle})`,
+    doc.id,
+    req.ip || '127.0.0.1',
+    {
+      previousState,
+    }
+  );
+
+  res.json({
+    success: true,
+    message: 'ডকুমেন্ট সফলভাবে মুছে ফেলা হয়েছে।'
   });
 });
 

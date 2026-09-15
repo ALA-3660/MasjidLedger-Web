@@ -26,6 +26,7 @@ import {
 import { MosqueProperty, PropertyTenant, PropertyInspectionRecord, PropertyLegalCase } from '../types';
 import { Language, formatCurrency, translations } from '../lib/i18n';
 import { POSSESSION_STATUSES, PROPERTY_CATEGORIES } from './PropertyFormModal';
+import { DocumentSection } from './DocumentSection';
 
 interface PropertyDetailsDrawerProps {
   property: MosqueProperty | null;
@@ -722,6 +723,15 @@ export const PropertyDetailsDrawer: React.FC<PropertyDetailsDrawerProps> = ({
                   ))}
                 </div>
               )}
+
+              {/* Central Document System Integration for Waqf */}
+              <div className="pt-4 border-t border-slate-200">
+                <DocumentSection
+                  entityType="WAQF"
+                  entityId={property.id}
+                  entityTitle={`${property.name || property.description} (${property.propertyCode || 'রেকর্ড'})`}
+                />
+              </div>
             </div>
           )}
 

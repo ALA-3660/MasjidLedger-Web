@@ -29,6 +29,7 @@ import { MosqueAsset, MosqueProfile, FinancialAccount, AccountHead } from '../ty
 import { Language, translations, formatCurrency } from '../lib/i18n';
 import { ASSET_CATEGORIES, ASSET_CONDITIONS } from './AssetFormModal';
 import { AssetServiceModal } from './AssetServiceModal';
+import { DocumentSection } from './DocumentSection';
 
 interface AssetDetailsModalProps {
   isOpen: boolean;
@@ -58,7 +59,7 @@ export const AssetDetailsModal: React.FC<AssetDetailsModalProps> = ({
   language
 }) => {
   const t = translations[language];
-  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'MAINTENANCE' | 'FINANCIAL' | 'AUDIT'>('OVERVIEW');
+  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'MAINTENANCE' | 'FINANCIAL' | 'DOCUMENTS'>('OVERVIEW');
   const [showServiceModal, setShowServiceModal] = useState(false);
 
   if (!isOpen) return null;
@@ -162,6 +163,18 @@ export const AssetDetailsModal: React.FC<AssetDetailsModalProps> = ({
             >
               <DollarSign className="w-4 h-4" />
               <span>হিসাব ও ব্যয় ভাউচার সংযোগ</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('DOCUMENTS')}
+              className={`py-3 border-b-2 transition-colors flex items-center space-x-2 whitespace-nowrap ${
+                activeTab === 'DOCUMENTS'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent hover:text-slate-900'
+              }`}
+            >
+              <FileText className="w-4 h-4" />
+              <span>সংযুক্ত ভাউচার, ওয়ারেন্টি ও নথি</span>
             </button>
           </div>
 
@@ -460,6 +473,17 @@ export const AssetDetailsModal: React.FC<AssetDetailsModalProps> = ({
                     </div>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* DOCUMENTS TAB */}
+            {activeTab === 'DOCUMENTS' && (
+              <div className="space-y-4 animate-in fade-in duration-150">
+                <DocumentSection
+                  entityType="ASSET"
+                  entityId={asset.id}
+                  entityTitle={`${asset.name} (${asset.assetCode})`}
+                />
               </div>
             )}
           </div>

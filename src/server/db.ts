@@ -48,6 +48,10 @@ import {
   BackupRecord,
   RestoreRecord,
   BackupSettings,
+  AdvisoryCouncilTerm,
+  AdvisorMember,
+  AdvisorConsultation,
+  CentralDocument,
 } from '../types';
 
 const DB_FILE_PATH = path.join(process.cwd(), 'data', 'masjidledger_db.json');
@@ -73,6 +77,9 @@ export class DatabaseStore {
   committeeTasks: CommitteeMemberTask[] = [];
   committeeManualEvaluations: CommitteeManualEvaluation[] = [];
   subCommittees: SubCommittee[] = [];
+  advisoryTerms: AdvisoryCouncilTerm[] = [];
+  advisors: AdvisorMember[] = [];
+  advisorConsultations: AdvisorConsultation[] = [];
   staffList: Staff[] = [];
   staffPayments: StaffPayment[] = [];
   staffBankTransferLetters: StaffBankTransferLetter[] = [];
@@ -83,6 +90,7 @@ export class DatabaseStore {
   notifications: MosqueNotification[] = [];
   transfers: AccountTransfer[] = [];
   uploadedFiles: UploadedFile[] = [];
+  centralDocuments: CentralDocument[] = [];
   auditLogs: AuditLog[] = [];
   smsLogs: SmsLog[] = [];
   documentTokens: PublicDocumentToken[] = [];
@@ -129,6 +137,59 @@ export class DatabaseStore {
         this.committeeTasks = parsed.committeeTasks || [];
         this.committeeManualEvaluations = parsed.committeeManualEvaluations || [];
         this.subCommittees = parsed.subCommittees || [];
+        this.advisoryTerms = parsed.advisoryTerms || [];
+        this.advisors = parsed.advisors || [];
+        this.advisorConsultations = parsed.advisorConsultations || [];
+
+        // Safe migration: Check if any executive committee members have ADVISOR position and safely migrate
+        const existingAdvisorsInCommittee = this.committeeMembers.filter(m => (m as any).position === 'ADVISOR');
+        if (existingAdvisorsInCommittee.length > 0) {
+          const defaultAdvTermId = this.advisoryTerms[0]?.id || 'adv-term-2026-2028';
+          for (const adv of existingAdvisorsInCommittee) {
+            if (!this.advisors.some(a => a.id === adv.id || (a.phone === adv.phone && a.name === adv.name))) {
+              this.advisors.push({
+                id: adv.id,
+                mosqueId: adv.mosqueId,
+                termId: defaultAdvTermId,
+                name: adv.name,
+                fatherName: adv.fatherName,
+                motherName: adv.motherName,
+                nid: adv.nid,
+                phone: adv.phone,
+                altPhone: adv.altPhone,
+                dateOfBirth: adv.dateOfBirth,
+                bloodGroup: adv.bloodGroup,
+                address: adv.address,
+                photoUrl: adv.photoUrl,
+                advisorRole: adv.positionCustomBn || 'উপদেষ্টা',
+                occupation: adv.occupation,
+                education: adv.education,
+                email: adv.email,
+                joinDate: adv.joinDate || new Date().toISOString().split('T')[0],
+                status: adv.status || 'ACTIVE',
+                notes: adv.notes,
+                createdAt: adv.createdAt || new Date().toISOString()
+              });
+            }
+          }
+          // Remove them from executive committee members so they are strictly separated
+          this.committeeMembers = this.committeeMembers.filter(m => (m as any).position !== 'ADVISOR');
+        }
+
+        // Initialize default advisory term if none exists
+        if (this.advisoryTerms.length === 0) {
+          const defaultMosqueId = this.mosques[0]?.id || 'mosque-1';
+          this.advisoryTerms.push({
+            id: 'adv-term-2026-2028',
+            mosqueId: defaultMosqueId,
+            title: '২০২৬–২০২৮ উপদেষ্টা পরিষদ',
+            startDate: '2026-01-01',
+            endDate: '2028-12-31',
+            status: 'ACTIVE',
+            description: 'মামুন জামে মসজিদ ওয়াক্ফ এস্টেট উপদেষ্টা পরিষদ',
+            createdAt: new Date().toISOString()
+          });
+        }
         this.staffList = (parsed.staffList || []).map((s: any, idx: number) => {
           const staffYear = s.joiningDate ? s.joiningDate.split('-')[0] : '2026';
           const autoCode = s.staffCode || `STF-${staffYear}-${String(idx + 1).padStart(3, '0')}`;
@@ -171,6 +232,42 @@ export class DatabaseStore {
         this.notifications = parsed.notifications || [];
         this.transfers = parsed.transfers || [];
         this.uploadedFiles = parsed.uploadedFiles || [];
+        this.centralDocuments = parsed.centralDocuments || [];
+
+        // Safe migration: Link pre-existing property documents to centralDocuments if not already present
+        if (this.properties && this.properties.length > 0) {
+          for (const prop of this.properties) {
+            if (prop.documents && prop.documents.length > 0) {
+              for (const doc of prop.documents) {
+                if (!this.centralDocuments.some(cd => cd.id === doc.id || (cd.entityId === prop.id && cd.name === doc.title))) {
+                  this.centralDocuments.push({
+                    id: doc.id || `doc-prop-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+                    mosqueId: doc.mosqueId || prop.mosqueId,
+                    entityType: 'WAQF',
+                    entityId: prop.id,
+                    entityTitle: prop.name || 'ওয়াকফ সম্পত্তি',
+                    name: doc.title || 'ওয়াকফ দলিল/কাগজপত্র',
+                    originalFileName: doc.fileName || 'document.pdf',
+                    fileUrl: doc.fileUrl,
+                    fileType: doc.fileUrl?.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg',
+                    fileSize: 102400,
+                    documentDate: doc.issueDate || new Date().toISOString().split('T')[0],
+                    documentType: 'DEED',
+                    documentTypeBn: doc.documentTypeBn || 'দলিল',
+                    description: doc.description || '',
+                    visibility: 'RESTRICTED',
+                    version: 1,
+                    uploadedBy: 'system',
+                    uploadedByName: 'সিস্টেম অ্যাডমিন',
+                    createdAt: doc.issueDate ? `${doc.issueDate}T00:00:00.000Z` : new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                  });
+                }
+              }
+            }
+          }
+        }
+
         this.qrCodes = parsed.qrCodes || [];
         this.auditLogs = parsed.auditLogs || [];
         this.idempotencyMap = parsed.idempotencyMap || {};
@@ -219,6 +316,9 @@ export class DatabaseStore {
         committeeTasks: this.committeeTasks,
         committeeManualEvaluations: this.committeeManualEvaluations,
         subCommittees: this.subCommittees,
+        advisoryTerms: this.advisoryTerms,
+        advisors: this.advisors,
+        advisorConsultations: this.advisorConsultations,
         staffList: this.staffList,
         staffPayments: this.staffPayments,
         staffBankTransferLetters: this.staffBankTransferLetters,
@@ -229,6 +329,7 @@ export class DatabaseStore {
         notifications: this.notifications,
         transfers: this.transfers,
         uploadedFiles: this.uploadedFiles,
+        centralDocuments: this.centralDocuments,
         qrCodes: this.qrCodes,
         auditLogs: this.auditLogs,
         idempotencyMap: this.idempotencyMap,

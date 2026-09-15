@@ -828,15 +828,78 @@ export interface CommitteeMember {
   mosqueId: string;
   termId: string;
   name: string;
-  nid: string;
+  fatherName?: string;
+  motherName?: string;
+  nid?: string;
   phone: string;
+  altPhone?: string;
+  dateOfBirth?: string;
+  bloodGroup?: 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-' | string;
   address?: string;
   photoUrl?: string;
   position: 'PRESIDENT' | 'VICE_PRESIDENT' | 'SECRETARY' | 'JOINT_SECRETARY' | 'TREASURER' | 'ORGANIZING_SECRETARY' | 'MEMBER' | 'IMAM' | 'ADVISOR' | 'OTHER';
   positionCustomBn?: string;
+  occupation?: string;
+  education?: string;
+  email?: string;
   joinDate: string;
   endDate?: string;
   status: 'ACTIVE' | 'INACTIVE' | 'RESIGNED' | 'DECEASED';
+  notes?: string;
+  createdAt: string;
+}
+
+// ==========================================
+// ADVISORY COUNCIL (উপদেষ্টা পরিষদ) TYPES
+// ==========================================
+export interface AdvisoryCouncilTerm {
+  id: string;
+  mosqueId: string;
+  title: string; // e.g. "২০২৬–২০২৮ উপদেষ্টা পরিষদ"
+  startDate: string;
+  endDate: string;
+  status: 'ACTIVE' | 'EXPIRED' | 'HISTORICAL';
+  description?: string;
+  createdAt: string;
+}
+
+export interface AdvisorMember {
+  id: string;
+  mosqueId: string;
+  termId: string;
+  name: string;
+  fatherName?: string;
+  motherName?: string;
+  nid?: string;
+  phone: string;
+  altPhone?: string;
+  dateOfBirth?: string;
+  bloodGroup?: 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-' | string;
+  address?: string;
+  photoUrl?: string;
+  advisorRole?: string; // যেমন: "উপদেষ্টা", "প্রধান উপদেষ্টা", "আইন ও ভূমি উপদেষ্টা", "ধর্মীয় উপদেষ্টা", ইত্যাদি
+  occupation?: string;
+  education?: string;
+  email?: string;
+  joinDate: string;
+  endDate?: string;
+  status: 'ACTIVE' | 'INACTIVE' | 'RESIGNED' | 'DECEASED';
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface AdvisorConsultation {
+  id: string;
+  mosqueId: string;
+  advisorId?: string;
+  advisorName: string;
+  date: string;
+  topic: string;
+  advice: string;
+  relatedContext?: string; // সংশ্লিষ্ট সভা বা প্রাসঙ্গিক বিষয়
+  impactOutcome?: string; // সিদ্ধান্তে প্রভাব / ফলাফল
+  status?: 'RECORDED' | 'REVIEWED' | 'ACCEPTED' | 'IMPLEMENTED';
   notes?: string;
   createdAt: string;
 }
@@ -2209,6 +2272,129 @@ export interface UploadedFile {
   uploadedBy: string;
   uploadedAt: string;
 }
+
+// ==========================================
+// CENTRAL DOCUMENT & ATTACHMENT SYSTEM TYPES
+// ==========================================
+export type DocumentEntityType =
+  | 'MEMBER'
+  | 'ADVISOR'
+  | 'COMMITTEE'
+  | 'MEETING'
+  | 'RESOLUTION'
+  | 'NOTICE'
+  | 'INCOME'
+  | 'EXPENSE'
+  | 'BANK'
+  | 'ASSET'
+  | 'WAQF'
+  | 'CEMETERY'
+  | 'STAFF'
+  | 'WORK_PLAN'
+  | 'OTHER';
+
+export type DocumentCategoryType =
+  | 'NID' // জাতীয় পরিচয়পত্র / জন্মনিবন্ধন
+  | 'PASSPORT_PHOTO' // পাসপোর্ট সাইজ ছবি
+  | 'DEED' // মূল দলিল / বায়া দলিল
+  | 'KHATIAN' // খতিয়ান (CS, SA, RS, BS)
+  | 'PORCHA' // পর্চা
+  | 'NAMJARI' // নামজারি ও জমাভাগ
+  | 'KHAJNA_RECEIPT' // দাখিলা / খাজনা রসিদ
+  | 'MAP_LAYOUT' // নকশা / সীমানা নির্দেশক
+  | 'LEGAL_COURT' // মামলা / আইনজীবীর কাগজপত্র
+  | 'RECEIPT' // রসিদ / জমা স্লিপ
+  | 'BILL' // বিল / ক্যাশ মেমো
+  | 'VOUCHER' // ভাউচার
+  | 'CHALLAN' // চালান
+  | 'QUOTATION' // কোটেশন / দরপত্র
+  | 'BANK_STATEMENT' // ব্যাংক স্টেটমেন্ট
+  | 'BANK_SLIP' // ব্যাংক ডিপোজিট স্লিপ
+  | 'MEETING_NOTICE' // সভার নোটিশ / এজেন্ডা
+  | 'MEETING_MINUTES' // সভার কার্যবিবরণী
+  | 'RESOLUTION' // রেজুলেশন কপি
+  | 'COMMITTEE_APPROVAL' // কমিটি অনুমোদনপত্র
+  | 'APPOINTMENT_LETTER' // নিয়োগপত্র / চুক্তিপত্র
+  | 'CERTIFICATE' // শিক্ষাগত / পেশাগত সনদ
+  | 'WARRANTY' // ওয়ারেন্টি / গ্যারান্টি কার্ড
+  | 'BURIAL_PERMIT' // দাফন অনুমতি / মৃত্যু সনদ
+  | 'WORK_PROGRESS' // অগ্রগতি / সমাপ্তি রিপোর্ট
+  | 'PHOTO' // সংশ্লিষ্ট ছবি
+  | 'OTHER'; // অন্যান্য গুরুত্বপূর্ণ নথি
+
+export type DocumentVisibility = 'PRIVATE' | 'RESTRICTED' | 'PUBLIC';
+
+export interface CentralDocument {
+  id: string;
+  mosqueId: string;
+  entityType: DocumentEntityType;
+  entityId: string;
+  entityTitle: string; // e.g. "মো: আব্দুর রহমান (সদস্য)"
+  name: string; // Display Name e.g. "ওয়াকফ মূল দলিল"
+  originalFileName?: string;
+  fileUrl?: string; // Direct file URL or data URL
+  fileType?: string; // MIME type or extension
+  fileSize?: number; // In bytes
+  googleDriveUrl?: string; // Google Drive sharing URL
+  documentDate?: string; // YYYY-MM-DD
+  documentType: DocumentCategoryType;
+  documentTypeBn?: string;
+  description?: string;
+  visibility: DocumentVisibility;
+  version?: number;
+  uploadedBy: string; // User ID
+  uploadedByName?: string; // User Name
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const DOCUMENT_ENTITY_LABELS: Record<DocumentEntityType, string> = {
+  MEMBER: 'সদস্য ব্যবস্থাপনা',
+  ADVISOR: 'উপদেষ্টা পরিষদ',
+  COMMITTEE: 'পরিচালনা পরিষদ',
+  MEETING: 'কমিটি সভা',
+  RESOLUTION: 'গৃহীত রেজুলেশন',
+  NOTICE: 'মসজিদের নোটিশ',
+  INCOME: 'আয় হিসাব',
+  EXPENSE: 'ব্যয় হিসাব',
+  BANK: 'ব্যাংক হিসাব',
+  ASSET: 'মসজিদের সম্পদ',
+  WAQF: 'ওয়াকফ সম্পত্তি',
+  CEMETERY: 'কবরস্থান',
+  STAFF: 'ইমাম ও স্টাফ',
+  WORK_PLAN: 'কর্মপরিকল্পনা ও অগ্রগতি',
+  OTHER: 'অন্যান্য নথি',
+};
+
+export const DOCUMENT_CATEGORY_LABELS: Record<DocumentCategoryType, string> = {
+  NID: 'পরিচয়পত্র / NID',
+  PASSPORT_PHOTO: 'ছবি / ফটো',
+  DEED: 'দলিল (মূল/বায়া)',
+  KHATIAN: 'খতিয়ান',
+  PORCHA: 'পর্চা',
+  NAMJARI: 'নামজারি ও মিউটেশন',
+  KHAJNA_RECEIPT: 'খাজনা রসিদ / দাখিলা',
+  MAP_LAYOUT: 'জমির নকশা / সীমানা',
+  LEGAL_COURT: 'আইনি / মামলার নথি',
+  RECEIPT: 'রসিদ / জমা স্লিপ',
+  BILL: 'বিল / ক্যাশ মেমো',
+  VOUCHER: 'ভাউচার',
+  CHALLAN: 'চালান',
+  QUOTATION: 'কোটেশন / দরপত্র',
+  BANK_STATEMENT: 'ব্যাংক স্টেটমেন্ট',
+  BANK_SLIP: 'ব্যাংক ডিপোজিট স্লিপ',
+  MEETING_NOTICE: 'সভার নোটিশ / এজেন্ডা',
+  MEETING_MINUTES: 'সভার কার্যবিবরণী',
+  RESOLUTION: 'রেজুলেশন কপি',
+  COMMITTEE_APPROVAL: 'কমিটি অনুমোদনপত্র',
+  APPOINTMENT_LETTER: 'নিয়োগপত্র / চুক্তিপত্র',
+  CERTIFICATE: 'শিক্ষাগত / পেশাগত সনদ',
+  WARRANTY: 'ওয়ারেন্টি / গ্যারান্টি কার্ড',
+  BURIAL_PERMIT: 'দাফন অনুমতি / মৃত্যু সনদ',
+  WORK_PROGRESS: 'অগ্রগতি / সমাপ্তি রিপোর্ট',
+  PHOTO: 'সংশ্লিষ্ট ছবি',
+  OTHER: 'অন্যান্য গুরুত্বপূর্ণ নথি',
+};
 
 export type BackupType = 'MANUAL' | 'AUTOMATIC' | 'PRE_RESTORE_SAFETY' | 'PRE_OPERATION_SAFETY';
 export type BackupStatus = 'STARTED' | 'UPLOADING' | 'VERIFYING' | 'SUCCESS' | 'FAILED' | 'CANCELLED';
