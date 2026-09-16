@@ -39,7 +39,8 @@ import {
   TrendingUp,
   Scale,
   AlertTriangle,
-  Grid
+  Grid,
+  Banknote
 } from 'lucide-react';
 import {
   Staff,
@@ -91,6 +92,7 @@ import { QrScanResult } from '../types/qrBarcodeTypes';
 
 interface ManagementViewProps {
   initialTab?: 'staff' | 'assets' | 'property' | 'cemetery' | 'notices';
+  onNavigateToSalaryBankTransfer?: () => void;
   staff: Staff[];
   staffPayments: StaffPayment[];
   assets: MosqueAsset[];
@@ -138,6 +140,7 @@ interface ManagementViewProps {
 
 export const ManagementView: React.FC<ManagementViewProps> = ({
   initialTab = 'staff',
+  onNavigateToSalaryBankTransfer,
   staff = [],
   staffPayments = [],
   assets = [],
@@ -1244,6 +1247,16 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
               </div>
 
               <div className="flex items-center space-x-2">
+                {onNavigateToSalaryBankTransfer && (
+                  <button
+                    onClick={onNavigateToSalaryBankTransfer}
+                    className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-900 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-colors cursor-pointer"
+                    title="বেতন ব্যাংক ট্রান্সফার স্বতন্ত্র প্রধান পেজ খুলুন"
+                  >
+                    <Banknote className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>বেতন ব্যাংক ট্রান্সফার পেজ</span>
+                  </button>
+                )}
                 <button
                   id="btn-open-bank-letter-from-history"
                   onClick={() => setIsBankTransferLetterOpen(true)}
@@ -1280,34 +1293,38 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
                   <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                     {staffPayments.slice(0, 15).map((pay) => {
                       const stf = staff.find((s) => s.id === pay.staffId);
+                      const receiptNum = pay.expenseVoucherNumber || (pay as any).receiptNumber || pay.id;
+                      const baseSal = pay.basicSalary ?? (pay as any).baseSalary ?? (stf?.monthlySalary || 0);
+                      const bonusVal = pay.bonus ?? (pay as any).bonusOrHonorarium ?? pay.allowance ?? 0;
+                      const deductVal = pay.deduction || 0;
                       return (
                         <tr key={pay.id} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="py-3 px-4 font-mono font-bold text-blue-700">{pay.receiptNumber}</td>
+                          <td className="py-3 px-4 font-mono font-bold text-blue-700">{receiptNum}</td>
                           <td className="py-3 px-4">
                             <span className="font-bold text-slate-900">{pay.month}</span>
                             <span className="text-[10px] text-slate-400 block">{pay.paymentDate}</span>
                           </td>
                           <td className="py-3 px-4 font-bold text-slate-900">{pay.staffName}</td>
-                          <td className="py-3 px-4 text-blue-800 font-semibold">{stf?.designationBn || 'স্টাফ'}</td>
-                          <td className="py-3 px-4 font-siliguri">৳{pay.baseSalary.toLocaleString('en-IN')}</td>
+                          <td className="py-3 px-4 text-blue-800 font-semibold">{stf?.designationBn || pay.designationBn || 'স্টাফ'}</td>
+                          <td className="py-3 px-4 font-siliguri">৳{baseSal.toLocaleString('en-IN')}</td>
                           <td className="py-3 px-4 text-emerald-700 font-siliguri">
-                            +{pay.bonusOrHonorarium.toLocaleString('en-IN')}
+                            +{bonusVal.toLocaleString('en-IN')}
                           </td>
                           <td className="py-3 px-4 text-rose-700 font-siliguri">
-                            -{pay.deduction.toLocaleString('en-IN')}
+                            -{deductVal.toLocaleString('en-IN')}
                           </td>
                           <td className="py-3 px-4 font-bold text-slate-900 font-siliguri">
-                            ৳{pay.netPaid.toLocaleString('en-IN')}
+                            ৳{(pay.netPaid || 0).toLocaleString('en-IN')}
                           </td>
                           <td className="py-3 px-4">
                             <span className="px-2 py-0.5 bg-slate-100 text-slate-800 rounded font-semibold text-[11px]">
-                              {pay.paymentMethod === 'BANK' ? 'ব্যাংক ট্রান্সফার' : 'নগদ ক্যাশ'}
+                              {pay.paymentMethod === 'BANK' ? 'ব্যাংক ট্রান্সফার' : pay.paymentMethod === 'MFS' ? 'মোবাইল ব্যাংকিং' : 'নগদ ক্যাশ'}
                             </span>
                           </td>
                           <td className="py-3 px-4 text-center">
                             <button
-                              onClick={() => handleOpenSlip(pay, stf)}
-                              className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-lg text-[11px] inline-flex items-center space-x-1 transition-colors"
+                              onClick={() => handleOpenSlip(pay, stf || null)}
+                              className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-lg text-[11px] inline-flex items-center space-x-1 transition-colors cursor-pointer"
                             >
                               <Printer className="w-3 h-3" />
                               <span>রসিদ</span>

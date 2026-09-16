@@ -13,6 +13,8 @@ import {
   Banknote,
   Calculator,
   QrCode,
+  Search,
+  Bell,
 } from 'lucide-react';
 import { Mosque, User } from '../types';
 import { Language, translations } from '../lib/i18n';
@@ -32,6 +34,9 @@ interface NavbarProps {
   onOpenCalculator?: () => void;
   onOpenScanner?: () => void;
   onOpenActionQrHub?: () => void;
+  onOpenSearch?: () => void;
+  onOpenNotifications?: () => void;
+  unreadNotificationCount?: number;
   onQuickAction?: (action: 'income' | 'expense' | 'donation') => void;
   onToggleSidebar?: () => void;
   onRoleChange?: (role: any) => void;
@@ -54,6 +59,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenCalculator,
   onOpenScanner,
   onOpenActionQrHub,
+  onOpenSearch,
+  onOpenNotifications,
+  unreadNotificationCount = 0,
   onQuickAction,
   onToggleSidebar,
   onRoleChange,
@@ -153,7 +161,36 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           {/* Right: Actions */}
-          <div className="flex items-center space-x-2 sm:space-x-3">
+          <div className="flex items-center space-x-2 sm:space-x-2.5">
+            {/* Global Search Button */}
+            <button
+              id="btn-navbar-global-search"
+              onClick={() => onOpenSearch?.()}
+              className="flex items-center space-x-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 border border-stone-200/80 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold font-siliguri shadow-2xs transition-all cursor-pointer"
+              title="গ্লোবাল অনুসন্ধান (Ctrl+K)"
+            >
+              <Search className="w-3.5 h-3.5 text-emerald-700" />
+              <span className="hidden md:inline font-siliguri">{language === 'bn' ? 'অনুসন্ধান' : 'Search'}</span>
+              <kbd className="hidden lg:inline text-[10px] font-mono text-stone-400 bg-white px-1 rounded border border-stone-200">
+                ⌘K
+              </kbd>
+            </button>
+
+            {/* Notification Center Bell */}
+            <button
+              id="btn-navbar-notifications"
+              onClick={() => onOpenNotifications?.()}
+              className="relative p-2 text-stone-600 hover:text-emerald-800 hover:bg-emerald-50 rounded-lg border border-stone-200 bg-white shadow-2xs transition-all cursor-pointer"
+              title="নোটিফিকেশন সেন্টার"
+            >
+              <Bell className="w-4 h-4" />
+              {unreadNotificationCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white rounded-full text-[10px] font-bold flex items-center justify-center animate-pulse shadow-xs">
+                  {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                </span>
+              )}
+            </button>
+
             {/* Quick Action Menu */}
             <div className="relative group hidden sm:block">
               <button

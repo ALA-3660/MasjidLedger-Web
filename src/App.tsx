@@ -35,9 +35,12 @@ import { DashboardView } from './components/DashboardView';
 import { IncomeExpenseView } from './components/IncomeExpenseView';
 import { DonationView } from './components/DonationView';
 import { CashBankView } from './components/CashBankView';
+import { OpeningBalanceView } from './components/OpeningBalanceView';
+import { AccountHeadsView } from './components/AccountHeadsView';
 import { CommitteeView } from './components/CommitteeView';
 import { ManagementView } from './components/ManagementView';
 import { ReportCenterView } from './components/ReportCenterView';
+import { MosqueManagementView } from './components/MosqueManagementView';
 import { MosqueSettingsView } from './components/MosqueSettingsView';
 import { AuditLogView } from './components/AuditLogView';
 import { DailyTransactionsView } from './components/DailyTransactionsView';
@@ -55,9 +58,12 @@ import { UniversalScannerModal } from './components/UniversalScannerModal';
 import { UserManualView } from './components/UserManualView';
 import { AdvisoryCouncilView } from './components/AdvisoryCouncilView';
 import { DocumentCenter } from './components/DocumentCenter';
+import { SalaryBankTransferView } from './components/SalaryBankTransferView';
 import { QrActionCardsModal } from './components/QrActionCardsModal';
 import { RecordActionModal } from './components/RecordActionModal';
 import { RecordPrintLabelModal } from './components/RecordPrintLabelModal';
+import { GlobalSearchModal } from './components/GlobalSearchModal';
+import { NotificationCenterModal } from './components/NotificationCenterModal';
 import { resolveRecordFromSystem } from './services/qrBarcodeService';
 import { QrScanResult, ResolvedRecordItem, RecordSpecificAction, QRDestinationType } from './types/qrBarcodeTypes';
 import {
@@ -106,6 +112,8 @@ export default function App() {
   const [isGlobalCalculatorOpen, setIsGlobalCalculatorOpen] = useState<boolean>(false);
   const [isScannerOpen, setIsScannerOpen] = useState<boolean>(false);
   const [isActionCardHubOpen, setIsActionCardHubOpen] = useState<boolean>(false);
+  const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState<boolean>(false);
   const [scannedActionIntent, setScannedActionIntent] = useState<QrScanResult | null>(null);
   const [activeRecordAction, setActiveRecordAction] = useState<ResolvedRecordItem | null>(null);
   const [activePrintLabel, setActivePrintLabel] = useState<ResolvedRecordItem | null>(null);
@@ -114,6 +122,24 @@ export default function App() {
     recordId?: string;
     data?: any;
   } | null>(null);
+
+  // Global Keyboard Shortcuts (Ctrl+K / Cmd+K for search, Alt+Q for scanner, Alt+C for calculator)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsSearchOpen((prev) => !prev);
+      } else if (e.altKey && e.key.toLowerCase() === 'q') {
+        e.preventDefault();
+        setIsScannerOpen((prev) => !prev);
+      } else if (e.altKey && e.key.toLowerCase() === 'c') {
+        e.preventDefault();
+        setIsGlobalCalculatorOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const handleOpenQuickEntry = (destination: QRDestinationType, recordId?: string, data?: any) => {
     setQuickEntryConfig({ destination, recordId, data });
@@ -654,6 +680,16 @@ export default function App() {
     await loadData(false);
   };
 
+  const handleUpdateAccountHead = async (id: string, data: any) => {
+    await api.updateAccountHead(id, data);
+    await loadData(false);
+  };
+
+  const handleDeleteAccountHead = async (id: string) => {
+    await api.deleteAccountHead(id);
+    await loadData(false);
+  };
+
   const handleTransferFund = async (data: any) => {
     await api.transferFund(data);
     await loadData(false);
@@ -1092,12 +1128,10 @@ export default function App() {
         />
       )}
 
-      {/* 5. Cashbook, Bank Accounts, Opening Balance & Account Heads View */}
+      {/* 5. Cashbook & Bank Accounts View */}
       {(currentTab === 'accounts' ||
         currentTab === 'cashbook' ||
-        currentTab === 'bank' ||
-        currentTab === 'openingBalance' ||
-        currentTab === 'accountHeads') && (
+        currentTab === 'bank') && (
         <CashBankView
           accounts={accounts}
           accountHeads={accountHeads}
@@ -1109,15 +1143,38 @@ export default function App() {
           onClearScannedAction={() => setScannedActionIntent(null)}
           onAddAccount={handleAddAccount}
           onUpdateAccount={handleUpdateAccount}
-          onUpdateOpeningBalance={handleUpdateOpeningBalance}
-          onAddAccountHead={handleAddAccountHead}
           onTransferFund={handleTransferFund}
+        />
+      )}
+
+      {/* 5.1 Standalone Opening Balance Management */}
+      {currentTab === 'openingBalance' && (
+        <OpeningBalanceView
+          accounts={accounts}
+          currentMosque={mosque}
+          language={language}
+          onUpdateOpeningBalance={handleUpdateOpeningBalance}
+        />
+      )}
+
+      {/* 5.2 Standalone Chart of Accounts (COA) / Account Heads */}
+      {currentTab === 'accountHeads' && (
+        <AccountHeadsView
+          accountHeads={accountHeads}
+          incomes={incomes}
+          expenses={expenses}
+          currentMosque={mosque}
+          language={language}
+          onAddAccountHead={handleAddAccountHead}
+          onUpdateAccountHead={handleUpdateAccountHead}
+          onDeleteAccountHead={handleDeleteAccountHead}
         />
       )}
 
       {/* 6. Committee & Meeting Resolutions View */}
       {(currentTab === 'committee' || currentTab === 'meetings') && (
         <CommitteeView
+          initialTab={currentTab === 'meetings' ? 'meetings' : 'dashboard'}
           terms={terms}
           members={members}
           meetings={meetings}
@@ -1173,6 +1230,7 @@ export default function App() {
         currentTab === 'notices') && (
         <ManagementView
           initialTab={currentTab as any}
+          onNavigateToSalaryBankTransfer={() => setCurrentTab('salaryBankTransfer')}
           staff={staff}
           staffPayments={staffPayments}
           assets={assets}
@@ -1216,6 +1274,26 @@ export default function App() {
           onArchiveCemeteryRecord={handleArchiveCemetery}
           onDeleteCemeteryRecord={handleDeleteCemetery}
           onAddNotice={handleAddNotice}
+        />
+      )}
+
+      {/* 7.4 Dedicated Salary Bank Transfer View */}
+      {currentTab === 'salaryBankTransfer' && (
+        <SalaryBankTransferView
+          staff={staff}
+          staffPayments={staffPayments}
+          accounts={accounts}
+          accountHeads={accountHeads}
+          currentMosque={mosque}
+          committeeTerms={terms}
+          currentUser={currentUser}
+          language={language}
+          onPayStaff={handlePayStaff}
+          onUpdateStaffPayment={handleUpdateStaffPayment}
+          onCancelStaffPayment={handleCancelStaffPayment}
+          onDisburseFestivalAllowance={handleDisburseFestivalAllowance}
+          onNavigateToStaff={() => setCurrentTab('staff')}
+          onRefresh={() => loadData(false)}
         />
       )}
 
@@ -1274,6 +1352,17 @@ export default function App() {
             setSavedReportConfigs((prev) => prev.filter((c) => c.id !== id));
           }}
           language={language}
+        />
+      )}
+
+      {/* 9.5 Mosque Management View (Central Source of Truth for Identity, Profile, Address, Media, Letterhead, & Documents) */}
+      {(currentTab === 'mosqueManagement' || (currentTab as string) === 'mosque') && (
+        <MosqueManagementView
+          currentMosque={mosque}
+          currentUser={currentUser}
+          language={language}
+          onSaveMosque={handleSaveMosqueSettings}
+          onNavigateTab={(tab) => setCurrentTab(tab as NavTab)}
         />
       )}
 
@@ -1354,10 +1443,12 @@ export default function App() {
           currentUser={currentUser}
           language={language}
           onOpenDisplayScreen={() => setCurrentTab('publicPortal')}
-          onOpenPrintSchedule={() => window.print()}
           onOpenSettings={() => setCurrentTab('admin')}
           onSaveJamaatTimes={async (jamaatSettings) => {
             await handleSaveMosqueSettings({ jamaatSettings });
+          }}
+          onRefreshMosque={async () => {
+            await loadData(false);
           }}
         />
       )}
@@ -1396,6 +1487,18 @@ export default function App() {
           onOpenCalculator={() => setIsGlobalCalculatorOpen(true)}
           onOpenScanner={() => setIsScannerOpen(true)}
           onOpenActionQrHub={() => setIsActionCardHubOpen(true)}
+          onOpenSearch={() => setIsSearchOpen(true)}
+          onOpenNotifications={() => setIsNotificationsOpen(true)}
+          unreadNotificationCount={(() => {
+            const currentMonth = new Date().toISOString().slice(0, 7);
+            const paidStaff = new Set(
+              staffPayments
+                .filter((p) => p.paymentMonth === currentMonth && p.status === 'PAID')
+                .map((p) => p.staffId)
+            );
+            const unpaid = staff.filter((s) => s.status === 'ACTIVE' && !paidStaff.has(s.id)).length;
+            return unpaid > 0 ? unpaid : 0;
+          })()}
           onLogout={handleLogout}
           onQuickAction={(act) => {
             if (act === 'income') setCurrentTab('income');
@@ -1774,6 +1877,40 @@ export default function App() {
         onClose={() => setActivePrintLabel(null)}
         recordItem={activePrintLabel}
         mosque={mosque}
+      />
+
+      {/* Global Instant Search Modal (Ctrl+K / ⌘+K) */}
+      <GlobalSearchModal
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        onNavigate={(tab, recordId) => {
+          setCurrentTab(tab);
+          if (recordId) {
+            // Can pass scannedActionIntent or focus record if needed
+          }
+        }}
+        currentUser={currentUser}
+        members={members}
+        staff={staff}
+        incomes={incomes}
+        expenses={expenses}
+        properties={properties}
+        assets={assets}
+        cemetery={cemetery}
+        donationBoxes={donationBoxes}
+      />
+
+      {/* Real Mosque Activity & Alerts Notification Center */}
+      <NotificationCenterModal
+        isOpen={isNotificationsOpen}
+        onClose={() => setIsNotificationsOpen(false)}
+        onNavigate={(tab) => setCurrentTab(tab)}
+        currentUser={currentUser}
+        staff={staff}
+        staffPayments={staffPayments}
+        committeeTerms={terms}
+        donationBoxes={donationBoxes}
+        notices={notices}
       />
 
       {/* PwaManager for offline, install, and update notifications */}

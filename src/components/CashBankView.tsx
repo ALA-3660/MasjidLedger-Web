@@ -34,6 +34,7 @@ interface CashBankViewProps {
   expenses: ExpenseEntry[];
   currentMosque?: Mosque | null;
   language?: Language;
+  initialTab?: 'cashbook' | 'bankbook' | 'banks' | 'transfer' | 'reports';
   scannedActionIntent?: QrScanResult | null;
   onClearScannedAction?: () => void;
   onAddAccount: (data: any) => Promise<void>;
@@ -57,6 +58,7 @@ export const CashBankView: React.FC<CashBankViewProps> = ({
   expenses,
   currentMosque,
   language = 'bn',
+  initialTab = 'cashbook',
   scannedActionIntent,
   onClearScannedAction,
   onAddAccount,
@@ -66,7 +68,7 @@ export const CashBankView: React.FC<CashBankViewProps> = ({
   onTransferFund,
 }) => {
   const t = translations[language] || translations.bn;
-  const [activeTab, setActiveTab] = useState<'cashbook' | 'bankbook' | 'banks' | 'opening-balance' | 'heads'>('cashbook');
+  const [activeTab, setActiveTab] = useState<'cashbook' | 'bankbook' | 'banks' | 'transfer' | 'reports'>(initialTab);
   
   // Opening Balance Modal State
   const [isOpeningBalanceModalOpen, setIsOpeningBalanceModalOpen] = useState(false);
@@ -437,7 +439,7 @@ export const CashBankView: React.FC<CashBankViewProps> = ({
           <div className="flex items-center space-x-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 overflow-x-auto">
             <button
               onClick={() => setActiveTab('cashbook')}
-              className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shrink-0 ${
+              className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer ${
                 activeTab === 'cashbook'
                   ? 'bg-blue-600 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -449,7 +451,7 @@ export const CashBankView: React.FC<CashBankViewProps> = ({
 
             <button
               onClick={() => setActiveTab('bankbook')}
-              className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shrink-0 ${
+              className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer ${
                 activeTab === 'bankbook'
                   ? 'bg-blue-600 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -461,64 +463,53 @@ export const CashBankView: React.FC<CashBankViewProps> = ({
 
             <button
               onClick={() => setActiveTab('banks')}
-              className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shrink-0 ${
+              className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer ${
                 activeTab === 'banks'
                   ? 'bg-blue-600 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <Landmark className="w-4 h-4" />
-              <span>ব্যাংক ও তহবিল হিসাব তালিকা</span>
-              <span className="ml-1 bg-white/20 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+              <span>ব্যাংক ও তহবিল হিসাব</span>
+              <span className={`ml-1 text-[10px] px-1.5 py-0.2 rounded-full font-bold ${activeTab === 'banks' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'}`}>
                 {accounts.length}
               </span>
             </button>
 
             <button
-              onClick={() => setActiveTab('opening-balance')}
-              className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shrink-0 ${
-                activeTab === 'opening-balance'
-                  ? 'bg-emerald-700 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Scale className="w-4 h-4 text-emerald-600" />
-              <span>প্রারম্ভিক স্থিতি (Opening Balance)</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('heads')}
-              className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shrink-0 ${
-                activeTab === 'heads'
+              onClick={() => setActiveTab('transfer')}
+              className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                activeTab === 'transfer'
                   ? 'bg-blue-600 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <Layers className="w-4 h-4" />
-              <span>আয়-ব্যয়ের হিসাব খাত (COA)</span>
+              <ArrowRightLeft className="w-4 h-4" />
+              <span>তহবিল স্থানান্তর (Fund Transfer)</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('reports')}
+              className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                activeTab === 'reports'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Printer className="w-4 h-4" />
+              <span>রিপোর্ট ও প্রিন্ট</span>
             </button>
           </div>
 
           {/* Action Buttons */}
           <div className="flex items-center space-x-2">
-            <button
-              onClick={() => {
-                setOpeningBalanceAccountId(accounts[0]?.id || '');
-                setIsOpeningBalanceModalOpen(true);
-              }}
-              className="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-all shadow-xs cursor-pointer"
-            >
-              <Scale className="w-4 h-4 text-amber-700" />
-              <span>প্রারম্ভিক স্থিতি ব্যবস্থাপনা</span>
-            </button>
-
-            {onTransferFund && (
+            {onTransferFund && activeTab !== 'transfer' && (
               <button
                 onClick={() => setIsTransferModalOpen(true)}
                 className="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer"
               >
                 <ArrowRightLeft className="w-4 h-4 text-slate-600" />
-                <span>তহবিল স্থানান্তর / কন্ট্রা</span>
+                <span>+ স্থানান্তর এন্ট্রি</span>
               </button>
             )}
 
@@ -528,7 +519,7 @@ export const CashBankView: React.FC<CashBankViewProps> = ({
                 className="bg-slate-900 hover:bg-black text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs transition-all cursor-pointer"
               >
                 <Printer className="w-4 h-4 text-emerald-400" />
-                <span>ক্যাশ বই রিপোর্ট প্রিন্ট</span>
+                <span>ক্যাশ বই প্রিন্ট</span>
               </button>
             )}
 
@@ -1123,232 +1114,155 @@ export const CashBankView: React.FC<CashBankViewProps> = ({
           </div>
         )}
 
-        {/* ---------------- 3.5 OPENING BALANCE MANAGEMENT TAB ---------------- */}
-        {activeTab === 'opening-balance' && (
+        {/* ---------------- 4. FUND TRANSFER (CONTRA) TAB ---------------- */}
+        {activeTab === 'transfer' && (
           <div className="space-y-6">
-            {/* Header / Notice */}
-            <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-slate-900 text-white p-6 rounded-2xl shadow-sm border border-emerald-900/40">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="space-y-1.5">
-                  <div className="flex items-center space-x-2">
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                      Accounting Baseline
-                    </span>
-                    <h3 className="text-lg font-bold">প্রারম্ভিক স্থিতি নিয়ন্ত্রণ কেন্দ্র (Opening Balance)</h3>
-                  </div>
-                  <p className="text-xs text-slate-300 font-baloo max-w-2xl">
-                    সকল নগদ তহবিল ও ব্যাংক হিসাবের প্রারম্ভিক জের নির্ভুলভাবে সংরক্ষণ করুন। এটি খতিয়ানের মূল ভিত্তি হিসেবে ব্যবহৃত হবে, কোনো আয় বা ব্যয় হিসেবে নয়।
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                    <ArrowRightLeft className="w-5 h-5 text-blue-600" />
+                    <span>তহবিল স্থানান্তর ও কন্ট্রা ভাউচার (Fund Transfer)</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    মসজিদের এক অ্যাকাউন্ট থেকে অন্য অ্যাকাউন্টে (যেমন: ক্যাশ থেকে ব্যাংক অথবা ব্যাংক থেকে ক্যাশ) অর্থ স্থানান্তর
                   </p>
                 </div>
-                <button
-                  onClick={() => {
-                    setOpeningBalanceAccountId(accounts[0]?.id || '');
-                    setIsOpeningBalanceModalOpen(true);
-                  }}
-                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center space-x-2 shrink-0 cursor-pointer self-start md:self-auto"
-                >
-                  <Scale className="w-4 h-4" />
-                  <span>প্রারম্ভিক স্থিতি এন্ট্রি / সমন্বয়</span>
-                </button>
-              </div>
-            </div>
 
-            {/* Accounting Rule Alert */}
-            <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-xl text-xs text-amber-900 font-baloo space-y-1">
-              <p className="font-bold text-amber-950 font-siliguri flex items-center space-x-1.5">
-                <Shield className="w-4 h-4 text-amber-700" />
-                <span>অ্যাকাউন্টিং নীতিমালা ও ডেটা অখণ্ডতা সুরক্ষা:</span>
-              </p>
-              <p>
-                ১. <strong>আয় বা অনুদান নয়:</strong> প্রারম্ভিক স্থিতি কখনো দান বা আয় হিসেবে কাউন্ট হয় না, ফলে আয় বিবরণী বা ভাউচার লিস্টে কোনো কৃত্রিম ডাটা যুক্ত হবে না।
-              </p>
-              <p>
-                ২. <strong>চলমান খতিয়ান জের:</strong> দৈনিক লেনদেন বিবরণী (Daily Statement), ক্যাশ বই (Cashbook) ও ব্যাংক বইতে এই প্রারম্ভিক স্থিতির উপর ভিত্তি করে রানিং ব্যালেন্স হিসাব করা হয়।
-              </p>
-            </div>
-
-            {/* Table of all Accounts Opening Balances */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-              <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                <span className="font-bold text-slate-800 text-sm">
-                  অ্যাকাউন্টভিত্তিক প্রারম্ভিক স্থিতি বিস্তারিত তালিকা
-                </span>
-                <span className="text-xs text-slate-500 font-mono">
-                  মোট হিসাব: {accounts.length} টি
-                </span>
+                {onTransferFund && (
+                  <button
+                    onClick={() => setIsTransferModalOpen(true)}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs transition-all cursor-pointer self-start sm:self-auto"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>নতুন তহবিল স্থানান্তর এন্ট্রি</span>
+                  </button>
+                )}
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-slate-100/75 text-slate-600 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
-                    <tr>
-                      <th className="px-4 py-3">অ্যাকাউন্ট / ফান্ডের নাম</th>
-                      <th className="px-4 py-3">ধরনের হিসাব</th>
-                      <th className="px-4 py-3">কার্যকর প্রারম্ভিক তারিখ</th>
-                      <th className="px-4 py-3">উৎস / কারণ</th>
-                      <th className="px-4 py-3 text-right">প্রারম্ভিক স্থিতি (টাকা)</th>
-                      <th className="px-4 py-3 text-right">বর্তমান রানিং স্থিতি</th>
-                      <th className="px-4 py-3 text-center">অ্যাকশন</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 font-baloo">
-                    {accounts.map((acc) => (
-                      <tr key={acc.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="px-4 py-3 font-siliguri font-bold text-slate-900">
-                          {acc.nameBn}
-                          {acc.bankName && (
-                            <span className="block text-[11px] text-slate-500 font-normal font-baloo">
-                              {acc.bankName} • {acc.accountNumber}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              acc.accountType === 'CASH'
-                                ? 'bg-amber-100 text-amber-800'
-                                : acc.accountType === 'BANK'
-                                ? 'bg-blue-100 text-blue-800'
-                                : 'bg-purple-100 text-purple-800'
-                            }`}
-                          >
-                            {acc.accountType === 'CASH' ? 'নগদ ক্যাশ' : acc.accountType === 'BANK' ? 'ব্যাংক হিসাব' : 'MFS/অন্যান্য'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 font-mono text-slate-700">
-                          {formatDate(acc.openingBalanceDate || '2026-07-31')}
-                        </td>
-                        <td className="px-4 py-3 text-slate-600">
-                          {acc.openingBalanceSource === 'PREVIOUS_COMMITTEE_HANDOVER'
-                            ? 'পূর্ববর্তী কমিটির তহবিল হস্তান্তর'
-                            : acc.openingBalanceSource === 'ANNUAL_CLOSING_BROUGHT_FORWARD'
-                            ? 'পূর্ববর্তী অর্থবছরের সমাপনী জের'
-                            : acc.openingBalanceSource === 'BANK_STATEMENT_BASELINE'
-                            ? 'ব্যাংক হিসাব স্টেটমেন্ট প্রারম্ভিক জের'
-                            : acc.openingBalanceSource === 'AUDIT_ADJUSTMENT'
-                            ? 'অডিট সমন্বয়'
-                            : 'সফটওয়্যার প্রাথমিক সেটআপ'}
-                        </td>
-                        <td className="px-4 py-3 text-right font-mono font-bold text-slate-900">
-                          ৳ {(acc.openingBalance || 0).toLocaleString('en-IN')}
-                          <span className="text-[10px] text-slate-400 block">
-                            {acc.openingBalanceType === 'CREDIT' ? '(ক্রেডিট / ঋণ)' : '(ডেবিট / জমা)'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right font-mono font-black text-emerald-700 text-sm">
-                          ৳ {(acc.currentBalance || 0).toLocaleString('en-IN')}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <button
-                            onClick={() => {
-                              setOpeningBalanceAccountId(acc.id);
-                              setIsOpeningBalanceModalOpen(true);
-                            }}
-                            className="px-2.5 py-1 bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border border-slate-300 hover:border-emerald-300 rounded-lg text-xs font-bold inline-flex items-center space-x-1 transition-colors cursor-pointer"
-                          >
-                            <Edit3 className="w-3 h-3" />
-                            <span>সমন্বয়</span>
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="bg-slate-50 border-t-2 border-slate-300 font-bold">
-                    <tr>
-                      <td colSpan={4} className="px-4 py-3 text-slate-800 font-siliguri">
-                        সর্বমোট প্রারম্ভিক ও বর্তমান তহবিলের স্থিতি:
-                      </td>
-                      <td className="px-4 py-3 text-right font-mono text-slate-900 font-black">
-                        ৳ {accounts.reduce((sum, a) => {
-                          const bal = a.openingBalance || 0;
-                          return a.openingBalanceType === 'CREDIT' ? sum - bal : sum + bal;
-                        }, 0).toLocaleString('en-IN')}
-                      </td>
-                      <td className="px-4 py-3 text-right font-mono text-emerald-800 font-black text-sm">
-                        ৳ {accounts.reduce((sum, a) => sum + (a.currentBalance || 0), 0).toLocaleString('en-IN')}
-                      </td>
-                      <td></td>
-                    </tr>
-                  </tfoot>
-                </table>
+
+              {/* Quick Transfer Form Box */}
+              <div className="mt-5 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-2">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    ক্যাশ জমা (Cash to Bank)
+                  </span>
+                  <p className="text-xs text-slate-600">
+                    দৈনিক বা জুমার ক্যাশ বক্স থেকে সংগৃহীত টাকা ব্যাংকে জমা দেওয়ার কন্ট্রা এন্ট্রি।
+                  </p>
+                  <button
+                    onClick={() => {
+                      const cash = accounts.find((a) => a.accountType === 'CASH');
+                      const bank = accounts.find((a) => a.accountType === 'BANK');
+                      if (cash) setFromAccId(cash.id);
+                      if (bank) setToAccId(bank.id);
+                      setIsTransferModalOpen(true);
+                    }}
+                    className="mt-2 text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center space-x-1 cursor-pointer"
+                  >
+                    <span>ক্যাশ টু ব্যাংক এন্ট্রি করুন &rarr;</span>
+                  </button>
+                </div>
+
+                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-2">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    ব্যাংক উত্তোলন (Bank to Cash)
+                  </span>
+                  <p className="text-xs text-slate-600">
+                    মসজিদের দৈনন্দিন খরচ মেটানোর জন্য ব্যাংক চেক মারফত ক্যাশ উত্তোলনের এন্ট্রি।
+                  </p>
+                  <button
+                    onClick={() => {
+                      const bank = accounts.find((a) => a.accountType === 'BANK');
+                      const cash = accounts.find((a) => a.accountType === 'CASH');
+                      if (bank) setFromAccId(bank.id);
+                      if (cash) setToAccId(cash.id);
+                      setIsTransferModalOpen(true);
+                    }}
+                    className="mt-2 text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center space-x-1 cursor-pointer"
+                  >
+                    <span>ব্যাংক টু ক্যাশ এন্ট্রি করুন &rarr;</span>
+                  </button>
+                </div>
+
+                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-2">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    অ্যাকাউন্ট স্থানান্তর (Bank to Bank)
+                  </span>
+                  <p className="text-xs text-slate-600">
+                    এক ব্যাংক হিসাব থেকে অন্য ফান্ড বা ব্যাংক হিসাবে তহবিল স্থানান্তরের এন্ট্রি।
+                  </p>
+                  <button
+                    onClick={() => {
+                      setIsTransferModalOpen(true);
+                    }}
+                    className="mt-2 text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center space-x-1 cursor-pointer"
+                  >
+                    <span>স্থানান্তর ফর্ম ওপেন করুন &rarr;</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* ---------------- 4. ACCOUNT HEADS CHART TAB ---------------- */}
-        {activeTab === 'heads' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Income Heads */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-              <div className="p-4 bg-emerald-50/80 border-b border-emerald-100 flex items-center justify-between">
-                <span className="font-bold text-emerald-950 text-xs sm:text-sm">
-                  আয়ের খাতসমূহ (Income Heads)
-                </span>
-                <span className="text-[11px] bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded-full font-bold">
-                  {accountHeads.filter((h) => h.type === 'INCOME').length} খাত
-                </span>
-              </div>
-              <div className="p-4 space-y-3">
-                {mainHeads
-                  .filter((h) => h.type === 'INCOME')
-                  .map((main) => {
-                    const subs = accountHeads.filter((h) => h.parentId === main.id);
-                    return (
-                      <div key={main.id} className="border border-slate-200 rounded-xl p-3 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-slate-900 text-xs">{main.nameBn}</span>
-                          <span className="font-mono text-[10px] text-slate-400">{main.code}</span>
-                        </div>
-                        {subs.length > 0 && (
-                          <div className="pl-3 border-l-2 border-emerald-400 space-y-1">
-                            {subs.map((sub) => (
-                              <div key={sub.id} className="text-xs text-slate-600 flex justify-between">
-                                <span>• {sub.nameBn}</span>
-                                <span className="font-mono text-[10px] text-slate-400">{sub.code}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-              </div>
-            </div>
+        {/* ---------------- 5. REPORTS & PRINT TAB ---------------- */}
+        {activeTab === 'reports' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Cashbook Report Card */}
+              <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col justify-between space-y-4">
+                <div className="space-y-2">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                    <Wallet className="w-5 h-5" />
+                  </div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    নগদ ক্যাশ বই রেজিস্টার প্রতিবেদন (Cashbook Report)
+                  </h3>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    নির্বাচিত তারিখ ও ক্যাশ অ্যাকাউন্টের সকল প্রাপ্তি, প্রদান ও রানিং জের সহ অফিশিয়াল A4 প্রিন্ট উপযোগী ক্যাশ খতিয়ান।
+                  </p>
+                </div>
 
-            {/* Expense Heads */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-              <div className="p-4 bg-rose-50/80 border-b border-rose-100 flex items-center justify-between">
-                <span className="font-bold text-rose-950 text-xs sm:text-sm">
-                  ব্যয়ের খাতসমূহ (Expense Heads)
-                </span>
-                <span className="text-[11px] bg-rose-200 text-rose-900 px-2 py-0.5 rounded-full font-bold">
-                  {accountHeads.filter((h) => h.type === 'EXPENSE').length} খাত
-                </span>
+                <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+                  <span className="text-xs text-slate-500 font-mono">
+                    মোট রেকর্ড: {filteredCashTxWithBalance.length} টি
+                  </span>
+                  <button
+                    onClick={() => setIsPrintCashbookOpen(true)}
+                    className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs transition-all cursor-pointer"
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span>ক্যাশ বই প্রিন্ট প্রিভিউ</span>
+                  </button>
+                </div>
               </div>
-              <div className="p-4 space-y-3">
-                {mainHeads
-                  .filter((h) => h.type === 'EXPENSE')
-                  .map((main) => {
-                    const subs = accountHeads.filter((h) => h.parentId === main.id);
-                    return (
-                      <div key={main.id} className="border border-slate-200 rounded-xl p-3 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-slate-900 text-xs">{main.nameBn}</span>
-                          <span className="font-mono text-[10px] text-slate-400">{main.code}</span>
-                        </div>
-                        {subs.length > 0 && (
-                          <div className="pl-3 border-l-2 border-rose-400 space-y-1">
-                            {subs.map((sub) => (
-                              <div key={sub.id} className="text-xs text-slate-600 flex justify-between">
-                                <span>• {sub.nameBn}</span>
-                                <span className="font-mono text-[10px] text-slate-400">{sub.code}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+
+              {/* Bankbook Report Card */}
+              <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col justify-between space-y-4">
+                <div className="space-y-2">
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center">
+                    <FileSpreadsheet className="w-5 h-5" />
+                  </div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    ব্যাংক খতিয়ান রেজিস্টার প্রতিবেদন (Bankbook Report)
+                  </h3>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    নির্বাচিত ব্যাংক বা MFS অ্যাকাউন্টের প্রারম্ভিক জের, জমা, উত্তোলন ও সমাপনী ব্যালেন্সের পূর্ণাঙ্গ খতিয়ান রিপোর্ট।
+                  </p>
+                </div>
+
+                <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+                  <span className="text-xs text-slate-500 font-mono">
+                    মোট রেকর্ড: {filteredBankTxWithBalance.length} টি
+                  </span>
+                  <button
+                    onClick={() => setIsPrintBankbookOpen(true)}
+                    className="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs transition-all cursor-pointer"
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span>ব্যাংক খতিয়ান প্রিন্ট প্রিভিউ</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>

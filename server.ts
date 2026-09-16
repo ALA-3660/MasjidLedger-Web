@@ -817,6 +817,114 @@ app.put('/api/v1/mosques/current', authenticate, requirePermission('MANAGE_SETTI
     }
   }
 
+  // Track Mosque Name Changes
+  if (body.nameBn && body.nameBn !== m.nameBn) {
+    db.logAudit(
+      m.id,
+      req.user!.id,
+      req.user!.name,
+      req.user!.role,
+      'MOSQUE_NAME_CHANGED',
+      'MOSQUE_PROFILE',
+      `মসজিদের বাংলা নাম পরিবর্তিত হয়েছে (পূর্ববর্তী: "${m.nameBn || '—'}", নতুন: "${body.nameBn}")`,
+      m.id,
+      req.ip,
+      { previousState: m.nameBn || '', newState: body.nameBn, status: 'SUCCESS' }
+    );
+  }
+  if (body.nameEn && body.nameEn !== m.nameEn) {
+    db.logAudit(
+      m.id,
+      req.user!.id,
+      req.user!.name,
+      req.user!.role,
+      'MOSQUE_NAME_CHANGED',
+      'MOSQUE_PROFILE',
+      `মসজিদের ইংরেজি নাম পরিবর্তিত হয়েছে (পূর্ববর্তী: "${m.nameEn || '—'}", নতুন: "${body.nameEn}")`,
+      m.id,
+      req.ip,
+      { previousState: m.nameEn || '', newState: body.nameEn, status: 'SUCCESS' }
+    );
+  }
+
+  // Track Mosque Contact Information Changes
+  if (body.phone && body.phone !== m.phone) {
+    db.logAudit(
+      m.id,
+      req.user!.id,
+      req.user!.name,
+      req.user!.role,
+      'MOSQUE_CONTACT_CHANGED',
+      'MOSQUE_PROFILE',
+      `মসজিদের প্রধান মোবাইল নম্বর পরিবর্তিত হয়েছে (পূর্ববর্তী: "${m.phone || '—'}", নতুন: "${body.phone}")`,
+      m.id,
+      req.ip,
+      { previousState: m.phone || '', newState: body.phone, status: 'SUCCESS' }
+    );
+  }
+  if (body.email !== undefined && body.email !== m.email) {
+    db.logAudit(
+      m.id,
+      req.user!.id,
+      req.user!.name,
+      req.user!.role,
+      'MOSQUE_EMAIL_CHANGED',
+      'MOSQUE_PROFILE',
+      `মসজিদের অফিশিয়াল ইমেইল পরিবর্তিত হয়েছে (পূর্ববর্তী: "${m.email || '—'}", নতুন: "${body.email || '—'}")`,
+      m.id,
+      req.ip,
+      { previousState: m.email || '', newState: body.email || '', status: 'SUCCESS' }
+    );
+  }
+
+  // Track Address Changes
+  if (body.address && body.address !== m.address) {
+    db.logAudit(
+      m.id,
+      req.user!.id,
+      req.user!.name,
+      req.user!.role,
+      'MOSQUE_ADDRESS_CHANGED',
+      'MOSQUE_PROFILE',
+      `মসজিদের পূর্ণ ঠিকানা আপডেট করা হয়েছে (নতুন: "${body.address}")`,
+      m.id,
+      req.ip,
+      { previousState: m.address || '', newState: body.address, status: 'SUCCESS' }
+    );
+  }
+
+  // Track Letterhead Settings Changes
+  if (body.letterheadSettings) {
+    db.logAudit(
+      m.id,
+      req.user!.id,
+      req.user!.name,
+      req.user!.role,
+      'MOSQUE_LETTERHEAD_CONFIGURED',
+      'LETTERHEAD_SETTINGS',
+      `মসজিদের অফিশিয়াল লেটারহেড ও প্যাড সেটিংস পরিবর্তন করা হয়েছে`,
+      m.id,
+      req.ip,
+      { previousState: JSON.stringify(m.letterheadSettings || {}), newState: JSON.stringify(body.letterheadSettings), status: 'SUCCESS' }
+    );
+  }
+
+  // Track Photo Changes
+  if (body.photoUrl !== undefined && body.photoUrl !== m.photoUrl) {
+    db.logAudit(
+      m.id,
+      req.user!.id,
+      req.user!.name,
+      req.user!.role,
+      'MOSQUE_PHOTO_UPDATED',
+      'MOSQUE_PROFILE',
+      body.photoUrl ? 'মসজিদের মূল ছবি/ফটো আপডেট করা হয়েছে' : 'মসজিদের ছবি মুছে ফেলা হয়েছে',
+      m.id,
+      req.ip,
+      { previousState: m.photoUrl ? 'CONFIGURED' : 'NONE', newState: body.photoUrl ? 'CONFIGURED' : 'REMOVED', status: 'SUCCESS' }
+    );
+  }
+
   // Track Mosque Location & GPS Changes
   if (body.district && body.district !== m.district) {
     db.logAudit(
@@ -1505,7 +1613,10 @@ app.get('/api/v1/prayer/schedule', (req: Request, res: Response) => {
       targetDate,
       mosque?.prayerSettings,
       mosque?.jamaatSettings,
-      districtQuery || mosque?.district || 'ঢাকা'
+      districtQuery || mosque?.district || 'ঢাকা',
+      undefined,
+      undefined,
+      mosque?.prayerDailyOverrides
     );
 
     res.json({
@@ -1537,7 +1648,11 @@ app.get('/api/v1/prayer/monthly', (req: Request, res: Response) => {
       year,
       month,
       mosque?.prayerSettings,
-      districtQuery || mosque?.district || 'ঢাকা'
+      districtQuery || mosque?.district || 'ঢাকা',
+      undefined,
+      undefined,
+      mosque?.prayerDailyOverrides,
+      mosque?.jamaatSettings
     );
 
     res.json({
@@ -1556,6 +1671,91 @@ app.get('/api/v1/prayer/monthly', (req: Request, res: Response) => {
         code: 'PRAYER_MONTHLY_CALCULATION_ERROR',
         message: 'মাসিক নামাজের সময়সূচী হিসাব করা সম্ভব হয়নি: ' + (err.message || 'অজানা ত্রুটি'),
       },
+    });
+  }
+});
+
+// 2.1 Single-Day Prayer Override (Admin Only with Validation & Audit Log)
+app.put('/api/v1/mosques/current/prayer-daily-override', authenticate, (req: AuthRequest, res: Response) => {
+  const user = req.user!;
+  const mosque = req.currentMosque!;
+
+  const hasPermission =
+    user.role === 'SUPER_ADMIN' ||
+    user.role === 'MOSQUE_ADMIN' ||
+    user.permissions.includes('MANAGE_SETTINGS');
+
+  if (!hasPermission) {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: 'PERMISSION_DENIED',
+        message: 'নির্দিষ্ট দিনের নামাজের সময় ও জামাত পরিবর্তনের অনুমতি আপনার নেই।'
+      }
+    });
+  }
+
+  const { date, override, action } = req.body;
+  if (!date || typeof date !== 'string') {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_PAYLOAD', message: 'তারিখ নির্দিষ্ট করা আবশ্যক।' }
+    });
+  }
+
+  try {
+    const targetMosque = db.mosques.find(m => m.id === mosque.id) || mosque;
+    if (!targetMosque.prayerDailyOverrides) {
+      targetMosque.prayerDailyOverrides = {};
+    }
+
+    const previousOverride = targetMosque.prayerDailyOverrides[date];
+
+    if (action === 'DELETE' || !override) {
+      delete targetMosque.prayerDailyOverrides[date];
+    } else {
+      targetMosque.prayerDailyOverrides[date] = {
+        date,
+        ...override,
+        updatedAt: new Date().toISOString(),
+        updatedBy: user.name,
+      };
+    }
+
+    db.save();
+
+    // Audit log
+    db.logAudit(
+      mosque.id,
+      user.id,
+      user.name,
+      user.role,
+      'PRAYER_DAILY_OVERRIDE_UPDATED',
+      'PRAYER_MANAGEMENT',
+      `${date} তারিখের নামাজের সময়সূচি ও জামাত কাস্টমাইজেশন ${action === 'DELETE' ? 'রিসেট' : 'আপডেট'} করা হয়েছে`,
+      mosque.id,
+      req.ip,
+      {
+        previousState: JSON.stringify(previousOverride || null),
+        newState: JSON.stringify(targetMosque.prayerDailyOverrides[date] || null),
+        status: 'SUCCESS'
+      }
+    );
+
+    realtime.broadcastToMosque(mosque.id, 'PRAYER_DAILY_OVERRIDE_UPDATED', {
+      date,
+      override: targetMosque.prayerDailyOverrides[date] || null
+    }, { senderId: user.id });
+
+    res.json({
+      success: true,
+      data: targetMosque.prayerDailyOverrides,
+      message: `${date} তারিখের সময়সূচি সফলভাবে সংরক্ষিত হয়েছে।`
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: { code: 'OVERRIDE_FAILED', message: error.message || 'সংরক্ষণে ত্রুটি হয়েছে।' }
     });
   }
 });
@@ -11097,12 +11297,148 @@ app.get('/api/v1/sms/logs', authenticate, (req: AuthRequest, res: Response) => {
 });
 
 // ==========================================
-// 15. AUDIT LOGS
+// 15. AUDIT LOGS & GLOBAL SEARCH FOUNDATION
 // ==========================================
 app.get('/api/v1/audit/logs', authenticate, (req: AuthRequest, res: Response) => {
   const mosqueId = req.currentMosque!.id;
   const logs = db.auditLogs.filter(l => req.user?.role === 'SUPER_ADMIN' || l.mosqueId === mosqueId);
   res.json({ success: true, data: logs });
+});
+
+app.get('/api/v1/search/global', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const q = ((req.query.q as string) || '').toLowerCase().trim();
+  const category = (req.query.category as string) || 'ALL';
+
+  if (!q) {
+    return res.json({ success: true, data: [] });
+  }
+
+  const results: any[] = [];
+  const user = req.user;
+  const canViewSensitive = user && (user.role === 'SUPER_ADMIN' || user.role === 'MOSQUE_ADMIN' || user.role === 'ACCOUNTANT');
+
+  // Helper mask
+  const mask = (val?: string) => {
+    if (!val) return '';
+    return val.length > 4 ? '••••' + val.slice(-4) : '••••';
+  };
+
+  // 1. Members & Staff
+  if (category === 'ALL' || category === 'PEOPLE') {
+    db.committeeMembers
+      .filter(m => m.mosqueId === mosqueId && (m.name.toLowerCase().includes(q) || (m.phone && m.phone.includes(q)) || (m.positionCustomBn && m.positionCustomBn.toLowerCase().includes(q))))
+      .forEach(m => {
+        results.push({
+          id: `member-${m.id}`,
+          title: m.name,
+          subtitle: `কমিটি সদস্য • পদবী: ${m.positionCustomBn || m.position || 'সদস্য'} • ফোন: ${canViewSensitive ? m.phone : mask(m.phone)}`,
+          category: 'PEOPLE',
+          categoryLabelBn: 'কমিটি ও সদস্য',
+          targetTab: 'committee',
+          targetRecordId: m.id,
+        });
+      });
+
+    // Staff
+    db.staffList
+      .filter(s => s.mosqueId === mosqueId && (s.name.toLowerCase().includes(q) || (s.phone && s.phone.includes(q)) || (s.designation && s.designation.toLowerCase().includes(q))))
+      .forEach(s => {
+        results.push({
+          id: `staff-${s.id}`,
+          title: s.name,
+          subtitle: `ইমাম ও স্টাফ • ${s.designation} • ফোন: ${canViewSensitive ? s.phone : mask(s.phone)}`,
+          category: 'PEOPLE',
+          categoryLabelBn: 'ইমাম ও স্টাফ',
+          targetTab: 'staff',
+          targetRecordId: s.id,
+        });
+      });
+  }
+
+  // 2. Financial Vouchers & Incomes/Expenses
+  if (category === 'ALL' || category === 'FINANCIAL') {
+    db.incomeEntries
+      .filter(i => i.mosqueId === mosqueId && ((i.voucherNumber && i.voucherNumber.toLowerCase().includes(q)) || (i.description && i.description.toLowerCase().includes(q)) || (i.mainHeadNameBn && i.mainHeadNameBn.toLowerCase().includes(q)) || (i.subHeadNameBn && i.subHeadNameBn.toLowerCase().includes(q))))
+      .slice(0, 10)
+      .forEach(i => {
+        results.push({
+          id: `inc-${i.id}`,
+          title: i.subHeadNameBn || i.mainHeadNameBn || i.description || 'আয় ভাউচার',
+          subtitle: `আয় ভাউচার #${i.voucherNumber || i.id} • তারিখ: ${i.date} • ৳${i.amount.toLocaleString()}`,
+          category: 'FINANCIAL',
+          categoryLabelBn: 'আর্থিক লেনদেন',
+          targetTab: 'income',
+          targetRecordId: i.id,
+        });
+      });
+
+    db.expenseEntries
+      .filter(e => e.mosqueId === mosqueId && ((e.voucherNumber && e.voucherNumber.toLowerCase().includes(q)) || (e.description && e.description.toLowerCase().includes(q)) || (e.payeeName && e.payeeName.toLowerCase().includes(q)) || (e.mainHeadNameBn && e.mainHeadNameBn.toLowerCase().includes(q))))
+      .slice(0, 10)
+      .forEach(e => {
+        results.push({
+          id: `exp-${e.id}`,
+          title: e.subHeadNameBn || e.mainHeadNameBn || e.description || 'ব্যয় ভাউচার',
+          subtitle: `ব্যয় ভাউচার #${e.voucherNumber || e.id} • প্রাপক: ${e.payeeName || '—'} • ৳${e.amount.toLocaleString()}`,
+          category: 'FINANCIAL',
+          categoryLabelBn: 'আর্থিক লেনদেন',
+          targetTab: 'expense',
+          targetRecordId: e.id,
+        });
+      });
+  }
+
+  // 3. Properties & Assets
+  if (category === 'ALL' || category === 'PROPERTIES_ASSETS') {
+    db.properties
+      .filter(p => p.mosqueId === mosqueId && (((p.name || p.nameBn) && (p.name || p.nameBn)!.toLowerCase().includes(q)) || (p.khatianNo && p.khatianNo.includes(q)) || (p.plotNo && p.plotNo.includes(q))))
+      .forEach(p => {
+        results.push({
+          id: `prop-${p.id}`,
+          title: p.nameBn || p.name || 'ওয়াকফ সম্পত্তি',
+          subtitle: `ওয়াকফ সম্পত্তি • খতিয়ান: ${p.khatianNo || '—'} • দাগ: ${p.plotNo || '—'}`,
+          category: 'PROPERTIES_ASSETS',
+          categoryLabelBn: 'ওয়াকফ সম্পত্তি',
+          targetTab: 'property',
+          targetRecordId: p.id,
+        });
+      });
+
+    db.assets
+      .filter(a => a.mosqueId === mosqueId && ((a.name && a.name.toLowerCase().includes(q)) || (a.assetCode && a.assetCode.toLowerCase().includes(q))))
+      .forEach(a => {
+        results.push({
+          id: `asset-${a.id}`,
+          title: a.name,
+          subtitle: `সম্পদ কোড: ${a.assetCode || '—'} • অবস্থা: ${a.conditionBn || a.condition || 'সক্রিয়'}`,
+          category: 'PROPERTIES_ASSETS',
+          categoryLabelBn: 'সম্পদ ও সরঞ্জাম',
+          targetTab: 'assets',
+          targetRecordId: a.id,
+        });
+      });
+  }
+
+  // 4. Central Documents
+  if (category === 'ALL' || category === 'DOCUMENTS') {
+    db.centralDocuments
+      .filter(d => d.mosqueId === mosqueId && (d.name.toLowerCase().includes(q) || (d.description && d.description.toLowerCase().includes(q))))
+      .forEach(d => {
+        if (d.visibility === 'PRIVATE' && !canViewSensitive) return;
+        results.push({
+          id: `doc-${d.id}`,
+          title: d.name,
+          subtitle: `ডকুমেন্ট • মডিউল: ${d.entityTitle || d.entityType} • দৃশ্যমানতা: ${d.visibility}`,
+          category: 'DOCUMENTS',
+          categoryLabelBn: 'ডকুমেন্ট ও ফাইল',
+          targetTab: 'documents',
+          targetRecordId: d.id,
+        });
+      });
+  }
+
+  res.json({ success: true, data: results.slice(0, 30) });
 });
 
 // ==========================================

@@ -238,6 +238,39 @@ export const parseTimeToMinutes = (timeStr?: string, isPMHint?: boolean): number
 };
 
 /**
+ * Returns a Date object normalized to Bangladesh Standard Time (BST / UTC+6).
+ * Ensures all prayer calculations and countdowns are strictly tied to BST regardless
+ * of the user's browser, server, or device local timezone.
+ */
+export const getBSTDate = (inputDate: Date = new Date()): Date => {
+  try {
+    const dtf = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Dhaka',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+      second: 'numeric',
+      hour12: false,
+    });
+    const parts = dtf.formatToParts(inputDate);
+    const getPart = (type: string) => parseInt(parts.find((p) => p.type === type)?.value || '0', 10);
+    return new Date(
+      getPart('year'),
+      getPart('month') - 1,
+      getPart('day'),
+      getPart('hour'),
+      getPart('minute'),
+      getPart('second')
+    );
+  } catch (e) {
+    const utc = inputDate.getTime() + inputDate.getTimezoneOffset() * 60000;
+    return new Date(utc + 6 * 3600000);
+  }
+};
+
+/**
  * Centralized 12-Hour Formatter: formatTime12Hour()
  * Accepts a Date, number (minutes from midnight), or string (e.g. "13:30", "1:30 PM", "1:30 PMPM", "১৩:৩০")
  * and outputs a sanitized 12-hour formatted time: e.g. "1:30 PM", "5:15 AM", "12:00 AM", "12:00 PM".
@@ -739,6 +772,7 @@ export interface MosqueSettingsInput {
     jumuah?: { azan?: string; khutbah?: string; jamaat?: string };
     ishraqOffsetMins?: number;
   };
+  prayerDailyOverrides?: Record<string, any>;
   prayerSettings?: {
     calculationMethod?: string;
     madhab?: 'HANAFI' | 'SHAFI_MALIKI_HANBALI';
@@ -765,10 +799,12 @@ export interface MosqueSettingsInput {
  * - Mosque manual configuration precedence without fallback hardcoding
  */
 export const calculateLiveWaqt = (
-  now: Date = new Date(),
+  nowInput: Date = new Date(),
   customPrayerTimes?: { adhan?: string; iqamah?: string; jamaat?: string }[] | null,
   mosqueData?: MosqueSettingsInput | null
 ): WaqtStatus => {
+  // Enforce Bangladesh Standard Time (BST / UTC+6)
+  const now = getBSTDate(nowInput);
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
   const currentSeconds = now.getSeconds();
   const totalCurrentSec = currentMinutes * 60 + currentSeconds;
@@ -799,55 +835,57 @@ export const calculateLiveWaqt = (
   });
 
   const jamaatConfig = mosqueData?.jamaatSettings || {};
+  const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const dayOverride = mosqueData?.prayerDailyOverrides?.[dateStr];
 
   // Resolve 5 Prayers (Start, Adhan, Jamaat, End):
-  // Rule: If mosque set custom adhan (and !== 'Auto'), use it. Else use astronomical calculated start/adhan.
-  // Rule: If mosque set custom jamaat, use it. Else calculate default jamaat (Adhan + standard offset).
+  // Rule: If single-day override or custom adhan (and !== 'Auto') is set, use it. Else use astronomical calculated start/adhan.
+  // Rule: If single-day override or custom jamaat is set, use it. Else calculate default jamaat.
 
   // 1. FAJR
-  const fajrStartMin = calc.fajrMin;
-  const fajrCustomAzanMin = parseTimeToMinutes(jamaatConfig.fajr?.azan || customPrayerTimes?.[0]?.adhan);
+  const fajrStartMin = dayOverride?.fajr?.waqtStart ? parseTimeToMinutes(dayOverride.fajr.waqtStart) : calc.fajrMin;
+  const fajrCustomAzanMin = parseTimeToMinutes(dayOverride?.fajr?.adhan || jamaatConfig.fajr?.azan || customPrayerTimes?.[0]?.adhan);
   const fajrAdhanMin = fajrCustomAzanMin > 0 ? fajrCustomAzanMin : fajrStartMin;
-  const fajrCustomJamaatMin = parseTimeToMinutes(jamaatConfig.fajr?.jamaat || customPrayerTimes?.[0]?.iqamah || customPrayerTimes?.[0]?.jamaat);
+  const fajrCustomJamaatMin = parseTimeToMinutes(dayOverride?.fajr?.jamaat || jamaatConfig.fajr?.jamaat || customPrayerTimes?.[0]?.iqamah || customPrayerTimes?.[0]?.jamaat);
   const fajrJamaatMin = fajrCustomJamaatMin > 0 ? fajrCustomJamaatMin : parseTimeToMinutes('5:15 AM');
-  const fajrEndMin = calc.sunriseMin;
+  const fajrEndMin = dayOverride?.fajr?.waqtEnd ? parseTimeToMinutes(dayOverride.fajr.waqtEnd) : calc.sunriseMin;
 
   // 2. DHUHR / JUMUAH
-  const dhuhrStartMin = calc.dhuhrMin;
-  const dhuhrCustomAzanMin = parseTimeToMinutes(jamaatConfig.dhuhr?.azan || customPrayerTimes?.[1]?.adhan, true);
+  const dhuhrStartMin = dayOverride?.dhuhr?.waqtStart ? parseTimeToMinutes(dayOverride.dhuhr.waqtStart, true) : calc.dhuhrMin;
+  const dhuhrCustomAzanMin = parseTimeToMinutes(dayOverride?.dhuhr?.adhan || jamaatConfig.dhuhr?.azan || customPrayerTimes?.[1]?.adhan, true);
   const dhuhrAdhanMin = dhuhrCustomAzanMin > 0 ? dhuhrCustomAzanMin : parseTimeToMinutes('12:30 PM');
-  const dhuhrCustomJamaatMin = parseTimeToMinutes(jamaatConfig.dhuhr?.jamaat || customPrayerTimes?.[1]?.iqamah || customPrayerTimes?.[1]?.jamaat, true);
+  const dhuhrCustomJamaatMin = parseTimeToMinutes(dayOverride?.dhuhr?.jamaat || jamaatConfig.dhuhr?.jamaat || customPrayerTimes?.[1]?.iqamah || customPrayerTimes?.[1]?.jamaat, true);
   const dhuhrJamaatMin = dhuhrCustomJamaatMin > 0 ? dhuhrCustomJamaatMin : parseTimeToMinutes('1:30 PM');
-  const dhuhrEndMin = calc.asrMin;
+  const dhuhrEndMin = dayOverride?.dhuhr?.waqtEnd ? parseTimeToMinutes(dayOverride.dhuhr.waqtEnd, true) : calc.asrMin;
 
   // Jumuah (Friday)
-  const jumuahAzanMin = parseTimeToMinutes(jamaatConfig.jumuah?.azan, true) > 0 ? parseTimeToMinutes(jamaatConfig.jumuah?.azan, true) : parseTimeToMinutes('12:30 PM');
-  const jumuahKhutbahMin = parseTimeToMinutes(jamaatConfig.jumuah?.khutbah, true) > 0 ? parseTimeToMinutes(jamaatConfig.jumuah?.khutbah, true) : parseTimeToMinutes('1:00 PM');
-  const jumuahJamaatMin = parseTimeToMinutes(jamaatConfig.jumuah?.jamaat, true) > 0 ? parseTimeToMinutes(jamaatConfig.jumuah?.jamaat, true) : parseTimeToMinutes('1:30 PM');
+  const jumuahAzanMin = parseTimeToMinutes(dayOverride?.jumuah?.adhan || jamaatConfig.jumuah?.azan, true) > 0 ? parseTimeToMinutes(dayOverride?.jumuah?.adhan || jamaatConfig.jumuah?.azan, true) : parseTimeToMinutes('12:30 PM');
+  const jumuahKhutbahMin = parseTimeToMinutes(dayOverride?.jumuah?.khutbah || jamaatConfig.jumuah?.khutbah, true) > 0 ? parseTimeToMinutes(dayOverride?.jumuah?.khutbah || jamaatConfig.jumuah?.khutbah, true) : parseTimeToMinutes('1:00 PM');
+  const jumuahJamaatMin = parseTimeToMinutes(dayOverride?.jumuah?.jamaat || jamaatConfig.jumuah?.jamaat, true) > 0 ? parseTimeToMinutes(dayOverride?.jumuah?.jamaat || jamaatConfig.jumuah?.jamaat, true) : parseTimeToMinutes('1:30 PM');
 
   // 3. ASR
-  const asrStartMin = calc.asrMin;
-  const asrCustomAzanMin = parseTimeToMinutes(jamaatConfig.asr?.azan || customPrayerTimes?.[2]?.adhan, true);
+  const asrStartMin = dayOverride?.asr?.waqtStart ? parseTimeToMinutes(dayOverride.asr.waqtStart, true) : calc.asrMin;
+  const asrCustomAzanMin = parseTimeToMinutes(dayOverride?.asr?.adhan || jamaatConfig.asr?.azan || customPrayerTimes?.[2]?.adhan, true);
   const asrAdhanMin = asrCustomAzanMin > 0 ? asrCustomAzanMin : asrStartMin;
-  const asrCustomJamaatMin = parseTimeToMinutes(jamaatConfig.asr?.jamaat || customPrayerTimes?.[2]?.iqamah || customPrayerTimes?.[2]?.jamaat, true);
+  const asrCustomJamaatMin = parseTimeToMinutes(dayOverride?.asr?.jamaat || jamaatConfig.asr?.jamaat || customPrayerTimes?.[2]?.iqamah || customPrayerTimes?.[2]?.jamaat, true);
   const asrJamaatMin = asrCustomJamaatMin > 0 ? asrCustomJamaatMin : parseTimeToMinutes('4:45 PM');
-  const asrEndMin = calc.sunsetMin;
+  const asrEndMin = dayOverride?.asr?.waqtEnd ? parseTimeToMinutes(dayOverride.asr.waqtEnd, true) : calc.sunsetMin;
 
   // 4. MAGHRIB
-  const maghribStartMin = calc.maghribMin;
-  const maghribCustomAzanMin = parseTimeToMinutes(jamaatConfig.maghrib?.azan || customPrayerTimes?.[3]?.adhan, true);
+  const maghribStartMin = dayOverride?.maghrib?.waqtStart ? parseTimeToMinutes(dayOverride.maghrib.waqtStart, true) : calc.maghribMin;
+  const maghribCustomAzanMin = parseTimeToMinutes(dayOverride?.maghrib?.adhan || jamaatConfig.maghrib?.azan || customPrayerTimes?.[3]?.adhan, true);
   const maghribAdhanMin = maghribCustomAzanMin > 0 ? maghribCustomAzanMin : maghribStartMin;
-  const maghribCustomJamaatMin = parseTimeToMinutes(jamaatConfig.maghrib?.jamaat || customPrayerTimes?.[3]?.iqamah || customPrayerTimes?.[3]?.jamaat, true);
+  const maghribCustomJamaatMin = parseTimeToMinutes(dayOverride?.maghrib?.jamaat || jamaatConfig.maghrib?.jamaat || customPrayerTimes?.[3]?.iqamah || customPrayerTimes?.[3]?.jamaat, true);
   const maghribJamaatMin = maghribCustomJamaatMin > 0 ? maghribCustomJamaatMin : parseTimeToMinutes('6:30 PM');
-  const maghribEndMin = calc.ishaMin;
+  const maghribEndMin = dayOverride?.maghrib?.waqtEnd ? parseTimeToMinutes(dayOverride.maghrib.waqtEnd, true) : calc.ishaMin;
 
   // 5. ISHA
-  const ishaStartMin = calc.ishaMin;
-  const ishaCustomAzanMin = parseTimeToMinutes(jamaatConfig.isha?.azan || customPrayerTimes?.[4]?.adhan, true);
+  const ishaStartMin = dayOverride?.isha?.waqtStart ? parseTimeToMinutes(dayOverride.isha.waqtStart, true) : calc.ishaMin;
+  const ishaCustomAzanMin = parseTimeToMinutes(dayOverride?.isha?.adhan || jamaatConfig.isha?.azan || customPrayerTimes?.[4]?.adhan, true);
   const ishaAdhanMin = ishaCustomAzanMin > 0 ? ishaCustomAzanMin : ishaStartMin;
-  const ishaCustomJamaatMin = parseTimeToMinutes(jamaatConfig.isha?.jamaat || customPrayerTimes?.[4]?.iqamah || customPrayerTimes?.[4]?.jamaat, true);
+  const ishaCustomJamaatMin = parseTimeToMinutes(dayOverride?.isha?.jamaat || jamaatConfig.isha?.jamaat || customPrayerTimes?.[4]?.iqamah || customPrayerTimes?.[4]?.jamaat, true);
   const ishaJamaatMin = ishaCustomJamaatMin > 0 ? ishaCustomJamaatMin : parseTimeToMinutes('8:15 PM');
-  const ishaEndMin = calc.fajrMin; // Fajr next morning
+  const ishaEndMin = dayOverride?.isha?.waqtEnd ? parseTimeToMinutes(dayOverride.isha.waqtEnd) : calc.fajrMin; // Fajr next morning
 
   // -------------------------------------------------------------
   // FORBIDDEN / MAKRUH PERIODS TRACKING (Independent from 5-Prayers)
@@ -1385,7 +1423,6 @@ export const calculateLiveWaqt = (
     year: 'numeric'
   };
   const dateBn = toBanglaDigits(now.toLocaleDateString('bn-BD', gregorianOptions));
-  const dateStr = now.toISOString().split('T')[0];
 
   return {
     currentTime24: formatMinutesTo24h(currentMinutes),
@@ -1525,6 +1562,24 @@ export interface MonthlyDayPrayerItem {
   maghrib12: string;
   isha12: string;
   tahajjudEnd12: string;
+  // Mosque Authoritative Azan & Jamaat (12h format)
+  fajrAzan12?: string;
+  fajrJamaat12?: string;
+  dhuhrAzan12?: string;
+  dhuhrJamaat12?: string;
+  asrAzan12?: string;
+  asrJamaat12?: string;
+  maghribAzan12?: string;
+  maghribJamaat12?: string;
+  ishaAzan12?: string;
+  ishaJamaat12?: string;
+  jumuahAzan12?: string;
+  jumuahKhutbah12?: string;
+  jumuahJamaat12?: string;
+  sehriEnd12?: string;
+  iftar12?: string;
+  hasOverride?: boolean;
+  overrideNotes?: string;
 }
 
 export const generateMonthlyPrayerTimes = (
@@ -1533,13 +1588,15 @@ export const generateMonthlyPrayerTimes = (
   districtName?: string,
   latitude?: number,
   longitude?: number,
-  options?: CalculationOptions
+  options?: CalculationOptions,
+  mosqueData?: MosqueSettingsInput | null
 ): MonthlyDayPrayerItem[] => {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const today = new Date();
+  const today = getBSTDate(new Date());
   const result: MonthlyDayPrayerItem[] = [];
 
   const dayNamesBn = ['রবি', 'সোম', 'মঙ্গল', 'বুধ', 'বৃহঃ', 'শুক্র', 'শনি'];
+  const jConfig = mosqueData?.jamaatSettings || {};
 
   for (let d = 1; d <= daysInMonth; d++) {
     const date = new Date(year, month, d, 12, 0, 0);
@@ -1558,9 +1615,49 @@ export const generateMonthlyPrayerTimes = (
     const bDate = getBengaliDate(date);
     const hDate = getHijriDate(date);
 
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const dayOverride = mosqueData?.prayerDailyOverrides?.[dateStr];
+    const hasOverride = Boolean(dayOverride);
+
+    // Resolve Authoritative Azan & Jamaat for the day (Override > Mosque Jamaat Settings > Astronomical/Default)
+    const fajrCustomAzanMin = parseTimeToMinutes(dayOverride?.fajr?.adhan || jConfig.fajr?.azan);
+    const fajrAdhanMin = fajrCustomAzanMin > 0 ? fajrCustomAzanMin : times.fajrMin;
+    const fajrCustomJamaatMin = parseTimeToMinutes(dayOverride?.fajr?.jamaat || jConfig.fajr?.jamaat);
+    const fajrJamaatMin = fajrCustomJamaatMin > 0 ? fajrCustomJamaatMin : parseTimeToMinutes('5:15 AM');
+
+    const dhuhrCustomAzanMin = parseTimeToMinutes(dayOverride?.dhuhr?.adhan || jConfig.dhuhr?.azan, true);
+    const dhuhrAdhanMin = dhuhrCustomAzanMin > 0 ? dhuhrCustomAzanMin : parseTimeToMinutes('12:30 PM');
+    const dhuhrCustomJamaatMin = parseTimeToMinutes(dayOverride?.dhuhr?.jamaat || jConfig.dhuhr?.jamaat, true);
+    const dhuhrJamaatMin = dhuhrCustomJamaatMin > 0 ? dhuhrCustomJamaatMin : parseTimeToMinutes('1:30 PM');
+
+    const asrCustomAzanMin = parseTimeToMinutes(dayOverride?.asr?.adhan || jConfig.asr?.azan, true);
+    const asrAdhanMin = asrCustomAzanMin > 0 ? asrCustomAzanMin : times.asrMin;
+    const asrCustomJamaatMin = parseTimeToMinutes(dayOverride?.asr?.jamaat || jConfig.asr?.jamaat, true);
+    const asrJamaatMin = asrCustomJamaatMin > 0 ? asrCustomJamaatMin : parseTimeToMinutes('4:45 PM');
+
+    const maghribCustomAzanMin = parseTimeToMinutes(dayOverride?.maghrib?.adhan || jConfig.maghrib?.azan, true);
+    const maghribAdhanMin = maghribCustomAzanMin > 0 ? maghribCustomAzanMin : times.maghribMin;
+    const maghribCustomJamaatMin = parseTimeToMinutes(dayOverride?.maghrib?.jamaat || jConfig.maghrib?.jamaat, true);
+    const maghribJamaatMin = maghribCustomJamaatMin > 0 ? maghribCustomJamaatMin : parseTimeToMinutes('6:30 PM');
+
+    const ishaCustomAzanMin = parseTimeToMinutes(dayOverride?.isha?.adhan || jConfig.isha?.azan, true);
+    const ishaAdhanMin = ishaCustomAzanMin > 0 ? ishaCustomAzanMin : times.ishaMin;
+    const ishaCustomJamaatMin = parseTimeToMinutes(dayOverride?.isha?.jamaat || jConfig.isha?.jamaat, true);
+    const ishaJamaatMin = ishaCustomJamaatMin > 0 ? ishaCustomJamaatMin : parseTimeToMinutes('8:15 PM');
+
+    const jumuahAzanMin = parseTimeToMinutes(dayOverride?.jumuah?.adhan || jConfig.jumuah?.azan, true) > 0
+      ? parseTimeToMinutes(dayOverride?.jumuah?.adhan || jConfig.jumuah?.azan, true)
+      : parseTimeToMinutes('12:30 PM');
+    const jumuahKhutbahMin = parseTimeToMinutes(dayOverride?.jumuah?.khutbah || jConfig.jumuah?.khutbah, true) > 0
+      ? parseTimeToMinutes(dayOverride?.jumuah?.khutbah || jConfig.jumuah?.khutbah, true)
+      : parseTimeToMinutes('1:00 PM');
+    const jumuahJamaatMin = parseTimeToMinutes(dayOverride?.jumuah?.jamaat || jConfig.jumuah?.jamaat, true) > 0
+      ? parseTimeToMinutes(dayOverride?.jumuah?.jamaat || jConfig.jumuah?.jamaat, true)
+      : parseTimeToMinutes('1:30 PM');
+
     result.push({
       day: d,
-      dateStr: `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
+      dateStr,
       dayNameBn: dayNamesBn[date.getDay()],
       bengaliDateBn: `${bDate.day} ${bDate.month}`,
       hijriDateBn: `${hDate.day} ${hDate.month}`,
@@ -1588,6 +1685,24 @@ export const generateMonthlyPrayerTimes = (
       maghrib12: formatMinutesTo12h(times.maghribMin),
       isha12: formatMinutesTo12h(times.ishaMin),
       tahajjudEnd12: formatMinutesTo12h(times.tahajjudEndMin),
+      // Mosque Authoritative Azan & Jamaat
+      fajrAzan12: formatMinutesTo12h(fajrAdhanMin),
+      fajrJamaat12: formatMinutesTo12h(fajrJamaatMin),
+      dhuhrAzan12: formatMinutesTo12h(dhuhrAdhanMin),
+      dhuhrJamaat12: formatMinutesTo12h(dhuhrJamaatMin),
+      asrAzan12: formatMinutesTo12h(asrAdhanMin),
+      asrJamaat12: formatMinutesTo12h(asrJamaatMin),
+      maghribAzan12: formatMinutesTo12h(maghribAdhanMin),
+      maghribJamaat12: formatMinutesTo12h(maghribJamaatMin),
+      ishaAzan12: formatMinutesTo12h(ishaAdhanMin),
+      ishaJamaat12: formatMinutesTo12h(ishaJamaatMin),
+      jumuahAzan12: isFriday ? formatMinutesTo12h(jumuahAzanMin) : undefined,
+      jumuahKhutbah12: isFriday ? formatMinutesTo12h(jumuahKhutbahMin) : undefined,
+      jumuahJamaat12: isFriday ? formatMinutesTo12h(jumuahJamaatMin) : undefined,
+      sehriEnd12: formatMinutesTo12h(times.tahajjudEndMin),
+      iftar12: formatMinutesTo12h(times.sunsetMin),
+      hasOverride,
+      overrideNotes: dayOverride?.notes,
     });
   }
 
@@ -1709,7 +1824,8 @@ export const buildDailyPrayerSchedule = (
   jamaatSettings?: any,
   districtOverride?: string,
   latitude?: number,
-  longitude?: number
+  longitude?: number,
+  prayerDailyOverrides?: Record<string, any>
 ): DailyPrayerSchedule => {
   const district = districtOverride || prayerSettings?.district || 'ঢাকা';
   const lat = latitude ?? (prayerSettings as any)?.latitude;
@@ -1720,6 +1836,7 @@ export const buildDailyPrayerSchedule = (
     longitude: lng,
     prayerSettings: prayerSettings as any,
     jamaatSettings,
+    prayerDailyOverrides,
   });
 
   const prayers: DailyPrayerItem[] = waqtStatus.prayerList.map((p) => {
@@ -1841,7 +1958,9 @@ export const buildMonthlyPrayerCalendar = (
   prayerSettings?: Partial<MosquePrayerSettings> | null,
   districtOverride?: string,
   latitude?: number,
-  longitude?: number
+  longitude?: number,
+  prayerDailyOverrides?: Record<string, any>,
+  jamaatSettings?: any
 ): MonthlyPrayerDay[] => {
   const district = districtOverride || prayerSettings?.district || 'ঢাকা';
   const lat = latitude ?? (prayerSettings as any)?.latitude;
@@ -1862,6 +1981,11 @@ export const buildMonthlyPrayerCalendar = (
       asrOffset: (prayerSettings as any)?.asr?.manualOffset ?? 0,
       maghribOffset: (prayerSettings as any)?.maghrib?.manualOffset ?? 0,
       ishaOffset: (prayerSettings as any)?.isha?.manualOffset ?? 0,
+    },
+    {
+      jamaatSettings,
+      prayerDailyOverrides,
+      district,
     }
   );
 
@@ -1870,13 +1994,27 @@ export const buildMonthlyPrayerCalendar = (
   return monthlyItems.map((item) => {
     const d = new Date(year, month - 1, item.day);
     const dayIndex = d.getDay();
+    const dateStr = item.dateStr;
+    const dayOverride = prayerDailyOverrides?.[dateStr];
 
-    const fajrCustomJamaat = prayerSettings?.fajr?.jamaat || '5:15 AM';
-    const dhuhrCustomJamaat = prayerSettings?.dhuhr?.jamaat || '1:30 PM';
-    const asrCustomJamaat = prayerSettings?.asr?.jamaat || '4:45 PM';
-    const maghribCustomJamaat = prayerSettings?.maghrib?.jamaat || '6:30 PM';
-    const ishaCustomJamaat = prayerSettings?.isha?.jamaat || '8:15 PM';
-    const jumuahCustomJamaat = prayerSettings?.jumuah?.jamaat || '1:30 PM';
+    const fajrCustomAzan = dayOverride?.fajr?.adhan || jamaatSettings?.fajr?.azan || prayerSettings?.fajr?.adhan;
+    const fajrCustomJamaat = dayOverride?.fajr?.jamaat || jamaatSettings?.fajr?.jamaat || prayerSettings?.fajr?.jamaat || '5:15 AM';
+
+    const dhuhrCustomAzan = dayOverride?.dhuhr?.adhan || jamaatSettings?.dhuhr?.azan || prayerSettings?.dhuhr?.adhan;
+    const dhuhrCustomJamaat = dayOverride?.dhuhr?.jamaat || jamaatSettings?.dhuhr?.jamaat || prayerSettings?.dhuhr?.jamaat || '1:30 PM';
+
+    const asrCustomAzan = dayOverride?.asr?.adhan || jamaatSettings?.asr?.azan || prayerSettings?.asr?.adhan;
+    const asrCustomJamaat = dayOverride?.asr?.jamaat || jamaatSettings?.asr?.jamaat || prayerSettings?.asr?.jamaat || '4:45 PM';
+
+    const maghribCustomAzan = dayOverride?.maghrib?.adhan || jamaatSettings?.maghrib?.azan || prayerSettings?.maghrib?.adhan;
+    const maghribCustomJamaat = dayOverride?.maghrib?.jamaat || jamaatSettings?.maghrib?.jamaat || prayerSettings?.maghrib?.jamaat || '6:30 PM';
+
+    const ishaCustomAzan = dayOverride?.isha?.adhan || jamaatSettings?.isha?.azan || prayerSettings?.isha?.adhan;
+    const ishaCustomJamaat = dayOverride?.isha?.jamaat || jamaatSettings?.isha?.jamaat || prayerSettings?.isha?.jamaat || '8:15 PM';
+
+    const jumuahCustomAzan = dayOverride?.jumuah?.adhan || jamaatSettings?.jumuah?.azan || prayerSettings?.jumuah?.adhan || '12:30 PM';
+    const jumuahCustomKhutbah = dayOverride?.jumuah?.khutbah || jamaatSettings?.jumuah?.khutbah || prayerSettings?.jumuah?.khutbah || '1:00 PM';
+    const jumuahCustomJamaat = dayOverride?.jumuah?.jamaat || jamaatSettings?.jumuah?.jamaat || prayerSettings?.jumuah?.jamaat || '1:30 PM';
 
     return {
       date: item.dateStr,
@@ -1887,22 +2025,30 @@ export const buildMonthlyPrayerCalendar = (
       hijriDateBn: item.hijriDateBn,
       bengaliDateBn: item.bengaliDateBn,
       sehriEnd: item.tahajjudEnd12 || item.tahajjudEnd,
-      fajrStart: item.fajr12 || item.fajr,
+      fajrStart: dayOverride?.fajr?.waqtStart ? formatTime12Hour(dayOverride.fajr.waqtStart) : (item.fajr12 || item.fajr),
+      fajrAdhan: fajrCustomAzan && !fajrCustomAzan.toLowerCase().includes('auto') ? formatTime12Hour(fajrCustomAzan) : (item.fajr12 || item.fajr),
       fajrJamaat: formatTime12Hour(fajrCustomJamaat),
       sunrise: item.sunrise12 || item.sunrise,
       ishraq: item.ishraq12 || item.ishraq,
       solarNoon: item.solarNoon12 || item.solarNoon,
-      dhuhrStart: item.dhuhr12 || item.dhuhr,
+      dhuhrStart: dayOverride?.dhuhr?.waqtStart ? formatTime12Hour(dayOverride.dhuhr.waqtStart) : (item.dhuhr12 || item.dhuhr),
+      dhuhrAdhan: dhuhrCustomAzan && !dhuhrCustomAzan.toLowerCase().includes('auto') ? formatTime12Hour(dhuhrCustomAzan) : (item.dhuhr12 || item.dhuhr),
       dhuhrJamaat: formatTime12Hour(dhuhrCustomJamaat),
-      asrStart: item.asr12 || item.asr,
+      asrStart: dayOverride?.asr?.waqtStart ? formatTime12Hour(dayOverride.asr.waqtStart) : (item.asr12 || item.asr),
+      asrAdhan: asrCustomAzan && !asrCustomAzan.toLowerCase().includes('auto') ? formatTime12Hour(asrCustomAzan) : (item.asr12 || item.asr),
       asrJamaat: formatTime12Hour(asrCustomJamaat),
       sunset: item.sunset12 || item.sunset,
       iftar: item.sunset12 || item.sunset,
-      maghribStart: item.maghrib12 || item.maghrib,
+      maghribStart: dayOverride?.maghrib?.waqtStart ? formatTime12Hour(dayOverride.maghrib.waqtStart) : (item.maghrib12 || item.maghrib),
+      maghribAdhan: maghribCustomAzan && !maghribCustomAzan.toLowerCase().includes('auto') ? formatTime12Hour(maghribCustomAzan) : (item.maghrib12 || item.maghrib),
       maghribJamaat: formatTime12Hour(maghribCustomJamaat),
-      ishaStart: item.isha12 || item.isha,
+      ishaStart: dayOverride?.isha?.waqtStart ? formatTime12Hour(dayOverride.isha.waqtStart) : (item.isha12 || item.isha),
+      ishaAdhan: ishaCustomAzan && !ishaCustomAzan.toLowerCase().includes('auto') ? formatTime12Hour(ishaCustomAzan) : (item.isha12 || item.isha),
       ishaJamaat: formatTime12Hour(ishaCustomJamaat),
       jumuah: item.isFriday ? formatTime12Hour(jumuahCustomJamaat) : undefined,
+      jumuahAdhan: item.isFriday ? formatTime12Hour(jumuahCustomAzan) : undefined,
+      jumuahKhutbah: item.isFriday ? formatTime12Hour(jumuahCustomKhutbah) : undefined,
+      isOverridden: Boolean(dayOverride),
     };
   });
 };

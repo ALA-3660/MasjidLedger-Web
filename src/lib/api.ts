@@ -398,6 +398,25 @@ class ApiService {
     return res.data;
   }
 
+  async updateDailyPrayerOverride(date: string, override?: any, action?: 'UPDATE' | 'DELETE'): Promise<{
+    success: boolean;
+    data: Record<string, any>;
+    message: string;
+  }> {
+    const res = await this.request<Record<string, any>>('/mosques/current/prayer-daily-override', {
+      method: 'PUT',
+      body: JSON.stringify({ date, override, action }),
+    });
+    if (!res.success) {
+      throw new Error(res.error?.message || 'নির্দিষ্ট দিনের সময়সূচি সংরক্ষণ করতে ব্যর্থ হয়েছে');
+    }
+    return {
+      success: true,
+      data: res.data || {},
+      message: (res as any).message || 'সফলভাবে সংরক্ষিত হয়েছে',
+    };
+  }
+
   async uploadMosqueLogo(data: { fileName: string; fileType?: string; mimeType?: string; base64Data: string }): Promise<Mosque> {
     const res = await this.request<Mosque>('/mosques/current/branding/logo', {
       method: 'POST',
@@ -522,6 +541,22 @@ class ApiService {
     });
     if (!res.success) throw new Error(res.error?.message || 'Failed to create account head');
     return res.data!;
+  }
+
+  async updateAccountHead(id: string, data: Partial<AccountHead>): Promise<AccountHead> {
+    const res = await this.request<AccountHead>(`/accounting/account-heads/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to update account head');
+    return res.data!;
+  }
+
+  async deleteAccountHead(id: string): Promise<void> {
+    const res = await this.request<void>(`/accounting/account-heads/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to delete account head');
   }
 
   // Incomes & Expenses
@@ -1636,6 +1671,13 @@ class ApiService {
       method: 'POST',
       body: JSON.stringify({ question, language }),
     });
+  }
+
+  // Global Search
+  async searchGlobal(q: string, category: string = 'ALL') {
+    const query = new URLSearchParams({ q, category });
+    const res = await this.request<any[]>(`/search/global?${query.toString()}`);
+    return res.data || [];
   }
 }
 

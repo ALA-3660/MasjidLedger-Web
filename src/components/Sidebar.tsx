@@ -33,6 +33,7 @@ import { Language, translations } from '../lib/i18n';
 
 export type NavTab =
   | 'dashboard'
+  | 'mosqueManagement'
   | 'income'
   | 'expense'
   | 'donations'
@@ -46,6 +47,7 @@ export type NavTab =
   | 'advisors'
   | 'meetings'
   | 'staff'
+  | 'salaryBankTransfer'
   | 'assets'
   | 'property'
   | 'documents'
@@ -136,7 +138,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       title: t.management,
       items: [
+        {
+          id: 'mosqueManagement' as NavTab,
+          label: language === 'bn' ? 'মসজিদ ব্যবস্থাপনা' : 'Mosque Management',
+          icon: Landmark,
+          badge: language === 'bn' ? 'মূল পরিচয়' : 'Identity',
+          color: 'text-emerald-700',
+        },
         { id: 'staff' as NavTab, label: t.staff, icon: UserCheck },
+        {
+          id: 'salaryBankTransfer' as NavTab,
+          label: language === 'bn' ? 'বেতন ব্যাংক ট্রান্সফার' : 'Salary Bank Transfer',
+          icon: Banknote,
+          badge: language === 'bn' ? 'স্বতন্ত্র' : 'Dedicated',
+          color: 'text-emerald-600',
+        },
         { id: 'assets' as NavTab, label: t.assets, icon: Package },
         { id: 'property' as NavTab, label: t.property, icon: Building },
         {

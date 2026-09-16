@@ -628,5 +628,27 @@ aside button,
   }
 }
 
+/* ============================================================
+   DIGITAL TV DISPLAY MARQUEE TICKER ANIMATION
+   ============================================================ */
+@keyframes tvMarquee {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+.animate-tv-marquee {
+  display: inline-block;
+  white-space: nowrap;
+  animation: tvMarquee 35s linear infinite;
+}
+
+.animate-tv-marquee:hover {
+  animation-play-state: paused;
+}
+
 
 

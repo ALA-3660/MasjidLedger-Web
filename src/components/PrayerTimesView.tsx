@@ -39,9 +39,12 @@ import {
   formatDurationDigital,
   playPrayerNotificationSound,
   WaqtStatus,
+  MonthlyDayPrayerItem,
   parseTimeToMinutes,
 } from '../lib/prayerEngine';
 import { Language } from '../lib/i18n';
+import { PrayerSchedulePrintModal } from './PrayerSchedulePrintModal';
+import { DailyPrayerOverrideModal } from './DailyPrayerOverrideModal';
 
 interface PrayerTimesViewProps {
   currentMosque?: Mosque | null;
@@ -51,6 +54,7 @@ interface PrayerTimesViewProps {
   onOpenPrintSchedule?: () => void;
   onOpenSettings?: () => void;
   onSaveJamaatTimes?: (jamaatSettings: any) => Promise<void>;
+  onRefreshMosque?: () => Promise<void>;
 }
 
 export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
@@ -61,6 +65,7 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
   onOpenPrintSchedule,
   onOpenSettings,
   onSaveJamaatTimes,
+  onRefreshMosque,
 }) => {
   const [selectedDistrict, setSelectedDistrict] = useState<string>(
     currentMosque?.prayerSettings?.district || currentMosque?.district || 'ঢাকা'
@@ -70,6 +75,8 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [soundEnabled, setSoundEnabled] = useState<boolean>(false);
   const [isQuickEditOpen, setIsQuickEditOpen] = useState<boolean>(false);
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
+  const [selectedOverrideDayItem, setSelectedOverrideDayItem] = useState<MonthlyDayPrayerItem | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
@@ -131,7 +138,7 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
     }
   }, [currentMosque?.jamaatSettings]);
 
-  // Derive comprehensive live calculation
+  // Derive comprehensive live calculation with manual overrides precedence
   const waqtStatus: WaqtStatus = useMemo(() => {
     return calculateLiveWaqt(now, null, {
       district: selectedDistrict,
@@ -139,6 +146,7 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
       longitude: currentMosque?.longitude,
       jamaatSettings: currentMosque?.jamaatSettings,
       prayerSettings: currentMosque?.prayerSettings,
+      prayerDailyOverrides: currentMosque?.prayerDailyOverrides,
     });
   }, [now, selectedDistrict, currentMosque]);
 
@@ -149,7 +157,7 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
     }
   }, [soundEnabled, waqtStatus.isJamaatNow]);
 
-  // Monthly Schedule
+  // Monthly Schedule with overrides
   const monthlyList = useMemo(() => {
     return generateMonthlyPrayerTimes(
       selectedYear,
@@ -167,6 +175,11 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
         asrOffset: (currentMosque?.prayerSettings as any)?.asr?.manualOffset ?? 0,
         maghribOffset: (currentMosque?.prayerSettings as any)?.maghrib?.manualOffset ?? 0,
         ishaOffset: (currentMosque?.prayerSettings as any)?.isha?.manualOffset ?? 0,
+      },
+      {
+        jamaatSettings: currentMosque?.jamaatSettings,
+        prayerDailyOverrides: currentMosque?.prayerDailyOverrides,
+        district: selectedDistrict,
       }
     );
   }, [selectedYear, selectedMonth, selectedDistrict, currentMosque]);
@@ -175,6 +188,46 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
     'জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন',
     'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'
   ];
+
+  // Fasting & Ramadan Live Countdown Logic
+  const fastingCountdown = useMemo(() => {
+    const curMin = now.getHours() * 60 + now.getMinutes();
+    const iftarMin = parseTimeToMinutes(waqtStatus.iftarTimeStr || '18:05');
+    const sehriMin = parseTimeToMinutes(waqtStatus.sehriEndTimeStr || '04:28');
+
+    // Daytime: between sehri end and iftar
+    if (curMin >= sehriMin && curMin < iftarMin) {
+      const diffSec = (iftarMin - curMin) * 60 - now.getSeconds();
+      const h = Math.floor(Math.max(0, diffSec) / 3600);
+      const m = Math.floor((Math.max(0, diffSec) % 3600) / 60);
+      const s = Math.max(0, diffSec) % 60;
+      return {
+        type: 'IFTAR' as const,
+        title: '🌙 আজকের ইফতার হতে বাকি',
+        timeStr: `${toBanglaDigits(h)} ঘণ্টা ${toBanglaDigits(m)} মিনিট ${toBanglaDigits(s)} সেকেন্ড`,
+        targetTime: waqtStatus.iftarTimeStr12,
+        badgeText: 'আজকের ইফতার',
+      };
+    } else {
+      let diffMin = 0;
+      if (curMin >= iftarMin) {
+        diffMin = (1440 - curMin) + sehriMin;
+      } else {
+        diffMin = sehriMin - curMin;
+      }
+      const diffSec = diffMin * 60 - now.getSeconds();
+      const h = Math.floor(Math.max(0, diffSec) / 3600);
+      const m = Math.floor((Math.max(0, diffSec) % 3600) / 60);
+      const s = Math.max(0, diffSec) % 60;
+      return {
+        type: 'SEHRI' as const,
+        title: '🍲 আগামী সেহরির শেষ সময় হতে বাকি',
+        timeStr: `${toBanglaDigits(h)} ঘণ্টা ${toBanglaDigits(m)} মিনিট ${toBanglaDigits(s)} সেকেন্ড`,
+        targetTime: waqtStatus.sehriEndTimeStr12,
+        badgeText: 'সেহরি শেষ সময়',
+      };
+    }
+  }, [now, waqtStatus.iftarTimeStr, waqtStatus.sehriEndTimeStr, waqtStatus.iftarTimeStr12, waqtStatus.sehriEndTimeStr12]);
 
   const handleSaveQuickEdit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -224,7 +277,12 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
     }
   };
 
-  const canEdit = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN' || currentUser?.role === 'ACCOUNTANT';
+  const canEdit =
+    currentUser?.role === 'SUPER_ADMIN' ||
+    currentUser?.role === 'MOSQUE_ADMIN' ||
+    currentUser?.role === 'ADMIN' ||
+    currentUser?.role === 'ACCOUNTANT' ||
+    Boolean(currentUser?.permissions?.includes('MANAGE_SETTINGS'));
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12 font-siliguri">
@@ -326,18 +384,16 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
                 </button>
               )}
 
-              {/* Print Schedule Button */}
-              {onOpenPrintSchedule && (
-                <button
-                  type="button"
-                  onClick={onOpenPrintSchedule}
-                  className="bg-white/10 hover:bg-white/20 text-white border border-white/20 text-xs font-bold px-3.5 py-2.5 rounded-xl flex items-center space-x-1.5 transition-all cursor-pointer"
-                  title="A4 সাইজে সময়সূচি প্রিন্ট করুন"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>প্রিন্ট</span>
-                </button>
-              )}
+              {/* Print Schedule Button - Isolated Engine */}
+              <button
+                type="button"
+                onClick={() => setIsPrintModalOpen(true)}
+                className="bg-white/10 hover:bg-white/20 text-white border border-white/20 text-xs font-bold px-3.5 py-2.5 rounded-xl flex items-center space-x-1.5 transition-all cursor-pointer shadow-xs"
+                title="A4 সাইজে সময়সূচি প্রিন্ট বা PDF রিলিজ করুন"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>প্রিন্ট / PDF</span>
+              </button>
 
               {/* Quick Edit Jamaat Times */}
               {canEdit && (
@@ -602,6 +658,58 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
         </div>
       </div>
 
+      {/* 4.5 Fasting & Ramadan Schedule Card */}
+      <div className="bg-gradient-to-r from-emerald-900 via-teal-900 to-slate-900 rounded-2xl p-5 text-white shadow-lg border border-emerald-800/60 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+          <div className="space-y-1.5">
+            <div className="flex items-center space-x-2">
+              <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                <Moon className="w-3 h-3 text-emerald-300" />
+                <span>রোজা ও রমজান সময়সূচি</span>
+              </span>
+              <span className="text-xs text-slate-300 font-sans">
+                {waqtStatus.hijriDateBn}
+              </span>
+            </div>
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <span>{fastingCountdown.title}</span>
+            </h3>
+            <div className="text-sm font-mono text-emerald-300 font-semibold flex items-center gap-2">
+              <span>কাউন্টডাউন:</span>
+              <span className="bg-white/10 px-2 py-0.5 rounded-md text-white font-bold">{fastingCountdown.timeStr}</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Sehri Card */}
+            <div className="bg-white/10 backdrop-blur-xs border border-white/15 px-4 py-2.5 rounded-xl text-center min-w-[130px]">
+              <span className="text-[11px] text-slate-300 block">আজকের সেহরি শেষ</span>
+              <span className="text-lg font-bold font-mono text-amber-300">{waqtStatus.sehriEndTimeStr12 || waqtStatus.tahajjudEndTimeStr12}</span>
+              <span className="text-[10px] text-slate-400 block mt-0.5">সতর্কতামূলক ৩ মিনিট পূর্বে</span>
+            </div>
+
+            {/* Iftar Card */}
+            <div className="bg-white/10 backdrop-blur-xs border border-white/15 px-4 py-2.5 rounded-xl text-center min-w-[130px]">
+              <span className="text-[11px] text-slate-300 block">আজকের ইফতারের সময়</span>
+              <span className="text-lg font-bold font-mono text-rose-300">{waqtStatus.iftarTimeStr12}</span>
+              <span className="text-[10px] text-slate-400 block mt-0.5">সূর্যাস্তের সাথে সাথে</span>
+            </div>
+
+            {/* Print Fasting Schedule Quick Button */}
+            <button
+              type="button"
+              onClick={() => setIsPrintModalOpen(true)}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-3 rounded-xl flex items-center space-x-1.5 shadow-md transition cursor-pointer self-stretch md:self-auto justify-center"
+              title="রমজান ও রোজার সময়সূচি প্রিন্ট করুন"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>প্রিন্ট শিট</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* 5. Main Prayer Schedule Card: Daily vs 30-Day Monthly View */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
         {/* Navigation Tabs Bar */}
@@ -697,6 +805,16 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
               >
                 বর্তমান মাস
               </button>
+
+              <button
+                type="button"
+                onClick={() => setIsPrintModalOpen(true)}
+                className="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold border border-blue-200 transition cursor-pointer flex items-center space-x-1"
+                title="মাসিক সময়সূচি A4 সাইজে প্রিন্ট বা PDF করুন"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>ক্যালেন্ডার প্রিন্ট</span>
+              </button>
             </div>
           )}
         </div>
@@ -785,24 +903,23 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
           </div>
         )}
 
-        {/* Tab 2: 30-Day Monthly Calendar */}
+        {/* Tab 2: 30-Day Monthly Calendar with Authoritative 12h Times and Overrides */}
         {activeTab === 'monthly' && (
-          <div className="overflow-x-auto max-h-[500px]">
+          <div className="overflow-x-auto max-h-[600px]">
             <table className="w-full text-left border-collapse text-xs">
-              <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-600 font-bold border-b border-slate-200 sticky top-0 z-10">
+              <thead className="bg-slate-100 text-[11px] uppercase tracking-wider text-slate-700 font-bold border-b border-slate-200 sticky top-0 z-10">
                 <tr>
-                  <th className="px-4 py-3">তারিখ</th>
-                  <th className="px-3 py-3">বার</th>
-                  <th className="px-3 py-3">হিজরি</th>
-                  <th className="px-3 py-3">ফজর</th>
-                  <th className="px-3 py-3">সূর্যোদয়</th>
-                  <th className="px-3 py-3">ইশরাক</th>
-                  <th className="px-3 py-3">চাশত</th>
-                  <th className="px-3 py-3">ঠিক দুপুর</th>
-                  <th className="px-3 py-3">যোহর</th>
-                  <th className="px-3 py-3">আসর</th>
-                  <th className="px-3 py-3">মাগরিব / ইফতার</th>
-                  <th className="px-3 py-3">এশা</th>
+                  <th className="px-3.5 py-3">তারিখ ও বার</th>
+                  <th className="px-2.5 py-3">হিজরি</th>
+                  <th className="px-2.5 py-3 text-center bg-slate-200/60">সেহরি শেষ</th>
+                  <th className="px-2.5 py-3">ফজর (আজান | জামাত)</th>
+                  <th className="px-2 py-3 text-center">সূর্যোদয়</th>
+                  <th className="px-2.5 py-3">যোহর / জুমা (আজান | জামাত)</th>
+                  <th className="px-2.5 py-3">আসর (আজান | জামাত)</th>
+                  <th className="px-2.5 py-3">মাগরিব / ইফতার (আজান | জামাত)</th>
+                  <th className="px-2.5 py-3">এশা (আজান | জামাত)</th>
+                  <th className="px-2 py-3 text-center">স্ট্যাটাস</th>
+                  {canEdit && <th className="px-2 py-3 text-center">অ্যাকশন</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700 font-mono">
@@ -811,33 +928,86 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
                     key={item.day}
                     className={`transition-colors ${
                       item.isToday
-                        ? 'bg-emerald-100/60 font-bold text-emerald-950'
+                        ? 'bg-emerald-100/70 font-bold text-emerald-950'
                         : item.isFriday
-                        ? 'bg-purple-50/50'
-                        : 'hover:bg-slate-50/50'
+                        ? 'bg-purple-50/60 text-purple-950'
+                        : 'hover:bg-slate-50/70'
                     }`}
                   >
-                    <td className="px-4 py-2.5 font-sans font-semibold">
+                    <td className="px-3.5 py-2.5 font-sans font-semibold">
                       <div className="flex items-center space-x-1.5">
-                        {item.isToday && <span className="w-2 h-2 rounded-full bg-emerald-600"></span>}
-                        <span>{toBanglaDigits(item.day)} {monthNamesBn[selectedMonth]}</span>
+                        {item.isToday && <span className="w-2 h-2 rounded-full bg-emerald-600 shrink-0"></span>}
+                        <span>{toBanglaDigits(item.day)} {monthNamesBn[selectedMonth]} ({item.dayNameBn})</span>
                       </div>
                     </td>
-                    <td className="px-3 py-2.5 font-sans font-medium text-slate-800">
-                      {item.dayNameBn}
-                    </td>
-                    <td className="px-3 py-2.5 font-sans text-slate-600">
+                    <td className="px-2.5 py-2.5 font-sans text-slate-600 text-[11px]">
                       {item.hijriDateBn}
                     </td>
-                    <td className="px-3 py-2.5">{item.fajr12 || item.fajr}</td>
-                    <td className="px-3 py-2.5 text-slate-500">{item.sunrise12 || item.sunrise}</td>
-                    <td className="px-3 py-2.5 text-amber-700">{item.ishraq12 || item.ishraq}</td>
-                    <td className="px-3 py-2.5 text-emerald-700">{item.duha12 || item.duha || '—'}</td>
-                    <td className="px-3 py-2.5 text-slate-500">{item.solarNoon12 || item.solarNoon}</td>
-                    <td className="px-3 py-2.5 font-semibold text-slate-900">{item.dhuhr12 || item.dhuhr}</td>
-                    <td className="px-3 py-2.5">{item.asr12 || item.asr}</td>
-                    <td className="px-3 py-2.5 font-semibold text-rose-700">{item.maghrib12 || item.maghrib}</td>
-                    <td className="px-3 py-2.5">{item.isha12 || item.isha}</td>
+                    <td className="px-2.5 py-2.5 text-center font-bold text-slate-800 bg-slate-100/60">
+                      {item.sehriEnd12}
+                    </td>
+                    <td className="px-2.5 py-2.5">
+                      <div className="flex items-center space-x-1">
+                        <span className="text-slate-500 text-[11px]">{item.fajrAzan12}</span>
+                        <span className="text-slate-300">|</span>
+                        <span className="font-bold text-emerald-900 bg-emerald-100/60 px-1 rounded">{item.fajrJamaat12}</span>
+                      </div>
+                    </td>
+                    <td className="px-2 py-2.5 text-slate-500 text-center">{item.sunrise12}</td>
+                    <td className="px-2.5 py-2.5">
+                      <div className="flex items-center space-x-1">
+                        <span className="text-slate-500 text-[11px]">
+                          {item.isFriday ? (item.jumuahAzan12 || item.dhuhrAzan12) : item.dhuhrAzan12}
+                        </span>
+                        <span className="text-slate-300">|</span>
+                        <span className="font-bold text-emerald-900 bg-emerald-100/60 px-1 rounded">
+                          {item.isFriday ? (item.jumuahJamaat12 || item.dhuhrJamaat12) : item.dhuhrJamaat12}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-2.5 py-2.5">
+                      <div className="flex items-center space-x-1">
+                        <span className="text-slate-500 text-[11px]">{item.asrAzan12}</span>
+                        <span className="text-slate-300">|</span>
+                        <span className="font-bold text-emerald-900 bg-emerald-100/60 px-1 rounded">{item.asrJamaat12}</span>
+                      </div>
+                    </td>
+                    <td className="px-2.5 py-2.5">
+                      <div className="flex items-center space-x-1">
+                        <span className="text-rose-700 font-bold text-[11px]">{item.iftar12 || item.maghribAzan12}</span>
+                        <span className="text-slate-300">|</span>
+                        <span className="font-bold text-emerald-900 bg-emerald-100/60 px-1 rounded">{item.maghribJamaat12}</span>
+                      </div>
+                    </td>
+                    <td className="px-2.5 py-2.5">
+                      <div className="flex items-center space-x-1">
+                        <span className="text-slate-500 text-[11px]">{item.ishaAzan12}</span>
+                        <span className="text-slate-300">|</span>
+                        <span className="font-bold text-emerald-900 bg-emerald-100/60 px-1 rounded">{item.ishaJamaat12}</span>
+                      </div>
+                    </td>
+                    <td className="px-2 py-2.5 text-center">
+                      {item.hasOverride ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs">
+                          কাস্টম
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-slate-400">ডিফল্ট</span>
+                      )}
+                    </td>
+                    {canEdit && (
+                      <td className="px-2 py-2.5 text-center">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedOverrideDayItem(item)}
+                          className="px-2 py-1 text-[11px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg flex items-center space-x-1 mx-auto transition cursor-pointer"
+                          title={`${item.dateStr} তারিখের সময়সূচি পরিবর্তন করুন`}
+                        >
+                          <Edit3 className="w-3 h-3" />
+                          <span>এডিট</span>
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -1091,6 +1261,34 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
             </form>
           </div>
         </div>
+      )}
+
+      {/* 7. Dedicated Isolated Prayer Print & PDF Modal (A4 Print Engine) */}
+      <PrayerSchedulePrintModal
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        mosque={currentMosque}
+        prayerTimes={waqtStatus}
+        monthlyList={monthlyList}
+        selectedMonth={selectedMonth}
+        selectedYear={selectedYear}
+        selectedDistrict={selectedDistrict}
+      />
+
+      {/* 8. Single-Day Prayer Override Modal */}
+      {selectedOverrideDayItem && (
+        <DailyPrayerOverrideModal
+          isOpen={Boolean(selectedOverrideDayItem)}
+          onClose={() => setSelectedOverrideDayItem(null)}
+          dayItem={selectedOverrideDayItem}
+          existingOverride={currentMosque?.prayerDailyOverrides?.[selectedOverrideDayItem.dateStr]}
+          defaultJamaatSettings={currentMosque?.jamaatSettings}
+          onSuccess={async () => {
+            if (onRefreshMosque) {
+              await onRefreshMosque();
+            }
+          }}
+        />
       )}
     </div>
   );

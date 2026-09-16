@@ -60,6 +60,16 @@ export interface User {
 
 export type CurrentUser = User;
 
+export interface MosqueLetterheadSettings {
+  subtitleBn?: string;
+  bismillahText?: string;
+  showBismillah?: boolean;
+  showWatermark?: boolean;
+  layout?: 'STANDARD' | 'CENTERED' | 'MODERN_EMERALD' | 'CLASSIC';
+  contactLineCustom?: string;
+  footerNoteBn?: string;
+}
+
 export interface Mosque {
   id: string;
   code: string;
@@ -68,9 +78,11 @@ export interface Mosque {
   nameEn: string;
   waqfEstateName?: string;
   registrationNumber?: string;
+  descriptionBn?: string;
   address: string;
   village?: string;
   union?: string;
+  ward?: string;
   upazila?: string;
   district?: string;
   division?: string;
@@ -78,6 +90,7 @@ export interface Mosque {
   latitude?: number;
   longitude?: number;
   phone: string;
+  altPhone?: string;
   email?: string;
   website?: string;
   logoUrl?: string;
@@ -91,9 +104,12 @@ export interface Mosque {
     source?: 'UPLOAD' | 'GOOGLE_DRIVE' | 'PRESET';
     originalDriveUrl?: string;
   };
+  photoUrl?: string;
+  coverPhotoUrl?: string;
   presidentSignatureUrl?: string;
   secretarySignatureUrl?: string;
   establishedDate?: string;
+  letterheadSettings?: MosqueLetterheadSettings;
   status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
   qrSettings?: {
     bkashNumber?: string;
@@ -129,10 +145,24 @@ export interface Mosque {
     isha: { azan: string; jamaat: string };
     jumuah: { azan: string; khutbah: string; jamaat: string };
   };
+  prayerDailyOverrides?: Record<string, DailyPrayerOverride>;
   prayerSettings?: MosquePrayerSettings;
   publicPortalSettings?: PublicPortalSettings;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface DailyPrayerOverride {
+  date: string; // YYYY-MM-DD
+  fajr?: { adhan?: string; jamaat?: string; waqtStart?: string; waqtEnd?: string };
+  dhuhr?: { adhan?: string; jamaat?: string; waqtStart?: string; waqtEnd?: string };
+  asr?: { adhan?: string; jamaat?: string; waqtStart?: string; waqtEnd?: string };
+  maghrib?: { adhan?: string; jamaat?: string; waqtStart?: string; waqtEnd?: string };
+  isha?: { adhan?: string; jamaat?: string; waqtStart?: string; waqtEnd?: string };
+  jumuah?: { adhan?: string; khutbah?: string; jamaat?: string };
+  notes?: string;
+  updatedAt?: string;
+  updatedBy?: string;
 }
 
 export interface MosquePrayerSettings {
@@ -247,21 +277,29 @@ export interface MonthlyPrayerDay {
   bengaliDateBn: string;
   sehriEnd: string;
   fajrStart: string;
+  fajrAdhan?: string;
   fajrJamaat: string;
   sunrise: string;
   ishraq: string;
   solarNoon: string;
   dhuhrStart: string;
+  dhuhrAdhan?: string;
   dhuhrJamaat: string;
   asrStart: string;
+  asrAdhan?: string;
   asrJamaat: string;
   sunset: string;
   iftar: string;
   maghribStart: string;
+  maghribAdhan?: string;
   maghribJamaat: string;
   ishaStart: string;
+  ishaAdhan?: string;
   ishaJamaat: string;
   jumuah?: string;
+  jumuahAdhan?: string;
+  jumuahKhutbah?: string;
+  isOverridden?: boolean;
 }
 
 export interface PublicPortalSettings {
@@ -2277,6 +2315,7 @@ export interface UploadedFile {
 // CENTRAL DOCUMENT & ATTACHMENT SYSTEM TYPES
 // ==========================================
 export type DocumentEntityType =
+  | 'MOSQUE'
   | 'MEMBER'
   | 'ADVISOR'
   | 'COMMITTEE'
@@ -2349,6 +2388,7 @@ export interface CentralDocument {
 }
 
 export const DOCUMENT_ENTITY_LABELS: Record<DocumentEntityType, string> = {
+  MOSQUE: 'মসজিদ পরিচিতি ও অনুমোদন',
   MEMBER: 'সদস্য ব্যবস্থাপনা',
   ADVISOR: 'উপদেষ্টা পরিষদ',
   COMMITTEE: 'পরিচালনা পরিষদ',

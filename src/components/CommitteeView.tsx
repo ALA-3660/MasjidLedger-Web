@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+  LayoutDashboard,
   Users2,
   CalendarCheck,
   Plus,
@@ -38,6 +39,7 @@ import {
   User,
   Heart,
   Shield,
+  ArrowRight,
 } from 'lucide-react';
 import {
   CommitteeTerm,
@@ -96,6 +98,7 @@ interface CommitteeViewProps {
   onDeleteResolution?: (id: string, force?: boolean) => Promise<void>;
   onDuplicateResolution?: (id: string) => Promise<void>;
   subCommittees?: SubCommittee[];
+  initialTab?: 'dashboard' | 'members' | 'terms' | 'meetings' | 'action-plans' | 'performance' | 'financial-history' | 'sub-committees';
   onAddSubCommittee?: (data: any) => Promise<void>;
   onUpdateSubCommittee?: (id: string, data: any) => Promise<void>;
   onArchiveSubCommittee?: (id: string) => Promise<void>;
@@ -281,12 +284,13 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
   onDeleteResolution,
   onDuplicateResolution,
   subCommittees = [],
+  initialTab = 'dashboard',
   onAddSubCommittee,
   onUpdateSubCommittee,
   onArchiveSubCommittee,
 }) => {
   const t = translations[language];
-  const [activeTab, setActiveTab] = useState<'members' | 'terms' | 'meetings' | 'action-plans' | 'performance' | 'financial-history' | 'sub-committees' | 'advisory-council'>('members');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'members' | 'terms' | 'meetings' | 'action-plans' | 'performance' | 'financial-history' | 'sub-committees'>(initialTab);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
   // Search & Filter for members
@@ -855,11 +859,24 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
       <div className={`space-y-5 max-w-7xl mx-auto pb-10 ${isAnyCommitteePrintActive ? 'print:hidden' : ''}`}>
         {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-sm">
-        <div className="flex items-center space-x-2 bg-slate-100 p-1 rounded-xl border border-slate-200">
+        <div className="flex items-center space-x-1 sm:space-x-2 bg-slate-100 p-1 rounded-xl border border-slate-200 overflow-x-auto max-w-full">
+          <button
+            id="tab-btn-committee-dashboard"
+            onClick={() => setActiveTab('dashboard')}
+            className={`flex items-center space-x-1.5 sm:space-x-2 px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 ${
+              activeTab === 'dashboard'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <LayoutDashboard className="w-4 h-4" />
+            <span>ড্যাশবোর্ড</span>
+          </button>
+
           <button
             id="tab-btn-committee-members"
             onClick={() => setActiveTab('members')}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            className={`flex items-center space-x-1.5 sm:space-x-2 px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 ${
               activeTab === 'members'
                 ? 'bg-blue-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -875,7 +892,7 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
           <button
             id="tab-btn-committee-terms"
             onClick={() => setActiveTab('terms')}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            className={`flex items-center space-x-1.5 sm:space-x-2 px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 ${
               activeTab === 'terms'
                 ? 'bg-blue-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -891,7 +908,7 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
           <button
             id="tab-btn-committee-meetings"
             onClick={() => setActiveTab('meetings')}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            className={`flex items-center space-x-1.5 sm:space-x-2 px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 ${
               activeTab === 'meetings'
                 ? 'bg-blue-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -907,7 +924,7 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
           <button
             id="tab-btn-committee-action-plans"
             onClick={() => setActiveTab('action-plans')}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            className={`flex items-center space-x-1.5 sm:space-x-2 px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 ${
               activeTab === 'action-plans'
                 ? 'bg-emerald-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -915,15 +932,12 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
           >
             <ClipboardList className="w-4 h-4 text-emerald-300" />
             <span>কর্মপরিকল্পনা ও অগ্রগতি</span>
-            <span className="ml-1 bg-emerald-700 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
-              মূলী
-            </span>
           </button>
 
           <button
             id="tab-btn-committee-performance"
             onClick={() => setActiveTab('performance')}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            className={`flex items-center space-x-1.5 sm:space-x-2 px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 ${
               activeTab === 'performance'
                 ? 'bg-blue-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -931,15 +945,12 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
           >
             <Award className="w-4 h-4 text-amber-300" />
             <span>সদস্য মূল্যায়ন ও কার্যক্রম</span>
-            <span className="ml-1 bg-amber-500 text-slate-900 text-[10px] px-1.5 py-0.2 rounded-full font-black">
-              নতুন
-            </span>
           </button>
 
           <button
             id="tab-btn-committee-financial-history"
             onClick={() => setActiveTab('financial-history')}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            className={`flex items-center space-x-1.5 sm:space-x-2 px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 ${
               activeTab === 'financial-history'
                 ? 'bg-emerald-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -947,15 +958,12 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
           >
             <History className="w-4 h-4 text-emerald-200" />
             <span>কমিটি ভিত্তিক হিসাব</span>
-            <span className="ml-1 bg-emerald-700 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
-              হিসাব
-            </span>
           </button>
 
           <button
             id="tab-btn-sub-committees"
             onClick={() => setActiveTab('sub-committees')}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            className={`flex items-center space-x-1.5 sm:space-x-2 px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 ${
               activeTab === 'sub-committees'
                 ? 'bg-emerald-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -967,26 +975,10 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
               {subCommittees.filter(sc => !sc.isArchived).length}
             </span>
           </button>
-
-          <button
-            id="tab-btn-advisory-council"
-            onClick={() => setActiveTab('advisory-council')}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              activeTab === 'advisory-council'
-                ? 'bg-indigo-600 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Shield className="w-4 h-4 text-indigo-300" />
-            <span>উপদেষ্টা পরিষদ</span>
-            <span className="ml-1 bg-indigo-800 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
-              স্বতন্ত্র
-            </span>
-          </button>
         </div>
 
-        <div className="flex items-center space-x-2">
-          {activeTab === 'members' && (
+        <div className="flex items-center space-x-2 shrink-0">
+          {(activeTab === 'dashboard' || activeTab === 'members') && (
             <div className="flex items-center space-x-2">
               <button
                 id="btn-print-committee-members"
@@ -1038,6 +1030,270 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
           )}
         </div>
       </div>
+
+      {/* 0. COMMITTEE DASHBOARD */}
+      {activeTab === 'dashboard' && (
+        <div className="space-y-6">
+          {/* Active Committee Term Overview Card */}
+          <div className="bg-gradient-to-r from-blue-900 via-slate-900 to-indigo-950 text-white p-6 rounded-2xl border border-blue-800/40 shadow-sm space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="space-y-1.5">
+                <div className="flex items-center space-x-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    বর্তমান সক্রিয় পরিষদ
+                  </span>
+                  <h3 className="text-lg font-bold text-white">
+                    {activeTerm?.title || 'কার্যনির্বাহী পরিচালনা পরিষদ'}
+                  </h3>
+                </div>
+                <p className="text-xs text-slate-300 font-baloo">
+                  কার্যকাল:{' '}
+                  {activeTerm?.startDate ? formatDate(activeTerm.startDate, language) : 'শুরুর তারিখ নির্ধারিত নেই'}{' '}
+                  হতে{' '}
+                  {activeTerm?.endDate ? formatDate(activeTerm.endDate, language) : 'সমাপ্তির তারিখ নির্ধারিত নেই'}
+                </p>
+              </div>
+
+              {/* Badges */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="bg-white/10 backdrop-blur-xs px-3 py-1.5 rounded-xl border border-white/15 text-xs font-semibold">
+                  <span className="text-slate-400 block text-[10px]">মোট সদস্য</span>
+                  <span className="text-white font-bold text-sm">{members.length} জন</span>
+                </div>
+                <div className="bg-emerald-500/20 backdrop-blur-xs px-3 py-1.5 rounded-xl border border-emerald-500/30 text-xs font-semibold">
+                  <span className="text-emerald-300 block text-[10px]">সক্রিয় সদস্য</span>
+                  <span className="text-emerald-200 font-bold text-sm">{activeCount} জন</span>
+                </div>
+                {inactiveCount > 0 && (
+                  <div className="bg-rose-500/20 backdrop-blur-xs px-3 py-1.5 rounded-xl border border-rose-500/30 text-xs font-semibold">
+                    <span className="text-rose-300 block text-[10px]">নিষ্ক্রিয় সদস্য</span>
+                    <span className="text-rose-200 font-bold text-sm">{inactiveCount} জন</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Tenure Progress Bar */}
+            {activeTermTenure && (
+              <div className="pt-3 border-t border-white/10 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                <div className="bg-white/5 backdrop-blur-xs p-3 rounded-xl border border-white/10 flex items-center space-x-3">
+                  <div className="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-300 flex items-center justify-center shrink-0">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block">অতিবাহিত সময়</span>
+                    <span className="font-bold text-white text-xs">{activeTermTenure.elapsedText}</span>
+                  </div>
+                </div>
+
+                <div className="bg-white/5 backdrop-blur-xs p-3 rounded-xl border border-white/10 flex items-center space-x-3">
+                  <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-300 flex items-center justify-center shrink-0">
+                    <Hourglass className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block">অবশিষ্ট মেয়াদ</span>
+                    <span className="font-bold text-amber-200 text-xs">{activeTermTenure.remainingText}</span>
+                  </div>
+                </div>
+
+                <div className="bg-white/5 backdrop-blur-xs p-3 rounded-xl border border-white/10 flex flex-col justify-center space-y-1.5">
+                  <div className="flex justify-between text-[10px] font-semibold">
+                    <span className="text-slate-300">মেয়াদের অগ্রগতি</span>
+                    <span className="text-emerald-300 font-bold">
+                      {toBanglaNumber(activeTermTenure.progressPercent)}% সম্পন্ন
+                    </span>
+                  </div>
+                  <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="bg-gradient-to-r from-blue-400 to-emerald-400 h-2 rounded-full transition-all duration-500"
+                      style={{ width: `${activeTermTenure.progressPercent}%` }}
+                    ></div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Quick Access Matrix Cards */}
+          <div>
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
+              কমিটি কার্যপরিধি ও মডিউলসমূহ
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div
+                onClick={() => setActiveTab('members')}
+                className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs hover:shadow-md hover:border-blue-300 transition-all cursor-pointer group flex flex-col justify-between"
+              >
+                <div className="space-y-2">
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                    <Users2 className="w-5 h-5" />
+                  </div>
+                  <h5 className="font-bold text-sm text-slate-900 group-hover:text-blue-600 transition-colors">
+                    সদস্য তালিকা ও প্রোফাইল
+                  </h5>
+                  <p className="text-xs text-slate-500">
+                    পরিচালনা পরিষদের সকল কর্মকর্তার নাম, পদবি, ফোন ও পূর্ণাঙ্গ প্রোফাইল বিবরণী।
+                  </p>
+                </div>
+                <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between text-xs text-blue-600 font-bold">
+                  <span>{members.length} জন সদস্য</span>
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </div>
+
+              <div
+                onClick={() => setActiveTab('terms')}
+                className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs hover:shadow-md hover:border-blue-300 transition-all cursor-pointer group flex flex-col justify-between"
+              >
+                <div className="space-y-2">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                    <ShieldCheck className="w-5 h-5" />
+                  </div>
+                  <h5 className="font-bold text-sm text-slate-900 group-hover:text-indigo-600 transition-colors">
+                    কমিটির মেয়াদ ও ইতিহাস
+                  </h5>
+                  <p className="text-xs text-slate-500">
+                    বর্তমান ও পূর্ববর্তী সকল কমিটির কার্যকাল, শুরু ও সমাপ্তির তারিখ ও মেয়াদ সংরক্ষণ।
+                  </p>
+                </div>
+                <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between text-xs text-indigo-600 font-bold">
+                  <span>{terms.length} টি মেয়াদ রেকর্ড</span>
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </div>
+
+              <div
+                onClick={() => setActiveTab('meetings')}
+                className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs hover:shadow-md hover:border-blue-300 transition-all cursor-pointer group flex flex-col justify-between"
+              >
+                <div className="space-y-2">
+                  <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center group-hover:bg-purple-600 group-hover:text-white transition-colors">
+                    <CalendarCheck className="w-5 h-5" />
+                  </div>
+                  <h5 className="font-bold text-sm text-slate-900 group-hover:text-purple-600 transition-colors">
+                    মিটিং ও রেজোলিউশন
+                  </h5>
+                  <p className="text-xs text-slate-500">
+                    মিটিং নোটিশ আহবান, কার্যবিবরণী (Minutes) তৈরি ও আনুষ্ঠানিক রেজোলিউশন রেজিস্টার।
+                  </p>
+                </div>
+                <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between text-xs text-purple-600 font-bold">
+                  <span>{meetings.length} টি মিটিং</span>
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </div>
+
+              <div
+                onClick={() => setActiveTab('action-plans')}
+                className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs hover:shadow-md hover:border-emerald-300 transition-all cursor-pointer group flex flex-col justify-between"
+              >
+                <div className="space-y-2">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                    <ClipboardList className="w-5 h-5" />
+                  </div>
+                  <h5 className="font-bold text-sm text-slate-900 group-hover:text-emerald-600 transition-colors">
+                    কর্মপরিকল্পনা ও অগ্রগতি
+                  </h5>
+                  <p className="text-xs text-slate-500">
+                    মসজিদ উন্নয়ন, সংস্কার ও বিভিন্ন প্রকল্পের লক্ষ্যমাত্রা ও অগ্রগতি ট্র্যাকিং।
+                  </p>
+                </div>
+                <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between text-xs text-emerald-600 font-bold">
+                  <span>কর্মপরিকল্পনা দেখুন</span>
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </div>
+
+              <div
+                onClick={() => setActiveTab('performance')}
+                className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs hover:shadow-md hover:border-amber-300 transition-all cursor-pointer group flex flex-col justify-between"
+              >
+                <div className="space-y-2">
+                  <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center group-hover:bg-amber-600 group-hover:text-white transition-colors">
+                    <Award className="w-5 h-5" />
+                  </div>
+                  <h5 className="font-bold text-sm text-slate-900 group-hover:text-amber-600 transition-colors">
+                    সদস্য মূল্যায়ন ও কার্যক্রম
+                  </h5>
+                  <p className="text-xs text-slate-500">
+                    মিটিংয়ে উপস্থিতি, দায়িত্ব পালন ও অবদানের ভিত্তিতে সদস্য পারফর্ম্যান্স স্কোর।
+                  </p>
+                </div>
+                <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between text-xs text-amber-600 font-bold">
+                  <span>মূল্যায়ন দেখুন</span>
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </div>
+
+              <div
+                onClick={() => setActiveTab('financial-history')}
+                className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs hover:shadow-md hover:border-emerald-300 transition-all cursor-pointer group flex flex-col justify-between"
+              >
+                <div className="space-y-2">
+                  <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center group-hover:bg-teal-600 group-hover:text-white transition-colors">
+                    <History className="w-5 h-5" />
+                  </div>
+                  <h5 className="font-bold text-sm text-slate-900 group-hover:text-teal-600 transition-colors">
+                    কমিটি ভিত্তিক হিসাব
+                  </h5>
+                  <p className="text-xs text-slate-500">
+                    নির্দিষ্ট কমিটি বা পরিষদের মেয়াদকালীন মোট আয়, মোট ব্যয় ও তহবিল হস্তান্তর প্রতিবেদন।
+                  </p>
+                </div>
+                <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between text-xs text-teal-600 font-bold">
+                  <span>হিসাব বিবরণী দেখুন</span>
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </div>
+
+              <div
+                onClick={() => setActiveTab('sub-committees')}
+                className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs hover:shadow-md hover:border-emerald-300 transition-all cursor-pointer group flex flex-col justify-between"
+              >
+                <div className="space-y-2">
+                  <div className="w-10 h-10 rounded-xl bg-cyan-50 text-cyan-600 flex items-center justify-center group-hover:bg-cyan-600 group-hover:text-white transition-colors">
+                    <Layers className="w-5 h-5" />
+                  </div>
+                  <h5 className="font-bold text-sm text-slate-900 group-hover:text-cyan-600 transition-colors">
+                    সাব-কমিটি ব্যবস্থাপনা
+                  </h5>
+                  <p className="text-xs text-slate-500">
+                    উন্নয়ন উপ-কমিটি, রমজান প্রস্তুতি, হিসাব নিরীক্ষা ও অন্যান্য বিশেষ সাব-কমিটি।
+                  </p>
+                </div>
+                <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between text-xs text-cyan-600 font-bold">
+                  <span>{subCommittees.filter(sc => !sc.isArchived).length} টি সাব-কমিটি</span>
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </div>
+
+              <div
+                onClick={handleOpenAddMember}
+                className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl border-2 border-dashed border-blue-200 p-5 shadow-xs hover:border-blue-400 transition-all cursor-pointer group flex flex-col justify-between text-center items-center"
+              >
+                <div className="w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-xs group-hover:scale-105 transition-transform mt-2">
+                  <Plus className="w-6 h-6" />
+                </div>
+                <div>
+                  <h5 className="font-bold text-sm text-blue-900">
+                    নতুন সদস্য অন্তর্ভুক্তি
+                  </h5>
+                  <p className="text-[11px] text-blue-700 mt-1">
+                    পরিচালনা পরিষদে নতুন কোনো সদস্য বা পদধারীর তথ্য এন্ট্রি করুন
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="mt-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold cursor-pointer"
+                >
+                  সদস্য ফর্ম খুলুন &rarr;
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 1. MEMBERS DIRECTORY */}
       {activeTab === 'members' && (
@@ -2457,11 +2713,6 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
           onUpdateSubCommittee={onUpdateSubCommittee}
           onArchiveSubCommittee={onArchiveSubCommittee}
         />
-      )}
-
-      {/* 8. INDEPENDENT ADVISORY COUNCIL (স্বতন্ত্র উপদেষ্টা পরিষদ) */}
-      {activeTab === 'advisory-council' && (
-        <AdvisoryCouncilView mosque={mosque} />
       )}
       </div>
 
