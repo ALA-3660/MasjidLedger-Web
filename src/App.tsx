@@ -27,18 +27,26 @@ import {
   UserStatus,
   DashboardStats,
   SubCommittee,
+  AccountTransfer,
 } from './types';
 import { Language, translations } from './lib/i18n';
 import { Navbar } from './components/Navbar';
 import { Sidebar, NavTab } from './components/Sidebar';
 import { DashboardView } from './components/DashboardView';
 import { IncomeExpenseView } from './components/IncomeExpenseView';
+import { IncomeManagementView } from './components/IncomeManagementView';
+import { ExpenseManagementView } from './components/ExpenseManagementView';
+import { FinancialManagementView } from './components/FinancialManagementView';
 import { DonationView } from './components/DonationView';
 import { CashBankView } from './components/CashBankView';
+import { CashBookView } from './components/CashBookView';
+import { BankBookView } from './components/BankBookView';
 import { OpeningBalanceView } from './components/OpeningBalanceView';
 import { AccountHeadsView } from './components/AccountHeadsView';
 import { CommitteeView } from './components/CommitteeView';
+import { CommitteeManagementView } from './components/CommitteeManagementView';
 import { ManagementView } from './components/ManagementView';
+import { StaffManagementView } from './components/StaffManagementView';
 import { ReportCenterView } from './components/ReportCenterView';
 import { MosqueManagementView } from './components/MosqueManagementView';
 import { MosqueSettingsView } from './components/MosqueSettingsView';
@@ -55,6 +63,8 @@ import { PwaManager } from './components/PwaManager';
 import { MoneyReceiptModal, VoucherModal, PrintFormat } from './components/PrintModals';
 import { ChangeCalculatorModal } from './components/ChangeCalculatorModal';
 import { UniversalScannerModal } from './components/UniversalScannerModal';
+import { FloatingFinancialActions } from './components/FloatingFinancialActions';
+import { JumaCollectionModal } from './components/JumaCollectionModal';
 import { UserManualView } from './components/UserManualView';
 import { AdvisoryCouncilView } from './components/AdvisoryCouncilView';
 import { DocumentCenter } from './components/DocumentCenter';
@@ -110,6 +120,7 @@ export default function App() {
 
   // Universal Calculator & Scanner Global State
   const [isGlobalCalculatorOpen, setIsGlobalCalculatorOpen] = useState<boolean>(false);
+  const [isGlobalJumaModalOpen, setIsGlobalJumaModalOpen] = useState<boolean>(false);
   const [isScannerOpen, setIsScannerOpen] = useState<boolean>(false);
   const [isActionCardHubOpen, setIsActionCardHubOpen] = useState<boolean>(false);
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
@@ -168,6 +179,7 @@ export default function App() {
   const [notices, setNotices] = useState<MosqueNotice[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [savedReportConfigs, setSavedReportConfigs] = useState<SavedReportConfig[]>([]);
+  const [transfers, setTransfers] = useState<AccountTransfer[]>([]);
 
   // Print Modals State
   const [activeDonationReceipt, setActiveDonationReceipt] = useState<{
@@ -217,6 +229,7 @@ export default function App() {
         noticesRes,
         auditRes,
         statsRes,
+        transfersRes,
       ] = await Promise.all([
         api.getMosque().catch(() => null),
         api.getCurrentUser().catch(() => null),
@@ -242,6 +255,7 @@ export default function App() {
         api.getNotices().catch(() => []),
         api.getAuditLogs().catch(() => []),
         api.getDashboardStats().catch(() => null),
+        api.getTransfers().catch(() => []),
       ]);
 
       if (mosqueRes) {
@@ -282,6 +296,7 @@ export default function App() {
       if (noticesRes) setNotices(noticesRes);
       if (auditRes) setAuditLogs(auditRes);
       if (statsRes) setDashboardStats(statsRes);
+      if (transfersRes) setTransfers(transfersRes);
     } catch (err: any) {
       console.error('Failed to load initial data:', err);
       setErrorMessage(err.message || 'ডাটা লোড করতে ব্যর্থ হয়েছে');
@@ -835,6 +850,31 @@ export default function App() {
     await loadData(false);
   };
 
+  const handleAddStaffAdvance = async (staffId: string, data: any) => {
+    await api.addStaffAdvance(staffId, data);
+    await loadData(false);
+  };
+
+  const handleAddStaffLeave = async (staffId: string, data: any) => {
+    await api.applyStaffLeave(staffId, data);
+    await loadData(false);
+  };
+
+  const handleUpdateStaffLeaveStatus = async (staffId: string, leaveId: string, status: any) => {
+    await api.updateStaffLeave(staffId, leaveId, { status });
+    await loadData(false);
+  };
+
+  const handleLogStaffAttendance = async (data: any) => {
+    await api.logStaffAttendance(data);
+    await loadData(false);
+  };
+
+  const handleSettleStaff = async (staffId: string, data: any) => {
+    await api.processStaffFinalSettlement(staffId, data);
+    await loadData(false);
+  };
+
   const handleAddCemetery = async (data: any) => {
     await api.createCemeteryRecord(data);
     await loadData(false);
@@ -1066,11 +1106,63 @@ export default function App() {
         />
       )}
 
-      {/* 2. Income & Expenses Ledger View */}
-      {(currentTab === 'income' || currentTab === 'expense') && (
-        <IncomeExpenseView
-          initialTab={currentTab === 'expense' ? 'expense' : 'income'}
+      {/* 2. Income & Receipts Management View */}
+      {(currentTab === 'income' ||
+        currentTab === 'income_juma' ||
+        currentTab === 'donations' ||
+        currentTab === 'donationBox' ||
+        currentTab === 'income_register' ||
+        currentTab === 'income_analytics' ||
+        currentTab === 'income_reports') && (
+        <IncomeManagementView
+          initialTab={
+            currentTab === 'income_juma'
+              ? 'juma'
+              : currentTab === 'donations'
+              ? 'donations'
+              : currentTab === 'donationBox'
+              ? 'donation_boxes'
+              : currentTab === 'income_register'
+              ? 'register'
+              : currentTab === 'income_analytics'
+              ? 'analytics'
+              : currentTab === 'income_reports'
+              ? 'reports'
+              : 'income_overview'
+          }
           incomes={incomes}
+          accountHeads={accountHeads}
+          accounts={accounts}
+          currentUser={currentUser}
+          currentMosque={mosque}
+          language={language}
+          scannedActionIntent={scannedActionIntent}
+          onClearScannedAction={() => setScannedActionIntent(null)}
+          onNavigateTab={(tab) => setCurrentTab(tab as NavTab)}
+          onAddIncome={handleAddIncome}
+          onUpdateIncome={handleUpdateIncome}
+          onReverseIncome={handleReverseIncome}
+          onPrintVoucher={(item, type, format = 'POS_80', isReprint = true) =>
+            setActiveVoucher({ item, type, format, isReprint })
+          }
+          onSendSms={handleSendSms}
+          donations={donations}
+          donationBoxes={donationBoxes}
+          boxCollections={boxCollections}
+          onAddDonation={handleAddDonation}
+          onCollectBox={handleCollectBox}
+          onAddDonationBox={handleAddDonationBox}
+          onUpdateDonationBox={handleUpdateDonationBox}
+          onPrintReceipt={(don, format = 'POS_80', isReprint = true) =>
+            setActiveDonationReceipt({ donation: don, format, isReprint })
+          }
+        />
+      )}
+
+      {/* 2.1 Expense & Payments Management View */}
+      {currentTab === 'expense' && (
+        <ExpenseManagementView
+          initialTab="expense_overview"
           expenses={expenses}
           accountHeads={accountHeads}
           accounts={accounts}
@@ -1079,11 +1171,9 @@ export default function App() {
           language={language}
           scannedActionIntent={scannedActionIntent}
           onClearScannedAction={() => setScannedActionIntent(null)}
-          onAddIncome={handleAddIncome}
+          onNavigateTab={(tab) => setCurrentTab(tab as NavTab)}
           onAddExpense={handleAddExpense}
-          onUpdateIncome={handleUpdateIncome}
           onUpdateExpense={handleUpdateExpense}
-          onReverseIncome={handleReverseIncome}
           onReverseExpense={handleReverseExpense}
           onPrintVoucher={(item, type, format = 'POS_80', isReprint = true) =>
             setActiveVoucher({ item, type, format, isReprint })
@@ -1092,46 +1182,39 @@ export default function App() {
         />
       )}
 
-      {/* 3. Daily Transactions View */}
-      {currentTab === 'dailyLedger' && (
-        <DailyTransactionsView
+      {/* 3. Financial Management View (📊 হিসাব ও লেনদেন - Primary Module with Level 2 Secondary Sidebar) */}
+      {(currentTab === 'financialManagement' ||
+        currentTab === 'dailyLedger' ||
+        currentTab === 'openingBalance' ||
+        currentTab === 'cashbook' ||
+        currentTab === 'bank') && (
+        <FinancialManagementView
+          initialSubModule={
+            currentTab === 'openingBalance'
+              ? 'openingBalance'
+              : currentTab === 'cashbook'
+              ? 'cashbook'
+              : currentTab === 'bank'
+              ? 'bank'
+              : 'dailyLedger'
+          }
           incomes={incomes}
           expenses={expenses}
           accounts={accounts}
+          transfers={transfers}
           currentMosque={mosque}
           currentUser={currentUser}
           language={language}
+          onNavigateTab={(tab) => setCurrentTab(tab as NavTab)}
           onUpdateOpeningBalance={handleUpdateOpeningBalance}
+          onAddAccount={handleAddAccount}
+          onUpdateAccount={handleUpdateAccount}
+          onTransferFund={handleTransferFund}
         />
       )}
 
-      {/* 4. Donations & Donation Boxes View */}
-      {(currentTab === 'donations' || currentTab === 'donationBox') && (
-        <DonationView
-          donations={donations}
-          donationBoxes={donationBoxes}
-          boxCollections={boxCollections}
-          accounts={accounts}
-          accountHeads={accountHeads}
-          currentMosque={mosque}
-          language={language}
-          scannedActionIntent={scannedActionIntent}
-          onClearScannedAction={() => setScannedActionIntent(null)}
-          onAddDonation={handleAddDonation}
-          onCollectBox={handleCollectBox}
-          onAddBox={handleAddDonationBox}
-          onUpdateBox={handleUpdateDonationBox}
-          onPrintReceipt={(don, format = 'POS_80', isReprint = true) =>
-            setActiveDonationReceipt({ donation: don, format, isReprint })
-          }
-          onSendSms={handleSendSms}
-        />
-      )}
-
-      {/* 5. Cashbook & Bank Accounts View */}
-      {(currentTab === 'accounts' ||
-        currentTab === 'cashbook' ||
-        currentTab === 'bank') && (
+      {/* 5.2 Legacy Accounts / General Cash & Bank */}
+      {currentTab === 'accounts' && (
         <CashBankView
           accounts={accounts}
           accountHeads={accountHeads}
@@ -1144,16 +1227,6 @@ export default function App() {
           onAddAccount={handleAddAccount}
           onUpdateAccount={handleUpdateAccount}
           onTransferFund={handleTransferFund}
-        />
-      )}
-
-      {/* 5.1 Standalone Opening Balance Management */}
-      {currentTab === 'openingBalance' && (
-        <OpeningBalanceView
-          accounts={accounts}
-          currentMosque={mosque}
-          language={language}
-          onUpdateOpeningBalance={handleUpdateOpeningBalance}
         />
       )}
 
@@ -1171,15 +1244,17 @@ export default function App() {
         />
       )}
 
-      {/* 6. Committee & Meeting Resolutions View */}
-      {(currentTab === 'committee' || currentTab === 'meetings') && (
-        <CommitteeView
-          initialTab={currentTab === 'meetings' ? 'meetings' : 'dashboard'}
+      {/* 6. Complete Unified Committee Management View with Left Secondary Sidebar */}
+      {(currentTab === 'committee' || currentTab === 'meetings' || currentTab === 'advisors') && (
+        <CommitteeManagementView
+          initialSection={currentTab === 'meetings' ? 'meetings' : currentTab === 'advisors' ? 'advisors' : 'dashboard'}
           terms={terms}
           members={members}
           meetings={meetings}
           notices={committeeNotices}
           resolutions={resolutions}
+          subCommittees={subCommittees}
+          accounts={accounts}
           language={language}
           mosque={mosque}
           currentUser={currentUser}
@@ -1205,32 +1280,39 @@ export default function App() {
           onUpdateResolutionProgress={handleUpdateCommitteeResolutionProgress}
           onDeleteResolution={handleDeleteCommitteeResolution}
           onDuplicateResolution={handleDuplicateCommitteeResolution}
-          subCommittees={subCommittees}
           onAddSubCommittee={handleAddSubCommittee}
           onUpdateSubCommittee={handleUpdateSubCommittee}
           onArchiveSubCommittee={handleArchiveSubCommittee}
         />
       )}
 
-      {/* 6.1 Independent Advisory Council (স্বতন্ত্র উপদেষ্টা পরিষদ) */}
-      {currentTab === 'advisors' && (
-        <AdvisoryCouncilView
-          mosque={mosque}
-          onRefresh={async () => {
-            await loadData(false);
-          }}
+      {/* 7. Imam, Staff & Payroll Central Management View (👤 ইমাম, স্টাফ ও বেতন) */}
+      {currentTab === 'staff' && (
+        <StaffManagementView
+          staffList={staff}
+          staffPayments={staffPayments}
+          accounts={accounts}
+          currentMosque={mosque}
+          onAddStaff={handleAddStaff}
+          onUpdateStaff={handleUpdateStaff}
+          onDeleteStaff={handleDeleteStaff}
+          onPayStaff={handlePayStaff}
+          onLogAttendance={handleLogStaffAttendance}
+          onApplyLeave={handleAddStaffLeave}
+          onUpdateLeaveStatus={handleUpdateStaffLeaveStatus}
+          onAddAdvance={handleAddStaffAdvance}
+          language={language}
         />
       )}
 
-      {/* 7. Staff, Assets, Waqf Property & Cemetery View */}
-      {(currentTab === 'staff' ||
-        currentTab === 'assets' ||
+      {/* 7.1 Assets, Waqf Property & Cemetery View */}
+      {(currentTab === 'assets' ||
         currentTab === 'property' ||
         currentTab === 'cemetery' ||
         currentTab === 'notices') && (
         <ManagementView
           initialTab={currentTab as any}
-          onNavigateToSalaryBankTransfer={() => setCurrentTab('salaryBankTransfer')}
+          onNavigateToSalaryBankTransfer={() => setCurrentTab('staff')}
           staff={staff}
           staffPayments={staffPayments}
           assets={assets}
@@ -1253,6 +1335,11 @@ export default function App() {
           onDisburseFestivalAllowance={handleDisburseFestivalAllowance}
           onUpdateStaffPayment={handleUpdateStaffPayment}
           onCancelStaffPayment={handleCancelStaffPayment}
+          onAddStaffAdvance={handleAddStaffAdvance}
+          onAddStaffLeave={handleAddStaffLeave}
+          onUpdateStaffLeaveStatus={handleUpdateStaffLeaveStatus}
+          onLogStaffAttendance={handleLogStaffAttendance}
+          onSettleStaff={handleSettleStaff}
           onAddAsset={handleAddAsset}
           onUpdateAsset={handleUpdateAsset}
           onDeleteAsset={handleDeleteAsset}
@@ -1792,42 +1879,42 @@ export default function App() {
         autoPrint={activeVoucher.autoPrint ?? false}
       />
 
-      {/* Floating Action Buttons: QR Scanner and Denomination Counter */}
-      <div className="fixed bottom-6 right-6 z-40 flex flex-col sm:flex-row items-end sm:items-center space-y-2.5 sm:space-y-0 sm:space-x-3 print:hidden">
-        {/* Floating Quick QR Scanner Button */}
-        <button
-          id="btn-floating-qr-scanner"
-          type="button"
-          onClick={() => setIsScannerOpen(true)}
-          className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white p-3.5 sm:px-4 sm:py-3 rounded-full sm:rounded-2xl shadow-xl hover:shadow-2xl border-2 border-white/40 flex items-center space-x-2 transition-all transform hover:scale-105 active:scale-95 group cursor-pointer"
-          title="QR ও বারকোড স্ক্যানার (Alt+Q)"
-        >
-          <QrCode className="w-5 h-5 text-blue-200 group-hover:rotate-12 transition-transform" />
-          <span className="font-siliguri font-bold text-xs hidden sm:inline">
-            {language === 'bn' ? 'QR স্ক্যানার' : 'QR Scanner'}
-          </span>
-          <span className="hidden sm:inline text-[10px] bg-white/20 text-blue-100 px-1.5 py-0.5 rounded font-mono font-bold">
-            Alt+Q
-          </span>
-        </button>
+      {/* 5 Floating Quick Actions (Income, Expense, Juma, Scanner, Calculator) */}
+      <FloatingFinancialActions
+        onOpenIncome={() => setCurrentTab('income')}
+        onOpenExpense={() => setCurrentTab('expense')}
+        onOpenJuma={() => setIsGlobalJumaModalOpen(true)}
+        onOpenScanner={() => setIsScannerOpen(true)}
+        onOpenCalculator={() => setIsGlobalCalculatorOpen(true)}
+        language={language}
+      />
 
-        {/* Floating Quick Denomination Counter Action Button */}
-        <button
-          id="btn-floating-calculator"
-          type="button"
-          onClick={() => setIsGlobalCalculatorOpen(true)}
-          className="bg-gradient-to-r from-emerald-700 to-teal-800 hover:from-emerald-800 hover:to-teal-900 text-white p-3.5 sm:px-4 sm:py-3 rounded-full sm:rounded-2xl shadow-xl hover:shadow-2xl border-2 border-white/40 flex items-center space-x-2 transition-all transform hover:scale-105 active:scale-95 group cursor-pointer"
-          title="ভাংতি টাকা ও ক্যাশ নোট গণনা (Alt+C)"
-        >
-          <Banknote className="w-5 h-5 text-emerald-200 group-hover:rotate-12 transition-transform" />
-          <span className="font-siliguri font-bold text-xs hidden sm:inline">
-            {language === 'bn' ? 'ভাংতি টাকা গণনা' : 'Cash Counter'}
-          </span>
-          <span className="hidden sm:inline text-[10px] bg-white/20 text-emerald-100 px-1.5 py-0.5 rounded font-mono font-bold">
-            Alt+C
-          </span>
-        </button>
-      </div>
+      {/* Global Juma Collection Dedicated Workflow Modal */}
+      <JumaCollectionModal
+        isOpen={isGlobalJumaModalOpen}
+        onClose={() => setIsGlobalJumaModalOpen(false)}
+        accounts={accounts}
+        accountHeads={accountHeads}
+        currentMosque={mosque}
+        language={language}
+        onSaveJumaCollection={async (payload, opts) => {
+          await handleAddIncome(
+            {
+              mainHeadId: 'head-inc-01',
+              subHeadId: 'head-inc-01-2',
+              amount: payload.amount,
+              paymentMethod: payload.paymentMethod,
+              accountId: payload.accountId,
+              donorName: payload.donorName,
+              reference: payload.reference,
+              description: payload.description,
+              date: payload.date,
+              denominationData: payload.denominationData,
+            },
+            opts
+          );
+        }}
+      />
 
       {/* Universal Calculator & Denomination Counter Modal */}
       <ChangeCalculatorModal

@@ -12,9 +12,11 @@ import {
   X,
   Shield,
   FileText,
+  Printer,
 } from 'lucide-react';
 import { AccountHead, Mosque } from '../types';
 import { Language, translations } from '../lib/i18n';
+import { FinancialSecondarySidebar, SecondarySidebarItem } from './FinancialSecondarySidebar';
 
 interface AccountHeadsViewProps {
   accountHeads: AccountHead[];
@@ -115,6 +117,41 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
     }
   };
 
+  const sidebarItems: SecondarySidebarItem[] = useMemo(
+    () => [
+      {
+        id: 'ALL',
+        label: '📑 সকল হিসাব খাত',
+        icon: Layers,
+        count: accountHeads.length,
+      },
+      {
+        id: 'INCOME',
+        label: '📥 আয়ের খাতসমূহ',
+        icon: ArrowDownLeft,
+        count: incomeHeads.length,
+      },
+      {
+        id: 'EXPENSE',
+        label: '📤 ব্যয়ের খাতসমূহ',
+        icon: ArrowUpRight,
+        count: expenseHeads.length,
+      },
+      {
+        id: 'NEW_HEAD',
+        label: '➕ নতুন হিসাব খাত',
+        icon: Plus,
+        isAction: true,
+      },
+      {
+        id: 'REPORTS',
+        label: '🖨️ চার্ট অব অ্যাকাউন্টস রিপোর্ট',
+        icon: Printer,
+      },
+    ],
+    [accountHeads.length, incomeHeads.length, expenseHeads.length]
+  );
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12 font-siliguri">
       {/* Page Header */}
@@ -146,111 +183,122 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
         </button>
       </div>
 
-      {/* Summary KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white rounded-2xl border border-slate-200 p-4.5 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              সর্বমোট হিসাব খাত
-            </span>
-            <div className="mt-1.5 text-2xl font-bold font-mono text-slate-900">
-              {accountHeads.length} টি
+      {/* Main Secondary Layout */}
+      <div className="flex flex-col lg:flex-row gap-5 items-start">
+        {/* Left Secondary Sidebar */}
+        <FinancialSecondarySidebar
+          subModuleName="আয়-ব্যয় খাত (COA)"
+          subModuleIcon={Layers}
+          items={sidebarItems}
+          activeItemId={selectedTypeFilter}
+          onSelectItem={(id) => {
+            if (id === 'NEW_HEAD') {
+              setErrorMsg('');
+              setIsAddHeadModalOpen(true);
+            } else if (id === 'REPORTS') {
+              window.print();
+            } else {
+              setSelectedTypeFilter(id as any);
+            }
+          }}
+          quickStat={{
+            label: 'সর্বমোট হিসাব খাত',
+            value: `${accountHeads.length} টি`,
+          }}
+        />
+
+        {/* Content Area */}
+        <div className="flex-1 w-full space-y-4 min-w-0">
+          {/* Summary KPI Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-white rounded-2xl border border-slate-200 p-4.5 shadow-xs flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  সর্বমোট হিসাব খাত
+                </span>
+                <div className="mt-1.5 text-2xl font-bold font-mono text-slate-900">
+                  {accountHeads.length} টি
+                </div>
+                <span className="text-[11px] text-slate-400 mt-0.5 block">
+                  প্রধান ও উপ-খাত মিলিয়ে সক্রিয় মোট সংখ্যা
+                </span>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center">
+                <Layers className="w-5 h-5" />
+              </div>
             </div>
-            <span className="text-[11px] text-slate-400 mt-0.5 block">
-              প্রধান ও উপ-খাত মিলিয়ে সক্রিয় মোট সংখ্যা
-            </span>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center">
-            <Layers className="w-5 h-5" />
-          </div>
-        </div>
 
-        <div className="bg-white rounded-2xl border border-emerald-100 bg-emerald-50/30 p-4.5 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider">
-              আয়ের খাতসমূহ (Income)
-            </span>
-            <div className="mt-1.5 text-2xl font-bold font-mono text-emerald-800">
-              {incomeHeads.length} টি
+            <div className="bg-white rounded-2xl border border-emerald-100 bg-emerald-50/30 p-4.5 shadow-xs flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider">
+                  আয়ের খাতসমূহ (Income)
+                </span>
+                <div className="mt-1.5 text-2xl font-bold font-mono text-emerald-800">
+                  {incomeHeads.length} টি
+                </div>
+                <span className="text-[11px] text-emerald-600 mt-0.5 block">
+                  {mainIncomeHeads.length} টি প্রধান খাত • {incomeHeads.length - mainIncomeHeads.length} টি উপ-খাত
+                </span>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center">
+                <ArrowDownLeft className="w-5 h-5" />
+              </div>
             </div>
-            <span className="text-[11px] text-emerald-600 mt-0.5 block">
-              {mainIncomeHeads.length} টি প্রধান খাত • {incomeHeads.length - mainIncomeHeads.length} টি উপ-খাত
-            </span>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center">
-            <ArrowDownLeft className="w-5 h-5" />
-          </div>
-        </div>
 
-        <div className="bg-white rounded-2xl border border-rose-100 bg-rose-50/30 p-4.5 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-xs font-bold text-rose-800 uppercase tracking-wider">
-              ব্যয়ের খাতসমূহ (Expense)
-            </span>
-            <div className="mt-1.5 text-2xl font-bold font-mono text-rose-800">
-              {expenseHeads.length} টি
+            <div className="bg-white rounded-2xl border border-rose-100 bg-rose-50/30 p-4.5 shadow-xs flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-rose-800 uppercase tracking-wider">
+                  ব্যয়ের খাতসমূহ (Expense)
+                </span>
+                <div className="mt-1.5 text-2xl font-bold font-mono text-rose-800">
+                  {expenseHeads.length} টি
+                </div>
+                <span className="text-[11px] text-rose-600 mt-0.5 block">
+                  {mainExpenseHeads.length} টি প্রধান খাত • {expenseHeads.length - mainExpenseHeads.length} টি উপ-খাত
+                </span>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-800 flex items-center justify-center">
+                <ArrowUpRight className="w-5 h-5" />
+              </div>
             </div>
-            <span className="text-[11px] text-rose-600 mt-0.5 block">
-              {mainExpenseHeads.length} টি প্রধান খাত • {expenseHeads.length - mainExpenseHeads.length} টি উপ-খাত
-            </span>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-800 flex items-center justify-center">
-            <ArrowUpRight className="w-5 h-5" />
+
+          {/* Filter & Search Toolbar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-xs">
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-bold text-slate-700">
+                {selectedTypeFilter === 'ALL'
+                  ? 'সকল হিসাব খাত'
+                  : selectedTypeFilter === 'INCOME'
+                  ? 'আয়ের হিসাব খাত'
+                  : 'ব্যয়ের হিসাব খাত'}
+              </span>
+              <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full font-bold">
+                {selectedTypeFilter === 'ALL'
+                  ? accountHeads.length
+                  : selectedTypeFilter === 'INCOME'
+                  ? incomeHeads.length
+                  : expenseHeads.length}{' '}
+                টি
+              </span>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <div className="relative w-full sm:w-64">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  placeholder="খাতের নাম বা কোড খুঁজুন..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-300 rounded-xl text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
 
-      {/* Filter & Search Toolbar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-xs">
-        <div className="flex items-center space-x-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
-          <button
-            onClick={() => setSelectedTypeFilter('ALL')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              selectedTypeFilter === 'ALL'
-                ? 'bg-white text-slate-900 shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            সকল হিসাব খাত ({accountHeads.length})
-          </button>
-          <button
-            onClick={() => setSelectedTypeFilter('INCOME')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              selectedTypeFilter === 'INCOME'
-                ? 'bg-emerald-600 text-white shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            আয়ের খাত ({incomeHeads.length})
-          </button>
-          <button
-            onClick={() => setSelectedTypeFilter('EXPENSE')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              selectedTypeFilter === 'EXPENSE'
-                ? 'bg-rose-600 text-white shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            ব্যয়ের খাত ({expenseHeads.length})
-          </button>
-        </div>
-
-        <div className="flex items-center space-x-2">
-          <div className="relative w-full sm:w-64">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-            <input
-              type="text"
-              placeholder="খাতের নাম বা কোড খুঁজুন..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-300 rounded-xl text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Main Two-Column Structure: Income & Expense */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Main Two-Column Structure: Income & Expense */}
+          <div className={`grid gap-6 ${selectedTypeFilter === 'ALL' ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'}`}>
         {/* Income Heads Section */}
         {(selectedTypeFilter === 'ALL' || selectedTypeFilter === 'INCOME') && (
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden flex flex-col">
@@ -388,6 +436,8 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
             </div>
           </div>
         )}
+      </div>
+        </div>
       </div>
 
       {/* Add New Head Modal */}

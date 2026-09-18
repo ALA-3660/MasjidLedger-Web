@@ -601,13 +601,20 @@ export interface FinancialAccount {
   bankName?: string;
   branchName?: string;
   accountNumber?: string;
+  mfsProvider?: 'BKASH' | 'NAGAD' | 'ROCKET' | 'UPAY' | 'OTHER' | string;
+  mobileNumber?: string;
+  mfsAccountCategory?: 'MERCHANT' | 'PERSONAL';
+  bankAccountCategory?: 'CURRENT' | 'SAVINGS' | 'MUDARABA' | 'SND' | 'OTHER';
+  routingNumber?: string;
+  contactPerson?: string;
+  notes?: string;
   openingBalance: number;
   openingBalanceDate?: string;
   openingBalanceType?: 'DEBIT' | 'CREDIT';
   openingBalanceSource?: string;
   openingBalanceNote?: string;
   currentBalance: number;
-  status: 'ACTIVE' | 'INACTIVE';
+  status: 'ACTIVE' | 'INACTIVE' | 'CLOSED';
   isDefault?: boolean;
   createdAt: string;
   updatedAt?: string;
@@ -1605,7 +1612,138 @@ export interface SalaryHistoryEntry {
   createdAt: string;
 }
 
-export type StaffEmploymentType = 'PERMANENT' | 'CONTRACTUAL' | 'PART_TIME' | 'TEMPORARY';
+export type StaffEmploymentType = 'PERMANENT' | 'CONTRACTUAL' | 'PART_TIME' | 'TEMPORARY' | 'FULL_TIME' | 'OTHER';
+
+export type StaffDesignation = 'KHATIB' | 'IMAM' | 'MUEZZIN' | 'KHADEM' | 'CLEANER' | 'TEACHER' | 'SECURITY' | 'OTHER';
+
+export type StaffStatus = 'ACTIVE' | 'INACTIVE' | 'ON_LEAVE' | 'EMPLOYMENT_ENDED' | 'TERMINATED' | 'DECEASED';
+
+export type StaffLeaveType = 'CASUAL' | 'SICK' | 'EMERGENCY' | 'ANNUAL' | 'SPECIAL' | 'OTHER';
+
+export type StaffLeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+
+export interface StaffLeaveRecord {
+  id: string;
+  mosqueId: string;
+  staffId: string;
+  staffName: string;
+  designationBn?: string;
+  leaveType: StaffLeaveType;
+  leaveTypeBn: string;
+  startDate: string;
+  endDate: string;
+  daysCount: number;
+  reason: string;
+  emergencyContact?: string;
+  appliedDate: string;
+  status: StaffLeaveStatus;
+  approvedBy?: string;
+  approvedByName?: string;
+  approvalDate?: string;
+  rejectionReason?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface StaffAdvanceRecord {
+  id: string;
+  mosqueId: string;
+  staffId: string;
+  staffName: string;
+  designationBn?: string;
+  advanceDate: string;
+  amount: number;
+  reason: string;
+  paymentMethod: PaymentMethod;
+  accountId: string;
+  accountNameBn?: string;
+  expenseVoucherNumber?: string;
+  adjustedAmount: number;
+  outstandingAmount: number;
+  adjustmentHistory?: {
+    paymentId: string;
+    month: string;
+    amount: number;
+    date: string;
+    voucherNumber?: string;
+  }[];
+  status: 'ACTIVE' | 'FULLY_ADJUSTED' | 'CANCELLED';
+  approvedBy?: string;
+  approvedByName?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export type StaffAttendanceStatus = 'PRESENT' | 'ABSENT' | 'ON_LEAVE' | 'LATE' | 'OFFICIAL_DUTY';
+
+export interface StaffAttendanceRecord {
+  id: string;
+  mosqueId: string;
+  staffId: string;
+  staffName: string;
+  date: string; // YYYY-MM-DD
+  status: StaffAttendanceStatus;
+  inTime?: string;
+  outTime?: string;
+  prayersAttended?: ('FAJR' | 'DHUHR' | 'ASR' | 'MAGHRIB' | 'ISHA' | 'JUMA')[];
+  remarks?: string;
+  recordedBy?: string;
+  recordedByName?: string;
+  createdAt: string;
+}
+
+export interface StaffEmploymentHistoryRecord {
+  id: string;
+  date: string;
+  eventType: 'APPOINTMENT' | 'JOINING' | 'DESIGNATION_CHANGE' | 'SALARY_INCREMENT' | 'RESPONSIBILITY_CHANGE' | 'STATUS_CHANGE' | 'LEAVE' | 'WARNING' | 'REWARD' | 'SETTLEMENT' | 'TERMINATION' | 'RESIGNATION' | 'OTHER';
+  eventTitle: string;
+  description: string;
+  previousValue?: string;
+  newValue?: string;
+  performedBy?: string;
+  performedByName?: string;
+  documentUrl?: string;
+  createdAt: string;
+}
+
+export interface StaffStatusHistoryRecord {
+  id: string;
+  status: StaffStatus;
+  previousStatus?: StaffStatus;
+  changedDate: string;
+  reason: string;
+  changedBy: string;
+  changedByName: string;
+  createdAt: string;
+}
+
+export interface StaffFinalSettlement {
+  id: string;
+  mosqueId: string;
+  staffId: string;
+  staffName: string;
+  settlementDate: string;
+  resignationOrTerminationDate: string;
+  lastMonthlySalary: number;
+  dueSalaryAmount: number;
+  unadjustedAdvanceAmount: number;
+  gratuityOrHonorarium: number;
+  otherAllowances: number;
+  totalDeduction: number;
+  netSettlementAmount: number;
+  paymentMethod: PaymentMethod;
+  accountId: string;
+  accountNameBn?: string;
+  expenseVoucherNumber?: string;
+  notes?: string;
+  status: 'DRAFT' | 'SETTLED' | 'CANCELLED';
+  settledBy: string;
+  settledByName: string;
+  createdAt: string;
+  updatedAt?: string;
+}
 
 export interface Staff {
   id: string;
@@ -1615,23 +1753,59 @@ export interface Staff {
   staffCode?: string;
   nid: string;
   phone: string;
-  designation: 'IMAM' | 'MUEZZIN' | 'KHATIB' | 'TEACHER' | 'CLEANER' | 'SECURITY' | 'OTHER';
+  altPhone?: string;
+  alternatePhone?: string;
+  advanceBalance?: number;
+  email?: string;
+  dateOfBirth?: string;
+  age?: number;
+  bloodGroup?: 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-' | string;
+  maritalStatus?: 'MARRIED' | 'UNMARRIED' | 'OTHER' | string;
+  fatherName?: string;
+  motherName?: string;
+  designation: StaffDesignation;
   designationBn: string;
   employmentType?: StaffEmploymentType;
   employmentTypeBn?: string;
   address?: string;
   presentAddress?: string;
   permanentAddress?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+  generalEducation?: string;
+  religiousEducation?: string;
+  educationQualification?: string;
+  specialQualification?: string;
+  previousExperience?: string;
+  previousOrganization?: string;
+  specialSkills?: string;
+  quranMemorizationHifz?: boolean;
+  qiratTajweedCertification?: boolean;
+  otherInfo?: string;
+  appointmentDate?: string;
   joiningDate: string;
+  contractEndDate?: string;
   resignationDate?: string;
   terminationDate?: string;
-  educationQualification?: string;
+  status: StaffStatus;
+  appointmentLetterNo?: string;
+  appointmentTerm?: string;
+  responsibilities?: string[] | string;
   monthlySalary: number;
+  basicSalary?: number;
+  housingAllowance?: number;
+  medicalAllowance?: number;
+  transportAllowance?: number;
+  otherAllowance?: number;
   allowance: number;
+  grossSalary?: number;
   salaryEffectiveDate?: string;
+  salaryRevisionReason?: string;
   salaryHistory?: SalaryHistoryEntry[];
-  status: 'ACTIVE' | 'INACTIVE' | 'ON_LEAVE' | 'TERMINATED';
   notes?: string;
+  confidentialNotes?: string;
+  officialAdminNotes?: string;
+  documentLinks?: string[];
   photoUrl?: string;
   signatureUrl?: string;
   // Bank Account Information
@@ -1641,9 +1815,92 @@ export interface Staff {
   accountNumber?: string;
   routingNumber?: string;
   accountType?: 'SAVINGS' | 'CURRENT' | 'SALARY' | string;
+  paymentPreference?: 'BANK' | 'CASH' | 'MFS';
   bankStatus?: 'ACTIVE' | 'INACTIVE' | 'VERIFIED' | 'PENDING';
+  bankNotes?: string;
+  // Enhanced Multi-Photo & Google Drive Document Records
+  photos?: StaffPhotoRecord[];
+  documents?: StaffDocumentRecord[];
+  positionHistory?: StaffPositionChangeRecord[];
+  festivalAllowanceRecords?: StaffFestivalAllowanceRecord[];
+  // Sub-records
+  leaveRecords?: StaffLeaveRecord[];
+  advanceRecords?: StaffAdvanceRecord[];
+  attendanceRecords?: StaffAttendanceRecord[];
+  employmentHistory?: StaffEmploymentHistoryRecord[];
+  statusHistory?: StaffStatusHistoryRecord[];
+  finalSettlement?: StaffFinalSettlement;
   createdAt: string;
   updatedAt?: string;
+}
+
+export type StaffPhotoType = 'PROFILE' | 'PASSPORT' | 'NID' | 'SIGNATURE' | 'OTHER';
+
+export interface StaffPhotoRecord {
+  id: string;
+  type: StaffPhotoType;
+  title: string;
+  url?: string;
+  googleDriveLink?: string;
+  date?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export type StaffDocumentType =
+  | 'NID'
+  | 'APPOINTMENT_LETTER'
+  | 'ACADEMIC_CERTIFICATE'
+  | 'ISLAMIC_CERTIFICATE'
+  | 'TRAINING_CERTIFICATE'
+  | 'BANK_DOCUMENT'
+  | 'LEAVE_DOCUMENT'
+  | 'POLICE_VERIFICATION'
+  | 'EXPERIENCE_CERTIFICATE'
+  | 'OTHER';
+
+export interface StaffDocumentRecord {
+  id: string;
+  title: string;
+  docType: StaffDocumentType;
+  docTypeBn?: string;
+  description?: string;
+  googleDriveLink: string;
+  docDate?: string;
+  uploadDate: string;
+  expiryDate?: string;
+  status?: 'ACTIVE' | 'EXPIRED' | 'ARCHIVED';
+  notes?: string;
+  createdAt: string;
+}
+
+export interface StaffPositionChangeRecord {
+  id: string;
+  previousDesignation: string;
+  newDesignation: string;
+  effectiveDate: string;
+  reason: string;
+  approvedBy?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface StaffFestivalAllowanceRecord {
+  id: string;
+  mosqueId: string;
+  staffId: string;
+  staffName: string;
+  designationBn: string;
+  festivalName: string;
+  allowanceDate: string;
+  amount: number;
+  paymentMethod: PaymentMethod;
+  accountId: string;
+  accountNameBn?: string;
+  expenseVoucherNumber?: string;
+  status: 'PAID' | 'PENDING' | 'CANCELLED';
+  notes?: string;
+  createdAt: string;
 }
 
 export type StaffBankPaymentType = 'SALARY' | 'FESTIVAL_ALLOWANCE' | 'BONUS' | 'SPECIAL_ALLOWANCE' | 'OTHER';
@@ -1703,6 +1960,87 @@ export interface StaffBankTransferLetter {
   updatedAt?: string;
 }
 
+export interface StaffPaymentDocument {
+  id: string;
+  name: string;
+  type: 'TRANSFER_RECEIPT' | 'BANK_ADVICE' | 'VOUCHER' | 'SALARY_SHEET' | 'APPROVAL_NOTE' | 'OTHER';
+  url: string;
+  googleDriveLink?: string;
+  uploadDate: string;
+  uploadedBy: string;
+  uploadedByName?: string;
+  fileSize?: string;
+  isPrivate?: boolean;
+  notes?: string;
+}
+
+export type PaymentBatchStatus = 'DRAFT' | 'PENDING' | 'APPROVED' | 'PROCESSING' | 'PAID' | 'PARTIALLY_PAID' | 'CANCELLED';
+
+export interface PaymentBatchItem {
+  id: string;
+  staffId: string;
+  staffName: string;
+  staffCode?: string;
+  designationBn: string;
+  phone?: string;
+  basicSalary: number;
+  bonus?: number;
+  allowance?: number;
+  otherAllowance?: number;
+  deduction?: number;
+  advanceAdjustment?: number;
+  totalPayable: number;
+  netPayable: number;
+  paymentMethod: PaymentMethod;
+  bankName?: string;
+  branchName?: string;
+  accountNumber?: string;
+  accountHolderName?: string;
+  routingNumber?: string;
+  paymentId?: string;
+  voucherNumber?: string;
+  status: 'PENDING' | 'PAID' | 'CANCELLED';
+  notes?: string;
+}
+
+export interface PaymentBatch {
+  id: string;
+  mosqueId: string;
+  batchNumber: string;
+  title: string;
+  paymentMonth: string; // YYYY-MM
+  paymentYear: number;
+  paymentDate: string;
+  paymentType: 'SALARY' | 'HADIA' | 'HONORARIUM' | 'ALLOWANCE' | 'FESTIVAL_ALLOWANCE' | 'OTHER';
+  festivalName?: string;
+  disbursementMethod: 'BANK' | 'CASH' | 'CHEQUE' | 'MIXED';
+  accountId?: string;
+  accountNameBn?: string;
+  totalStaff: number;
+  totalAmount: number;
+  totalBasicSalary: number;
+  totalAllowances: number;
+  totalDeductions: number;
+  totalAdvanceAdjusted: number;
+  status: PaymentBatchStatus;
+  items: PaymentBatchItem[];
+  reference?: string;
+  notes?: string;
+  googleDriveLink?: string;
+  documents?: StaffPaymentDocument[];
+  approvedBy?: string;
+  approvedByName?: string;
+  approvedAt?: string;
+  disbursedAt?: string;
+  cancellationReason?: string;
+  termId?: string;
+  termTitle?: string;
+  createdBy: string;
+  createdByName: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface StaffPayment {
   id: string;
   mosqueId: string;
@@ -1711,7 +2049,7 @@ export interface StaffPayment {
   designationBn: string;
   month: string; // YYYY-MM
   paymentDate: string;
-  paymentType?: 'REGULAR_SALARY' | 'BONUS' | 'FESTIVAL_ALLOWANCE' | 'SPECIAL_ALLOWANCE' | 'OTHER';
+  paymentType?: 'REGULAR_SALARY' | 'HADIA' | 'HONORARIUM' | 'BONUS' | 'FESTIVAL_ALLOWANCE' | 'SPECIAL_ALLOWANCE' | 'OTHER';
   festivalName?: string;
   basicSalary: number;
   bonus?: number;
@@ -1719,18 +2057,35 @@ export interface StaffPayment {
   allowance: number; // backward compatibility (bonus + otherAllowance)
   deduction: number;
   advanceDeduction?: number;
+  advanceAdjustment?: number;
   totalPayable?: number; // basicSalary + bonus + otherAllowance
+  payableAmount?: number;
   netPaid: number;
+  remainingDue?: number;
   paymentMethod: PaymentMethod;
   accountId: string;
   accountNameBn?: string;
+  bankName?: string;
+  branchName?: string;
+  accountNumber?: string;
+  transactionReference?: string;
   expenseVoucherNumber?: string;
   expenseEntryId?: string;
+  batchId?: string;
+  batchNumber?: string;
+  letterId?: string;
+  letterMemoNumber?: string;
+  googleDriveLink?: string;
+  documents?: StaffPaymentDocument[];
   notes?: string;
-  status?: 'PAID' | 'CANCELLED';
+  status?: 'PAID' | 'CANCELLED' | 'PARTIALLY_PAID';
+  cancellationReason?: string;
+  cancelledAt?: string;
   termId?: string;
   staffSignatureUrl?: string;
   receivedByConfirmation?: boolean;
+  createdBy?: string;
+  createdByName?: string;
   createdAt: string;
   updatedAt?: string;
 }
@@ -2293,8 +2648,10 @@ export interface AccountTransfer {
   toAccountName: string;
   amount: number;
   date: string;
+  purpose?: string;
   description?: string;
   reference?: string;
+  attachmentUrl?: string;
   createdBy: string;
   createdByName: string;
   createdAt: string;

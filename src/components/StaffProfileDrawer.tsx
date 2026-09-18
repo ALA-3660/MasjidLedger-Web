@@ -22,9 +22,16 @@ import {
   Briefcase,
   Layers,
   History,
-  Plus
+  Plus,
+  Banknote,
+  GraduationCap,
+  Heart,
+  Landmark,
+  CalendarCheck,
+  ShieldCheck,
+  CheckCircle2
 } from 'lucide-react';
-import { Staff, StaffPayment, FinancialAccount, SalaryHistoryEntry } from '../types';
+import { Staff, StaffPayment, FinancialAccount, SalaryHistoryEntry, StaffLeaveRecord, StaffAdvanceRecord } from '../types';
 import { Language, translations, formatCurrency, formatDate } from '../lib/i18n';
 import { api } from '../lib/api';
 import { DocumentSection } from './DocumentSection';
@@ -42,6 +49,11 @@ interface StaffProfileDrawerProps {
   onCancelPayment?: (id: string, reason?: string) => Promise<void>;
   onPrintSlip: (payment: StaffPayment, staff: Staff) => void;
   onPrintAnnualStatement?: (staff: Staff) => void;
+  onOpenAdvanceModal?: (staffId: string) => void;
+  onOpenLeaveModal?: (staffId: string) => void;
+  onOpenSettlementModal?: (staff: Staff) => void;
+  onOpenIdCardModal?: (staff: Staff) => void;
+  onUpdateLeaveStatus?: (leaveId: string, status: 'APPROVED' | 'REJECTED' | 'CANCELLED') => Promise<void>;
   language: Language;
 }
 
@@ -58,15 +70,22 @@ export const StaffProfileDrawer: React.FC<StaffProfileDrawerProps> = ({
   onCancelPayment,
   onPrintSlip,
   onPrintAnnualStatement,
+  onOpenAdvanceModal,
+  onOpenLeaveModal,
+  onOpenSettlementModal,
+  onOpenIdCardModal,
+  onUpdateLeaveStatus,
   language,
 }) => {
   const t = translations[language];
 
-  const [activeTab, setActiveTab] = useState<'PAYMENTS' | 'SALARY_HISTORY' | 'DETAILS' | 'DOCUMENTS'>('PAYMENTS');
+  const [activeTab, setActiveTab] = useState<
+    'DETAILS' | 'PAYMENTS' | 'SALARY_HISTORY' | 'ADVANCES' | 'LEAVES' | 'ATTENDANCE' | 'HISTORY' | 'DOCUMENTS'
+  >('DETAILS');
 
   // Salary Revision Modal
   const [isRevisionModalOpen, setIsRevisionModalOpen] = useState(false);
-  const [newSalary, setNewSalary] = useState<number>(staff?.monthlySalary || 0);
+  const [newSalary, setNewSalary] = useState<number>(staff?.monthlySalary || staff?.basicSalary || 0);
   const [revisionEffectiveDate, setRevisionEffectiveDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [revisionReason, setRevisionReason] = useState<string>('বার্ষিক ইনক্রিমেন্ট ও বেতন বৃদ্ধি');
   const [revisionLoading, setRevisionLoading] = useState(false);
@@ -98,812 +117,879 @@ export const StaffProfileDrawer: React.FC<StaffProfileDrawerProps> = ({
 
   const paidMonthsCount = staffPayments.filter((p) => p.status !== 'CANCELLED').length;
 
-  const salaryHistoryList: SalaryHistoryEntry[] = Array.isArray(staff.salaryHistory) && staff.salaryHistory.length > 0
-    ? staff.salaryHistory
-    : [
-        {
-          id: 'initial',
-          previousSalary: 0,
-          newSalary: staff.monthlySalary,
-          effectiveDate: staff.joiningDate || '2025-01-01',
-          revisedAt: staff.joiningDate || '2025-01-01',
-          revisedBy: 'System',
-          reason: 'যোগদানকালীন প্রাথমিক মূল বেতন নির্ধারণ',
-        },
-      ];
+  // Active advance total
+  const activeAdvances = (staff.advanceRecords || []).filter(
+    (a) => a.status === 'ACTIVE' || a.status === 'PARTIALLY_ADJUSTED'
+  );
+  const totalOutstandingAdvance = activeAdvances.reduce((sum, a) => sum + (a.outstandingAmount || 0), 0);
 
-  // Calculate service tenure
-  const calculateTenure = (joiningDateStr?: string) => {
-    if (!joiningDateStr) return '—';
-    try {
-      const joinDate = new Date(joiningDateStr);
-      const now = new Date();
-      let years = now.getFullYear() - joinDate.getFullYear();
-      let months = now.getMonth() - joinDate.getMonth();
-      if (months < 0) {
-        years -= 1;
-        months += 12;
-      }
-      if (years <= 0 && months <= 0) return 'নতুন যোগদানকৃত';
-      if (years <= 0) return `${months} মাস`;
-      return `${years} বছর ${months > 0 ? `${months} মাস` : ''}`;
-    } catch {
-      return '—';
-    }
-  };
+  // Total leaves count
+  const approvedLeaves = (staff.leaveRecords || []).filter((l) => l.status === 'APPROVED');
+  const totalLeaveDays = approvedLeaves.reduce((sum, l) => sum + (l.daysCount || 0), 0);
 
-  const handleOpenSalaryRevision = () => {
-    setNewSalary(staff.monthlySalary || 0);
-    setRevisionEffectiveDate(new Date().toISOString().split('T')[0]);
-    setRevisionReason('বার্ষিক ইনক্রিমেন্ট ও বেতন বৃদ্ধি');
-    setIsRevisionModalOpen(true);
-  };
-
-  const handleSaveSalaryRevision = async (e: React.FormEvent) => {
+  const handleSalaryRevisionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newSalary || newSalary <= 0) {
-      alert('সঠিক নতুন বেতন অংক লিখুন');
-      return;
-    }
+    if (!newSalary || newSalary <= 0) return;
     try {
       setRevisionLoading(true);
       if (onReviseSalary) {
         await onReviseSalary(staff.id, {
-          newSalary,
-          effectiveDate: revisionEffectiveDate,
-          reason: revisionReason,
-        });
-      } else {
-        await api.reviseStaffSalary(staff.id, {
-          newSalary,
+          newSalary: Number(newSalary),
           effectiveDate: revisionEffectiveDate,
           reason: revisionReason,
         });
       }
       setIsRevisionModalOpen(false);
     } catch (err: any) {
-      alert(err?.message || 'বেতন সংশোধন করতে ব্যর্থ হয়েছে');
+      alert(err.message || 'বেতন পরিবর্তন ব্যর্থ হয়েছে');
     } finally {
       setRevisionLoading(false);
     }
   };
 
-  const handleOpenEditPayment = (p: StaffPayment) => {
-    setEditingPayment(p);
-    setEditNotes(p.notes || '');
-    setEditPaymentDate(p.paymentDate || '');
-  };
-
-  const handleSaveEditPayment = async (e: React.FormEvent) => {
+  const handleEditPaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingPayment || !onUpdatePayment) return;
     try {
       setEditLoading(true);
       await onUpdatePayment(editingPayment.id, {
-        notes: editNotes.trim(),
-        paymentDate: editPaymentDate,
+        notes: editNotes,
+        paymentDate: editPaymentDate || editingPayment.paymentDate,
       });
       setEditingPayment(null);
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      alert(err.message || 'পেমেন্ট আপডেট ব্যর্থ হয়েছে');
     } finally {
       setEditLoading(false);
     }
   };
 
-  const handleConfirmCancelPayment = async (e: React.FormEvent) => {
+  const handleCancelPaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!cancellingPayment || !onCancelPayment) return;
     try {
       setCancelLoading(true);
-      await onCancelPayment(cancellingPayment.id, cancelReason.trim());
+      await onCancelPayment(cancellingPayment.id, cancelReason);
       setCancellingPayment(null);
-      setCancelReason('');
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      alert(err.message || 'পেমেন্ট বাতিল ব্যর্থ হয়েছে');
     } finally {
       setCancelLoading(false);
     }
   };
 
+  const handleLeaveStatusChange = async (leaveId: string, status: 'APPROVED' | 'REJECTED' | 'CANCELLED') => {
+    try {
+      if (onUpdateLeaveStatus) {
+        await onUpdateLeaveStatus(leaveId, status);
+      } else {
+        await api.updateStaffLeave(staff.id, leaveId, { status });
+      }
+    } catch (err: any) {
+      alert(err.message || 'ছুটির স্ট্যাটাস পরিবর্তন ব্যর্থ হয়েছে');
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-4xl w-full shadow-2xl border border-slate-200 overflow-hidden my-6 animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 overflow-hidden bg-slate-900/60 backdrop-blur-xs flex justify-end animate-fade-in">
+      <div className="w-full max-w-4xl bg-white h-full shadow-2xl flex flex-col justify-between overflow-hidden">
         {/* Drawer Header */}
-        <div className="bg-slate-900 text-white px-6 py-5 flex items-center justify-between shrink-0">
-          <div className="flex items-center space-x-3.5">
-            <div className="w-13 h-13 rounded-full bg-blue-600/30 border-2 border-blue-400/40 text-white font-bold text-xl flex items-center justify-center">
-              {staff.name.charAt(0)}
+        <div className="px-6 py-5 bg-slate-900 text-white flex items-center justify-between">
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-full border-2 border-emerald-500 overflow-hidden bg-slate-800 flex items-center justify-center shrink-0">
+              {staff.photoUrl ? (
+                <img src={staff.photoUrl} alt={staff.name} className="w-full h-full object-cover" crossOrigin="anonymous" />
+              ) : (
+                <User className="w-6 h-6 text-emerald-400" />
+              )}
             </div>
             <div>
-              <div className="flex items-center space-x-2">
-                <h2 className="font-bold text-lg font-siliguri text-white">{staff.name}</h2>
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-bold text-white">{staff.fullNameBn || staff.name}</h3>
+                <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded text-[10px] font-semibold">
+                  {staff.staffCode || 'আইডি নাই'}
+                </span>
                 <span
-                  className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
-                    staff.status === 'ACTIVE'
-                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                      : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                    staff.status === 'ACTIVE' || !staff.status
+                      ? 'bg-emerald-500 text-white'
+                      : staff.status === 'ON_LEAVE'
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-rose-500 text-white'
                   }`}
                 >
-                  {staff.status === 'ACTIVE' ? 'সক্রিয় স্টাফ (Active)' : 'নিষ্ক্রিয় / সাবেক (Inactive)'}
+                  {staff.status === 'ACTIVE' || !staff.status
+                    ? 'চাকুরিরত'
+                    : staff.status === 'ON_LEAVE'
+                    ? 'ছুটিতে'
+                    : 'নিষ্ক্রিয়/সমাপ্ত'}
                 </span>
-                {staff.employeeCode && (
-                  <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono">
-                    কোড: {staff.employeeCode}
-                  </span>
-                )}
               </div>
-              <p className="text-xs text-blue-300 font-semibold mt-0.5">
-                {staff.designationBn} • মোবাইল: {staff.phone}
-                {staff.employmentType && (
-                  <span className="ml-2 text-slate-300">
-                    ({staff.employmentType === 'PERMANENT' ? 'স্থায়ী' : staff.employmentType === 'CONTRACTUAL' ? 'চুক্তিভিত্তিক' : staff.employmentType === 'HONORARY' ? 'সম্মানীভিত্তিক' : staff.employmentType})
-                  </span>
-                )}
+              <p className="text-xs text-slate-300 mt-0.5">
+                {staff.designationBn} • {staff.phone}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={handleOpenSalaryRevision}
-              className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-colors cursor-pointer"
-              title="নতুন বেতন বৃদ্ধি বা ইনক্রিমেন্ট নির্ধারণ করুন"
-            >
-              <TrendingUp className="w-3.5 h-3.5" />
-              <span>বেতন বৃদ্ধি / ইনক্রিমেন্ট</span>
-            </button>
+          <div className="flex items-center gap-2">
+            {onOpenIdCardModal && (
+              <button
+                onClick={() => onOpenIdCardModal(staff)}
+                title="অফিসিয়াল আইডি কার্ড প্রিন্ট"
+                className="p-2 text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition"
+              >
+                <ShieldCheck className="w-4 h-4" />
+              </button>
+            )}
+
             {onPrintAnnualStatement && (
               <button
                 onClick={() => onPrintAnnualStatement(staff)}
-                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5 shadow-sm transition-colors cursor-pointer"
-                title="এই স্টাফের বার্ষিক পেমেন্ট বিবরণী প্রিন্ট করুন"
+                title="বাৎসরিক স্টেটমেন্ট"
+                className="p-2 text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition"
               >
-                <Printer className="w-3.5 h-3.5" />
-                <span>বার্ষিক স্টেটমেন্ট</span>
+                <Printer className="w-4 h-4" />
               </button>
             )}
+
             <button
               onClick={() => onEditStaff(staff)}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-colors cursor-pointer"
+              title="তথ্য সম্পাদনা"
+              className="p-2 text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition"
             >
-              <Edit2 className="w-3.5 h-3.5" />
-              <span>প্রোফাইল এডিট</span>
+              <Edit2 className="w-4 h-4" />
             </button>
+
             <button
               onClick={onClose}
-              className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
             >
-              <X className="w-6 h-6" />
+              <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        {/* Navigation Tabs Inside Drawer */}
-        <div className="bg-slate-100 px-6 py-2 border-b border-slate-200 flex items-center space-x-2 shrink-0">
-          <button
-            onClick={() => setActiveTab('PAYMENTS')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
-              activeTab === 'PAYMENTS'
-                ? 'bg-white text-blue-700 shadow-2xs border border-slate-200'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Receipt className="w-3.5 h-3.5" />
-            <span>বেতন ও পরিশোধ ইতিহাস ({staffPayments.length})</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('SALARY_HISTORY')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
-              activeTab === 'SALARY_HISTORY'
-                ? 'bg-white text-amber-700 shadow-2xs border border-slate-200'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <TrendingUp className="w-3.5 h-3.5" />
-            <span>বেতন সংশোধন ও ইনক্রিমেন্ট ইতিহাস ({salaryHistoryList.length})</span>
-          </button>
+        {/* Action Highlights Bar */}
+        <div className="bg-slate-50 border-b border-slate-200 px-6 py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-4 text-slate-600">
+            <div>
+              মাসিক মোট বেতন: <strong className="text-slate-900 font-bold">৳{(staff.monthlySalary || staff.basicSalary || 0).toLocaleString()}</strong>
+            </div>
+            <div>
+              বকেয়া অগ্রিম: <strong className="text-purple-700 font-bold">৳{totalOutstandingAdvance.toLocaleString()}</strong>
+            </div>
+            <div>
+              মোট ছুটি গ্রহণ: <strong className="text-amber-700 font-bold">{totalLeaveDays} দিন</strong>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {onOpenAdvanceModal && (
+              <button
+                onClick={() => onOpenAdvanceModal(staff.id)}
+                className="px-2.5 py-1.5 bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 rounded-lg font-semibold flex items-center gap-1 transition"
+              >
+                <Banknote className="w-3.5 h-3.5" />
+                অগ্রিম প্রদান
+              </button>
+            )}
+
+            {onOpenLeaveModal && (
+              <button
+                onClick={() => onOpenLeaveModal(staff.id)}
+                className="px-2.5 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 rounded-lg font-semibold flex items-center gap-1 transition"
+              >
+                <Clock className="w-3.5 h-3.5" />
+                ছুটি আবেদন
+              </button>
+            )}
+
+            <button
+              onClick={() => onOpenPayModal(staff.id)}
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold flex items-center gap-1 shadow-2xs transition"
+            >
+              <DollarSign className="w-3.5 h-3.5" />
+              বেতন প্রদান
+            </button>
+          </div>
+        </div>
+
+        {/* Tabs Bar */}
+        <div className="px-6 bg-white border-b border-slate-200 flex flex-wrap gap-1">
           <button
             onClick={() => setActiveTab('DETAILS')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
+            className={`px-3 py-2.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition ${
               activeTab === 'DETAILS'
-                ? 'bg-white text-emerald-700 shadow-2xs border border-slate-200'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
             }`}
           >
             <User className="w-3.5 h-3.5" />
-            <span>পূর্ণাঙ্গ জীবনবৃত্তান্ত ও ব্যাংক তথ্য</span>
+            পূর্ণ বিবরণী
           </button>
+
+          <button
+            onClick={() => setActiveTab('PAYMENTS')}
+            className={`px-3 py-2.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition ${
+              activeTab === 'PAYMENTS'
+                ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Receipt className="w-3.5 h-3.5" />
+            বেতন ইতিহাস ({staffPayments.length})
+          </button>
+
+          <button
+            onClick={() => setActiveTab('SALARY_HISTORY')}
+            className={`px-3 py-2.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition ${
+              activeTab === 'SALARY_HISTORY'
+                ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <TrendingUp className="w-3.5 h-3.5" />
+            ইনক্রিমেন্ট ট্রেইল ({staff.salaryHistory?.length || 0})
+          </button>
+
+          <button
+            onClick={() => setActiveTab('ADVANCES')}
+            className={`px-3 py-2.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition ${
+              activeTab === 'ADVANCES'
+                ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Banknote className="w-3.5 h-3.5" />
+            বেতন অগ্রিম ({staff.advanceRecords?.length || 0})
+          </button>
+
+          <button
+            onClick={() => setActiveTab('LEAVES')}
+            className={`px-3 py-2.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition ${
+              activeTab === 'LEAVES'
+                ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5" />
+            ছুটি রেকর্ড ({staff.leaveRecords?.length || 0})
+          </button>
+
+          <button
+            onClick={() => setActiveTab('ATTENDANCE')}
+            className={`px-3 py-2.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition ${
+              activeTab === 'ATTENDANCE'
+                ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <CalendarCheck className="w-3.5 h-3.5" />
+            উপস্থিতি
+          </button>
+
+          <button
+            onClick={() => setActiveTab('HISTORY')}
+            className={`px-3 py-2.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition ${
+              activeTab === 'HISTORY'
+                ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <History className="w-3.5 h-3.5" />
+            কর্মসংস্থান ট্রেইল
+          </button>
+
           <button
             onClick={() => setActiveTab('DOCUMENTS')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
+            className={`px-3 py-2.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition ${
               activeTab === 'DOCUMENTS'
-                ? 'bg-white text-emerald-700 shadow-2xs border border-slate-200'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
             }`}
           >
             <FileText className="w-3.5 h-3.5" />
-            <span>সংযুক্ত নথি ও ফাইল</span>
+            নথি ও ফাইল
           </button>
         </div>
 
-        {/* Drawer Content */}
-        <div className="p-6 space-y-6 overflow-y-auto text-xs flex-1">
-          {/* Top Quick Stats Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-xl space-y-1">
-              <div className="text-[11px] font-bold text-blue-900 flex items-center space-x-1">
-                <DollarSign className="w-3.5 h-3.5 text-blue-700" />
-                <span>বর্তমান মাসিক হাদিয়া</span>
-              </div>
-              <div className="text-base font-black text-blue-950 font-siliguri">
-                ৳ {staff.monthlySalary?.toLocaleString('en-IN')}
-              </div>
-              <div className="text-[10px] text-blue-700 font-medium">বেসিক প্রতি মাসে</div>
-            </div>
+        {/* Drawer Body Content */}
+        <div className="p-6 overflow-y-auto flex-1 space-y-6 bg-slate-50/40">
+          
+          {/* ========================================================= */}
+          {/* TAB 1: FULL BIO & APPOINTMENT DETAILS */}
+          {/* ========================================================= */}
+          {activeTab === 'DETAILS' && (
+            <div className="space-y-5">
+              {/* Personal Card */}
+              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3">
+                <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2 border-b border-slate-100 pb-2">
+                  <User className="w-4 h-4 text-emerald-600" />
+                  ব্যক্তিগত ও পারিবারিক তথ্য
+                </h4>
 
-            <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-1">
-              <div className="text-[11px] font-bold text-emerald-900 flex items-center space-x-1">
-                <CheckCircle className="w-3.5 h-3.5 text-emerald-700" />
-                <span>সর্বমোট পরিশোধিত হাদিয়া</span>
-              </div>
-              <div className="text-base font-black text-emerald-950 font-siliguri">
-                ৳ {totalPaid.toLocaleString('en-IN')}
-              </div>
-              <div className="text-[10px] text-emerald-700 font-medium">মোট {paidMonthsCount} মাসের রেকর্ড</div>
-            </div>
-
-            <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-xl space-y-1">
-              <div className="text-[11px] font-bold text-amber-900 flex items-center space-x-1">
-                <Gift className="w-3.5 h-3.5 text-amber-700" />
-                <span>সর্বমোট প্রদত্ত বোনাস</span>
-              </div>
-              <div className="text-base font-black text-amber-950 font-siliguri">
-                ৳ {totalBonus.toLocaleString('en-IN')}
-              </div>
-              <div className="text-[10px] text-amber-700 font-medium">ঈদ ও উৎসব হাদিয়া</div>
-            </div>
-
-            <div className="p-4 bg-purple-50/70 border border-purple-200 rounded-xl space-y-1">
-              <div className="text-[11px] font-bold text-purple-900 flex items-center space-x-1">
-                <Clock className="w-3.5 h-3.5 text-purple-700" />
-                <span>সেবা ও কর্মকাল</span>
-              </div>
-              <div className="text-base font-black text-purple-950 font-siliguri">
-                {calculateTenure(staff.joiningDate)}
-              </div>
-              <div className="text-[10px] text-purple-700 font-medium">
-                যোগদান: {formatDate(staff.joiningDate, language)}
-              </div>
-            </div>
-          </div>
-
-          {/* TAB 1: PAYMENTS */}
-          {activeTab === 'PAYMENTS' && (
-            <div className="space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <h3 className="font-bold text-sm text-slate-900">
-                    মাসিক হাদিয়া ও বেতন পরিশোধের পূর্ণাঙ্গ ইতিহাস
-                  </h3>
-                  <p className="text-[11px] text-slate-500">
-                    এই স্টাফকে প্রদত্ত সমস্ত বেতন, উৎসব ভাতা ও খরচের ভাউচার বিবরণ
-                  </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 text-xs">
+                  <div>
+                    <span className="text-slate-500 block">নাম (বাংলা):</span>
+                    <span className="font-bold text-slate-900">{staff.fullNameBn || staff.name}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">পিতার নাম:</span>
+                    <span className="font-semibold text-slate-900">{staff.fatherName || 'উল্লেখ নাই'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">মাতার নাম:</span>
+                    <span className="font-semibold text-slate-900">{staff.motherName || 'উল্লেখ নাই'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">জন্ম তারিখ ও বয়স:</span>
+                    <span className="font-medium text-slate-900">
+                      {staff.dateOfBirth ? `${staff.dateOfBirth} (${staff.age || 'N/A'} বছর)` : 'উল্লেখ নাই'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">রক্তের গ্রুপ:</span>
+                    <span className="font-bold text-rose-600">{staff.bloodGroup || 'অজানা'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">বৈবাহিক অবস্থা:</span>
+                    <span className="font-medium text-slate-900">
+                      {staff.maritalStatus === 'MARRIED' ? 'বিবাহিত' : staff.maritalStatus === 'UNMARRIED' ? 'অবিবাহিত' : 'অন্যান্য'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">মোবাইল নম্বর:</span>
+                    <span className="font-bold text-emerald-700">{staff.phone}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">বিকল্প মোবাইল:</span>
+                    <span className="font-medium text-slate-700">{staff.alternatePhone || 'নাই'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">NID নম্বর:</span>
+                    <span className="font-mono text-slate-900">{staff.nid || 'সংরক্ষিত নয়'}</span>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <span className="text-slate-500 block">বর্তমান ঠিকানা:</span>
+                    <span className="text-slate-800">{staff.presentAddress || staff.address || 'উল্লেখ নাই'}</span>
+                  </div>
+                  <div className="sm:col-span-1">
+                    <span className="text-slate-500 block">স্থায়ী ঠিকানা:</span>
+                    <span className="text-slate-800">{staff.permanentAddress || 'উল্লেখ নাই'}</span>
+                  </div>
+                  {staff.emergencyContactName && (
+                    <div className="sm:col-span-3 p-2.5 bg-slate-50 rounded-lg text-slate-700 flex items-center justify-between">
+                      <span>জরুরি যোগাযোগ: <strong>{staff.emergencyContactName}</strong></span>
+                      <span>মোবাইল: <strong>{staff.emergencyContactPhone || 'নাই'}</strong></span>
+                    </div>
+                  )}
                 </div>
-
-                <button
-                  onClick={() => onOpenPayModal(staff.id)}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg font-bold flex items-center space-x-1.5 shadow-sm text-xs self-start sm:self-auto transition-all cursor-pointer"
-                >
-                  <DollarSign className="w-4 h-4" />
-                  <span>নতুন বেতন প্রদান করুন</span>
-                </button>
               </div>
 
-              {staffPayments.length === 0 ? (
-                <div className="text-center py-10 bg-slate-50 rounded-xl border border-dashed border-slate-300">
-                  <Receipt className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                  <p className="font-semibold text-slate-600 text-xs">কোনো বেতন পরিশোধের রেকর্ড পাওয়া যায়নি</p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    &ldquo;নতুন বেতন প্রদান করুন&rdquo; বাটনে ক্লিক করে মাসিক হাদিয়া পরিশোধ রেকর্ড করুন।
-                  </p>
+              {/* Appointment Card */}
+              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3">
+                <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2 border-b border-slate-100 pb-2">
+                  <Briefcase className="w-4 h-4 text-blue-600" />
+                  নিয়োগ ও দায়িত্ব বিবরণী
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 text-xs">
+                  <div>
+                    <span className="text-slate-500 block">পদবী:</span>
+                    <span className="font-bold text-blue-900">{staff.designationBn}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">কর্মসংস্থানের ধরণ:</span>
+                    <span className="font-semibold text-slate-800">{staff.employmentType || 'স্থায়ী'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">যোগদানের তারিখ:</span>
+                    <span className="font-medium text-slate-900">{staff.joiningDate}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">নিয়োগ স্মারক নং:</span>
+                    <span className="font-mono text-slate-700">{staff.appointmentLetterNo || 'নাই'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">বর্তমান স্ট্যাটাস:</span>
+                    <span className="font-bold text-emerald-700">{staff.status || 'ACTIVE'}</span>
+                  </div>
+                  {staff.contractEndDate && (
+                    <div>
+                      <span className="text-slate-500 block">চুক্তির মেয়াদ শেষ:</span>
+                      <span className="text-amber-700 font-semibold">{staff.contractEndDate}</span>
+                    </div>
+                  )}
+                  <div className="sm:col-span-3">
+                    <span className="text-slate-500 block">প্রধান দায়িত্ব ও কার্যাবলী:</span>
+                    <p className="text-slate-800 mt-1 bg-slate-50 p-2.5 rounded-lg leading-relaxed">
+                      {staff.responsibilities || '৫ ওয়াক্ত সালাতে ইমামতি, খুৎবা প্রদান ও সংশ্লিষ্ট দায়িত্ব পালন।'}
+                    </p>
+                  </div>
                 </div>
-              ) : (
-                <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-xs">
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
-                      <tr>
-                        <th className="py-2.5 px-3">মাস</th>
-                        <th className="py-2.5 px-3">পরিশোধ তারিখ</th>
-                        <th className="py-2.5 px-3 text-right">মূল হাদিয়া</th>
-                        <th className="py-2.5 px-3 text-right">বোনাস / ভাতা</th>
-                        <th className="py-2.5 px-3 text-right">কর্তন</th>
-                        <th className="py-2.5 px-3 text-right">মোট পরিশোধ</th>
-                        <th className="py-2.5 px-3">ভাউচার নং</th>
-                        <th className="py-2.5 px-3">হিসাব</th>
-                        <th className="py-2.5 px-3 text-center">রসিদ / অ্যাকশন</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 bg-white">
-                      {staffPayments.map((pay) => {
-                        const isCancelled = pay.status === 'CANCELLED';
-                        return (
-                          <tr
-                            key={pay.id}
-                            className={`hover:bg-slate-50 transition-colors ${
-                              isCancelled ? 'bg-rose-50/40 opacity-70' : ''
-                            }`}
-                          >
-                            <td className="py-3 px-3 font-bold text-slate-900 whitespace-nowrap">
-                              {pay.month}
-                              {isCancelled && (
-                                <span className="ml-1.5 text-[10px] bg-rose-100 text-rose-800 px-1.5 py-0.5 rounded font-bold">
-                                  বাতিলকৃত
-                                </span>
-                              )}
-                            </td>
-                            <td className="py-3 px-3 text-slate-600 whitespace-nowrap">
-                              {formatDate(pay.paymentDate, language)}
-                            </td>
-                            <td className="py-3 px-3 text-right font-semibold text-slate-800">
-                              ৳ {pay.basicSalary?.toLocaleString('en-IN')}
-                            </td>
-                            <td className="py-3 px-3 text-right font-semibold text-emerald-700">
-                              {pay.bonus && pay.bonus > 0 ? `+৳ ${pay.bonus.toLocaleString('en-IN')}` : '—'}
-                            </td>
-                            <td className="py-3 px-3 text-right font-semibold text-rose-600">
-                              {pay.deduction && pay.deduction > 0 ? `-৳ ${pay.deduction.toLocaleString('en-IN')}` : '—'}
-                            </td>
-                            <td className="py-3 px-3 text-right font-bold text-emerald-800 font-siliguri whitespace-nowrap">
-                              ৳ {pay.netPaid?.toLocaleString('en-IN')}
-                            </td>
-                            <td className="py-3 px-3 font-mono font-bold text-rose-700 text-[11px] whitespace-nowrap">
-                              {pay.expenseVoucherNumber}
-                            </td>
-                            <td className="py-3 px-3 text-slate-600 text-[11px]">
-                              {pay.accountNameBn || 'ক্যাশ/ব্যাংক'}
-                            </td>
-                            <td className="py-3 px-3 text-center whitespace-nowrap">
-                              <div className="flex items-center justify-center space-x-1.5">
-                                {/* Print Slip Button */}
-                                <button
-                                  onClick={() => onPrintSlip(pay, staff)}
-                                  title="বেতন রসিদ প্রিন্ট করুন"
-                                  className="p-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-md transition-colors cursor-pointer"
-                                >
-                                  <Printer className="w-3.5 h-3.5" />
-                                </button>
+              </div>
 
-                                {/* Edit Remarks / Details */}
-                                {!isCancelled && onUpdatePayment && (
-                                  <button
-                                    onClick={() => handleOpenEditPayment(pay)}
-                                    title="বিবরণ সম্পাদনা করুন"
-                                    className="p-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-md transition-colors cursor-pointer"
-                                  >
-                                    <Edit2 className="w-3.5 h-3.5" />
-                                  </button>
-                                )}
+              {/* Education & Qualifications */}
+              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3">
+                <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2 border-b border-slate-100 pb-2">
+                  <GraduationCap className="w-4 h-4 text-indigo-600" />
+                  শিক্ষা ও ধর্মীয় যোগ্যতা
+                </h4>
 
-                                {/* Cancel / Reversal Button */}
-                                {!isCancelled && onCancelPayment && (
-                                  <button
-                                    onClick={() => setCancellingPayment(pay)}
-                                    title="পেমেন্ট বাতিল ও ব্যালেন্স রিভার্স করুন"
-                                    className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-md transition-colors cursor-pointer"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-xs">
+                  <div>
+                    <span className="text-slate-500 block">সাধারণ শিক্ষা:</span>
+                    <span className="font-semibold text-slate-900">{staff.generalEducation || staff.educationQualification || 'উল্লেখ নাই'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">ধর্মীয় ও কওমি/আলিয়া শিক্ষা:</span>
+                    <span className="font-semibold text-indigo-900">{staff.religiousEducation || 'দাওরায়ে হাদিস'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">বিশেষ দক্ষতা:</span>
+                    <span className="text-slate-800">{staff.specialSkills || 'খুতবা ও বয়ান'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">পূর্ববর্তী অভিজ্ঞতা:</span>
+                    <span className="text-slate-800">{staff.previousExperience || 'নাই'}</span>
+                  </div>
+                  <div className="sm:col-span-2 flex flex-wrap gap-2 pt-1">
+                    {staff.quranMemorizationHifz && (
+                      <span className="px-2.5 py-1 bg-emerald-50 border border-emerald-300 text-emerald-800 font-bold rounded-md">
+                        ✓ হাফেজে কুরআন (হিফজুল কুরআন)
+                      </span>
+                    )}
+                    {staff.qiratTajweedCertification && (
+                      <span className="px-2.5 py-1 bg-teal-50 border border-teal-300 text-teal-800 font-bold rounded-md">
+                        ✓ কেরাত ও তাজবীদ সনদপ্রাপ্ত
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Bank Details Card */}
+              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3">
+                <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2 border-b border-slate-100 pb-2">
+                  <Landmark className="w-4 h-4 text-emerald-600" />
+                  ব্যাংক হিসাব ও পেমেন্ট চ্যানেল
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 text-xs">
+                  <div>
+                    <span className="text-slate-500 block">ব্যাংকের নাম:</span>
+                    <span className="font-bold text-slate-900">{staff.bankName || 'উল্লেখ নাই'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">শাখা (Branch):</span>
+                    <span className="font-medium text-slate-800">{staff.branchName || 'নাই'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">হিসাব নম্বর:</span>
+                    <span className="font-mono font-bold text-slate-900">{staff.accountNumber || 'নাই'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">হিসাবধারীর নাম:</span>
+                    <span className="text-slate-800">{staff.accountHolderName || staff.name}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">রাউটিং নম্বর:</span>
+                    <span className="font-mono text-slate-700">{staff.routingNumber || 'নাই'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">পেমেন্ট পছন্দ:</span>
+                    <span className="font-semibold text-emerald-700">{staff.paymentPreference || 'BANK'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Final Settlement trigger if active */}
+              {onOpenSettlementModal && (
+                <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-xl flex items-center justify-between">
+                  <div>
+                    <h5 className="font-bold text-amber-900 text-xs">চাকুরি সমাপ্তি ও চূড়ান্ত পাওনা নিষ্পত্তি</h5>
+                    <p className="text-[11px] text-amber-700 mt-0.5">অবসর, পদত্যাগ বা স্থানান্তরের ক্ষেত্রে দেনা-পাওনা ও বিদায়ী সম্মাননা হিসাব করুন</p>
+                  </div>
+                  <button
+                    onClick={() => onOpenSettlementModal(staff)}
+                    className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg text-xs transition"
+                  >
+                    চূড়ান্ত নিষ্পত্তি ফরম →
+                  </button>
                 </div>
               )}
             </div>
           )}
 
-          {/* TAB 2: SALARY REVISION HISTORY */}
+          {/* ========================================================= */}
+          {/* TAB 2: PAYMENTS HISTORY */}
+          {/* ========================================================= */}
+          {activeTab === 'PAYMENTS' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="font-bold text-slate-900 text-sm">মাসিক বেতন ও হাদিয়া পরিশোধ বিবরণী</h4>
+                <button
+                  onClick={() => onOpenPayModal(staff.id)}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  নতুন বেতন প্রদান
+                </button>
+              </div>
+
+              {staffPayments.length === 0 ? (
+                <div className="p-8 text-center bg-white rounded-xl border border-slate-200 text-slate-500 text-xs">
+                  এখনও কোনো বেতন পরিশোধের রেকর্ড পাওয়া যায়নি।
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {staffPayments.map((p) => (
+                    <div
+                      key={p.id}
+                      className="p-4 bg-white border border-slate-200 rounded-xl shadow-2xs hover:border-emerald-300 transition flex flex-wrap items-center justify-between gap-3 text-xs"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-900 text-sm">মাস: {p.month}</span>
+                          <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 font-bold rounded">
+                            ৳{(p.netPaid || p.amount).toLocaleString()}
+                          </span>
+                          {p.status === 'CANCELLED' && (
+                            <span className="px-2 py-0.5 bg-rose-50 text-rose-700 font-bold rounded">বাতিলকৃত</span>
+                          )}
+                        </div>
+                        <p className="text-slate-500 mt-1">
+                          তারিখ: {p.paymentDate} • মাধ্যম: {p.paymentMethod} • ভাউচার: {p.voucherNo || 'N/A'}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => onPrintSlip(p, staff)}
+                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md font-medium flex items-center gap-1"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                          স্লিপ প্রিন্ট
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ========================================================= */}
+          {/* TAB 3: SALARY INCREMENT TRAIL */}
+          {/* ========================================================= */}
           {activeTab === 'SALARY_HISTORY' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="font-bold text-sm text-slate-900">
-                    বেতন সংশোধন ও ইনক্রিমেন্ট ইতিহাস (Salary Revision Timeline)
-                  </h3>
-                  <p className="text-[11px] text-slate-500">
-                    যোগদান থেকে শুরু করে এই স্টাফের সকল বেতন ও সম্মানী পরিবর্তনের নিরীক্ষা লগ
-                  </p>
+                  <h4 className="font-bold text-slate-900 text-sm">বেতন বৃদ্ধি ও ইনক্রিমেন্ট ইতিহাস</h4>
+                  <p className="text-xs text-slate-500">পূর্ববর্তী সকল বেতন কাঠামো ও বৃদ্ধির কারণ</p>
                 </div>
                 <button
-                  onClick={handleOpenSalaryRevision}
-                  className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold flex items-center space-x-1.5 shadow-sm transition-colors cursor-pointer"
+                  onClick={() => setIsRevisionModalOpen(true)}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1"
                 >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>নতুন বেতন বৃদ্ধি করুন</span>
+                  <TrendingUp className="w-3.5 h-3.5" />
+                  নতুন ইনক্রিমেন্ট যোগ
                 </button>
               </div>
 
-              <div className="relative pl-6 space-y-6 before:absolute before:left-2.5 before:top-3 before:bottom-3 before:w-0.5 before:bg-slate-200">
-                {salaryHistoryList.map((entry, idx) => {
-                  const isLatest = idx === 0;
-                  const diff = entry.previousSalary ? entry.newSalary - entry.previousSalary : 0;
-                  const percentInc = entry.previousSalary ? ((diff / entry.previousSalary) * 100).toFixed(1) : null;
-                  return (
-                    <div key={entry.id || idx} className="relative group">
-                      <div className={`absolute -left-6 top-1 w-5 h-5 rounded-full border-2 bg-white flex items-center justify-center ${
-                        isLatest ? 'border-amber-500 text-amber-600 ring-4 ring-amber-50' : 'border-slate-300 text-slate-400'
-                      }`}>
-                        <TrendingUp className="w-2.5 h-2.5" />
+              {(!staff.salaryHistory || staff.salaryHistory.length === 0) ? (
+                <div className="p-8 text-center bg-white rounded-xl border border-slate-200 text-slate-500 text-xs">
+                  কোনো ইনক্রিমেন্ট বা সংশোধনের ইতিহাস পাওয়া যায়নি।
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {staff.salaryHistory.map((hist, idx) => (
+                    <div key={idx} className="p-4 bg-white border border-slate-200 rounded-xl shadow-2xs space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-900 text-sm">
+                          পূর্ববর্তী বেতন: ৳{(hist.previousSalary || 0).toLocaleString()} ➔ নতুন বেতন: <strong className="text-emerald-700">৳{(hist.newSalary || 0).toLocaleString()}</strong>
+                        </span>
+                        <span className="text-slate-500 font-medium">কার্যকর: {hist.effectiveDate}</span>
                       </div>
-                      <div className="bg-slate-50 hover:bg-white p-4 rounded-xl border border-slate-200 transition-all space-y-2">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="flex items-center space-x-2">
-                            <span className="font-bold text-sm text-slate-900 font-siliguri">
-                              ৳ {entry.newSalary.toLocaleString('en-IN')}
-                            </span>
-                            {diff > 0 && (
-                              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-bold text-[10px]">
-                                +৳ {diff.toLocaleString('en-IN')} বৃদ্ধি ({percentInc}%)
-                              </span>
-                            )}
-                            {isLatest && (
-                              <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-bold text-[10px]">
-                                বর্তমান কার্যকর বেতন
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-[11px] text-slate-500 font-medium">
-                            কার্যকর তারিখ: <strong className="text-slate-800">{formatDate(entry.effectiveDate, language)}</strong>
-                          </div>
-                        </div>
-
-                        {entry.reason && (
-                          <div className="text-xs text-slate-700 bg-white p-2.5 rounded-lg border border-slate-100 font-medium">
-                            কারণ / বিবরণ: {entry.reason}
-                          </div>
-                        )}
-
-                        <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-100">
-                          <span>পূর্বে নির্ধারিত ছিল: ৳ {(entry.previousSalary || 0).toLocaleString('en-IN')}</span>
-                          <span>সংশোধক: {entry.revisedBy || 'কমিটি / অ্যাডমিন'} • {formatDate(entry.revisedAt, language)}</span>
-                        </div>
-                      </div>
+                      <p className="text-slate-600">কারণ: {hist.reason || 'বার্ষিক ইনক্রিমেন্ট'}</p>
                     </div>
-                  );
-                })}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
-          {/* TAB 3: FULL DETAILS & BIO */}
-          {activeTab === 'DETAILS' && (
-            <div className="space-y-5">
-              {/* Detailed Info Card */}
-              <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 space-y-4">
-                <h4 className="font-bold text-xs text-slate-900 border-b border-slate-200 pb-2">
-                  ব্যক্তিগত ও পরিচিতি তথ্য
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <span className="text-slate-500 block text-[11px]">পিতার নাম:</span>
-                    <strong className="text-slate-900 text-xs">{staff.fatherName || 'উল্লেখ নেই'}</strong>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 block text-[11px]">জাতীয় পরিচয়পত্র (NID):</span>
-                    <strong className="text-slate-900 font-mono text-xs">{staff.nid || 'রেকর্ড নেই'}</strong>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 block text-[11px]">রক্তের গ্রুপ:</span>
-                    <strong className="text-rose-600 font-bold text-xs">{staff.bloodGroup || 'অজানা'}</strong>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 block text-[11px]">জরুরি যোগাযোগ (মোবাইল):</span>
-                    <strong className="text-slate-900 font-mono text-xs">{staff.emergencyContactPhone || 'উল্লেখ নেই'}</strong>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 block text-[11px]">শিক্ষাগত ও দ্বীনি যোগ্যতা:</span>
-                    <strong className="text-slate-900 text-xs">{staff.qualifications || 'উল্লেখ নেই'}</strong>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 block text-[11px]">পূর্ব অভিজ্ঞতা:</span>
-                    <strong className="text-slate-900 text-xs">{staff.experienceYears ? `${staff.experienceYears} বছর` : 'উল্লেখ নেই'}</strong>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <span className="text-slate-500 block text-[11px]">স্থায়ী বা বর্তমান ঠিকানা:</span>
-                    <strong className="text-slate-900 text-xs">{staff.address || 'রেকর্ড নেই'}</strong>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 block text-[11px]">মন্তব্য / বিশেষ তথ্য:</span>
-                    <strong className="text-slate-900 text-xs">{staff.notes || 'কোনো মন্তব্য নেই'}</strong>
-                  </div>
+          {/* ========================================================= */}
+          {/* TAB 4: ADVANCE RECORDS */}
+          {/* ========================================================= */}
+          {activeTab === 'ADVANCES' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-bold text-slate-900 text-sm">বেতন অগ্রিম ও ঋণ হিসাব</h4>
+                  <p className="text-xs text-slate-500">চলতি বকেয়া অগ্রিম: ৳{totalOutstandingAdvance.toLocaleString()}</p>
                 </div>
-              </div>
-
-              {/* Bank Account Details Card */}
-              <div className="bg-blue-50/40 p-5 rounded-xl border border-blue-200/80 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-bold text-blue-950 text-xs flex items-center space-x-1.5">
-                    <span>🏦 ব্যাংক হিসাব বিবরণ (Bank Transfer Information)</span>
-                  </h4>
-                  {staff.accountNumber ? (
-                    <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full font-bold text-[10px]">
-                      সক্রিয় ব্যাংক একাউন্ট
-                    </span>
-                  ) : (
-                    <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full font-bold text-[10px]">
-                      ব্যাংক তথ্য অসম্পূর্ণ
-                    </span>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                  <div className="bg-white p-2.5 rounded-lg border border-blue-100">
-                    <span className="text-slate-500 block text-[10px] font-medium">ব্যাংকের নাম</span>
-                    <span className="font-bold text-slate-900 text-xs">{staff.bankName || 'উল্লেখ নেই'}</span>
-                  </div>
-
-                  <div className="bg-white p-2.5 rounded-lg border border-blue-100">
-                    <span className="text-slate-500 block text-[10px] font-medium">শাখা (Branch)</span>
-                    <span className="font-bold text-slate-900 text-xs">{staff.branchName || 'উল্লেখ নেই'}</span>
-                  </div>
-
-                  <div className="bg-white p-2.5 rounded-lg border border-blue-100">
-                    <span className="text-slate-500 block text-[10px] font-medium">হিসাবধারীর নাম</span>
-                    <span className="font-bold text-slate-900 text-xs">{staff.accountHolderName || staff.name}</span>
-                  </div>
-
-                  <div className="bg-white p-2.5 rounded-lg border border-blue-100">
-                    <span className="text-slate-500 block text-[10px] font-medium">ব্যাংক হিসাব নম্বর</span>
-                    <span className="font-mono font-bold text-blue-800 text-xs">{staff.accountNumber || 'রেকর্ড নেই'}</span>
-                  </div>
-                </div>
-
-                {staff.routingNumber && (
-                  <div className="text-[11px] text-slate-600 flex items-center space-x-2 pt-1 border-t border-blue-100">
-                    <span className="font-semibold text-slate-500">রাউটিং নম্বর:</span>
-                    <span className="font-mono font-bold text-slate-800">{staff.routingNumber}</span>
-                    <span className="text-slate-400">|</span>
-                    <span className="font-semibold text-slate-500">হিসাবের ধরন:</span>
-                    <span className="font-medium text-slate-800">
-                      {staff.accountType === 'SAVINGS' ? 'সঞ্চয়ী হিসাব' : staff.accountType === 'CURRENT' ? 'চলতি হিসাব' : staff.accountType === 'SALARY' ? 'বেতন হিসাব' : staff.accountType || 'সঞ্চয়ী'}
-                    </span>
-                  </div>
+                {onOpenAdvanceModal && (
+                  <button
+                    onClick={() => onOpenAdvanceModal(staff.id)}
+                    className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    অগ্রিম প্রদান করুন
+                  </button>
                 )}
               </div>
+
+              {(!staff.advanceRecords || staff.advanceRecords.length === 0) ? (
+                <div className="p-8 text-center bg-white rounded-xl border border-slate-200 text-slate-500 text-xs">
+                  কোনো অগ্রিম গ্রহণের রেকর্ড নেই।
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {staff.advanceRecords.map((adv) => (
+                    <div key={adv.id} className="p-4 bg-white border border-slate-200 rounded-xl shadow-2xs space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="font-bold text-slate-900 text-sm">অগ্রিম: ৳{adv.amount.toLocaleString()}</span>
+                          <span className="ml-2 text-purple-700 font-semibold">বকেয়া: ৳{(adv.outstandingAmount || 0).toLocaleString()}</span>
+                        </div>
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            adv.status === 'FULLY_ADJUSTED'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-purple-100 text-purple-800'
+                          }`}
+                        >
+                          {adv.status === 'FULLY_ADJUSTED' ? 'পূর্ণ সমন্বয়কৃত' : 'সমন্বয়াধীন'}
+                        </span>
+                      </div>
+                      <p className="text-slate-600">তারিখ: {adv.advanceDate} • কারণ: {adv.reason || 'জরুরি প্রয়োজন'}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
+          {/* ========================================================= */}
+          {/* TAB 5: LEAVE RECORDS */}
+          {/* ========================================================= */}
+          {activeTab === 'LEAVES' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-bold text-slate-900 text-sm">ছুটি আবেদন ও মঞ্জুরির রেকর্ড</h4>
+                  <p className="text-xs text-slate-500">মোট অনুমোদিত ছুটি: {totalLeaveDays} দিন</p>
+                </div>
+                {onOpenLeaveModal && (
+                  <button
+                    onClick={() => onOpenLeaveModal(staff.id)}
+                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    ছুটি আবেদন
+                  </button>
+                )}
+              </div>
+
+              {(!staff.leaveRecords || staff.leaveRecords.length === 0) ? (
+                <div className="p-8 text-center bg-white rounded-xl border border-slate-200 text-slate-500 text-xs">
+                  কোনো ছুটির রেকর্ড পাওয়া যায়নি।
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {staff.leaveRecords.map((l) => (
+                    <div key={l.id} className="p-4 bg-white border border-slate-200 rounded-xl shadow-2xs space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="font-bold text-slate-900">{l.leaveTypeBn || l.leaveType}</span>
+                          <span className="ml-2 font-semibold text-amber-800">({l.daysCount} দিন)</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              l.status === 'APPROVED'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : l.status === 'PENDING'
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-rose-100 text-rose-800'
+                            }`}
+                          >
+                            {l.status === 'APPROVED' ? 'মঞ্জুরীকৃত' : l.status === 'PENDING' ? 'অপেক্ষমাণ' : 'প্রত্যাখ্যাত'}
+                          </span>
+
+                          {l.status === 'PENDING' && (
+                            <button
+                              onClick={() => handleLeaveStatusChange(l.id, 'APPROVED')}
+                              className="px-2 py-0.5 bg-emerald-600 text-white rounded text-[10px] font-bold"
+                            >
+                              অনুমোদন
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-slate-600">মেয়াদ: {l.startDate} হতে {l.endDate} পর্যন্ত • কারণ: {l.reason || 'ব্যক্তিগত'}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ========================================================= */}
+          {/* TAB 6: ATTENDANCE RECORDS */}
+          {/* ========================================================= */}
+          {activeTab === 'ATTENDANCE' && (
+            <div className="space-y-4">
+              <h4 className="font-bold text-slate-900 text-sm">উপস্থিতি ও দৈনিক সালাত জামাত লগ</h4>
+
+              {(!staff.attendanceRecords || staff.attendanceRecords.length === 0) ? (
+                <div className="p-8 text-center bg-white rounded-xl border border-slate-200 text-slate-500 text-xs">
+                  কোনো উপস্থিতি রেকর্ড পাওয়া যায়নি।
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {staff.attendanceRecords.slice(0, 15).map((att) => (
+                    <div key={att.id} className="p-3 bg-white border border-slate-200 rounded-lg flex items-center justify-between text-xs">
+                      <div>
+                        <span className="font-bold text-slate-900">{att.date}</span>
+                        <span className="text-slate-500 ml-2">সময়: {att.inTime || 'N/A'} - {att.outTime || 'N/A'}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {att.prayersAttended && att.prayersAttended.length > 0 && (
+                          <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-medium">
+                            জামাত: {att.prayersAttended.join(', ')}
+                          </span>
+                        )}
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            att.status === 'PRESENT'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : att.status === 'LATE'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-rose-100 text-rose-800'
+                          }`}
+                        >
+                          {att.status === 'PRESENT' ? 'উপস্থিত' : att.status === 'LATE' ? 'দেরি' : 'অনুপস্থিত'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ========================================================= */}
+          {/* TAB 7: EMPLOYMENT TRAIL */}
+          {/* ========================================================= */}
+          {activeTab === 'HISTORY' && (
+            <div className="space-y-4">
+              <h4 className="font-bold text-slate-900 text-sm">কর্মসংস্থান ও পদবী পরিবর্তন লগ</h4>
+
+              {(!staff.employmentHistory || staff.employmentHistory.length === 0) ? (
+                <div className="p-8 text-center bg-white rounded-xl border border-slate-200 text-slate-500 text-xs">
+                  কোনো পদবী পরিবর্তন ইতিহাস রেকর্ড করা হয়নি।
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {staff.employmentHistory.map((h, idx) => (
+                    <div key={idx} className="p-3 bg-white border border-slate-200 rounded-xl space-y-1 text-xs">
+                      <div className="flex justify-between font-semibold text-slate-900">
+                        <span>{h.previousDesignation || 'প্রারম্ভিক'} ➔ {h.newDesignation}</span>
+                        <span className="text-slate-500 font-normal">{h.effectiveDate}</span>
+                      </div>
+                      <p className="text-slate-600">{h.reason || 'পদোন্নতি / পুনর্বিন্যাস'}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ========================================================= */}
+          {/* TAB 8: DOCUMENTS */}
+          {/* ========================================================= */}
           {activeTab === 'DOCUMENTS' && (
-            <div className="space-y-4 animate-in fade-in duration-150">
+            <div className="space-y-4">
               <DocumentSection
-                entityType="STAFF"
                 entityId={staff.id}
-                entityTitle={`${staff.name} (${staff.designation})`}
+                entityType="STAFF"
+                entityTitle={staff.fullNameBn || staff.name}
+                language={language}
               />
             </div>
           )}
+
         </div>
 
-        {/* Drawer Footer */}
-        <div className="bg-slate-50 border-t border-slate-200 px-6 py-3.5 flex items-center justify-between shrink-0">
-          <div className="text-[11px] text-slate-500">
-            স্টাফ আইডি: <span className="font-mono">{staff.id}</span>
+        {/* Revision Modal Popup */}
+        {isRevisionModalOpen && (
+          <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h4 className="text-sm font-bold text-slate-900">বেতন বৃদ্ধি / ইনক্রিমেন্ট নির্ধারণ</h4>
+                <button onClick={() => setIsRevisionModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSalaryRevisionSubmit} className="space-y-3.5 text-xs text-slate-700">
+                <div>
+                  <label className="block font-semibold mb-1">নতুন মাসিক বেতন (টাকা)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={newSalary}
+                    onChange={(e) => setNewSalary(Number(e.target.value))}
+                    required
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold mb-1">কার্যকরের তারিখ</label>
+                  <input
+                    type="date"
+                    value={revisionEffectiveDate}
+                    onChange={(e) => setRevisionEffectiveDate(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold mb-1">বৃদ্ধির কারণ / মন্তব্য</label>
+                  <input
+                    type="text"
+                    value={revisionReason}
+                    onChange={(e) => setRevisionReason(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl"
+                  />
+                </div>
+
+                <div className="pt-2 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsRevisionModalOpen(false)}
+                    className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg"
+                  >
+                    বাতিল
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={revisionLoading}
+                    className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold"
+                  >
+                    {revisionLoading ? 'সংরক্ষণ...' : 'ইনক্রিমেন্ট নিশ্চিত করুন'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-          <button
-            onClick={onClose}
-            className="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer"
-          >
-            বন্ধ করুন
-          </button>
-        </div>
+        )}
       </div>
-
-      {/* SALARY REVISION MODAL */}
-      {isRevisionModalOpen && (
-        <div className="fixed inset-0 z-60 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150 text-xs">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center space-x-2 text-amber-700">
-                <TrendingUp className="w-5 h-5" />
-                <h3 className="font-bold text-sm text-slate-900">বেতন বৃদ্ধি / ইনক্রিমেন্ট নির্ধারণ</h3>
-              </div>
-              <button
-                onClick={() => setIsRevisionModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveSalaryRevision} className="space-y-3.5">
-              <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-slate-800 space-y-1">
-                <div>কর্মকর্তা: <strong>{staff.name}</strong> ({staff.designationBn})</div>
-                <div>বর্তমান মূল হাদিয়া: <strong>৳ {staff.monthlySalary?.toLocaleString('en-IN')}</strong></div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">সংশোধিত নতুন মাসিক হাদিয়া (৳) *</label>
-                <input
-                  type="number"
-                  required
-                  min="500"
-                  step="100"
-                  value={newSalary}
-                  onChange={(e) => setNewSalary(Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 font-siliguri text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">কার্যকর হওয়ার তারিখ *</label>
-                <input
-                  type="date"
-                  required
-                  value={revisionEffectiveDate}
-                  onChange={(e) => setRevisionEffectiveDate(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">ইনক্রিমেন্ট বা সংশোধনের কারণ</label>
-                <input
-                  type="text"
-                  placeholder="যেমন: ২০২৬ সালের বার্ষিক ইনক্রিমেন্ট / বিশেষ যোগ্যতা বিবেচনা"
-                  value={revisionReason}
-                  onChange={(e) => setRevisionReason(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-
-              <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsRevisionModalOpen(false)}
-                  className="px-3.5 py-1.5 font-semibold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
-                >
-                  {t.cancel}
-                </button>
-                <button
-                  type="submit"
-                  disabled={revisionLoading}
-                  className="px-4 py-1.5 font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg shadow-sm cursor-pointer"
-                >
-                  {revisionLoading ? 'সংরক্ষণ হচ্ছে...' : 'ইনক্রিমেন্ট সংরক্ষণ করুন'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* EDIT PAYMENT MODAL */}
-      {editingPayment && (
-        <div className="fixed inset-0 z-60 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150 text-xs">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="font-bold text-sm text-slate-900">পেমেন্ট বিবরণ সম্পাদনা</h3>
-              <button
-                onClick={() => setEditingPayment(null)}
-                className="text-slate-400 hover:text-slate-700 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveEditPayment} className="space-y-3">
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">ভাউচার নম্বর</label>
-                <input
-                  type="text"
-                  disabled
-                  value={editingPayment.expenseVoucherNumber}
-                  className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg font-mono font-bold text-slate-700"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">পরিশোধের তারিখ *</label>
-                <input
-                  type="date"
-                  required
-                  value={editPaymentDate}
-                  onChange={(e) => setEditPaymentDate(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">মন্তব্য বা বিবরণ</label>
-                <textarea
-                  rows={3}
-                  placeholder="পরিশোধ সংক্রান্ত সংশোধিত তথ্য..."
-                  value={editNotes}
-                  onChange={(e) => setEditNotes(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setEditingPayment(null)}
-                  className="px-3.5 py-1.5 font-semibold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
-                >
-                  {t.cancel}
-                </button>
-                <button
-                  type="submit"
-                  disabled={editLoading}
-                  className="px-4 py-1.5 font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm cursor-pointer"
-                >
-                  {editLoading ? 'সংরক্ষণ হচ্ছে...' : 'আপডেট সংরক্ষণ'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* CANCEL PAYMENT MODAL */}
-      {cancellingPayment && (
-        <div className="fixed inset-0 z-60 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150 text-xs">
-            <div className="flex items-center space-x-2.5 text-rose-600 border-b border-slate-100 pb-3">
-              <AlertTriangle className="w-5 h-5" />
-              <h3 className="font-bold text-sm text-slate-900">বেতন পেমেন্ট বাতিলের নিশ্চয়তা</h3>
-            </div>
-
-            <p className="text-slate-600 leading-relaxed">
-              আপনি কি নিশ্চিত যে <strong>{cancellingPayment.staffName}</strong>-এর{' '}
-              <strong>{cancellingPayment.month}</strong> মাসের{' '}
-              <strong>{formatCurrency(cancellingPayment.netPaid, language)}</strong> মূল্যের পেমেন্টটি বাতিল করতে চান?
-            </p>
-
-            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-[11px] text-rose-800 space-y-1">
-              <strong>প্রভাব:</strong>
-              <div>1. সংশ্লিষ্ট একাউন্টে ৳{cancellingPayment.netPaid?.toLocaleString('en-IN')} পুনরায় যুক্ত হবে।</div>
-              <div>2. খরচের ভাউচারটি &lsquo;REJECTED / বাতিলকৃত&rsquo; হিসেবে চিহ্নিত হবে।</div>
-            </div>
-
-            <form onSubmit={handleConfirmCancelPayment} className="space-y-3">
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">বাতিলের কারণ উল্লেখ করুন *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="যেমন: ভুল এন্ট্রি / দ্বৈত পেমেন্ট বাতিল"
-                  value={cancelReason}
-                  onChange={(e) => setCancelReason(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-2 focus:ring-rose-500"
-                />
-              </div>
-
-              <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setCancellingPayment(null)}
-                  className="px-3.5 py-1.5 font-semibold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
-                >
-                  {t.cancel}
-                </button>
-                <button
-                  type="submit"
-                  disabled={cancelLoading}
-                  className="px-4 py-1.5 font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm cursor-pointer"
-                >
-                  {cancelLoading ? 'বাতিল হচ্ছে...' : 'হ্যাঁ, পেমেন্ট বাতিল করুন'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -3,6 +3,7 @@ import { Printer, X, Download, ShieldCheck, FileText, CheckCircle2, History, Ale
 import { CommitteeMeeting, CommitteeMember, Mosque } from '../types';
 import { formatDate, Language } from '../lib/i18n';
 import { printElement } from '../lib/printUtils';
+import { MosqueOfficialLetterhead } from './common/MosqueOfficialLetterhead';
 
 interface MeetingDocumentPrintProps {
   isOpen?: boolean;
@@ -23,6 +24,8 @@ export const MeetingDocumentPrint: React.FC<MeetingDocumentPrintProps> = ({
   language = 'bn',
   onAuditLog,
 }) => {
+  const [includeLetterhead, setIncludeLetterhead] = React.useState(true);
+
   useEffect(() => {
     if (isOpen) {
       document.body.classList.add('print-document-active');
@@ -119,6 +122,18 @@ export const MeetingDocumentPrint: React.FC<MeetingDocumentPrintProps> = ({
 
           <div className="flex items-center space-x-2">
             <button
+              type="button"
+              onClick={() => setIncludeLetterhead(!includeLetterhead)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold font-siliguri flex items-center space-x-1.5 border transition-all cursor-pointer ${
+                includeLetterhead
+                  ? 'bg-emerald-600/20 text-emerald-300 border-emerald-500/40'
+                  : 'bg-slate-800 text-slate-400 border-slate-700'
+              }`}
+            >
+              <span>{includeLetterhead ? 'লেটারহেড: অন' : 'লেটারহেড: অফ'}</span>
+            </button>
+
+            <button
               id="btn-print-minutes-action"
               type="button"
               onClick={handlePrint}
@@ -167,57 +182,30 @@ export const MeetingDocumentPrint: React.FC<MeetingDocumentPrintProps> = ({
             )}
 
             <div>
-              {/* 1. Bismillah Header */}
-              <div className="text-center mb-3">
-                <p className="font-arabic-bismillah text-lg text-slate-800 leading-none">
-                  بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
-                </p>
-              </div>
-
-              {/* 2. Official Mosque Letterhead */}
-              <div className="flex items-center justify-between border-b-2 border-slate-900 pb-4 mb-5">
-                <div className="w-20 h-20 flex-shrink-0 flex items-center justify-center bg-slate-50 border border-slate-200 rounded-xl overflow-hidden p-1 shadow-xs">
-                  {mosque?.logoUrl ? (
-                    <img
-                      src={mosque.logoUrl}
-                      alt={mosque.name}
-                      referrerPolicy="no-referrer"
-                      className="w-full h-full object-contain"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center bg-blue-900 text-white rounded-lg p-1 text-center">
-                      <Building2 className="w-6 h-6 mb-0.5 opacity-80" />
-                      <span className="text-[9px] font-bold leading-tight font-siliguri">মসজিদ</span>
-                    </div>
-                  )}
+              {/* 1. Official Mosque Letterhead / Minimal Header */}
+              {includeLetterhead ? (
+                <div className="mb-5 break-inside-avoid">
+                  <MosqueOfficialLetterhead
+                    mosque={mosque}
+                    documentTitle="মিটিং কার্যবিবরণী ও রেজোলিউশন"
+                    subTitle={meeting.agenda ? `এজেন্ডা: ${meeting.agenda}` : undefined}
+                    refNumber={meeting.documentNumber || toBanglaNum(meeting.meetingNumber) || '০১'}
+                    dateStr={formatDate(meeting.date)}
+                  />
                 </div>
-
-                <div className="flex-1 text-center px-4">
-                  <h1 className="text-2xl sm:text-3xl font-extrabold font-mosque-name text-slate-950 tracking-tight leading-tight">
-                    {mosque?.name || 'মসজিদ কমপ্লেক্স'}
-                  </h1>
-                  <p className="text-xs sm:text-sm text-slate-700 font-letterhead mt-1">
-                    {mosque?.address || 'মসজিদ রোড, ঢাকা, বাংলাদেশ'}
-                  </p>
-                  <p className="text-xs text-slate-600 font-letterhead mt-0.5">
-                    {mosque?.phone && <span>মোবাইল: {mosque.phone}</span>}
-                    {mosque?.email && <span> • ইমেইল: {mosque.email}</span>}
-                    {mosque?.registrationNumber && <span> • রেজিঃ নং: {mosque.registrationNumber}</span>}
-                  </p>
+              ) : (
+                <div className="border border-slate-300 bg-slate-50 p-3 rounded-lg mb-5 flex items-center justify-between break-inside-avoid">
+                  <div>
+                    <h1 className="text-lg font-bold text-slate-900 font-siliguri">মিটিং কার্যবিবরণী ও রেজোলিউশন</h1>
+                    <p className="text-xs text-slate-600 font-baloo">
+                      তারিখ: {formatDate(meeting.date)} • স্মারক: {meeting.memoNumber || 'N/A'}
+                    </p>
+                  </div>
+                  <div className="text-right text-xs font-mono font-bold text-slate-800">
+                    ডকুমেন্ট নং: {meeting.documentNumber || toBanglaNum(meeting.meetingNumber) || '০১'}
+                  </div>
                 </div>
-
-                <div className="w-20 h-20 flex-shrink-0 flex flex-col items-center justify-center border border-slate-200 rounded-xl bg-slate-50/80 p-1 text-center">
-                  <span className="text-[10px] font-bold text-slate-500 font-baloo uppercase">ডকুমেন্ট নং</span>
-                  <span className="text-xs font-extrabold text-blue-950 font-siliguri tracking-tight mt-0.5">
-                    {meeting.documentNumber || toBanglaNum(meeting.meetingNumber) || '০১'}
-                  </span>
-                  {isRevised && (
-                    <span className="mt-1 px-1.5 py-0.2 bg-purple-100 text-purple-900 text-[9px] font-bold rounded font-siliguri">
-                      রিভিশন #{toBanglaNum(meeting.revisionHistory?.length || 1)}
-                    </span>
-                  )}
-                </div>
-              </div>
+              )}
 
               {/* 3. Document Title Box */}
               <div className="text-center mb-5">

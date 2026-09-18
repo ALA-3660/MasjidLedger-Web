@@ -17,6 +17,7 @@ import { CemeteryRecord, Mosque, MosqueProfile } from '../types';
 import { Language, formatDate, formatCurrency } from '../lib/i18n';
 import { GRAVE_TYPES, PLOT_STATUSES } from './CemeteryFormModal';
 import { printElement } from '../lib/printUtils';
+import { MosqueOfficialLetterhead } from './common/MosqueOfficialLetterhead';
 
 interface CemeteryPrintModalProps {
   isOpen: boolean;
@@ -141,30 +142,16 @@ export const CemeteryPrintModal: React.FC<CemeteryPrintModalProps> = ({
               style={{ fontFamily: "'Noto Serif Bengali', 'SolaimanLipi', serif" }}
             >
               <div>
-                {/* Islamic Bismillah */}
-                <div className="text-center pb-2">
-                  <span className="text-base text-slate-800 font-serif font-bold tracking-wider">
-                    بِسْمِ اللهِ الرَّحْمٰنِ الرَّحِيْمِ
-                  </span>
-                  <div className="text-[11px] text-slate-500 italic mt-0.5">
-                    "পরম করুণাময় অসীম দয়ালু আল্লাহর নামে"
-                  </div>
-                </div>
-
                 {/* Letterhead */}
                 {includeLetterhead ? (
-                  <div className="text-center border-b-2 border-slate-900 pb-4 mb-6">
-                    <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-wide">
-                      {mosque?.name || 'বায়তুল আমান কেন্দ্রীয় জামে মসজিদ ও কমপ্লেক্স'}
-                    </h1>
-                    <p className="text-xs text-slate-600 mt-1">
-                      {mosque?.address || 'মিরপুর-২, ঢাকা-১২১৬'}
-                      {mosque?.phone ? ` | ফোন: ${mosque.phone}` : ''}
-                      {mosque?.email ? ` | ইমেইল: ${mosque.email}` : ''}
-                    </p>
-                    <div className="inline-block mt-2 px-3 py-1 bg-slate-100 border border-slate-300 rounded-full text-xs font-bold text-slate-800">
-                      স্থায়ী ওয়াকফ কবরস্থান রেজিস্ট্রি ও দাফন প্রত্যয়নপত্র
-                    </div>
+                  <div className="mb-6 break-inside-avoid">
+                    <MosqueOfficialLetterhead
+                      mosque={mosque as any}
+                      documentTitle="স্থায়ী ওয়াকফ কবরস্থান রেজিস্ট্রি ও দাফন প্রত্যয়নপত্র"
+                      subTitle="অফিসিয়াল মৃত্যু ও দাফন প্রত্যয়ন রেকর্ড"
+                      refNumber={record.recordNumber || 'CBR-AUTO'}
+                      dateStr={formatDate(record.burialDate)}
+                    />
                   </div>
                 ) : (
                   <div className="h-16 border-b border-dashed border-slate-300 mb-6 flex items-center justify-between text-xs text-slate-400">

@@ -83,6 +83,7 @@ export class DatabaseStore {
   staffList: Staff[] = [];
   staffPayments: StaffPayment[] = [];
   staffBankTransferLetters: StaffBankTransferLetter[] = [];
+  paymentBatches: any[] = [];
   assets: MosqueAsset[] = [];
   properties: MosqueProperty[] = [];
   cemeteryRecords: CemeteryRecord[] = [];
@@ -216,6 +217,7 @@ export class DatabaseStore {
         });
         this.staffPayments = parsed.staffPayments || [];
         this.staffBankTransferLetters = parsed.staffBankTransferLetters || [];
+        this.paymentBatches = parsed.paymentBatches || [];
         this.assets = (parsed.assets || []).map((a: any) => ({
           ...a,
           category: a.category || 'OTHER',

@@ -298,3 +298,107 @@ export function toBanglaNumber(num: number | string): string {
   return str.replace(/[0-9]/g, (d) => bnDigits[d] || d);
 }
 
+const BENGALI_MONTHS = [
+  'জানুয়ারি',
+  'ফেব্রুয়ারি',
+  'মার্চ',
+  'এপ্রিল',
+  'মে',
+  'জুন',
+  'জুলাই',
+  'আগস্ট',
+  'সেপ্টেম্বর',
+  'অক্টোবর',
+  'নভেম্বর',
+  'ডিসেম্বর',
+];
+
+/**
+ * Formats a month string like "2026-09" or ISO date into full Bengali month and year: "সেপ্টেম্বর ২০২৬"
+ */
+export function formatBengaliMonthYear(monthOrDateStr?: string | null): string {
+  if (!monthOrDateStr) return '';
+  try {
+    const trimmed = String(monthOrDateStr).trim();
+    // Check if format is YYYY-MM
+    const yyyyMmMatch = trimmed.match(/^(\d{4})-(\d{1,2})/);
+    if (yyyyMmMatch) {
+      const yearNum = parseInt(yyyyMmMatch[1], 10);
+      const monthIdx = parseInt(yyyyMmMatch[2], 10) - 1;
+      if (monthIdx >= 0 && monthIdx < 12) {
+        return `${BENGALI_MONTHS[monthIdx]} ${toBanglaNumber(yearNum)}`;
+      }
+    }
+    // Fallback Date parser
+    const d = new Date(trimmed);
+    if (!isNaN(d.getTime())) {
+      const monthIdx = d.getMonth();
+      const yearNum = d.getFullYear();
+      return `${BENGALI_MONTHS[monthIdx]} ${toBanglaNumber(yearNum)}`;
+    }
+    return trimmed;
+  } catch {
+    return monthOrDateStr;
+  }
+}
+
+/**
+ * Converts a numeric amount to formal Bengali words with "টাকা মাত্র"
+ * e.g. 15000 -> "পনেরো হাজার টাকা মাত্র"
+ */
+export function numberToBengaliWords(amount: number): string {
+  if (amount === undefined || amount === null || isNaN(amount)) return 'শূন্য টাকা মাত্র';
+  const num = Math.floor(Math.abs(amount));
+  if (num === 0) return 'শূন্য টাকা মাত্র';
+
+  const units = [
+    '', 'এক', 'দুই', 'তিন', 'চার', 'পাঁচ', 'ছয়', 'সাত', 'আট', 'নয়',
+    'দশ', 'এগারো', 'বারো', 'তেরো', 'চৌদ্দ', 'পনেরো', 'ষোলো', 'সতেরো', 'আঠারো', 'উনিশ',
+    'বিশ', 'একুশ', 'বাইশ', 'তেইশ', 'চব্বিশ', 'পঁচিশ', 'ছাব্বিশ', 'সাতাশ', 'আঠাশ', 'উনত্রিশ',
+    'ত্রিশ', 'একত্রিশ', 'বত্রিশ', 'তেত্রিশ', 'চৌত্রিশ', 'পঁয়ত্রিশ', 'ছত্রিশ', 'সাঁইত্রিশ', 'আটত্রিশ', 'উনচল্লিশ',
+    'চল্লিশ', 'একচল্লিশ', 'বিয়াল্লিশ', 'তেতাল্লিশ', 'চুয়াল্লিশ', 'পঁয়তাল্লিশ', 'ছেচল্লিশ', 'সাতচল্লিশ', 'আটচল্লিশ', 'উনপঞ্চাশ',
+    'পঞ্চাশ', 'একান্ন', 'বায়ান্ন', 'তিপ্পান্ন', 'চুয়ান্ন', 'পঞ্চান্ন', 'ছাপ্পান্ন', 'সাতান্ন', 'আটান্ন', 'উনষাট',
+    'ষাট', 'একষট্টি', 'বাষট্টি', 'তেষট্টি', 'চৌষট্টি', 'পঁয়ষট্টি', 'ছেষট্টি', 'সাতষট্টি', 'আটষট্টি', 'উনসত্তর',
+    'সত্তর', 'একাত্তর', 'বাহাত্তর', 'তিয়াত্তর', 'চুয়াত্তর', 'পঁচাত্তর', 'ছিয়াত্তর', 'সাতাত্তর', 'আটাত্তর', 'উনআশি',
+    'আশি', 'একাশি', 'বিরাশি', 'তিরাশি', 'চুরাশি', 'পঁচাশি', 'ছিয়াশি', 'সাতাশি', 'আটাশি', 'উননব্বই',
+    'নব্বই', 'একানব্বই', 'বিরানব্বই', 'তিরানব্বই', 'চুরানব্বই', 'পঁচানব্বই', 'ছিয়ানব্বই', 'সাতানব্বই', 'আটানব্বই', 'নিরানব্বই'
+  ];
+
+  function convertChunk(n: number): string {
+    let chunkWords = '';
+    const crore = Math.floor(n / 10000000);
+    let rem = n % 10000000;
+
+    if (crore > 0) {
+      chunkWords += convertChunk(crore) + ' কোটি ';
+    }
+
+    const lakh = Math.floor(rem / 100000);
+    rem = rem % 100000;
+    if (lakh > 0) {
+      chunkWords += units[lakh] + ' লাখ ';
+    }
+
+    const thousand = Math.floor(rem / 1000);
+    rem = rem % 1000;
+    if (thousand > 0) {
+      chunkWords += units[thousand] + ' হাজার ';
+    }
+
+    const hundred = Math.floor(rem / 100);
+    rem = rem % 100;
+    if (hundred > 0) {
+      chunkWords += units[hundred] + ' শত ';
+    }
+
+    if (rem > 0) {
+      chunkWords += units[rem] + ' ';
+    }
+
+    return chunkWords.trim();
+  }
+
+  const result = convertChunk(num);
+  return `${result} টাকা মাত্র`;
+}
+

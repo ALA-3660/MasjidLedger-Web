@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Calendar,
   Filter,
@@ -12,892 +12,793 @@ import {
   Building,
   CheckCircle2,
   Scale,
+  FileSpreadsheet,
+  FileText,
+  Clock,
+  ChevronRight,
+  ShieldCheck,
+  Plus,
+  RefreshCw,
+  Info,
 } from 'lucide-react';
-import { IncomeEntry, ExpenseEntry, FinancialAccount, Mosque, User, AccountOpeningBalancePayload } from '../types';
-import { Language, translations, formatDate } from '../lib/i18n';
+import {
+  IncomeEntry,
+  ExpenseEntry,
+  FinancialAccount,
+  Mosque,
+  User,
+  AccountOpeningBalancePayload,
+  AccountTransfer,
+} from '../types';
+import { Language, translations, formatDate, formatCurrency } from '../lib/i18n';
 import { OpeningBalanceModal } from './OpeningBalanceModal';
+import { FinancialSecondarySidebar, SecondarySidebarItem } from './FinancialSecondarySidebar';
+import {
+  calculateAccountingLedger,
+  exportDailyLedgerToExcel,
+  UnifiedLedgerEntry,
+} from '../lib/accountingLedgerService';
+import { ReportPrintDocument } from './ReportPrintDocument';
 
 interface DailyTransactionsViewProps {
   incomes: IncomeEntry[];
   expenses: ExpenseEntry[];
   accounts: FinancialAccount[];
+  transfers?: AccountTransfer[];
   currentMosque: Mosque | null;
   currentUser?: User | null;
   language?: Language;
   onUpdateOpeningBalance?: (data: AccountOpeningBalancePayload) => Promise<void>;
+  hideInternalSidebar?: boolean;
+  forcedSubTab?: string;
+  onSubTabChange?: (tab: string) => void;
 }
 
 export const DailyTransactionsView: React.FC<DailyTransactionsViewProps> = ({
-  incomes,
-  expenses,
-  accounts,
+  incomes = [],
+  expenses = [],
+  accounts = [],
+  transfers = [],
   currentMosque,
   currentUser,
   language = 'bn',
   onUpdateOpeningBalance,
+  hideInternalSidebar = false,
+  forcedSubTab,
+  onSubTabChange,
 }) => {
-  const t = translations[language] || translations.bn;
+  const [activeSubItem, setActiveSubItem] = useState<string>(forcedSubTab || 'STATEMENT');
 
+  useEffect(() => {
+    if (forcedSubTab) {
+      setActiveSubItem(forcedSubTab);
+    }
+  }, [forcedSubTab]);
+
+  const handleSelectSubTab = (tabId: string) => {
+    setActiveSubItem(tabId);
+    if (onSubTabChange) {
+      onSubTabChange(tabId);
+    }
+  };
   const [isOpeningBalanceModalOpen, setIsOpeningBalanceModalOpen] = useState(false);
+
+  // Date Filters
   const todayStr = new Date().toISOString().split('T')[0];
+  const firstDayOfMonth = `${todayStr.slice(0, 7)}-01`;
   const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL');
-  const [datePreset, setDatePreset] = useState<'TODAY' | 'YESTERDAY' | 'WEEK' | 'MONTH' | 'CUSTOM'>('MONTH');
-  const [fromDate, setFromDate] = useState<string>(
-    new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
-  );
-  const [toDate, setToDate] = useState<string>(todayStr);
+  const [datePreset, setDatePreset] = useState<
+    'TODAY' | 'YESTERDAY' | 'THIS_WEEK' | 'LAST_WEEK' | 'THIS_MONTH' | 'LAST_MONTH' | 'THIS_YEAR' | 'LAST_YEAR' | 'ALL' | 'CUSTOM'
+  >('THIS_MONTH');
+  const [startDate, setStartDate] = useState<string>(firstDayOfMonth);
+  const [endDate, setEndDate] = useState<string>(todayStr);
+
+  // Filters & Search
+  const [typeFilter, setTypeFilter] = useState<'ALL' | 'INCOME' | 'EXPENSE'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const handlePresetChange = (preset: 'TODAY' | 'YESTERDAY' | 'WEEK' | 'MONTH' | 'CUSTOM') => {
+  // Print Dialog
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+
+  // Total mosque fund
+  const totalCombinedFund = useMemo(() => {
+    return accounts.reduce((sum, a) => sum + (Number(a.currentBalance) || 0), 0);
+  }, [accounts]);
+
+  // Date Preset Handler
+  const handlePresetChange = (preset: typeof datePreset) => {
     setDatePreset(preset);
     const now = new Date();
+
     if (preset === 'TODAY') {
-      setFromDate(todayStr);
-      setToDate(todayStr);
+      setStartDate(todayStr);
+      setEndDate(todayStr);
     } else if (preset === 'YESTERDAY') {
       const yest = new Date(now.getTime() - 86400000).toISOString().split('T')[0];
-      setFromDate(yest);
-      setToDate(yest);
-    } else if (preset === 'WEEK') {
-      const past7 = new Date(now.getTime() - 7 * 86400000).toISOString().split('T')[0];
-      setFromDate(past7);
-      setToDate(todayStr);
-    } else if (preset === 'MONTH') {
-      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-      setFromDate(firstDay);
-      setToDate(todayStr);
+      setStartDate(yest);
+      setEndDate(yest);
+    } else if (preset === 'THIS_WEEK') {
+      const day = now.getDay();
+      const diffToSat = (day + 1) % 7;
+      const sat = new Date(now.getTime() - diffToSat * 86400000).toISOString().split('T')[0];
+      setStartDate(sat);
+      setEndDate(todayStr);
+    } else if (preset === 'LAST_WEEK') {
+      const day = now.getDay();
+      const diffToSat = (day + 1) % 7;
+      const lastSat = new Date(now.getTime() - (diffToSat + 7) * 86400000).toISOString().split('T')[0];
+      const lastFri = new Date(now.getTime() - (diffToSat + 1) * 86400000).toISOString().split('T')[0];
+      setStartDate(lastSat);
+      setEndDate(lastFri);
+    } else if (preset === 'THIS_MONTH') {
+      setStartDate(`${todayStr.slice(0, 7)}-01`);
+      setEndDate(todayStr);
+    } else if (preset === 'LAST_MONTH') {
+      const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const y = prevMonthDate.getFullYear();
+      const m = String(prevMonthDate.getMonth() + 1).padStart(2, '0');
+      const lastDay = new Date(y, prevMonthDate.getMonth() + 1, 0).getDate();
+      setStartDate(`${y}-${m}-01`);
+      setEndDate(`${y}-${m}-${String(lastDay).padStart(2, '0')}`);
+    } else if (preset === 'THIS_YEAR') {
+      setStartDate(`${now.getFullYear()}-01-01`);
+      setEndDate(todayStr);
+    } else if (preset === 'LAST_YEAR') {
+      const py = now.getFullYear() - 1;
+      setStartDate(`${py}-01-01`);
+      setEndDate(`${py}-12-31`);
+    } else if (preset === 'ALL') {
+      setStartDate('2020-01-01');
+      setEndDate(todayStr);
     }
   };
 
-  // Combine and sort approved transactions
-  const allTx: Array<{
-    id: string;
-    type: 'INCOME' | 'EXPENSE';
-    date: string;
-    voucherNumber: string;
-    mainHeadNameBn: string;
-    subHeadNameBn?: string;
-    amount: number;
-    accountId: string;
-    accountName: string;
-    donorOrPayee: string;
-    description?: string;
-    reference?: string;
-    paymentMethod: string;
-    createdAt: string;
-  }> = [
-    ...incomes
-      .filter((i) => i.status === 'APPROVED')
-      .map((i) => ({
-        id: i.id,
-        type: 'INCOME' as const,
-        date: i.date,
-        voucherNumber: i.voucherNumber,
-        mainHeadNameBn: i.mainHeadNameBn,
-        subHeadNameBn: i.subHeadNameBn,
-        amount: i.amount,
-        accountId: i.accountId,
-        accountName: i.accountName,
-        donorOrPayee: i.donorName || 'সাধারণ দানশীল',
-        description: i.description,
-        reference: i.reference,
-        paymentMethod: i.paymentMethod,
-        createdAt: i.createdAt,
-      })),
-    ...expenses
-      .filter((e) => e.status === 'APPROVED')
-      .map((e) => ({
-        id: e.id,
-        type: 'EXPENSE' as const,
-        date: e.date,
-        voucherNumber: e.voucherNumber,
-        mainHeadNameBn: e.mainHeadNameBn,
-        subHeadNameBn: e.subHeadNameBn,
-        amount: e.amount,
-        accountId: e.accountId,
-        accountName: e.accountName,
-        donorOrPayee: e.payeeName || 'ভেন্ডর / সাধারণ',
-        description: e.description,
-        reference: e.reference,
-        paymentMethod: e.paymentMethod,
-        createdAt: e.createdAt,
-      })),
+  // Centralized Accounting Calculation (SAME DATASET RULE)
+  const ledgerResult = useMemo(() => {
+    return calculateAccountingLedger({
+      accounts,
+      incomes,
+      expenses,
+      transfers,
+      accountFilter: selectedAccountId,
+      startDate,
+      endDate,
+      typeFilter,
+      searchQuery,
+    });
+  }, [accounts, incomes, expenses, transfers, selectedAccountId, startDate, endDate, typeFilter, searchQuery]);
+
+  // Excel Export Handler
+  const handleExportExcel = () => {
+    exportDailyLedgerToExcel({
+      mosqueName: currentMosque?.nameBn || 'মসজিদ',
+      periodLabel: `${formatDate(startDate)} হতে ${formatDate(endDate)}`,
+      openingBalance: ledgerResult.openingBalance,
+      closingBalance: ledgerResult.closingBalance,
+      totalDebit: ledgerResult.totalDebit,
+      totalCredit: ledgerResult.totalCredit,
+      entries: ledgerResult.displayEntries,
+    });
+  };
+
+  // Secondary Sidebar Items for Daily Ledger (Level 3 - Section 8)
+  const sidebarItems: SecondarySidebarItem[] = [
+    { id: 'STATEMENT', label: '📋 লেনদেন বিবরণী', icon: Calendar },
+    { id: 'OPENING_BALANCE', label: '💰 প্রারম্ভিক স্থিতি', icon: Scale },
+    { id: 'ACCOUNTS', label: '🏦 হিসাব / ফান্ড', icon: Building, badge: accounts.length },
+    { id: 'SEARCH', label: '🔎 লেনদেন অনুসন্ধান', icon: Search },
+    { id: 'SUMMARY', label: '📊 দৈনিক/মাসিক সারাংশ', icon: Filter },
+    { id: 'RECONCILIATION', label: '📑 সমন্বয় ও যাচাই', icon: ShieldCheck },
+    { id: 'REPORTS', label: '🖨️ রিপোর্ট ও এক্সপোর্ট', icon: Printer },
   ];
 
-  // Calculate opening balance before `fromDate`
-  const selectedAccounts =
-    selectedAccountId === 'ALL'
-      ? accounts
-      : accounts.filter((a) => a.id === selectedAccountId);
-
-  const initialOpeningFromAccounts = selectedAccounts.reduce(
-    (sum, acc) => {
-      const bal = acc.openingBalance || 0;
-      return acc.openingBalanceType === 'CREDIT' ? sum - bal : sum + bal;
-    },
-    0
-  );
-
-  const priorTransactions = allTx.filter((t) => {
-    const matchesAccount =
-      selectedAccountId === 'ALL' || t.accountId === selectedAccountId;
-    return matchesAccount && t.date < fromDate;
-  });
-
-  const priorIncome = priorTransactions
-    .filter((t) => t.type === 'INCOME')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const priorExpense = priorTransactions
-    .filter((t) => t.type === 'EXPENSE')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const openingBalance = initialOpeningFromAccounts + priorIncome - priorExpense;
-
-  // Filter transactions within date range and search
-  const periodTransactions = allTx
-    .filter((t) => {
-      const matchesAccount =
-        selectedAccountId === 'ALL' || t.accountId === selectedAccountId;
-      const matchesDate = t.date >= fromDate && t.date <= toDate;
-      const matchesSearch =
-        t.voucherNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        t.mainHeadNameBn.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (t.subHeadNameBn && t.subHeadNameBn.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        t.donorOrPayee.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (t.description && t.description.toLowerCase().includes(searchQuery.toLowerCase()));
-
-      return matchesAccount && matchesDate && matchesSearch;
-    })
-    .sort((a, b) => {
-      // Sort chronologically for running statement
-      const dateDiff = new Date(a.date).getTime() - new Date(b.date).getTime();
-      if (dateDiff !== 0) return dateDiff;
-      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-    });
-
-  // Calculate running balances
-  let running = openingBalance;
-  const ledgerRows = periodTransactions.map((tx) => {
-    if (tx.type === 'INCOME') {
-      running += tx.amount;
-    } else {
-      running -= tx.amount;
-    }
-    return {
-      ...tx,
-      runningBalance: running,
-    };
-  });
-
-  const totalPeriodIncome = periodTransactions
-    .filter((t) => t.type === 'INCOME')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const totalPeriodExpense = periodTransactions
-    .filter((t) => t.type === 'EXPENSE')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const closingBalance = openingBalance + totalPeriodIncome - totalPeriodExpense;
-
-  const reportRefNumber = `RPT-DT-${(currentMosque?.code || 'ML').toUpperCase()}-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(Math.floor(1000 + Math.random() * 9000))}`;
-  const printTimestamp = new Date().toLocaleString('bn-BD', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  });
-
-  const handleExportCSV = () => {
-    const headers = [
-      'তারিখ',
-      'ভাউচার নম্বর',
-      'হিসাব খাত',
-      'উপ-খাত',
-      'গ্রহীতা/দাতা',
-      'অ্যাকাউন্ট',
-      'মাধ্যম',
-      'জমা (টাকা)',
-      'খরচ (টাকা)',
-      'চলমান স্থিতি (টাকা)',
-      'বিবরণ',
-    ];
-
-    const rows = [
-      ['প্রারম্ভিক স্থিতি (Opening Balance)', '', '', '', '', '', '', '', '', openingBalance.toString(), ''],
-      ...ledgerRows.map((r) => [
-        r.date,
-        r.voucherNumber,
-        r.mainHeadNameBn,
-        r.subHeadNameBn || '',
-        `"${r.donorOrPayee}"`,
-        r.accountName,
-        r.paymentMethod,
-        r.type === 'INCOME' ? r.amount.toString() : '0',
-        r.type === 'EXPENSE' ? r.amount.toString() : '0',
-        r.runningBalance.toString(),
-        `"${(r.description || '').replace(/"/g, '""')}"`,
-      ]),
-      ['সমাপনী স্থিতি (Closing Balance)', '', '', '', '', '', '', totalPeriodIncome.toString(), totalPeriodExpense.toString(), closingBalance.toString(), ''],
-    ];
-
-    const csvContent =
-      'data:text/csv;charset=utf-8,\uFEFF' +
-      rows.map((row) => row.join(',')).join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Daily_Statement_${fromDate}_to_${toDate}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const handlePrint = () => {
-    window.print();
-  };
-
   return (
-    <div className="space-y-5 max-w-7xl mx-auto pb-12 font-baloo">
-      {/* ============================================================
-          1. SCREEN-ONLY CONTROLS & HEADER (PRINT HIDDEN)
-          ============================================================ */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs print:hidden no-print">
-        <div>
-          <div className="flex items-center space-x-2.5">
-            <div className="p-2.5 bg-blue-50 text-blue-700 rounded-xl">
-              <Calendar className="w-6 h-6" />
-            </div>
-            <div>
-              <h2 className="text-xl font-black font-siliguri text-slate-900 tracking-tight">
-                দৈনিক লেনদেন বিবরণী (Daily Transaction Statement & Running Ledger)
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5 font-baloo">
-                ব্যাংক স্টেটমেন্টের ন্যায় প্রারম্ভিক স্থিতি, প্রতিটি এন্ট্রির পর চলমান স্থিতি ও সমাপনী স্থিতি
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center space-x-2">
-          <button
-            id="btn-opening-balance-daily"
-            onClick={() => setIsOpeningBalanceModalOpen(true)}
-            className="px-3.5 py-2 border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold rounded-xl flex items-center space-x-1.5 transition-colors cursor-pointer shadow-xs"
-          >
-            <Scale className="w-3.5 h-3.5 text-amber-700" />
-            <span>প্রারম্ভিক স্থিতি (Opening)</span>
-          </button>
-          <button
-            id="btn-export-csv-daily"
-            onClick={handleExportCSV}
-            className="px-3.5 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl flex items-center space-x-1.5 transition-colors cursor-pointer"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>CSV ডাউনলোড</span>
-          </button>
-          <button
-            id="btn-print-daily-statement"
-            onClick={handlePrint}
-            className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold font-siliguri rounded-xl shadow-xs flex items-center space-x-2 transition-all cursor-pointer"
-          >
-            <Printer className="w-4 h-4" />
-            <span>স্টেটমেন্ট প্রিন্ট (A4)</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Filter Controls (Screen Only / Hidden on Print) */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5 print:hidden no-print">
-        {/* Preset Tabs & Account Selector */}
-        <div className="flex flex-col md:flex-row gap-3 items-center justify-between">
-          <div className="flex items-center space-x-1.5 bg-slate-100 p-1 rounded-xl w-full md:w-auto overflow-x-auto">
-            <button
-              onClick={() => handlePresetChange('TODAY')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold font-siliguri transition-all cursor-pointer ${
-                datePreset === 'TODAY'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              আজ
-            </button>
-            <button
-              onClick={() => handlePresetChange('YESTERDAY')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold font-siliguri transition-all cursor-pointer ${
-                datePreset === 'YESTERDAY'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              গতকাল
-            </button>
-            <button
-              onClick={() => handlePresetChange('WEEK')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold font-siliguri transition-all cursor-pointer ${
-                datePreset === 'WEEK'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              গত ৭ দিন
-            </button>
-            <button
-              onClick={() => handlePresetChange('MONTH')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold font-siliguri transition-all cursor-pointer ${
-                datePreset === 'MONTH'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              চলতি মাস
-            </button>
-            <button
-              onClick={() => setDatePreset('CUSTOM')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold font-siliguri transition-all cursor-pointer ${
-                datePreset === 'CUSTOM'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              কাস্টম তারিখ
-            </button>
-          </div>
-
-          <div className="flex items-center space-x-2 w-full md:w-auto">
-            <label className="text-xs font-bold text-slate-600 shrink-0 font-baloo">হিসাব / ফান্ড:</label>
-            <select
-              value={selectedAccountId}
-              onChange={(e) => setSelectedAccountId(e.target.value)}
-              className="px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 outline-hidden w-full md:w-60 font-baloo"
-            >
-              <option value="ALL">সকল ক্যাশ ও ব্যাংক হিসাব (সম্মিলিত)</option>
-              {accounts.map((acc) => (
-                <option key={acc.id} value={acc.id}>
-                  {acc.nameBn} ({acc.accountType === 'CASH' ? 'ক্যাশ' : 'ব্যাংক'})
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Date pickers and search */}
-        <div className="flex flex-col sm:flex-row gap-3 items-center justify-between pt-2 border-t border-slate-100">
-          <div className="flex items-center space-x-2 w-full sm:w-auto text-xs font-baloo">
-            <span className="text-slate-500 font-medium">তারিখ সীমা:</span>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={(e) => {
-                setFromDate(e.target.value);
-                setDatePreset('CUSTOM');
-              }}
-              className="px-2.5 py-1 bg-slate-50 border border-slate-300 rounded-lg text-xs font-baloo"
-            />
-            <span className="text-slate-400">থেকে</span>
-            <input
-              type="date"
-              value={toDate}
-              onChange={(e) => {
-                setToDate(e.target.value);
-                setDatePreset('CUSTOM');
-              }}
-              className="px-2.5 py-1 bg-slate-50 border border-slate-300 rounded-lg text-xs font-baloo"
-            />
-          </div>
-
-          <div className="relative w-full sm:w-64">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="ভাউচার, খাত বা বিবরণ দিয়ে ফিল্টার..."
-              className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-hidden focus:bg-white font-baloo"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Screen Summary Highlights Cards (Screen Only / Hidden on Print) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 print:hidden no-print">
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-          <span className="text-xs font-bold text-slate-500 block font-siliguri">প্রারম্ভিক স্থিতি (Opening)</span>
-          <span className="text-xl font-bold text-slate-900 mt-1 block font-siliguri">
-            ৳ {openingBalance.toLocaleString('en-IN')}
-          </span>
-          <span className="text-[10px] text-slate-400 block mt-0.5 font-baloo">তারিখ: {formatDate(fromDate)} এর পূর্বে</span>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-emerald-200 shadow-xs bg-emerald-50/20">
-          <span className="text-xs font-bold text-emerald-700 block font-siliguri">মোট জমা / আয় (Credit)</span>
-          <span className="text-xl font-bold text-emerald-700 mt-1 block font-siliguri">
-            + ৳ {totalPeriodIncome.toLocaleString('en-IN')}
-          </span>
-          <span className="text-[10px] text-emerald-600 block mt-0.5 font-baloo">
-            {periodTransactions.filter((t) => t.type === 'INCOME').length} টি ভাউচার
-          </span>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-rose-200 shadow-xs bg-rose-50/20">
-          <span className="text-xs font-bold text-rose-700 block font-siliguri">মোট খরচ / ব্যয় (Debit)</span>
-          <span className="text-xl font-bold text-rose-700 mt-1 block font-siliguri">
-            - ৳ {totalPeriodExpense.toLocaleString('en-IN')}
-          </span>
-          <span className="text-[10px] text-rose-600 block mt-0.5 font-baloo">
-            {periodTransactions.filter((t) => t.type === 'EXPENSE').length} টি ভাউচার
-          </span>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-blue-200 shadow-xs bg-blue-50/30">
-          <span className="text-xs font-bold text-blue-800 block font-siliguri">সমাপনী স্থিতি (Closing)</span>
-          <span className="text-xl font-bold text-blue-900 mt-1 block font-siliguri">
-            ৳ {closingBalance.toLocaleString('en-IN')}
-          </span>
-          <span className="text-[10px] text-blue-600 block mt-0.5 font-baloo">তারিখ: {formatDate(toDate)} পর্যন্ত</span>
-        </div>
-      </div>
-
-      {/* Screen Interactive Table View (Screen Only / Hidden on Print) */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden print:hidden no-print">
-        <div className="p-3.5 bg-slate-50 border-b border-slate-200 flex justify-between items-center text-xs">
-          <span className="font-bold font-siliguri text-slate-800">চলমান খতিয়ান তালিকা ({ledgerRows.length} টি লেনদেন)</span>
-          <span className="text-slate-500 font-baloo">
-            সময়সীমা: {formatDate(fromDate)} হতে {formatDate(toDate)}
-          </span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left font-baloo">
-            <thead className="bg-slate-900 text-white font-bold border-b border-slate-800 font-siliguri">
-              <tr>
-                <th className="py-3 px-3.5 w-24">তারিখ</th>
-                <th className="py-3 px-3.5 w-32">ভাউচার নং</th>
-                <th className="py-3 px-3.5">খাত ও বিবরণ</th>
-                <th className="py-3 px-3.5 w-36">গ্রহীতা / দাতা</th>
-                <th className="py-3 px-3.5 w-28">অ্যাকাউন্ট</th>
-                <th className="py-3 px-3.5 text-right w-28 text-emerald-300">জমা (Income)</th>
-                <th className="py-3 px-3.5 text-right w-28 text-rose-300">খরচ (Expense)</th>
-                <th className="py-3 px-3.5 text-right w-32">চলমান স্থিতি</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {/* Opening Balance Row */}
-              <tr className="bg-slate-50/90 font-bold text-slate-700 border-b border-slate-200">
-                <td className="py-2.5 px-3.5 font-mono">{formatDate(fromDate)}</td>
-                <td className="py-2.5 px-3.5 font-mono text-slate-500">—</td>
-                <td colSpan={5} className="py-2.5 px-3.5 text-slate-800">
-                  <span className="inline-block px-2 py-0.5 bg-slate-200 text-slate-800 rounded font-semibold text-[11px] mr-2">
-                    OPENING
-                  </span>
-                  প্রারম্ভিক স্থিতি (Opening Balance)
-                </td>
-                <td className="py-2.5 px-3.5 text-right font-bold text-slate-900 font-siliguri">
-                  ৳ {openingBalance.toLocaleString('en-IN')}
-                </td>
-              </tr>
-
-              {ledgerRows.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
-                    নির্বাচিত সময়সীমায় কোনো লেনদেন পাওয়া যায়নি।
-                  </td>
-                </tr>
-              ) : (
-                ledgerRows.map((row) => (
-                  <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3 px-3.5 whitespace-nowrap text-slate-600">
-                      {formatDate(row.date)}
-                    </td>
-                    <td className="py-3 px-3.5 font-bold text-slate-800">
-                      {row.voucherNumber}
-                    </td>
-                    <td className="py-3 px-3.5">
-                      <div className="font-bold text-slate-900 font-siliguri">{row.mainHeadNameBn}</div>
-                      {row.subHeadNameBn && (
-                        <div className="text-[11px] text-slate-500">{row.subHeadNameBn}</div>
-                      )}
-                      {row.description && (
-                        <div className="text-[10px] text-slate-400 italic truncate max-w-xs mt-0.5">
-                          {row.description}
-                        </div>
-                      )}
-                    </td>
-                    <td className="py-3 px-3.5 text-slate-700">{row.donorOrPayee}</td>
-                    <td className="py-3 px-3.5 text-slate-600 font-medium">
-                      {row.accountName}
-                    </td>
-                    <td className="py-3 px-3.5 text-right font-bold text-emerald-700 font-siliguri">
-                      {row.type === 'INCOME' ? `+ ৳ ${row.amount.toLocaleString('en-IN')}` : '—'}
-                    </td>
-                    <td className="py-3 px-3.5 text-right font-bold text-rose-700 font-siliguri">
-                      {row.type === 'EXPENSE' ? `- ৳ ${row.amount.toLocaleString('en-IN')}` : '—'}
-                    </td>
-                    <td className="py-3 px-3.5 text-right font-bold text-slate-900 bg-slate-50/40 font-siliguri">
-                      ৳ {row.runningBalance.toLocaleString('en-IN')}
-                    </td>
-                  </tr>
-                ))
-              )}
-
-              {/* Closing Balance Row */}
-              <tr className="bg-slate-900 text-white font-bold">
-                <td className="py-3 px-3.5">{formatDate(toDate)}</td>
-                <td className="py-3 px-3.5 text-slate-400">—</td>
-                <td colSpan={3} className="py-3 px-3.5 font-siliguri">
-                  সমাপনী মোট ও নিট স্থিতি (Closing Balance)
-                </td>
-                <td className="py-3 px-3.5 text-right font-siliguri text-emerald-300">
-                  + ৳ {totalPeriodIncome.toLocaleString('en-IN')}
-                </td>
-                <td className="py-3 px-3.5 text-right font-siliguri text-rose-300">
-                  - ৳ {totalPeriodExpense.toLocaleString('en-IN')}
-                </td>
-                <td className="py-3 px-3.5 text-right font-siliguri text-white bg-slate-800 text-sm">
-                  ৳ {closingBalance.toLocaleString('en-IN')}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* ============================================================
-          2. OFFICIAL PRINTABLE DOCUMENT (SHOWN ONLY ON PRINT)
-          Letterhead at Top -> Structured KPI Boxes -> Full Bordered Table -> Triple Signatures Block
-          ============================================================ */}
-      <div className="report-print-root hidden print:block bg-white text-slate-900 font-baloo w-full max-w-full box-border">
-        {/* Dynamic @page rule for Browser Print Dialog */}
-        <style>{`
-          @page {
-            size: A4 portrait;
-            margin: 8mm;
-          }
-        `}</style>
-
-        {/* --- [A] OFFICIAL MOSQUE LETTERHEAD AT THE VERY TOP --- */}
-        <div className="border-2 border-slate-900 bg-white mb-3 rounded-none overflow-hidden break-inside-avoid">
-          <div className="grid grid-cols-12 items-center p-3 gap-2 border-b border-slate-300">
-            {/* LEFT: Mosque Official Logo (2 cols) */}
-            <div className="col-span-2 flex items-center justify-start">
-              {currentMosque?.logoUrl ? (
-                <img
-                  src={currentMosque.logoUrl}
-                  alt="Mosque Logo"
-                  className="max-h-16 max-w-full object-contain"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <div className="w-14 h-14 border border-dashed border-slate-400 bg-slate-50 flex flex-col items-center justify-center text-slate-400">
-                  <Building className="w-6 h-6 mb-0.5 text-slate-500" />
-                  <span className="text-[9px] font-baloo text-slate-500">লোগো</span>
-                </div>
-              )}
-            </div>
-
-            {/* CENTER: Mosque Bengali Name, Address, Report Title (7 cols) */}
-            <div className="col-span-7 text-center">
-              <h1 className="font-siliguri text-xl sm:text-2xl font-bold text-slate-950 tracking-tight leading-tight">
-                {currentMosque?.nameBn || 'মসজিদুল মামুর কমপ্লেক্স ও ওয়াকফ এস্টেট'}
-              </h1>
-              {currentMosque?.address && (
-                <p className="font-baloo text-xs text-slate-700 mt-0.5">
-                  {currentMosque.address} {currentMosque.phone ? `• ফোন: ${currentMosque.phone}` : ''}
-                </p>
-              )}
-              <div className="inline-block mt-1.5 px-3 py-0.5 bg-slate-900 text-white font-siliguri font-bold text-xs sm:text-sm tracking-wide">
-                দৈনিক লেনদেন বিবরণী ও চলমান লেজার (Daily Transaction Statement)
-              </div>
-              <p className="font-baloo text-xs font-semibold text-slate-800 mt-1">
-                হিসাবের সময়সীমা: <span className="font-bold text-slate-950">{formatDate(fromDate)}</span> হতে{' '}
-                <span className="font-bold text-slate-950">{formatDate(toDate)}</span> পর্যন্ত
-              </p>
-            </div>
-
-            {/* RIGHT: Structured Meta Box (3 cols) */}
-            <div className="col-span-3 border border-slate-800 bg-slate-50 p-2 text-[11px] font-baloo space-y-1">
-              <div className="flex justify-between border-b border-slate-200 pb-0.5">
-                <span className="text-slate-600">রিপোর্ট নং:</span>
-                <span className="font-bold text-slate-950">{reportRefNumber}</span>
-              </div>
-              <div className="flex justify-between border-b border-slate-200 pb-0.5">
-                <span className="text-slate-600">মসজিদ কোড:</span>
-                <span className="font-bold text-slate-900">{currentMosque?.code || 'MOSQUE'}</span>
-              </div>
-              <div className="flex justify-between border-b border-slate-200 pb-0.5">
-                <span className="text-slate-600">মুদ্রা:</span>
-                <span className="font-bold text-slate-900">BDT (টাকা ৳)</span>
-              </div>
-              <div className="flex justify-between text-[10px] text-slate-600 pt-0.5">
-                <span>প্রিন্ট সময়:</span>
-                <span className="font-medium text-slate-800">{printTimestamp}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Sub-bar: Filter Status & Prepared By */}
-          <div className="bg-slate-100 px-3.5 py-1.5 flex justify-between items-center text-xs font-baloo border-t border-slate-300">
-            <div>
-              <span className="text-slate-600 font-medium">হিসাব খাত/ফান্ড ফিল্টার: </span>
-              <span className="font-bold text-slate-900">
-                {selectedAccountId === 'ALL'
-                  ? 'সকল ক্যাশ ও ব্যাংক হিসাব (সম্মিলিত ফান্ড)'
-                  : accounts.find((a) => a.id === selectedAccountId)?.nameBn || 'নির্দিষ্ট ফান্ড'}
+    <div className="space-y-4 font-siliguri">
+      {/* Header */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div>
+            <div className="flex items-center space-x-2">
+              <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                📊 হিসাব ও লেনদেন / ১ম সাব-মডিউল
               </span>
             </div>
-            <div>
-              <span className="text-slate-600 font-medium">প্রস্তুতকারী: </span>
-              <span className="font-bold text-slate-900">{currentUser?.fullName || 'হিসাব শাখা (মসজিদলেজার)'}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* --- [B] EXECUTIVE SUMMARY 4-KPI BOXES WITH SOLID BORDERS --- */}
-        <div className="grid grid-cols-4 gap-2 mb-3 break-inside-avoid">
-          {/* 1. Opening Balance Box */}
-          <div className="border-2 border-slate-900 p-2 bg-slate-50 text-center">
-            <span className="font-baloo text-[11px] font-bold text-slate-700 block">প্রারম্ভিক স্থিতি (Opening)</span>
-            <span className="font-siliguri text-base sm:text-lg font-bold text-slate-950 block mt-0.5">
-              ৳ {openingBalance.toLocaleString('en-IN')}
-            </span>
-            <span className="font-baloo text-[10px] text-slate-500 block">তারিখ: {formatDate(fromDate)} এর পূর্বে</span>
+            <h1 className="text-xl font-black text-slate-900 mt-1 flex items-center space-x-2">
+              <Calendar className="w-5 h-5 text-blue-600" />
+              <span>দৈনিক কেন্দ্রীয় লেনদেন বিবরণী (Daily Statement)</span>
+            </h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              মসজিদের কেন্দ্রীয় রানিং লেজার: প্রারম্ভিক জের, সকল প্রাপ্তি, ব্যয় ও চলমান স্থিতির সমন্বিত খতিয়ান
+            </p>
           </div>
 
-          {/* 2. Total Income Box */}
-          <div className="border-2 border-slate-900 p-2 bg-slate-50 text-center">
-            <span className="font-baloo text-[11px] font-bold text-emerald-800 block">মোট জমা / আয় (Credit)</span>
-            <span className="font-siliguri text-base sm:text-lg font-bold text-emerald-900 block mt-0.5">
-              + ৳ {totalPeriodIncome.toLocaleString('en-IN')}
-            </span>
-            <span className="font-baloo text-[10px] text-slate-600 block">
-              {periodTransactions.filter((t) => t.type === 'INCOME').length} টি অনুমোদিত ভাউচার
-            </span>
-          </div>
-
-          {/* 3. Total Expense Box */}
-          <div className="border-2 border-slate-900 p-2 bg-slate-50 text-center">
-            <span className="font-baloo text-[11px] font-bold text-rose-800 block">মোট খরচ / ব্যয় (Debit)</span>
-            <span className="font-siliguri text-base sm:text-lg font-bold text-rose-900 block mt-0.5">
-              - ৳ {totalPeriodExpense.toLocaleString('en-IN')}
-            </span>
-            <span className="font-baloo text-[10px] text-slate-600 block">
-              {periodTransactions.filter((t) => t.type === 'EXPENSE').length} টি অনুমোদিত ভাউচার
-            </span>
-          </div>
-
-          {/* 4. Closing Balance Box */}
-          <div className="border-2 border-slate-900 p-2 bg-slate-100 text-center">
-            <span className="font-baloo text-[11px] font-bold text-slate-900 block">সমাপনী স্থিতি (Closing)</span>
-            <span className="font-siliguri text-base sm:text-lg font-bold text-slate-950 block mt-0.5">
-              ৳ {closingBalance.toLocaleString('en-IN')}
-            </span>
-            <span className="font-baloo text-[10px] text-slate-700 font-semibold block">তারিখ: {formatDate(toDate)} পর্যন্ত</span>
-          </div>
-        </div>
-
-        {/* --- [C] OFFICIAL BOXED LEDGER TABLE WITH SOLID BORDERS (NO CLIPPING) --- */}
-        <div className="border-2 border-slate-900 mb-3 overflow-hidden">
-          <table
-            className="w-full text-xs font-baloo border-collapse"
-            style={{ tableLayout: 'fixed', width: '100%' }}
-          >
-            <thead className="bg-slate-100 border-b-2 border-slate-900 text-slate-950 font-bold font-siliguri">
-              <tr>
-                <th className="py-2 px-1.5 text-center border-r border-slate-400" style={{ width: '11%' }}>
-                  তারিখ
-                </th>
-                <th className="py-2 px-1.5 text-center border-r border-slate-400" style={{ width: '13%' }}>
-                  ভাউচার নং
-                </th>
-                <th className="py-2 px-2 text-left border-r border-slate-400" style={{ width: '25%' }}>
-                  হিসাব খাত ও বিবরণ
-                </th>
-                <th className="py-2 px-1.5 text-left border-r border-slate-400" style={{ width: '14%' }}>
-                  গ্রহীতা / দাতা
-                </th>
-                <th className="py-2 px-1.5 text-left border-r border-slate-400" style={{ width: '13%' }}>
-                  হিসাব / ফান্ড
-                </th>
-                <th className="py-2 px-1 text-right border-r border-slate-400" style={{ width: '8%' }}>
-                  জমা (৳)
-                </th>
-                <th className="py-2 px-1 text-right border-r border-slate-400" style={{ width: '8%' }}>
-                  খরচ (৳)
-                </th>
-                <th className="py-2 px-1.5 text-right" style={{ width: '8%' }}>
-                  স্থিতি (৳)
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-300">
-              {/* Distinct Opening Balance Boxed Row */}
-              <tr className="bg-slate-100 font-bold text-slate-900 border-b border-slate-400">
-                <td className="py-1.5 px-1.5 text-center border-r border-slate-300">{formatDate(fromDate)}</td>
-                <td className="py-1.5 px-1.5 text-center border-r border-slate-300 text-slate-500">—</td>
-                <td colSpan={3} className="py-1.5 px-2 border-r border-slate-300 font-siliguri">
-                  <span className="inline-block px-1.5 py-0.2 bg-slate-800 text-white rounded text-[10px] mr-1.5 font-bold">
-                    OPENING
-                  </span>
-                  প্রারম্ভিক স্থিতি (Opening Balance)
-                </td>
-                <td className="py-1.5 px-1 text-right border-r border-slate-300 text-slate-400">—</td>
-                <td className="py-1.5 px-1 text-right border-r border-slate-300 text-slate-400">—</td>
-                <td className="py-1.5 px-1.5 text-right font-bold text-slate-950 font-siliguri bg-slate-200/60">
-                  ৳ {openingBalance.toLocaleString('en-IN')}
-                </td>
-              </tr>
-
-              {ledgerRows.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="py-6 text-center text-slate-500 italic">
-                    নির্বাচিত সময়সীমায় কোনো লেনদেনের রেকর্ড পাওয়া যায়নি।
-                  </td>
-                </tr>
-              ) : (
-                ledgerRows.map((row, idx) => (
-                  <tr
-                    key={row.id}
-                    className={idx % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'}
-                    style={{ pageBreakInside: 'avoid' }}
-                  >
-                    <td className="py-1.5 px-1.5 text-center border-r border-slate-300 text-slate-700 whitespace-nowrap text-[11px]">
-                      {formatDate(row.date)}
-                    </td>
-                    <td className="py-1.5 px-1.5 text-center border-r border-slate-300 font-bold text-slate-900 text-[11px] break-words">
-                      {row.voucherNumber}
-                    </td>
-                    <td className="py-1.5 px-2 text-left border-r border-slate-300 break-words">
-                      <div className="font-bold text-slate-950 font-siliguri text-xs">{row.mainHeadNameBn}</div>
-                      {row.subHeadNameBn && (
-                        <div className="text-[10px] text-slate-600">{row.subHeadNameBn}</div>
-                      )}
-                      {row.description && (
-                        <div className="text-[10px] text-slate-500 italic mt-0.5 line-clamp-2">
-                          {row.description}
-                        </div>
-                      )}
-                    </td>
-                    <td className="py-1.5 px-1.5 text-left border-r border-slate-300 text-slate-800 text-[11px] break-words">
-                      {row.donorOrPayee}
-                    </td>
-                    <td className="py-1.5 px-1.5 text-left border-r border-slate-300 text-slate-700 text-[11px] break-words">
-                      {row.accountName}
-                    </td>
-                    <td className="py-1.5 px-1 text-right border-r border-slate-300 font-bold text-emerald-900 font-siliguri text-[11px]">
-                      {row.type === 'INCOME' ? `+ ৳ ${row.amount.toLocaleString('en-IN')}` : '—'}
-                    </td>
-                    <td className="py-1.5 px-1 text-right border-r border-slate-300 font-bold text-rose-900 font-siliguri text-[11px]">
-                      {row.type === 'EXPENSE' ? `- ৳ ${row.amount.toLocaleString('en-IN')}` : '—'}
-                    </td>
-                    <td className="py-1.5 px-1.5 text-right font-bold text-slate-950 bg-slate-50 font-siliguri text-[11px]">
-                      ৳ {row.runningBalance.toLocaleString('en-IN')}
-                    </td>
-                  </tr>
-                ))
-              )}
-
-              {/* Distinct Closing Balance Row */}
-              <tr className="bg-slate-900 text-white font-bold font-siliguri border-t-2 border-slate-900">
-                <td className="py-2 px-1.5 text-center">{formatDate(toDate)}</td>
-                <td className="py-2 px-1.5 text-center text-slate-400">—</td>
-                <td colSpan={3} className="py-2 px-2 text-left">
-                  সমাপনী মোট ও নিট তহবিল স্থিতি (Closing Total Balance)
-                </td>
-                <td className="py-2 px-1 text-right text-emerald-300">
-                  + ৳ {totalPeriodIncome.toLocaleString('en-IN')}
-                </td>
-                <td className="py-2 px-1 text-right text-rose-300">
-                  - ৳ {totalPeriodExpense.toLocaleString('en-IN')}
-                </td>
-                <td className="py-2 px-1.5 text-right text-white bg-slate-800 text-xs">
-                  ৳ {closingBalance.toLocaleString('en-IN')}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        {/* --- [D] OFFICIAL 3-PARTY APPROVAL & SIGNATURE BOXES (সভাপতি ও সেক্রেটারী/মোতাওয়াল্লী স্বাক্ষর) --- */}
-        <div className="border-t-2 border-slate-900 pt-5 mt-6 break-inside-avoid">
-          <div className="grid grid-cols-3 gap-6 text-center text-xs font-baloo">
-            {/* 1. Accountant / Preparer */}
-            <div className="flex flex-col items-center justify-end">
-              <div className="h-12 w-full flex items-end justify-center">
-                {/* Physical handwriting line */}
-              </div>
-              <div className="border-t-2 border-slate-900 pt-1.5 font-bold text-slate-950 w-full font-siliguri">
-                হিসাবরক্ষক / প্রস্তুতকারী
-              </div>
-              <div className="text-[10px] text-slate-600 font-baloo">স্বাক্ষর ও তারিখ</div>
-            </div>
-
-            {/* 2. General Secretary / Mutawalli with saved signature image */}
-            <div className="flex flex-col items-center justify-end">
-              <div className="h-12 w-full flex items-end justify-center">
-                {currentMosque?.secretarySignatureUrl ? (
-                  <img
-                    src={currentMosque.secretarySignatureUrl}
-                    alt="Secretary Signature"
-                    className="max-h-12 max-w-full object-contain mb-1"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : null}
-              </div>
-              <div className="border-t-2 border-slate-900 pt-1.5 font-bold text-slate-950 w-full font-siliguri">
-                সাধারণ সম্পাদক / মোতাওয়াল্লী
-              </div>
-              <div className="text-[10px] text-slate-600 font-baloo">স্বাক্ষর ও সীল</div>
-            </div>
-
-            {/* 3. President with saved signature image */}
-            <div className="flex flex-col items-center justify-end">
-              <div className="h-12 w-full flex items-end justify-center">
-                {currentMosque?.presidentSignatureUrl ? (
-                  <img
-                    src={currentMosque.presidentSignatureUrl}
-                    alt="President Signature"
-                    className="max-h-12 max-w-full object-contain mb-1"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : null}
-              </div>
-              <div className="border-t-2 border-slate-900 pt-1.5 font-bold text-slate-950 w-full font-siliguri">
-                সভাপতি
-              </div>
-              <div className="text-[10px] text-slate-600 font-baloo">স্বাক্ষর ও সীল</div>
-            </div>
-          </div>
-        </div>
-
-        {/* --- [E] OFFICIAL REPORT FOOTER (SYSTEM AUDIT NOTE) --- */}
-        <div className="border-t border-slate-300 mt-5 pt-2 flex justify-between items-center text-[10px] text-slate-600 font-baloo break-inside-avoid">
-          <div>
-            <span>প্রতিবেদন উৎস: </span>
-            <span className="font-bold text-slate-800">মসজিদলেজার স্বয়ংক্রিয় হিসাব ও নিরীক্ষা ব্যবস্থাপনা সিস্টেম</span>
-          </div>
-          <div>
-            <span>পৃষ্ঠা: </span>
-            <span className="font-bold text-slate-800">১ / ১ (অথবা ধারাবাহিক)</span>
-          </div>
-          <div>
-            <span>জেনারেট সময়: {printTimestamp}</span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => setIsPrintModalOpen(true)}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-colors cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>প্রিন্ট / PDF</span>
+            </button>
+            <button
+              onClick={handleExportExcel}
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-colors shadow-2xs cursor-pointer"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>এক্সেল (.xlsx)</span>
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Opening Balance Adjustment Modal */}
-      {isOpeningBalanceModalOpen && (
+      {/* Main Secondary Layout */}
+      <div className={hideInternalSidebar ? 'w-full' : 'flex flex-col lg:flex-row gap-5 items-start'}>
+        {/* Secondary Sidebar (Level 3) */}
+        {!hideInternalSidebar && (
+          <FinancialSecondarySidebar
+            subModuleName="দৈনিক লেনদেন"
+            subModuleIcon={Calendar}
+            items={sidebarItems}
+            activeItemId={activeSubItem}
+            onSelectItem={handleSelectSubTab}
+            quickStat={{
+              label: 'মসজিদের সর্বমোট তহবিল',
+              value: `৳ ${totalCombinedFund.toLocaleString('en-IN')}`,
+            }}
+          />
+        )}
+
+        {/* Content Area */}
+        <div className="flex-1 w-full space-y-4">
+          {/* 1. Main Statement Ledger View */}
+          {activeSubItem === 'STATEMENT' && (
+            <>
+              {/* Summary Cards */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                    প্রারম্ভিক জের (Opening Balance)
+                  </span>
+                  <div className="text-base sm:text-lg font-black font-mono text-slate-800 mt-1">
+                    ৳ {ledgerResult.openingBalance.toLocaleString('en-IN')}
+                  </div>
+                  <span className="text-[10px] text-slate-400 block mt-0.5">
+                    {formatDate(startDate)} তারিখের শুরুর জের
+                  </span>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                    মোট প্রাপ্তি / জমা (Inflow)
+                  </span>
+                  <div className="text-base sm:text-lg font-black font-mono text-blue-700 mt-1">
+                    + ৳ {ledgerResult.totalDebit.toLocaleString('en-IN')}
+                  </div>
+                  <span className="text-[10px] text-slate-400 block mt-0.5">অনুমোদিত সকল আয় ও প্রাপ্তি</span>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                    মোট ব্যয় / পরিশোধ (Outflow)
+                  </span>
+                  <div className="text-base sm:text-lg font-black font-mono text-rose-700 mt-1">
+                    - ৳ {ledgerResult.totalCredit.toLocaleString('en-IN')}
+                  </div>
+                  <span className="text-[10px] text-slate-400 block mt-0.5">অনুমোদিত সকল ব্যয় ও খরচ</span>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                    সমাপনী স্থিতি (Closing Balance)
+                  </span>
+                  <div className="text-base sm:text-lg font-black font-mono text-emerald-700 mt-1">
+                    ৳ {ledgerResult.closingBalance.toLocaleString('en-IN')}
+                  </div>
+                  <span className="text-[10px] text-slate-500 block mt-0.5 font-bold">
+                    নিট তারতম্য: {ledgerResult.netChange >= 0 ? '+' : ''}৳{' '}
+                    {ledgerResult.netChange.toLocaleString('en-IN')}
+                  </span>
+                </div>
+              </div>
+
+              {/* Filters & Account Selector */}
+              <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs space-y-3">
+                {/* Date Quick Presets */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-bold">
+                  {[
+                    { key: 'TODAY', label: 'আজ' },
+                    { key: 'YESTERDAY', label: 'গতকাল' },
+                    { key: 'THIS_WEEK', label: 'চলতি সপ্তাহ' },
+                    { key: 'LAST_WEEK', label: 'গত সপ্তাহ' },
+                    { key: 'THIS_MONTH', label: 'চলতি মাস' },
+                    { key: 'LAST_MONTH', label: 'গত মাস' },
+                    { key: 'THIS_YEAR', label: 'চলতি বছর' },
+                    { key: 'LAST_YEAR', label: 'গত বছর' },
+                    { key: 'ALL', label: 'সকল সময়' },
+                  ].map((p) => (
+                    <button
+                      key={p.key}
+                      onClick={() => handlePresetChange(p.key as any)}
+                      className={`px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap cursor-pointer ${
+                        datePreset === p.key
+                          ? 'bg-blue-600 text-white font-bold'
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Date inputs, Account filter, Type, and Search */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2.5 pt-1 border-t border-slate-100">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 block mb-1">হতে (তারিখ)</label>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => {
+                        setDatePreset('CUSTOM');
+                        setStartDate(e.target.value);
+                      }}
+                      className="w-full text-xs font-mono px-2.5 py-1.5 border border-slate-200 rounded-lg focus:outline-hidden focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 block mb-1">পর্যন্ত (তারিখ)</label>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => {
+                        setDatePreset('CUSTOM');
+                        setEndDate(e.target.value);
+                      }}
+                      className="w-full text-xs font-mono px-2.5 py-1.5 border border-slate-200 rounded-lg focus:outline-hidden focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 block mb-1">হিসাব / ফান্ড ফিল্টার</label>
+                    <select
+                      value={selectedAccountId}
+                      onChange={(e) => setSelectedAccountId(e.target.value)}
+                      className="w-full text-xs font-bold px-2.5 py-1.5 border border-slate-200 rounded-lg focus:outline-hidden focus:border-blue-500 bg-white"
+                    >
+                      <option value="ALL">সকল হিসাব (সম্মিলিত)</option>
+                      <option value="CASH">শুধুমাত্র ক্যাশ হিসাব</option>
+                      <option value="BANK">সকল ব্যাংক ও এমএফএস</option>
+                      {accounts.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.nameBn} ({a.accountType})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 block mb-1">লেনদেনের ধরন</label>
+                    <select
+                      value={typeFilter}
+                      onChange={(e) => setTypeFilter(e.target.value as any)}
+                      className="w-full text-xs font-bold px-2.5 py-1.5 border border-slate-200 rounded-lg focus:outline-hidden focus:border-blue-500 bg-white"
+                    >
+                      <option value="ALL">সকল লেনদেন</option>
+                      <option value="INCOME">শুধুমাত্র প্রাপ্তি / জমা</option>
+                      <option value="EXPENSE">শুধুমাত্র ব্যয় / পরিশোধ</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 block mb-1">অনুসন্ধান</label>
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="ভাউচার, খাত, পার্টি..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full text-xs pl-8 pr-2.5 py-1.5 border border-slate-200 rounded-lg focus:outline-hidden focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Running Ledger Table */}
+              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                <div className="px-4 py-3 bg-slate-50/70 border-b border-slate-200 flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800">
+                    কেন্দ্রীয় রানিং খতিয়ান ({ledgerResult.displayEntries.length} টি লেনদেন)
+                  </span>
+                  <span className="text-xs text-slate-500">
+                    সময়সীমা: <span className="font-bold text-slate-700">{formatDate(startDate)}</span> হতে{' '}
+                    <span className="font-bold text-slate-700">{formatDate(endDate)}</span>
+                  </span>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100/90 text-slate-700 border-b border-slate-200 font-bold">
+                        <th className="py-2.5 px-3 w-12 text-center">ক্রঃ</th>
+                        <th className="py-2.5 px-3">তারিখ</th>
+                        <th className="py-2.5 px-3">ভাউচার নং</th>
+                        <th className="py-2.5 px-3">খাত ও বিবরণ</th>
+                        <th className="py-2.5 px-3">হিসাব / ফান্ড</th>
+                        <th className="py-2.5 px-3">পার্টি / দাতা / প্রাপক</th>
+                        <th className="py-2.5 px-3 text-right">প্রাপ্তি / জমা (৳)</th>
+                        <th className="py-2.5 px-3 text-right">ব্যয় / খরচ (৳)</th>
+                        <th className="py-2.5 px-3 text-right">চলমান স্থিতি (৳)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {/* Opening Balance Row */}
+                      <tr className="bg-amber-50/60 font-bold text-slate-800">
+                        <td className="py-2.5 px-3 text-center">-</td>
+                        <td className="py-2.5 px-3 font-mono text-slate-600">{formatDate(startDate)}</td>
+                        <td className="py-2.5 px-3 font-mono text-amber-800">OPENING</td>
+                        <td className="py-2.5 px-3" colSpan={3}>
+                          <div className="flex items-center space-x-1.5 text-amber-900">
+                            <Scale className="w-3.5 h-3.5 text-amber-700" />
+                            <span>প্রারম্ভিক জের (Accounting Baseline Opening Balance)</span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono text-slate-400">-</td>
+                        <td className="py-2.5 px-3 text-right font-mono text-slate-400">-</td>
+                        <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
+                          ৳ {ledgerResult.openingBalance.toLocaleString('en-IN')}
+                        </td>
+                      </tr>
+
+                      {/* Transaction Rows */}
+                      {ledgerResult.displayEntries.length === 0 ? (
+                        <tr>
+                          <td colSpan={9} className="py-8 text-center text-slate-400">
+                            নির্বাচিত সময়ে কোনো লেনদেন পাওয়া যায়নি
+                          </td>
+                        </tr>
+                      ) : (
+                        ledgerResult.displayEntries.map((item, idx) => (
+                          <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-2 px-3 text-center font-mono text-slate-500">{idx + 1}</td>
+                            <td className="py-2 px-3 font-mono text-slate-600 whitespace-nowrap">
+                              {formatDate(item.date)}
+                            </td>
+                            <td className="py-2 px-3 font-mono font-semibold text-slate-800 whitespace-nowrap">
+                              {item.voucherNumber}
+                            </td>
+                            <td className="py-2 px-3">
+                              <div className="font-semibold text-slate-900">{item.headNameBn}</div>
+                              {item.subHeadNameBn && (
+                                <div className="text-[10px] text-slate-500">{item.subHeadNameBn}</div>
+                              )}
+                              {item.description && (
+                                <div className="text-[10px] text-slate-400 italic truncate max-w-xs">
+                                  {item.description}
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-2 px-3 text-slate-600 font-medium">
+                              {item.accountName}
+                            </td>
+                            <td className="py-2 px-3 text-slate-700">{item.partyName || '-'}</td>
+                            <td className="py-2 px-3 text-right font-mono font-bold text-blue-700">
+                              {item.debit > 0 ? `৳ ${item.debit.toLocaleString('en-IN')}` : '-'}
+                            </td>
+                            <td className="py-2 px-3 text-right font-mono font-bold text-rose-700">
+                              {item.credit > 0 ? `৳ ${item.credit.toLocaleString('en-IN')}` : '-'}
+                            </td>
+                            <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
+                              ৳ {item.runningBalance.toLocaleString('en-IN')}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+
+                      {/* Closing Balance Row */}
+                      <tr className="bg-blue-50/70 font-black text-slate-900 border-t-2 border-blue-200">
+                        <td className="py-3 px-3 text-center font-mono">Σ</td>
+                        <td className="py-3 px-3 font-mono">{formatDate(endDate)}</td>
+                        <td className="py-3 px-3 font-mono text-blue-800">CLOSING</td>
+                        <td className="py-3 px-3" colSpan={3}>
+                          সমাপনী জের (Closing Running Balance)
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono text-blue-800">
+                          ৳ {ledgerResult.totalDebit.toLocaleString('en-IN')}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono text-rose-800">
+                          ৳ {ledgerResult.totalCredit.toLocaleString('en-IN')}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono text-emerald-900 text-sm">
+                          ৳ {ledgerResult.closingBalance.toLocaleString('en-IN')}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* 2. Opening Balance Sub-Item */}
+          {activeSubItem === 'OPENING_BALANCE' && (
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                    <Scale className="w-5 h-5 text-amber-600" />
+                    <span>অ্যাকাউন্টিং প্রারম্ভিক স্থিতি (Opening Balance Baseline)</span>
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    সফটওয়্যার ব্যবহারের শুরুর দিনের ক্যাশ ও ব্যাংক হিসাবের জের
+                  </p>
+                </div>
+                {onUpdateOpeningBalance && (
+                  <button
+                    onClick={() => setIsOpeningBalanceModalOpen(true)}
+                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center space-x-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>প্রারম্ভিক স্থিতি সমন্বয়</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-900 space-y-1">
+                <span className="font-bold block">মূল অ্যাকাউন্টিং নীতি:</span>
+                <span>
+                  প্রারম্ভিক স্থিতি কোনো চলতি আয় (Income) বা ব্যয় (Expense) নয়। এটি হিসাব শুরুর উদ্বৃত্ত হিসেবে
+                  কেন্দ্রীয় খতিয়ানের শুরুর লাইন হিসেবে কাজ করে।
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {accounts.map((acc) => (
+                  <div key={acc.id} className="p-3.5 border border-slate-200 rounded-xl bg-slate-50/60">
+                    <span className="font-bold text-xs text-slate-900 block">{acc.nameBn}</span>
+                    <span className="text-[10px] text-slate-500 block mt-0.5 font-semibold">
+                      ধরন: {acc.accountType}
+                    </span>
+                    <div className="mt-2 pt-2 border-t border-slate-200 flex justify-between items-baseline">
+                      <span className="text-[11px] text-slate-500">প্রারম্ভিক ব্যালেন্স:</span>
+                      <span className="font-mono font-bold text-slate-800 text-sm">
+                        ৳ {(Number(acc.openingBalance) || 0).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 3. Accounts / Fund List */}
+          {activeSubItem === 'ACCOUNTS' && (
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-4">
+              <h2 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                <Building className="w-5 h-5 text-blue-600" />
+                <span>মসজিদের সকল হিসাব ও ফান্ডসমূহ ({accounts.length} টি)</span>
+              </h2>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {accounts.map((acc) => (
+                  <div key={acc.id} className="p-4 border border-slate-200 rounded-xl bg-slate-50/50 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-sm text-slate-900">{acc.nameBn}</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-100 text-blue-800">
+                        {acc.accountType}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-baseline pt-2 border-t border-slate-200">
+                      <span className="text-xs text-slate-500">বর্তমান স্থিতি:</span>
+                      <span className="text-base font-black font-mono text-emerald-700">
+                        ৳ {(Number(acc.currentBalance) || 0).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 4. Search View */}
+          {activeSubItem === 'SEARCH' && (
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-4">
+              <h2 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                <Search className="w-5 h-5 text-blue-600" />
+                <span>সার্বজনীন কেন্দ্রীয় লেনদেন অনুসন্ধান</span>
+              </h2>
+
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="ভাউচার নং, দাতা, গ্রহীতা, খাতের নাম বা বর্ণনা..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full text-sm pl-9 pr-3 py-2 border border-slate-300 rounded-xl focus:outline-hidden focus:border-blue-500"
+                />
+              </div>
+
+              <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
+                    <tr>
+                      <th className="p-2.5">তারিখ</th>
+                      <th className="p-2.5">ভাউচার</th>
+                      <th className="p-2.5">খাত</th>
+                      <th className="p-2.5">হিসাব</th>
+                      <th className="p-2.5">পার্টি</th>
+                      <th className="p-2.5 text-right">জমা</th>
+                      <th className="p-2.5 text-right">খরচ</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {ledgerResult.displayEntries.slice(0, 15).map((item) => (
+                      <tr key={item.id}>
+                        <td className="p-2.5 font-mono">{formatDate(item.date)}</td>
+                        <td className="p-2.5 font-mono font-bold text-slate-800">{item.voucherNumber}</td>
+                        <td className="p-2.5">{item.headNameBn}</td>
+                        <td className="p-2.5">{item.accountName}</td>
+                        <td className="p-2.5">{item.partyName}</td>
+                        <td className="p-2.5 text-right font-mono text-blue-700">
+                          {item.debit > 0 ? `৳ ${item.debit.toLocaleString('en-IN')}` : '-'}
+                        </td>
+                        <td className="p-2.5 text-right font-mono text-rose-700">
+                          {item.credit > 0 ? `৳ ${item.credit.toLocaleString('en-IN')}` : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* 5. Summary View */}
+          {activeSubItem === 'SUMMARY' && (
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-4">
+              <h2 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                <Filter className="w-5 h-5 text-indigo-600" />
+                <span>দৈনিক/মাসিক লেনদেন সারসংক্ষেপ</span>
+              </h2>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="p-3.5 bg-blue-50 border border-blue-200 rounded-xl">
+                  <span className="text-xs font-bold text-blue-700 block">মোট প্রাপ্তি (Inflow)</span>
+                  <span className="text-lg font-black font-mono text-blue-900 block mt-1">
+                    ৳ {ledgerResult.totalDebit.toLocaleString('en-IN')}
+                  </span>
+                </div>
+                <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl">
+                  <span className="text-xs font-bold text-rose-700 block">মোট খরচ (Outflow)</span>
+                  <span className="text-lg font-black font-mono text-rose-900 block mt-1">
+                    ৳ {ledgerResult.totalCredit.toLocaleString('en-IN')}
+                  </span>
+                </div>
+                <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl">
+                  <span className="text-xs font-bold text-emerald-700 block">নিট তারতম্য</span>
+                  <span className="text-lg font-black font-mono text-emerald-900 block mt-1">
+                    ৳ {ledgerResult.netChange.toLocaleString('en-IN')}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 6. Reconciliation Checklist */}
+          {activeSubItem === 'RECONCILIATION' && (
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-4">
+              <h2 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                <ShieldCheck className="w-5 h-5 text-emerald-600" />
+                <span>ভাউচার অডিট ও হিসাবের সমন্বয় যাচাই</span>
+              </h2>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl">
+                  <span className="text-xs font-bold text-emerald-800 block">অনুমোদিত আয় এন্ট্রি</span>
+                  <span className="text-lg font-black font-mono text-emerald-900 block mt-1">
+                    {incomes.filter((i) => i.status === 'APPROVED').length} টি
+                  </span>
+                </div>
+                <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl">
+                  <span className="text-xs font-bold text-rose-800 block">অনুমোদিত ব্যয় এন্ট্রি</span>
+                  <span className="text-lg font-black font-mono text-rose-900 block mt-1">
+                    {expenses.filter((e) => e.status === 'APPROVED').length} টি
+                  </span>
+                </div>
+                <div className="p-3.5 bg-indigo-50 border border-indigo-200 rounded-xl">
+                  <span className="text-xs font-bold text-indigo-800 block">মোট সমন্বিত তহবিল</span>
+                  <span className="text-lg font-black font-mono text-indigo-900 block mt-1">
+                    ৳ {totalCombinedFund.toLocaleString('en-IN')}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 7. Reports & Export */}
+          {activeSubItem === 'REPORTS' && (
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-4">
+              <h2 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                <Printer className="w-5 h-5 text-blue-600" />
+                <span>দৈনিক লেনদেন রিপোর্ট ও এক্সপোর্ট</span>
+              </h2>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-2">
+                <button
+                  onClick={() => setIsPrintModalOpen(true)}
+                  className="p-4 border border-slate-200 rounded-xl hover:bg-slate-50 text-left transition-colors flex flex-col justify-between space-y-2 cursor-pointer"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center">
+                    <Printer className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-sm text-slate-900 block">প্রিন্ট / PDF ভিউ</span>
+                    <span className="text-[11px] text-slate-500 block mt-0.5">
+                      মসজিদের প্যাড সহ প্রিন্টযোগ্য দৈনিক লেজার
+                    </span>
+                  </div>
+                </button>
+
+                <button
+                  onClick={handleExportExcel}
+                  className="p-4 border border-emerald-200 rounded-xl hover:bg-emerald-50/50 text-left transition-colors flex flex-col justify-between space-y-2 cursor-pointer"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                    <FileSpreadsheet className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-sm text-slate-900 block">এক্সেল এক্সপোর্ট (.xlsx)</span>
+                    <span className="text-[11px] text-slate-500 block mt-0.5">
+                      পূর্ণাঙ্গ ফর্মুলা সহ .xlsx ফাইল ডাউনলোড
+                    </span>
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Opening Balance Modal */}
+      {isOpeningBalanceModalOpen && onUpdateOpeningBalance && (
         <OpeningBalanceModal
           isOpen={isOpeningBalanceModalOpen}
           onClose={() => setIsOpeningBalanceModalOpen(false)}
           accounts={accounts}
-          preselectedAccountId={selectedAccountId !== 'ALL' ? selectedAccountId : accounts[0]?.id}
-          onUpdateOpeningBalance={async (payload) => {
-            if (onUpdateOpeningBalance) {
-              await onUpdateOpeningBalance(payload);
-            }
+          onSubmit={async (data) => {
+            await onUpdateOpeningBalance(data);
+            setIsOpeningBalanceModalOpen(false);
           }}
+        />
+      )}
+
+      {/* Standardized Print Document Dialog */}
+      {isPrintModalOpen && (
+        <ReportPrintDocument
+          isOpen={isPrintModalOpen}
+          onClose={() => setIsPrintModalOpen(false)}
+          currentMosque={currentMosque}
+          reportTitle="দৈনিক কেন্দ্রীয় লেনদেন ও খতিয়ান বিবরণী"
+          periodLabel={`${formatDate(startDate)} হতে ${formatDate(endDate)}`}
+          columns={[
+            { header: 'তারিখ', accessor: (item) => formatDate(item.date) },
+            { header: 'ভাউচার নং', accessor: (item) => item.voucherNumber },
+            { header: 'খাত ও বিবরণ', accessor: (item) => item.headNameBn },
+            { header: 'হিসাব / ফান্ড', accessor: (item) => item.accountName },
+            { header: 'পার্টি / দাতা / প্রাপক', accessor: (item) => item.partyName },
+            { header: 'প্রাপ্তি / জমা (৳)', accessor: (item) => (item.debit > 0 ? `৳ ${item.debit.toLocaleString('en-IN')}` : '-') },
+            { header: 'ব্যয় / খরচ (৳)', accessor: (item) => (item.credit > 0 ? `৳ ${item.credit.toLocaleString('en-IN')}` : '-') },
+            { header: 'চলমান স্থিতি (৳)', accessor: (item) => `৳ ${item.runningBalance.toLocaleString('en-IN')}` },
+          ]}
+          data={ledgerResult.displayEntries}
+          summaryRows={[
+            { label: 'প্রারম্ভিক জের (Opening Balance)', value: `৳ ${ledgerResult.openingBalance.toLocaleString('en-IN')}` },
+            { label: 'মোট প্রাপ্তি (Total Inflow)', value: `৳ ${ledgerResult.totalDebit.toLocaleString('en-IN')}` },
+            { label: 'মোট খরচ (Total Outflow)', value: `৳ ${ledgerResult.totalCredit.toLocaleString('en-IN')}` },
+            { label: 'সমাপনী জের (Closing Balance)', value: `৳ ${ledgerResult.closingBalance.toLocaleString('en-IN')}` },
+          ]}
         />
       )}
     </div>

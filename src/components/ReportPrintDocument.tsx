@@ -20,6 +20,7 @@ import {
 } from '../types';
 import { formatDate } from '../lib/i18n';
 import { Building } from 'lucide-react';
+import { MosqueOfficialLetterhead } from './common/MosqueOfficialLetterhead';
 
 export interface ReportPrintDocumentProps {
   reportType: string;
@@ -32,6 +33,7 @@ export interface ReportPrintDocumentProps {
   selectedAccountId: string;
   currentMosque: Mosque | null;
   currentUser?: User | null;
+  includeLetterhead?: boolean;
   incomes: IncomeEntry[];
   expenses: ExpenseEntry[];
   accounts: FinancialAccount[];
@@ -161,6 +163,7 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
   selectedAccountId,
   currentMosque,
   currentUser,
+  includeLetterhead = true,
   incomes,
   expenses,
   accounts,
@@ -272,82 +275,65 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
       `}</style>
 
       {/* ============================================================
-          1. STRUCTURED OFFICIAL REPORT HEADER
+          1. STRUCTURED OFFICIAL REPORT HEADER / LETTERHEAD
           ============================================================ */}
-      <div className="border-2 border-slate-900 bg-white mb-4 rounded-none overflow-hidden break-inside-avoid">
-        <div className="grid grid-cols-12 items-center p-3.5 gap-3 border-b border-slate-300">
-          {/* LEFT: Mosque Official Logo (2 cols) */}
-          <div className="col-span-2 flex items-center justify-start">
-            {currentMosque?.logoUrl ? (
-              <img
-                src={currentMosque.logoUrl}
-                alt="Mosque Logo"
-                className="max-h-16 max-w-full object-contain"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <div className="w-14 h-14 border border-dashed border-slate-400 bg-slate-50 flex flex-col items-center justify-center text-slate-400">
-                <Building className="w-6 h-6 mb-0.5 text-slate-500" />
-                <span className="text-[9px] font-baloo text-slate-500">লোগো</span>
-              </div>
-            )}
-          </div>
-
-          {/* CENTER: Mosque Name, Title & Period (7 cols) */}
-          <div className="col-span-7 text-center">
-            <h1 className="font-siliguri text-xl sm:text-2xl font-bold text-slate-950 tracking-tight leading-tight">
-              {currentMosque?.nameBn || 'মসজিদুল মামুর কমপ্লেক্স ও ওয়াকফ এস্টেট'}
-            </h1>
-            {currentMosque?.address && (
-              <p className="font-baloo text-xs text-slate-700 mt-0.5">
-                {currentMosque.address} {currentMosque.phone ? `• ফোন: ${currentMosque.phone}` : ''}
-              </p>
-            )}
-            <div className="inline-block mt-1.5 px-3 py-0.5 bg-slate-900 text-white font-siliguri font-bold text-xs sm:text-sm tracking-wide">
-              {reportMeta.titleBn}
+      {includeLetterhead ? (
+        <div className="mb-4 break-inside-avoid">
+          <MosqueOfficialLetterhead
+            mosque={currentMosque}
+            documentTitle={reportMeta.titleBn}
+            subTitle={reportMeta.subtitleBn}
+            refNumber={reportRefNumber}
+            dateStr={printTimestamp}
+            periodLabel={`${formatDate(fromDate)} হতে ${formatDate(toDate)}`}
+          />
+          {/* Header Metadata Sub-Bar */}
+          <div className="bg-slate-100 px-3.5 py-1.5 flex justify-between items-center text-xs font-baloo border border-slate-300 rounded-lg -mt-2 mb-2">
+            <div>
+              <span className="text-slate-600 font-medium">ফিল্টার অবস্থা: </span>
+              <span className="font-bold text-slate-900">
+                {selectedHeadId === 'ALL' ? 'সকল খাত' : accountHeads.find((h) => h.id === selectedHeadId)?.nameBn || 'নির্দিষ্ট খাত'} |{' '}
+                {selectedAccountId === 'ALL' ? 'সকল ফান্ড ও অ্যাকাউন্ট' : accounts.find((a) => a.id === selectedAccountId)?.nameBn || 'নির্দিষ্ট ফান্ড'}
+              </span>
             </div>
-            <p className="font-baloo text-xs font-semibold text-slate-800 mt-1">
-              হিসাবের সময়সীমা: <span className="font-bold text-slate-950">{formatDate(fromDate)}</span> হতে{' '}
-              <span className="font-bold text-slate-950">{formatDate(toDate)}</span> পর্যন্ত
-            </p>
-          </div>
-
-          {/* RIGHT: Structured Meta Box (3 cols) */}
-          <div className="col-span-3 border border-slate-800 bg-slate-50 p-2 text-[11px] font-baloo space-y-1">
-            <div className="flex justify-between border-b border-slate-200 pb-0.5">
-              <span className="text-slate-600">রিপোর্ট নং:</span>
-              <span className="font-bold text-slate-950">{reportRefNumber}</span>
-            </div>
-            <div className="flex justify-between border-b border-slate-200 pb-0.5">
-              <span className="text-slate-600">মসজিদ কোড:</span>
-              <span className="font-bold text-slate-900">{currentMosque?.code || 'MOSQUE'}</span>
-            </div>
-            <div className="flex justify-between border-b border-slate-200 pb-0.5">
-              <span className="text-slate-600">মুদ্রা:</span>
-              <span className="font-bold text-slate-900">BDT (টাকা ৳)</span>
-            </div>
-            <div className="flex justify-between text-[10px] text-slate-600 pt-0.5">
-              <span>তৈরির সময়:</span>
-              <span className="font-medium text-slate-800">{printTimestamp}</span>
+            <div>
+              <span className="text-slate-600 font-medium">প্রস্তুতকারী: </span>
+              <span className="font-bold text-slate-900">{currentUser?.fullName || 'সুপার এডমিন (হিসাব শাখা)'}</span>
             </div>
           </div>
         </div>
-
-        {/* Header Metadata Sub-Bar */}
-        <div className="bg-slate-100 px-3.5 py-1.5 flex justify-between items-center text-xs font-baloo border-t border-slate-300">
-          <div>
-            <span className="text-slate-600 font-medium">ফিল্টার অবস্থা: </span>
-            <span className="font-bold text-slate-900">
-              {selectedHeadId === 'ALL' ? 'সকল খাত' : accountHeads.find((h) => h.id === selectedHeadId)?.nameBn || 'নির্দিষ্ট খাত'} |{' '}
-              {selectedAccountId === 'ALL' ? 'সকল ফান্ড ও অ্যাকাউন্ট' : accounts.find((a) => a.id === selectedAccountId)?.nameBn || 'নির্দিষ্ট ফান্ড'}
-            </span>
+      ) : (
+        /* LETTERHEAD-FREE MINIMAL TITLE BANNER */
+        <div className="border border-slate-300 bg-slate-50 mb-4 p-3.5 rounded-lg break-inside-avoid">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
+            <div>
+              <h1 className="font-siliguri text-xl sm:text-2xl font-black text-slate-950">
+                {reportMeta.titleBn}
+              </h1>
+              {reportMeta.subtitleBn && (
+                <p className="text-xs text-slate-600 font-medium mt-0.5">{reportMeta.subtitleBn}</p>
+              )}
+            </div>
+            <div className="text-right text-xs font-baloo">
+              <span className="text-slate-600">স্মারক নং: </span>
+              <span className="font-bold text-slate-900">{reportRefNumber}</span>
+              <div className="text-[11px] text-slate-500">তারিখ: {printTimestamp}</div>
+            </div>
           </div>
-          <div>
-            <span className="text-slate-600 font-medium">প্রস্তুতকারী: </span>
-            <span className="font-bold text-slate-900">{currentUser?.fullName || 'সুপার এডমিন (হিসাব শাখা)'}</span>
+          <div className="pt-2 flex flex-wrap items-center justify-between text-xs font-baloo">
+            <div>
+              <span className="text-slate-600 font-medium">সময়সীমা: </span>
+              <span className="font-bold text-slate-950">{formatDate(fromDate)} হতে {formatDate(toDate)}</span>
+            </div>
+            <div>
+              <span className="text-slate-600 font-medium">ফিল্টার: </span>
+              <span className="font-bold text-slate-900">
+                {selectedHeadId === 'ALL' ? 'সকল খাত' : accountHeads.find((h) => h.id === selectedHeadId)?.nameBn || 'নির্দিষ্ট খাত'}
+              </span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* ============================================================
           2. EXECUTIVE SUMMARY BOXES
@@ -1057,6 +1043,69 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
       )}
 
 
+
+      {/* --- OPENING BALANCE & BASELINE REPORT --- */}
+      {reportType === 'OPENING_BALANCE_REPORT' && (
+        <div className="border border-slate-900 mb-4 overflow-hidden">
+          <div className="bg-slate-900 text-white px-3 py-1.5 font-siliguri font-bold text-xs flex justify-between">
+            <span>প্রারম্ভিক স্থিতি ও বেসলাইন রেজিস্ট্রি (Opening Balance Ledger)</span>
+            <span>মোট অ্যাকাউন্ট: {accounts.length} টি</span>
+          </div>
+          <table className="w-full text-xs font-baloo border-collapse" style={{ tableLayout: 'fixed', width: '100%' }}>
+            <thead className="bg-slate-100 border-b border-slate-900 text-slate-900 font-bold">
+              <tr>
+                <th className="py-2 px-2 text-center border-r border-slate-300" style={{ width: '6%' }}>ক্রমিক</th>
+                <th className="py-2 px-2 text-left border-r border-slate-300" style={{ width: '22%' }}>হিসাবের নাম</th>
+                <th className="py-2 px-2 text-center border-r border-slate-300" style={{ width: '11%' }}>হিসাবের ধরন</th>
+                <th className="py-2 px-2 text-center border-r border-slate-300" style={{ width: '13%' }}>কার্যকর শুরুর তারিখ</th>
+                <th className="py-2 px-2 text-right border-r border-slate-300" style={{ width: '16%' }}>প্রারম্ভিক স্থিতি (৳)</th>
+                <th className="py-2 px-2 text-right border-r border-slate-300" style={{ width: '16%' }}>বর্তমান স্থিতি (৳)</th>
+                <th className="py-2 px-2 text-center" style={{ width: '16%' }}>উৎস ও ধরন</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-300">
+              {accounts.map((acc, idx) => (
+                <tr key={acc.id}>
+                  <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-600">{idx + 1}</td>
+                  <td className="py-2 px-2 text-left border-r border-slate-200 font-bold text-slate-900">{acc.nameBn}</td>
+                  <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-700">
+                    {acc.accountType === 'CASH' ? 'ক্যাশ' : acc.accountType === 'BANK' ? 'ব্যাংক' : 'MFS/অন্যান্য'}
+                  </td>
+                  <td className="py-2 px-2 text-center border-r border-slate-200">{formatDate(acc.openingBalanceDate || '2026-07-31')}</td>
+                  <td className="py-2 px-2 text-right border-r border-slate-200 font-siliguri font-bold text-slate-950">
+                    ৳ {(acc.openingBalance || 0).toLocaleString('en-IN')}
+                  </td>
+                  <td className="py-2 px-2 text-right border-r border-slate-200 font-siliguri font-bold text-emerald-800">
+                    ৳ {(acc.currentBalance || 0).toLocaleString('en-IN')}
+                  </td>
+                  <td className="py-2 px-2 text-center text-slate-700 text-[11px]">
+                    {acc.openingBalanceType === 'CREDIT' ? 'ক্রেডিট (দেনা)' : 'ডেবিট (জমা)'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="bg-slate-100 border-t-2 border-slate-900 font-bold text-slate-900">
+              <tr>
+                <td colSpan={4} className="py-2 px-3 text-right border-r border-slate-300">
+                  সর্বমোট প্রারম্ভিক ও বর্তমান স্থিতি:
+                </td>
+                <td className="py-2 px-2 text-right border-r border-slate-300 font-siliguri font-black text-slate-950">
+                  ৳ {accounts.reduce((s, a) => s + (a.openingBalance || 0), 0).toLocaleString('en-IN')}
+                </td>
+                <td className="py-2 px-2 text-right border-r border-slate-300 font-siliguri font-black text-emerald-900">
+                  ৳ {accounts.reduce((s, a) => s + (a.currentBalance || 0), 0).toLocaleString('en-IN')}
+                </td>
+                <td className="py-2 px-2 text-center text-[10px] text-slate-500 font-baloo">
+                  Accounting Baseline
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+          <div className="bg-slate-50 px-3 py-1.5 border-t border-slate-200 text-[10px] text-slate-600 font-baloo">
+            * অ্যাকাউন্টিং নোট: প্রারম্ভিক স্থিতি (Opening Balance) হলো খতিয়ান শুরুর প্রারম্ভিক ভিত্তি; এটি কোনো সাধারণ আয় বা ব্যয় নয়।
+          </div>
+        </div>
+      )}
 
       {/* --- F. ASSET REGISTER REPORT --- */}
       {reportType === 'ASSET_REGISTER_REPORT' && (

@@ -67,6 +67,12 @@ import { StaffAnnualStatementModal } from './StaffAnnualStatementModal';
 import { BankTransferLetterModal } from './BankTransferLetterModal';
 import { StaffFestivalAllowanceModal } from './StaffFestivalAllowanceModal';
 import { StaffReportsModal, StaffReportType } from './StaffReportsModal';
+import { StaffDashboardSummary } from './StaffDashboardSummary';
+import { StaffAdvanceModal } from './StaffAdvanceModal';
+import { StaffLeaveModal } from './StaffLeaveModal';
+import { StaffAttendanceModal } from './StaffAttendanceModal';
+import { StaffSettlementModal } from './StaffSettlementModal';
+import { StaffIdCardPrintModal } from './StaffIdCardPrintModal';
 import { AssetFormModal, ASSET_CATEGORIES, ASSET_CONDITIONS } from './AssetFormModal';
 import { AssetDetailsModal } from './AssetDetailsModal';
 import { AssetServiceModal } from './AssetServiceModal';
@@ -115,6 +121,11 @@ interface ManagementViewProps {
   onDisburseFestivalAllowance?: (data: any) => Promise<void>;
   onUpdateStaffPayment?: (id: string, data: any) => Promise<void>;
   onCancelStaffPayment?: (id: string, reason?: string) => Promise<void>;
+  onAddStaffAdvance?: (staffId: string, data: any) => Promise<void>;
+  onAddStaffLeave?: (staffId: string, data: any) => Promise<void>;
+  onUpdateStaffLeaveStatus?: (staffId: string, leaveId: string, status: any) => Promise<void>;
+  onLogStaffAttendance?: (data: any) => Promise<void>;
+  onSettleStaff?: (staffId: string, data: any) => Promise<void>;
   onAddAsset?: (data: any) => Promise<void>;
   onUpdateAsset?: (id: string, data: any) => Promise<void>;
   onDeleteAsset?: (id: string, force?: boolean) => Promise<void>;
@@ -163,6 +174,11 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
   onDisburseFestivalAllowance,
   onUpdateStaffPayment,
   onCancelStaffPayment,
+  onAddStaffAdvance,
+  onAddStaffLeave,
+  onUpdateStaffLeaveStatus,
+  onLogStaffAttendance,
+  onSettleStaff,
   onAddAsset,
   onUpdateAsset,
   onDeleteAsset,
@@ -216,6 +232,26 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
   const [isFestivalAllowanceOpen, setIsFestivalAllowanceOpen] = useState(false);
   const [isStaffReportsOpen, setIsStaffReportsOpen] = useState(false);
   const [staffReportsInitialTab, setStaffReportsInitialTab] = useState<StaffReportType>('REGISTER');
+
+  // Staff Advance Modal State
+  const [isAdvanceModalOpen, setIsAdvanceModalOpen] = useState(false);
+  const [advanceStaffId, setAdvanceStaffId] = useState<string | undefined>(undefined);
+
+  // Staff Leave Modal State
+  const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
+  const [leaveStaffId, setLeaveStaffId] = useState<string | undefined>(undefined);
+
+  // Staff Attendance Modal State
+  const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
+  const [attendanceStaffId, setAttendanceStaffId] = useState<string | undefined>(undefined);
+
+  // Staff Settlement Modal State
+  const [isSettlementModalOpen, setIsSettlementModalOpen] = useState(false);
+  const [settlementStaff, setSettlementStaff] = useState<Staff | null>(null);
+
+  // Staff ID Card Print Modal State
+  const [isIdCardModalOpen, setIsIdCardModalOpen] = useState(false);
+  const [idCardStaff, setIdCardStaff] = useState<Staff | null>(null);
 
   // ==========================================
   // Asset Module State
@@ -837,6 +873,48 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
         <div className="flex flex-wrap items-center gap-2">
           {activeTab === 'staff' && (
             <>
+              {/* Daily Attendance & Prayer Log */}
+              <button
+                id="btn-open-staff-attendance"
+                onClick={() => {
+                  setAttendanceStaffId(undefined);
+                  setIsAttendanceModalOpen(true);
+                }}
+                className="bg-purple-50 hover:bg-purple-100 border border-purple-300 text-purple-950 px-3 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-2xs transition-all cursor-pointer"
+                title="দৈনিক হাজিরা ও জামাত ওয়াক্ত উপস্থিতি এন্ট্রি করুন"
+              >
+                <Clock className="w-4 h-4 text-purple-700" />
+                <span>দৈনিক হাজিরা ও জামাত</span>
+              </button>
+
+              {/* Staff Leave Management */}
+              <button
+                id="btn-open-staff-leave"
+                onClick={() => {
+                  setLeaveStaffId(undefined);
+                  setIsLeaveModalOpen(true);
+                }}
+                className="bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-950 px-3 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-2xs transition-all cursor-pointer"
+                title="ছুটি আবেদন ও অনুমোদন পরিচালনা করুন"
+              >
+                <Calendar className="w-4 h-4 text-blue-700" />
+                <span>ছুটি আবেদন</span>
+              </button>
+
+              {/* Staff Advance & Loan Management */}
+              <button
+                id="btn-open-staff-advance"
+                onClick={() => {
+                  setAdvanceStaffId(undefined);
+                  setIsAdvanceModalOpen(true);
+                }}
+                className="bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-950 px-3 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-2xs transition-all cursor-pointer"
+                title="অগ্রিম বেতন ও ঋণ প্রদান"
+              >
+                <Banknote className="w-4 h-4 text-amber-700" />
+                <span>অগ্রিম ও ঋণ</span>
+              </button>
+
               {/* Staff Master Register Print */}
               <button
                 id="btn-open-master-register"
@@ -1001,93 +1079,25 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
       {/* ========================================== */}
       {activeTab === 'staff' && (
         <div className="space-y-6">
-          {/* Top KPI Cards for Staff */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* 1. Total Staff & Active */}
-            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500">মোট জনবল ও কর্মরত</span>
-                <span className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-100">
-                  <Users className="w-4 h-4" />
-                </span>
-              </div>
-              <div className="flex items-baseline space-x-2">
-                <span className="text-2xl font-black text-slate-900 font-siliguri">{totalStaffCount}</span>
-                <span className="text-xs text-slate-500">জন</span>
-              </div>
-              <div className="flex items-center space-x-2 text-[11px] pt-1 border-t border-slate-100 font-medium">
-                <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md font-bold">
-                  সক্রিয়: {activeStaffCount}
-                </span>
-                <span className="text-slate-500">নিষ্ক্রিয়: {inactiveStaffCount}</span>
-              </div>
-            </div>
-
-            {/* 2. Designation Breakdown */}
-            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500">পদবী বণ্টন</span>
-                <span className="p-2 rounded-xl bg-purple-50 text-purple-600 border border-purple-100">
-                  <Briefcase className="w-4 h-4" />
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="px-2 py-0.5 bg-blue-50 text-blue-800 rounded-md text-xs font-bold">
-                  ইমাম/খতিব: {imamCount}
-                </span>
-                <span className="px-2 py-0.5 bg-emerald-50 text-emerald-800 rounded-md text-xs font-bold">
-                  মুয়াজ্জিন: {muezzinCount}
-                </span>
-                <span className="px-2 py-0.5 bg-amber-50 text-amber-800 rounded-md text-xs font-bold">
-                  খাদেম: {cleanerCount}
-                </span>
-                {teacherCount > 0 && (
-                  <span className="px-2 py-0.5 bg-purple-50 text-purple-800 rounded-md text-xs font-bold">
-                    শিক্ষক: {teacherCount}
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-slate-400 pt-1 border-t border-slate-100">
-                মসজিদ ও মক্তব পরিচালনায় সার্বক্ষণিক টিম
-              </p>
-            </div>
-
-            {/* 3. Monthly Payroll Liability */}
-            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500">মাসিক মোট বেতন বাজেট</span>
-                <span className="p-2 rounded-xl bg-amber-50 text-amber-600 border border-amber-100">
-                  <DollarSign className="w-4 h-4" />
-                </span>
-              </div>
-              <div className="flex items-baseline space-x-2">
-                <span className="text-2xl font-black text-slate-900 font-siliguri">
-                  ৳{totalMonthlyPayrollLiability.toLocaleString('en-IN')}
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500 pt-1 border-t border-slate-100">
-                চলতি মাসের প্রদেয় নিয়মিত সম্মানী
-              </p>
-            </div>
-
-            {/* 4. Current Month Paid */}
-            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500">চলতি মাসে পরিশোধিত</span>
-                <span className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100">
-                  <CheckCircle2 className="w-4 h-4" />
-                </span>
-              </div>
-              <div className="flex items-baseline space-x-2">
-                <span className="text-2xl font-black text-emerald-700 font-siliguri">
-                  ৳{thisMonthPaid.toLocaleString('en-IN')}
-                </span>
-              </div>
-              <p className="text-[11px] text-emerald-700 font-medium pt-1 border-t border-slate-100">
-                অ্যাকাউন্টিং লেজারে স্বয়ংক্রিয়ভাবে সিঙ্কড
-              </p>
-            </div>
-          </div>
+          {/* Phase-6 Staff Dashboard Summary Cards */}
+          <StaffDashboardSummary
+            staffList={staff}
+            staffPayments={staffPayments}
+            language={language}
+            onOpenPaySalary={() => setIsPaySalaryOpen(true)}
+            onOpenAdvance={() => {
+              setAdvanceStaffId(undefined);
+              setIsAdvanceModalOpen(true);
+            }}
+            onOpenLeave={() => {
+              setLeaveStaffId(undefined);
+              setIsLeaveModalOpen(true);
+            }}
+            onOpenAttendance={() => {
+              setAttendanceStaffId(undefined);
+              setIsAttendanceModalOpen(true);
+            }}
+          />
 
           {/* Search, Category Filter & Status Bar */}
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
@@ -1185,10 +1195,16 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
                           ৳{stf.monthlySalary.toLocaleString('en-IN')}
                         </span>
                       </div>
+                      {stf.advanceBalance && stf.advanceBalance > 0 ? (
+                        <div className="flex items-center justify-between text-amber-700 font-semibold">
+                          <span>বকেয়া অগ্রিম ঋণ:</span>
+                          <span className="font-bold font-siliguri">৳{stf.advanceBalance.toLocaleString('en-IN')}</span>
+                        </div>
+                      ) : null}
                       {stf.bankAccountNumber && (
                         <div className="flex items-center justify-between">
                           <span className="text-slate-500 font-medium">ব্যাংক একাউন্ট:</span>
-                          <span className="font-mono text-[11px] font-bold text-slate-700">
+                          <span className="font-mono text-[11px] font-bold text-slate-700 truncate max-w-[150px]">
                             {stf.bankName} - {stf.bankAccountNumber}
                           </span>
                         </div>
@@ -1201,16 +1217,41 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
                   </div>
 
                   {/* Card Bottom: Action Buttons */}
-                  <div className="px-5 py-3.5 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between gap-2">
-                    <button
-                      onClick={() => setSelectedStaffForHistory(stf)}
-                      className="px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold rounded-lg text-xs flex items-center space-x-1 transition-colors cursor-pointer"
-                    >
-                      <Eye className="w-3.5 h-3.5 text-blue-600" />
-                      <span>প্রোফাইল</span>
-                    </button>
+                  <div className="px-4 py-3 bg-slate-50/90 border-t border-slate-100 flex items-center justify-between gap-1.5">
+                    <div className="flex items-center space-x-1">
+                      <button
+                        onClick={() => setSelectedStaffForHistory(stf)}
+                        className="px-2.5 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold rounded-lg text-xs flex items-center space-x-1 transition-colors cursor-pointer"
+                        title="সম্পূর্ণ প্রোফাইল ও বিস্তারিত রেকর্ড"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-blue-600" />
+                        <span>প্রোফাইল</span>
+                      </button>
 
-                    <div className="flex items-center space-x-1.5">
+                      <button
+                        onClick={() => {
+                          setIdCardStaff(stf);
+                          setIsIdCardModalOpen(true);
+                        }}
+                        className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                        title="অফিশিয়াল আইডি কার্ড প্রিন্ট করুন"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center space-x-1">
+                      <button
+                        onClick={() => {
+                          setAdvanceStaffId(stf.id);
+                          setIsAdvanceModalOpen(true);
+                        }}
+                        className="p-1.5 text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                        title="অগ্রিম / ঋণ প্রদান"
+                      >
+                        <Banknote className="w-3.5 h-3.5" />
+                      </button>
+
                       <button
                         onClick={() => {
                           setEditingStaff(stf);
@@ -2960,6 +3001,7 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
           staff={selectedStaffForHistory}
           payments={staffPayments.filter((p) => p.staffId === selectedStaffForHistory.id)}
           accounts={accounts}
+          currentMosque={currentMosque as any}
           language={language}
           onOpenPayModal={(sid) => {
             setSelectedStaffForHistory(null);
@@ -2982,6 +3024,122 @@ export const ManagementView: React.FC<ManagementViewProps> = ({
             setAnnualStatementStaffId(s.id);
             setIsAnnualStatementOpen(true);
           }}
+          onOpenAdvanceModal={(sid) => {
+            setAdvanceStaffId(sid);
+            setIsAdvanceModalOpen(true);
+          }}
+          onOpenLeaveModal={(sid) => {
+            setLeaveStaffId(sid);
+            setIsLeaveModalOpen(true);
+          }}
+          onOpenAttendanceModal={(sid) => {
+            setAttendanceStaffId(sid);
+            setIsAttendanceModalOpen(true);
+          }}
+          onOpenSettlementModal={(s) => {
+            setSettlementStaff(s);
+            setIsSettlementModalOpen(true);
+          }}
+          onPrintIdCard={(s) => {
+            setIdCardStaff(s);
+            setIsIdCardModalOpen(true);
+          }}
+          onUpdateLeaveStatus={async (leaveId, status) => {
+            if (onUpdateStaffLeaveStatus && selectedStaffForHistory) {
+              await onUpdateStaffLeaveStatus(selectedStaffForHistory.id, leaveId, status);
+            }
+          }}
+        />
+      )}
+
+      {/* Staff Advance / Loan Modal */}
+      {isAdvanceModalOpen && (
+        <StaffAdvanceModal
+          isOpen={isAdvanceModalOpen}
+          onClose={() => {
+            setIsAdvanceModalOpen(false);
+            setAdvanceStaffId(undefined);
+          }}
+          staffList={staff}
+          accounts={accounts}
+          initialStaffId={advanceStaffId}
+          onSubmit={async (staffId, data) => {
+            if (onAddStaffAdvance) {
+              await onAddStaffAdvance(staffId, data);
+            }
+          }}
+          language={language}
+        />
+      )}
+
+      {/* Staff Leave Application Modal */}
+      {isLeaveModalOpen && (
+        <StaffLeaveModal
+          isOpen={isLeaveModalOpen}
+          onClose={() => {
+            setIsLeaveModalOpen(false);
+            setLeaveStaffId(undefined);
+          }}
+          staffList={staff}
+          initialStaffId={leaveStaffId}
+          onSubmit={async (staffId, data) => {
+            if (onAddStaffLeave) {
+              await onAddStaffLeave(staffId, data);
+            }
+          }}
+          language={language}
+        />
+      )}
+
+      {/* Staff Attendance & Prayer Log Modal */}
+      {isAttendanceModalOpen && (
+        <StaffAttendanceModal
+          isOpen={isAttendanceModalOpen}
+          onClose={() => {
+            setIsAttendanceModalOpen(false);
+            setAttendanceStaffId(undefined);
+          }}
+          staffList={staff}
+          initialStaffId={attendanceStaffId}
+          onSubmit={async (data) => {
+            if (onLogStaffAttendance) {
+              await onLogStaffAttendance(data);
+            }
+          }}
+          language={language}
+        />
+      )}
+
+      {/* Staff Final Settlement Modal */}
+      {isSettlementModalOpen && settlementStaff && (
+        <StaffSettlementModal
+          isOpen={isSettlementModalOpen}
+          onClose={() => {
+            setIsSettlementModalOpen(false);
+            setSettlementStaff(null);
+          }}
+          staff={settlementStaff}
+          accounts={accounts}
+          onSubmit={async (staffId, data) => {
+            if (onSettleStaff) {
+              await onSettleStaff(staffId, data);
+            }
+          }}
+          language={language}
+        />
+      )}
+
+      {/* Staff ID Card Print Modal */}
+      {isIdCardModalOpen && idCardStaff && (
+        <StaffIdCardPrintModal
+          isOpen={isIdCardModalOpen}
+          onClose={() => {
+            setIsIdCardModalOpen(false);
+            setIdCardStaff(null);
+          }}
+          staff={idCardStaff}
+          mosque={currentMosque as any}
+          language={language}
         />
       )}
 

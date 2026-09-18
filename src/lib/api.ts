@@ -6,6 +6,7 @@ import {
   AccountHead,
   FinancialAccount,
   AccountOpeningBalancePayload,
+  AccountTransfer,
   IncomeEntry,
   ExpenseEntry,
   Donation,
@@ -18,7 +19,14 @@ import {
   MeetingResolution,
   Staff,
   StaffPayment,
+  StaffAdvanceRecord,
+  StaffLeaveRecord,
+  StaffAttendanceRecord,
+  StaffFinalSettlement,
   StaffBankTransferLetter,
+  PaymentBatch,
+  PaymentBatchItem,
+  StaffPaymentDocument,
   MosqueAsset,
   MosqueProperty,
   CemeteryRecord,
@@ -739,6 +747,15 @@ class ApiService {
     return this.transferFunds(data);
   }
 
+  async getTransfers(): Promise<AccountTransfer[]> {
+    const res = await this.request<AccountTransfer[]>('/accounting/accounts/transfers');
+    return res.data || [];
+  }
+
+  async getFundTransfers(): Promise<AccountTransfer[]> {
+    return this.getTransfers();
+  }
+
   // Committee
   async getCommitteeTerms(): Promise<CommitteeTerm[]> {
     const res = await this.request<{ terms: CommitteeTerm[]; members: CommitteeMember[]; meetings: CommitteeMeeting[] }>('/committee');
@@ -1154,6 +1171,65 @@ class ApiService {
     return true;
   }
 
+  // ==========================================
+  // PAYMENT BATCH & DOCUMENTS APIS
+  // ==========================================
+  async getPaymentBatches(): Promise<PaymentBatch[]> {
+    const res = await this.request<PaymentBatch[]>('/staff/payment-batches');
+    return res.data || [];
+  }
+
+  async getPaymentBatch(id: string): Promise<PaymentBatch> {
+    const res = await this.request<PaymentBatch>(`/staff/payment-batches/${id}`);
+    if (!res.success) throw new Error(res.error?.message || 'Failed to get payment batch');
+    return res.data!;
+  }
+
+  async createPaymentBatch(data: Partial<PaymentBatch>): Promise<PaymentBatch> {
+    const res = await this.request<PaymentBatch>('/staff/payment-batches', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to create payment batch');
+    return res.data!;
+  }
+
+  async updatePaymentBatch(id: string, data: Partial<PaymentBatch>): Promise<PaymentBatch> {
+    const res = await this.request<PaymentBatch>(`/staff/payment-batches/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to update payment batch');
+    return res.data!;
+  }
+
+  async disbursePaymentBatch(id: string, data: { accountId?: string; paymentDate?: string; notes?: string }): Promise<{ batch: PaymentBatch; payments: StaffPayment[] }> {
+    const res = await this.request<{ batch: PaymentBatch; payments: StaffPayment[] }>(`/staff/payment-batches/${id}/disburse`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to disburse payment batch');
+    return res.data as any;
+  }
+
+  async cancelPaymentBatch(id: string, reason?: string): Promise<boolean> {
+    const res = await this.request<any>(`/staff/payment-batches/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to cancel payment batch');
+    return true;
+  }
+
+  async addStaffPaymentDocument(paymentId: string, doc: Partial<StaffPaymentDocument>): Promise<{ payment: StaffPayment; document: StaffPaymentDocument }> {
+    const res = await this.request<{ data: StaffPayment; document: StaffPaymentDocument }>(`/staff/payments/${paymentId}/documents`, {
+      method: 'POST',
+      body: JSON.stringify(doc),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to attach document to payment');
+    return res.data as any;
+  }
+
   async disburseFestivalAllowance(data: any): Promise<{ payments: StaffPayment[]; bankLetter?: any }> {
     const res = await this.request<{ payments: StaffPayment[]; bankLetter?: any }>('/staff/disburse-festival-allowance', {
       method: 'POST',
@@ -1163,13 +1239,74 @@ class ApiService {
     return res.data!;
   }
 
-  async reviseStaffSalary(id: string, data: { newSalary: number; effectiveDate: string; reason?: string }): Promise<Staff> {
+  async reviseStaffSalary(id: string, data: { newSalary: number; allowance?: number; housingAllowance?: number; medicalAllowance?: number; transportAllowance?: number; otherAllowance?: number; effectiveDate: string; reason?: string }): Promise<Staff> {
     const res = await this.request<Staff>(`/staff/${id}/salary-revision`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
     if (!res.success) throw new Error(res.error?.message || 'Failed to revise staff salary');
     return res.data!;
+  }
+
+  async addStaffAdvance(id: string, data: { amount: number; reason?: string; paymentMethod?: string; accountId?: string; advanceDate?: string; notes?: string }): Promise<{ advanceRecord: StaffAdvanceRecord; staff: Staff }> {
+    const res = await this.request<{ data: StaffAdvanceRecord; staff: Staff }>(`/staff/${id}/advance`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to issue staff advance');
+    return { advanceRecord: res.data as any, staff: (res as any).staff };
+  }
+
+  async createStaffAdvance(id: string, data: any) {
+    return this.addStaffAdvance(id, data);
+  }
+
+  async applyStaffLeave(id: string, data: { leaveType: string; leaveTypeBn?: string; startDate: string; endDate: string; daysCount?: number; reason?: string; emergencyContact?: string; notes?: string; autoApprove?: boolean }): Promise<{ leaveRecord: StaffLeaveRecord; staff: Staff }> {
+    const res = await this.request<{ data: StaffLeaveRecord; staff: Staff }>(`/staff/${id}/leave`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to apply staff leave');
+    return { leaveRecord: res.data as any, staff: (res as any).staff };
+  }
+
+  async createStaffLeave(id: string, data: any) {
+    return this.applyStaffLeave(id, data);
+  }
+
+  async updateStaffLeave(staffId: string, leaveId: string, data: { status: string; rejectionReason?: string; notes?: string }): Promise<Staff> {
+    const res = await this.request<Staff>(`/staff/${staffId}/leave/${leaveId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to update leave record');
+    return (res as any).staff || res.data!;
+  }
+
+  async logStaffAttendanceBulk(data: { date: string; records: Array<{ staffId: string; status: string; inTime?: string; outTime?: string; remarks?: string; prayersAttended?: string[] }> }): Promise<boolean> {
+    const res = await this.request<any>('/staff/attendance/bulk', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to log attendance');
+    return true;
+  }
+
+  async logStaffAttendance(data: any) {
+    return this.logStaffAttendanceBulk(data);
+  }
+
+  async processStaffFinalSettlement(id: string, data: any): Promise<{ settlement: StaffFinalSettlement; staff: Staff }> {
+    const res = await this.request<{ data: StaffFinalSettlement; staff: Staff }>(`/staff/${id}/final-settlement`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to process final settlement');
+    return { settlement: res.data as any, staff: (res as any).staff };
+  }
+
+  async settleStaff(id: string, data: any) {
+    return this.processStaffFinalSettlement(id, data);
   }
 
   async getAssets(params?: {

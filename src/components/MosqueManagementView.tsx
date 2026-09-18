@@ -487,7 +487,7 @@ export const MosqueManagementView: React.FC<MosqueManagementViewProps> = ({
       <PageHeader
         title="মসজিদ ব্যবস্থাপনা"
         subtitle="মসজিদের কেন্দ্রীয় পরিচয়, অবস্থান ও ঠিকানা, লোগো ও ছবি, অফিসিয়াল Letterhead এবং প্রশাসনিক নথিপত্র"
-        icon={Landmark}
+        icon={<Landmark className="w-5 h-5 text-emerald-800" />}
         actions={
           <div className="flex items-center space-x-2.5">
             {onNavigateTab && (

@@ -61,6 +61,8 @@ import { getJumaDisplayDetails } from '../lib/jumaHelper';
 import { QrScanResult } from '../types/qrBarcodeTypes';
 
 interface DonationViewProps {
+  forcedSubTab?: 'donations' | 'boxes' | 'juma';
+  hideSubTabSwitcher?: boolean;
   donations: Donation[];
   donationBoxes: DonationBox[];
   boxCollections: DonationBoxCollection[];
@@ -131,6 +133,8 @@ export const getDurationSinceLastOpened = (lastCollectedDate?: string, createdAt
 };
 
 export const DonationView: React.FC<DonationViewProps> = ({
+  forcedSubTab,
+  hideSubTabSwitcher = false,
   donations,
   donationBoxes,
   boxCollections,
@@ -151,7 +155,14 @@ export const DonationView: React.FC<DonationViewProps> = ({
   onSendSms,
 }) => {
   const t = translations[language] || translations.bn;
-  const [activeSubTab, setActiveSubTab] = useState<'donations' | 'boxes' | 'juma'>('donations');
+  const [activeSubTab, setActiveSubTab] = useState<'donations' | 'boxes' | 'juma'>(forcedSubTab || 'donations');
+
+  useEffect(() => {
+    if (forcedSubTab) {
+      setActiveSubTab(forcedSubTab);
+    }
+  }, [forcedSubTab]);
+
   const [searchQuery, setSearchQuery] = useState('');
 
   // Box History Filters
@@ -639,52 +650,90 @@ export const DonationView: React.FC<DonationViewProps> = ({
       <div className={isAnyPrintModalOpen ? 'space-y-5 print:hidden' : 'space-y-5'}>
       {/* Top Header & Sub-tab Switcher */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs">
-        <div className="flex items-center space-x-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 overflow-x-auto">
-          <button
-            onClick={() => setActiveSubTab('donations')}
-            className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shrink-0 ${
-              activeSubTab === 'donations'
-                ? 'bg-blue-600 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <HeartHandshake className="w-4 h-4" />
-            <span>সাধারণ ও প্রকল্প অনুদান</span>
-            <span className="ml-1 bg-white/20 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
-              {donations.length}
-            </span>
-          </button>
+        {hideSubTabSwitcher ? (
+          <div className="flex items-center space-x-3">
+            <div
+              className={`w-10 h-10 rounded-2xl flex items-center justify-center text-white shadow-xs ${
+                activeSubTab === 'boxes'
+                  ? 'bg-gradient-to-tr from-teal-700 to-emerald-600'
+                  : activeSubTab === 'juma'
+                  ? 'bg-gradient-to-tr from-emerald-700 to-teal-600'
+                  : 'bg-gradient-to-tr from-blue-600 to-indigo-600'
+              }`}
+            >
+              {activeSubTab === 'boxes' ? (
+                <Box className="w-5 h-5" />
+              ) : activeSubTab === 'juma' ? (
+                <Calendar className="w-5 h-5" />
+              ) : (
+                <HeartHandshake className="w-5 h-5" />
+              )}
+            </div>
+            <div>
+              <h2 className="text-base sm:text-lg font-bold text-slate-900">
+                {activeSubTab === 'boxes'
+                  ? '📦 দানবাক্স কালেকশন ও ব্যবস্থাপনা'
+                  : activeSubTab === 'juma'
+                  ? '🕌 জুমার কালেকশন ও হিসাব'
+                  : '🤲 দান ও অনুদান'}
+              </h2>
+              <p className="text-xs text-slate-500">
+                {activeSubTab === 'boxes'
+                  ? 'মসজিদের স্থায়ী ও পয়েন্টভিত্তিক দানবাক্স এবং কালেকশন খতিয়ান'
+                  : activeSubTab === 'juma'
+                  ? 'প্রতি শুক্রবারের জুমার দিনের বক্স কালেকশন ও নগদ প্রাপ্তি'
+                  : 'সাধারণ, প্রকল্পভিত্তিক ও অন্যান্য বৈধ অনুদানের হিসাব রেজিস্টার'}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center space-x-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 overflow-x-auto">
+            <button
+              onClick={() => setActiveSubTab('donations')}
+              className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shrink-0 ${
+                activeSubTab === 'donations'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <HeartHandshake className="w-4 h-4" />
+              <span>সাধারণ ও প্রকল্প অনুদান</span>
+              <span className="ml-1 bg-white/20 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                {donations.length}
+              </span>
+            </button>
 
-          <button
-            onClick={() => setActiveSubTab('boxes')}
-            className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shrink-0 ${
-              activeSubTab === 'boxes'
-                ? 'bg-teal-700 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Box className="w-4 h-4" />
-            <span>দানবাক্স ব্যবস্থাপনা ও কালেকশন</span>
-            <span className="ml-1 bg-white/20 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
-              {donationBoxes.length}
-            </span>
-          </button>
+            <button
+              onClick={() => setActiveSubTab('boxes')}
+              className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shrink-0 ${
+                activeSubTab === 'boxes'
+                  ? 'bg-teal-700 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Box className="w-4 h-4" />
+              <span>দানবাক্স ব্যবস্থাপনা ও কালেকশন</span>
+              <span className="ml-1 bg-white/20 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                {donationBoxes.length}
+              </span>
+            </button>
 
-          <button
-            onClick={() => setActiveSubTab('juma')}
-            className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shrink-0 ${
-              activeSubTab === 'juma'
-                ? 'bg-emerald-700 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Calendar className="w-4 h-4" />
-            <span>জুমার দিনের কালেকশন</span>
-            <span className="ml-1 bg-white/20 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
-              {jumaDonations.length}
-            </span>
-          </button>
-        </div>
+            <button
+              onClick={() => setActiveSubTab('juma')}
+              className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shrink-0 ${
+                activeSubTab === 'juma'
+                  ? 'bg-emerald-700 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Calendar className="w-4 h-4" />
+              <span>জুমার দিনের কালেকশন</span>
+              <span className="ml-1 bg-white/20 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                {jumaDonations.length}
+              </span>
+            </button>
+          </div>
+        )}
 
         {/* Dynamic Action Buttons */}
         <div className="flex items-center space-x-2 flex-wrap gap-y-2">
@@ -951,6 +1000,17 @@ export const DonationView: React.FC<DonationViewProps> = ({
                   ৳ {donationBoxes.reduce((s, b) => s + (b.totalCollected || 0), 0).toLocaleString('en-IN')}
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* Double-counting Prevention Accounting Notice */}
+          <div className="bg-teal-50/70 border border-teal-200/80 rounded-2xl p-3.5 flex items-start space-x-3 text-xs text-teal-950 shadow-2xs">
+            <ShieldCheck className="w-5 h-5 text-teal-700 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-bold block text-teal-900">ডাবল-কাউন্টিং প্রতিরোধ ও পোস্টিং নীতি:</span>
+              <p className="text-[11px] text-teal-800 leading-relaxed mt-0.5">
+                দানবাক্স কালেকশন অনুমোদিত ও ক্যাশ/ব্যাংক হিসাবে পোস্ট হওয়ার সাথে সাথে এটি কেন্দ্রীয় আয় খতিয়ানে অন্তর্ভুক্ত হয়। এটি পুনরায় সাধারণ আয় হিসেবে এন্ট্রি করা যাবে না। প্রতিটি কালেকশন ইভেন্টের স্বতন্ত্র রেফারেন্স কোড ও ভাউচার বজায় রাখা হয়।
+              </p>
             </div>
           </div>
 

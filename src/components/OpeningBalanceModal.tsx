@@ -49,7 +49,10 @@ export const OpeningBalanceModal: React.FC<OpeningBalanceModalProps> = ({
   const [balanceType, setBalanceType] = useState<'DEBIT' | 'CREDIT'>('DEBIT');
   const [effectiveDate, setEffectiveDate] = useState<string>('2026-07-31');
   const [source, setSource] = useState<string>('INITIAL_SETUP');
+  const [customSource, setCustomSource] = useState<string>('');
   const [note, setNote] = useState<string>('');
+  const [supportingDocRef, setSupportingDocRef] = useState<string>('');
+  const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [successMessage, setSuccessMessage] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -61,6 +64,7 @@ export const OpeningBalanceModal: React.FC<OpeningBalanceModalProps> = ({
       loadAccountData(initialId);
       setSuccessMessage('');
       setErrorMessage('');
+      setShowConfirmModal(false);
     }
   }, [isOpen, preselectedAccountId, accounts]);
 
@@ -71,7 +75,9 @@ export const OpeningBalanceModal: React.FC<OpeningBalanceModalProps> = ({
       setBalanceType(acc.openingBalanceType || 'DEBIT');
       setEffectiveDate(acc.openingBalanceDate || '2026-07-31');
       setSource(acc.openingBalanceSource || 'INITIAL_SETUP');
+      setCustomSource('');
       setNote(acc.openingBalanceNote || '');
+      setSupportingDocRef('');
     }
   };
 
@@ -80,40 +86,72 @@ export const OpeningBalanceModal: React.FC<OpeningBalanceModalProps> = ({
     loadAccountData(accId);
     setSuccessMessage('');
     setErrorMessage('');
+    setShowConfirmModal(false);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
+
+  // Dynamic Difference
+  const prevOpening = selectedAccount?.openingBalance || 0;
+  const newOpening = parseFloat(amount) || 0;
+  const openingDiff = newOpening - prevOpening;
+
+  const handlePreSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage('');
+
     if (!selectedAccountId) {
       setErrorMessage('অনুগ্রহ করে একটি অ্যাকাউন্ট নির্বাচন করুন।');
       return;
     }
 
-    const numAmount = Number(amount);
+    const numAmount = parseFloat(amount);
     if (isNaN(numAmount) || numAmount < 0) {
       setErrorMessage('সঠিক প্রারম্ভিক স্থিতির পরিমাণ লিখুন (০ বা তার বেশি)।');
       return;
     }
 
+    if (!effectiveDate) {
+      setErrorMessage('কার্যকর শুরুর তারিখ নির্ধারণ করুন।');
+      return;
+    }
+
+    if (source === 'OTHER' && !customSource.trim()) {
+      setErrorMessage('অন্যান্য উৎসের সুনির্দিষ্ট বিবরণ উল্লেখ করুন।');
+      return;
+    }
+
+    setShowConfirmModal(true);
+  };
+
+  const executeSave = async () => {
+    setShowConfirmModal(false);
     setIsSubmitting(true);
     setErrorMessage('');
     setSuccessMessage('');
 
     try {
+      const finalSource = source === 'OTHER' && customSource.trim() ? `OTHER: ${customSource.trim()}` : source;
+      const combinedNote = [
+        note.trim(),
+        supportingDocRef.trim() ? `[সংযুক্ত নথি: ${supportingDocRef.trim()}]` : '',
+      ].filter(Boolean).join(' | ');
+
       await onUpdateOpeningBalance({
         accountId: selectedAccountId,
-        openingBalance: numAmount,
+        openingBalance: newOpening,
         openingBalanceType: balanceType,
         openingBalanceDate: effectiveDate || new Date().toISOString().split('T')[0],
-        openingBalanceSource: source,
-        openingBalanceNote: note.trim(),
+        openingBalanceSource: finalSource,
+        openingBalanceNote: combinedNote,
       });
 
       const acc = accounts.find((a) => a.id === selectedAccountId);
       setSuccessMessage(`${acc?.nameBn || 'হিসাব'}-এর প্রারম্ভিক স্থিতি সফলভাবে সংরক্ষিত হয়েছে!`);
       setTimeout(() => {
         setSuccessMessage('');
-      }, 4000);
+        onClose();
+      }, 1500);
     } catch (err: any) {
       setErrorMessage(err.message || 'প্রারম্ভিক স্থিতি সংরক্ষণে সমস্যা হয়েছে।');
     } finally {
@@ -125,8 +163,6 @@ export const OpeningBalanceModal: React.FC<OpeningBalanceModalProps> = ({
     const bal = a.openingBalance || 0;
     return a.openingBalanceType === 'CREDIT' ? sum - bal : sum + bal;
   }, 0);
-
-  const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
 
   if (!isOpen) return null;
 
@@ -180,7 +216,7 @@ export const OpeningBalanceModal: React.FC<OpeningBalanceModalProps> = ({
           {/* Form & Overview Section */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Left Column: Form */}
-            <form onSubmit={handleSubmit} className="lg:col-span-6 space-y-4 bg-slate-50 p-5 rounded-2xl border border-slate-200">
+            <form onSubmit={handlePreSubmit} className="lg:col-span-6 space-y-4 bg-slate-50 p-5 rounded-2xl border border-slate-200">
               <h4 className="text-sm font-bold text-slate-800 flex items-center space-x-2 border-b border-slate-200 pb-2.5">
                 <Edit3 className="w-4 h-4 text-emerald-600" />
                 <span>প্রারম্ভিক স্থিতি এন্ট্রি / সমন্বয় ফর্ম</span>
@@ -211,6 +247,36 @@ export const OpeningBalanceModal: React.FC<OpeningBalanceModalProps> = ({
                     </span>
                   </div>
                 )}
+              </div>
+
+              {/* Current vs New Opening and Difference Tracker */}
+              <div className="p-3 bg-white rounded-xl border border-slate-200 grid grid-cols-3 gap-2 text-center text-xs">
+                <div>
+                  <span className="text-[10px] text-slate-400 block font-baloo">পূর্বের প্রারম্ভিক</span>
+                  <span className="font-bold text-slate-700 font-mono">
+                    ৳ {prevOpening.toLocaleString('en-IN')}
+                  </span>
+                </div>
+                <div className="border-x border-slate-100">
+                  <span className="text-[10px] text-slate-400 block font-baloo">নতুন প্রারম্ভিক</span>
+                  <span className="font-bold text-emerald-700 font-mono">
+                    ৳ {newOpening.toLocaleString('en-IN')}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 block font-baloo">পার্থক্য / সমন্বয়</span>
+                  <span
+                    className={`font-bold font-mono text-[11px] ${
+                      openingDiff > 0
+                        ? 'text-emerald-600'
+                        : openingDiff < 0
+                        ? 'text-rose-600'
+                        : 'text-slate-500'
+                    }`}
+                  >
+                    {openingDiff > 0 ? `+৳ ${openingDiff.toLocaleString('en-IN')}` : openingDiff < 0 ? `-৳ ${Math.abs(openingDiff).toLocaleString('en-IN')}` : '০'}
+                  </span>
+                </div>
               </div>
 
               {/* Amount and Balance Type */}
@@ -285,6 +351,23 @@ export const OpeningBalanceModal: React.FC<OpeningBalanceModalProps> = ({
                 </select>
               </div>
 
+              {/* Custom Source Input if OTHER */}
+              {source === 'OTHER' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    অন্যান্য উৎসের সুনির্দিষ্ট বিবরণ <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={customSource}
+                    onChange={(e) => setCustomSource(e.target.value)}
+                    placeholder="যেমন: বিশেষ সরকারি অনুদান প্রারম্ভিক উদ্বৃত্ত"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden font-baloo"
+                    required
+                  />
+                </div>
+              )}
+
               {/* Reference / Note */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center space-x-1.5">
@@ -296,6 +379,20 @@ export const OpeningBalanceModal: React.FC<OpeningBalanceModalProps> = ({
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   placeholder="যেমন: ব্যাংক বিবরণী পাতা নং ১২ / রেজুলেশন নং ৪"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden font-baloo"
+                />
+              </div>
+
+              {/* Supporting Document Reference */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  সাপোর্টিং ফাইল মেমো / রেজিস্ট্রি পৃষ্ঠা (ঐচ্ছিক)
+                </label>
+                <input
+                  type="text"
+                  value={supportingDocRef}
+                  onChange={(e) => setSupportingDocRef(e.target.value)}
+                  placeholder="যেমন: খতিয়ান ভলিউম ১, পৃষ্ঠা নং ২২"
                   className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden font-baloo"
                 />
               </div>
@@ -444,6 +541,85 @@ export const OpeningBalanceModal: React.FC<OpeningBalanceModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Confirmation Step Dialog */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-60 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-4 font-siliguri">
+            <div className="flex items-center space-x-3 text-amber-700">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-5 h-5 text-amber-700" />
+              </div>
+              <div>
+                <h4 className="font-bold text-sm text-slate-900">প্রারম্ভিক স্থিতি সমন্বয় নিশ্চিতকরণ</h4>
+                <p className="text-[11px] text-slate-500">অ্যাকাউন্টিং বেসলাইন পরিবর্তন যাচাই করুন</p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs space-y-2 font-baloo">
+              <div className="flex justify-between">
+                <span className="text-slate-500">হিসাবের নাম:</span>
+                <span className="font-bold text-slate-900">{selectedAccount?.nameBn}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">পূর্বের প্রারম্ভিক স্থিতি:</span>
+                <span className="font-mono text-slate-700">৳ {prevOpening.toLocaleString('en-IN')}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">নতুন প্রারম্ভিক স্থিতি:</span>
+                <span className="font-mono font-bold text-emerald-700">৳ {newOpening.toLocaleString('en-IN')}</span>
+              </div>
+              <div className="flex justify-between border-t border-slate-200 pt-1.5">
+                <span className="text-slate-500">সমন্বয়ের পরিমাণ (পার্থক্য):</span>
+                <span
+                  className={`font-mono font-bold ${
+                    openingDiff > 0
+                      ? 'text-emerald-700'
+                      : openingDiff < 0
+                      ? 'text-rose-700'
+                      : 'text-slate-700'
+                  }`}
+                >
+                  {openingDiff > 0 ? `+৳ ${openingDiff.toLocaleString('en-IN')}` : openingDiff < 0 ? `-৳ ${Math.abs(openingDiff).toLocaleString('en-IN')}` : '০'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">কার্যকর শুরুর তারিখ:</span>
+                <span className="font-mono text-slate-900">{formatDate(effectiveDate)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">উৎস / কারণ:</span>
+                <span className="text-slate-900 text-right max-w-[200px] truncate">
+                  {source === 'OTHER' && customSource ? customSource : OPENING_BALANCE_SOURCES.find((s) => s.id === source)?.label}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-slate-500 leading-relaxed font-baloo">
+              * এই প্রারম্ভিক স্থিতি খতিয়ানের শুরুর ভিত্তি হিসেবে কার্যকর হবে। এটি কোনো সাধারণ আয় বা ব্যয় নয়। এই পরিবর্তনটি সিস্টেম অডিট ট্রেইলে স্থায়ীভাবে সংরক্ষিত থাকবে।
+            </p>
+
+            <div className="flex items-center justify-end space-x-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowConfirmModal(false)}
+                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
+              >
+                বাতিল
+              </button>
+              <button
+                type="button"
+                onClick={executeSave}
+                disabled={isSubmitting}
+                className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl flex items-center space-x-1.5 shadow-xs cursor-pointer"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                <span>হ্যাঁ, সংরক্ষণ নিশ্চিত করুন</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

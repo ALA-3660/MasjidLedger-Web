@@ -69,6 +69,12 @@ export const CashBankView: React.FC<CashBankViewProps> = ({
 }) => {
   const t = translations[language] || translations.bn;
   const [activeTab, setActiveTab] = useState<'cashbook' | 'bankbook' | 'banks' | 'transfer' | 'reports'>(initialTab);
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
   
   // Opening Balance Modal State
   const [isOpeningBalanceModalOpen, setIsOpeningBalanceModalOpen] = useState(false);

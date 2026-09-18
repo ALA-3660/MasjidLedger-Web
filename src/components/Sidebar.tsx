@@ -28,20 +28,30 @@ import {
   BookOpen,
   Shield,
   FolderOpen,
+  ChevronDown,
+  ChevronUp,
+  BarChart3,
+  Printer,
+  TrendingUp,
 } from 'lucide-react';
 import { Language, translations } from '../lib/i18n';
 
 export type NavTab =
   | 'dashboard'
   | 'mosqueManagement'
-  | 'income'
-  | 'expense'
-  | 'donations'
-  | 'donationBox'
+  | 'financialManagement'
   | 'dailyLedger'
   | 'openingBalance'
   | 'cashbook'
   | 'bank'
+  | 'income'
+  | 'income_juma'
+  | 'donations'
+  | 'donationBox'
+  | 'income_register'
+  | 'income_analytics'
+  | 'income_reports'
+  | 'expense'
   | 'accountHeads'
   | 'committee'
   | 'advisors'
@@ -110,29 +120,42 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       title: t.financials,
       items: [
-        { id: 'income' as NavTab, label: t.income, icon: ArrowDownLeft, color: 'text-emerald-600' },
-        { id: 'expense' as NavTab, label: t.expense, icon: ArrowUpRight, color: 'text-rose-600' },
-        { id: 'dailyLedger' as NavTab, label: language === 'bn' ? 'দৈনিক লেনদেন' : 'Daily Statement', icon: CalendarCheck, color: 'text-blue-600' },
-        { id: 'openingBalance' as NavTab, label: language === 'bn' ? 'প্রারম্ভিক স্থিতি' : 'Opening Balance', icon: Scale, color: 'text-amber-600' },
-        { id: 'donations' as NavTab, label: t.donations, icon: HeartHandshake, color: 'text-teal-600' },
-        { id: 'donationBox' as NavTab, label: t.donationBox, icon: Box },
-        { id: 'cashbook' as NavTab, label: t.cashbook, icon: Wallet },
-        { id: 'bank' as NavTab, label: t.bankAccounts, icon: Landmark },
-        { id: 'accountHeads' as NavTab, label: t.accountHeads, icon: Layers },
+        {
+          id: 'income' as NavTab,
+          label: language === 'bn' ? '💵 আয় ও প্রাপ্তি' : 'Income & Receipts',
+          icon: Banknote,
+          color: 'text-emerald-600',
+        },
+        {
+          id: 'expense' as NavTab,
+          label: language === 'bn' ? '💸 ব্যয় ও পরিশোধ' : 'Expense & Payments',
+          icon: ArrowUpRight,
+          color: 'text-rose-600',
+        },
+        {
+          id: 'financialManagement' as NavTab,
+          label: language === 'bn' ? '📊 হিসাব ও লেনদেন' : 'Accounts & Ledgers',
+          icon: BarChart3,
+          color: 'text-blue-600',
+        },
+        {
+          id: 'accountHeads' as NavTab,
+          label: language === 'bn' ? '📑 আয়-ব্যয় খাত (হেড)' : t.accountHeads,
+          icon: Layers,
+          color: 'text-slate-600',
+        },
       ],
     },
     {
       title: t.committee,
       items: [
-        { id: 'committee' as NavTab, label: t.currentCommittee, icon: Users2 },
         {
-          id: 'advisors' as NavTab,
-          label: language === 'bn' ? 'উপদেষ্টা পরিষদ' : 'Advisory Council',
-          icon: Shield,
-          badge: language === 'bn' ? 'স্বতন্ত্র' : 'Independent',
-          color: 'text-indigo-600',
+          id: 'committee' as NavTab,
+          label: language === 'bn' ? '👥 কমিটি ব্যবস্থাপনা' : 'Committee Management',
+          icon: Users2,
+          badge: language === 'bn' ? '১২টি বিভাগ' : '12 Sections',
+          color: 'text-blue-600',
         },
-        { id: 'meetings' as NavTab, label: t.meetings, icon: CalendarCheck },
       ],
     },
     {
@@ -145,13 +168,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           badge: language === 'bn' ? 'মূল পরিচয়' : 'Identity',
           color: 'text-emerald-700',
         },
-        { id: 'staff' as NavTab, label: t.staff, icon: UserCheck },
         {
-          id: 'salaryBankTransfer' as NavTab,
-          label: language === 'bn' ? 'বেতন ব্যাংক ট্রান্সফার' : 'Salary Bank Transfer',
-          icon: Banknote,
-          badge: language === 'bn' ? 'স্বতন্ত্র' : 'Dedicated',
-          color: 'text-emerald-600',
+          id: 'staff' as NavTab,
+          label: language === 'bn' ? '👤 ইমাম, স্টাফ ও বেতন' : 'Imam, Staff & Payroll',
+          icon: UserCheck,
+          color: 'text-indigo-600',
         },
         { id: 'assets' as NavTab, label: t.assets, icon: Package },
         { id: 'property' as NavTab, label: t.property, icon: Building },
@@ -221,9 +242,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 {sec.title}
               </h3>
               <div className="space-y-1 mt-1">
-                {sec.items.map((item) => {
+                {sec.items.map((item: any) => {
                   const Icon = item.icon;
-                  const isActive = activeTab === item.id;
+                  let isActive = activeTab === item.id;
+                  if (item.id === 'financialManagement') {
+                    isActive = [
+                      'financialManagement',
+                      'dailyLedger',
+                      'openingBalance',
+                      'cashbook',
+                      'bank',
+                      'accounts',
+                    ].includes(activeTab as string);
+                  } else if (item.id === 'income') {
+                    isActive = [
+                      'income',
+                      'income_juma',
+                      'donations',
+                      'donationBox',
+                      'income_register',
+                      'income_analytics',
+                      'income_reports',
+                    ].includes(activeTab as string);
+                  }
+
                   return (
                     <button
                       key={item.id}
@@ -231,14 +273,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       onClick={() => handleTabClick(item.id)}
                       className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-[13px] font-semibold font-siliguri transition-all cursor-pointer ${
                         isActive
-                          ? 'bg-blue-50 text-blue-700 font-bold shadow-2xs'
+                          ? 'bg-blue-50 text-blue-700 font-bold shadow-2xs ring-1 ring-blue-100'
                           : 'text-slate-700 hover:bg-slate-50 hover:text-slate-900'
                       }`}
                     >
                       <div className="flex items-center space-x-2.5">
                         <Icon
                           className={`w-4 h-4 shrink-0 ${
-                            isActive ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'
+                            isActive ? 'text-blue-600' : item.color || 'text-slate-400 group-hover:text-slate-600'
                           }`}
                         />
                         <span className="truncate text-[13px] font-siliguri">{item.label}</span>

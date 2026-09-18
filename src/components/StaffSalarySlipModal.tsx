@@ -11,6 +11,7 @@ interface StaffSalarySlipModalProps {
   onClose: () => void;
   staff: Staff | null;
   payment: StaffPayment | null;
+  mosque?: Mosque | null;
   currentMosque?: Mosque | null;
   language: Language;
 }
@@ -20,9 +21,11 @@ export const StaffSalarySlipModal: React.FC<StaffSalarySlipModalProps> = ({
   onClose,
   staff,
   payment,
+  mosque,
   currentMosque,
   language,
 }) => {
+  const activeMosque = currentMosque || mosque;
   const [showLetterhead, setShowLetterhead] = useState(true);
 
   useEffect(() => {
@@ -104,9 +107,9 @@ export const StaffSalarySlipModal: React.FC<StaffSalarySlipModalProps> = ({
           {showLetterhead ? (
             <div className="text-center space-y-1 pb-4 border-b-2 border-slate-900">
               <div className="flex items-center justify-center space-x-3">
-                {currentMosque?.logoUrl ? (
+                {activeMosque?.logoUrl ? (
                   <img
-                    src={currentMosque.logoUrl}
+                    src={activeMosque.logoUrl}
                     alt="Mosque Logo"
                     className="w-12 h-12 object-contain rounded-full border border-slate-200 p-0.5"
                   />
@@ -117,12 +120,12 @@ export const StaffSalarySlipModal: React.FC<StaffSalarySlipModalProps> = ({
                 )}
                 <div className="text-left">
                   <h1 className="text-xl font-black font-siliguri text-slate-950">
-                    {currentMosque?.nameBn || currentMosque?.name || 'মসজিদ ও ইসলামিক সেন্টার'}
+                    {activeMosque?.nameBn || activeMosque?.name || 'মসজিদ ও ইসলামিক সেন্টার'}
                   </h1>
                   <p className="text-[11px] text-slate-600 font-medium">
-                    {currentMosque?.address || 'ঠিকানা: মসজিদ কমপ্লেক্স'}
-                    {currentMosque?.phone ? ` | মোবাইল: ${currentMosque.phone}` : ''}
-                    {currentMosque?.registrationNumber ? ` | রেজিঃ নং: ${currentMosque.registrationNumber}` : ''}
+                    {activeMosque?.address || 'ঠিকানা: মসজিদ কমপ্লেক্স'}
+                    {activeMosque?.phone ? ` | মোবাইল: ${activeMosque.phone}` : ''}
+                    {activeMosque?.registrationNumber ? ` | রেজিঃ নং: ${activeMosque.registrationNumber}` : ''}
                   </p>
                 </div>
               </div>

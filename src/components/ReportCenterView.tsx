@@ -54,6 +54,7 @@ import {
 } from 'recharts';
 import { ReportPrintDocument, REPORT_TITLES } from './ReportPrintDocument';
 import { printElement } from '../lib/printUtils';
+import { PrintSettingsBar } from './common/PrintSettingsBar';
 
 interface ReportCenterViewProps {
   incomes: IncomeEntry[];
@@ -88,6 +89,7 @@ const REPORT_TYPES = [
   { id: 'CASHBOOK', labelBn: 'নগদ বহি (Cashbook Ledger)', category: 'আর্থিক' },
   { id: 'BANKBOOK', labelBn: 'ব্যাংক বহি ও স্টেটমেন্ট (Bankbook)', category: 'আর্থিক' },
   { id: 'CASH_BANK_COMBINED', labelBn: 'ক্যাশ ও ব্যাংক যৌথ সমন্বিত বিবরণী', category: 'আর্থিক' },
+  { id: 'OPENING_BALANCE_REPORT', labelBn: 'প্রারম্ভিক স্থিতি ও বেসলাইন প্রতিবেদন (Opening Balance Ledger)', category: 'আর্থিক' },
   { id: 'HEADWISE_LEDGER', labelBn: 'খাতভিত্তিক লেজার (Head-wise Ledger)', category: 'আর্থিক' },
   { id: 'MONTHLY_SUMMARY', labelBn: 'মাসভিত্তিক তুলনামূলক আর্থিক প্রতিবেদন', category: 'আর্থিক' },
   { id: 'DONATION_SUMMARY', labelBn: 'দান ও অনুদান সংকলন প্রতিবেদন', category: 'দান ও কালেকশন' },
@@ -141,6 +143,7 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
   const [selectedHeadId, setSelectedHeadId] = useState<string>('ALL');
   const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL');
   const [showCharts, setShowCharts] = useState<boolean>(false);
+  const [includeLetterhead, setIncludeLetterhead] = useState<boolean>(true);
 
   // Save report modal
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
@@ -496,6 +499,12 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
             বার্ষিক আর্থিক নিরীক্ষা
           </button>
           <button
+            onClick={() => applyPresetTemplate('OPENING_BALANCE_REPORT', 'THIS_YEAR', 'NONE')}
+            className="px-3 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-400/30 text-[11px] font-semibold rounded-lg shrink-0 transition-colors cursor-pointer"
+          >
+            প্রারম্ভিক স্থিতি খতিয়ান
+          </button>
+          <button
             onClick={() => applyPresetTemplate('BANKBOOK', 'THIS_MONTH', 'NONE')}
             className="px-3 py-1 bg-white/10 hover:bg-white/20 text-white text-[11px] font-semibold rounded-lg shrink-0 transition-colors cursor-pointer"
           >
@@ -751,27 +760,16 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
           5. REPORT PREVIEW CARD & PRINT DOCUMENT RENDER
           ============================================================ */}
       <div className="bg-slate-200/70 p-2 sm:p-6 rounded-2xl border border-slate-300 shadow-inner">
-        {/* Preview Control Bar (Print Hidden) */}
-        <div className="bg-white p-3 rounded-xl border border-slate-300 shadow-xs mb-4 flex items-center justify-between print:hidden">
-          <div className="flex items-center space-x-2">
-            <Eye className="w-4 h-4 text-blue-600" />
-            <span className="text-xs font-bold font-siliguri text-slate-800">
-              অফিসিয়াল প্রিন্ট প্রিভিউ ({currentReportMeta.isLandscape ? 'A4 ল্যান্ডস্কেপ' : 'A4 পোর্ট্রেট'})
-            </span>
-            <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full font-siliguri">
-              প্রিন্ট রেডি
-            </span>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={handlePrint}
-              className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold font-siliguri px-3.5 py-1.5 rounded-lg flex items-center space-x-1.5 transition-all shadow-xs cursor-pointer"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>প্রিন্ট করুন</span>
-            </button>
-          </div>
+        {/* Print Settings & Preview Control Bar */}
+        <div className="mb-4">
+          <PrintSettingsBar
+            includeLetterhead={includeLetterhead}
+            onToggleLetterhead={setIncludeLetterhead}
+            onPrint={handlePrint}
+            onExcel={handleExportCSV}
+            reportTitle={currentReportMeta.titleBn}
+            orientation={currentReportMeta.isLandscape ? 'landscape' : 'portrait'}
+          />
         </div>
 
         {/* The Official Printable Document Canvas */}
@@ -787,6 +785,7 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
             selectedAccountId={selectedAccountId}
             currentMosque={currentMosque}
             currentUser={currentUser}
+            includeLetterhead={includeLetterhead}
             incomes={incomes}
             expenses={expenses}
             accounts={accounts}

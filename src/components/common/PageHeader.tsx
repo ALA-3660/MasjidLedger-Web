@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { isValidElement } from 'react';
 
 interface PageHeaderProps {
   title: string;
   subtitle?: string;
   badgeText?: string;
   badgeColor?: 'emerald' | 'blue' | 'amber' | 'stone' | 'rose' | 'indigo';
-  icon?: React.ReactNode;
+  icon?: React.ReactNode | React.ElementType;
   actions?: React.ReactNode;
   breadcrumbs?: Array<{ label: string; onClick?: () => void }>;
   className?: string;
@@ -28,6 +28,16 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
     stone: 'bg-stone-100 text-stone-700 border-stone-200',
     rose: 'bg-rose-50 text-rose-800 border-rose-200',
     indigo: 'bg-indigo-50 text-indigo-800 border-indigo-200',
+  };
+
+  const renderIcon = () => {
+    if (!icon) return null;
+    if (isValidElement(icon)) return icon;
+    if (typeof icon === 'function' || (typeof icon === 'object' && icon !== null)) {
+      const IconComponent = icon as React.ElementType;
+      return <IconComponent className="w-5 h-5" />;
+    }
+    return icon as React.ReactNode;
   };
 
   return (
@@ -59,7 +69,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
         <div className="flex items-center gap-3">
           {icon && (
             <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-100 flex-shrink-0">
-              {icon}
+              {renderIcon()}
             </div>
           )}
           <div>
