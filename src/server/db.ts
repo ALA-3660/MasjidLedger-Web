@@ -53,6 +53,13 @@ import {
   AdvisorConsultation,
   CentralDocument,
 } from '../types';
+import {
+  OfficialDocument,
+  OfficialDocumentTemplate,
+  DocumentNumberingConfig,
+} from '../types/officialDocumentTypes';
+import { DEFAULT_DOCUMENT_TEMPLATES } from '../lib/officialDocumentTemplates';
+import { getStarterOfficialDocuments } from '../lib/starterOfficialDocuments';
 
 const DB_FILE_PATH = path.join(process.cwd(), 'data', 'masjidledger_db.json');
 
@@ -99,6 +106,9 @@ export class DatabaseStore {
   backupRecords: BackupRecord[] = [];
   restoreRecords: RestoreRecord[] = [];
   backupSettings: Record<string, BackupSettings> = {};
+  officialDocuments: OfficialDocument[] = [];
+  officialDocumentTemplates: OfficialDocumentTemplate[] = [];
+  officialDocumentNumbering: Record<string, Record<string, DocumentNumberingConfig>> = {};
 
   constructor() {
     this.init();
@@ -276,6 +286,15 @@ export class DatabaseStore {
         this.backupRecords = parsed.backupRecords || [];
         this.restoreRecords = parsed.restoreRecords || [];
         this.backupSettings = parsed.backupSettings || {};
+        this.officialDocuments = parsed.officialDocuments || [];
+        if (this.officialDocuments.length === 0 && this.mosques.length > 0) {
+          const m = this.mosques[0];
+          this.officialDocuments = getStarterOfficialDocuments(m.id, m.nameBn || m.name);
+        }
+        this.officialDocumentTemplates = (parsed.officialDocumentTemplates && parsed.officialDocumentTemplates.length > 0)
+          ? parsed.officialDocumentTemplates
+          : DEFAULT_DOCUMENT_TEMPLATES;
+        this.officialDocumentNumbering = parsed.officialDocumentNumbering || {};
 
         return;
       }
@@ -338,6 +357,9 @@ export class DatabaseStore {
         backupRecords: this.backupRecords,
         restoreRecords: this.restoreRecords,
         backupSettings: this.backupSettings,
+        officialDocuments: this.officialDocuments,
+        officialDocumentTemplates: this.officialDocumentTemplates,
+        officialDocumentNumbering: this.officialDocumentNumbering,
       };
       fs.writeFileSync(DB_FILE_PATH, JSON.stringify(data, null, 2), 'utf-8');
     } catch (e) {

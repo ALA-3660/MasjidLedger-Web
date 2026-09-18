@@ -46,6 +46,12 @@ import {
   AdvisorConsultation,
   CentralDocument,
 } from '../types';
+import {
+  OfficialDocument,
+  OfficialDocumentTemplate,
+  OfficialDocumentType,
+  OfficialDocumentStatus,
+} from '../types/officialDocumentTypes';
 
 class ApiService {
   private token: string | null = null;
@@ -1800,6 +1806,142 @@ class ApiService {
     });
     if (!res.success) throw new Error(res.error?.message || 'ডকুমেন্ট মুছে ফেলতে ব্যর্থ হয়েছে');
     return res.data || { success: true, message: 'ডকুমেন্ট সফলভাবে মুছে ফেলা হয়েছে।' };
+  }
+
+  // ==========================================
+  // OFFICIAL CORRESPONDENCE & DOCUMENTS API
+  // ==========================================
+  async getOfficialDocuments(params: {
+    docType?: string;
+    subType?: string;
+    status?: string;
+    priority?: string;
+    visibility?: string;
+    search?: string;
+    startDate?: string;
+    endDate?: string;
+    meetingId?: string;
+    resolutionId?: string;
+    committeeTermId?: string;
+    memberId?: string;
+    staffId?: string;
+    sortBy?: string;
+  } = {}): Promise<OfficialDocument[]> {
+    const query = new URLSearchParams();
+    if (params.docType) query.append('docType', params.docType);
+    if (params.subType) query.append('subType', params.subType);
+    if (params.status) query.append('status', params.status);
+    if (params.priority) query.append('priority', params.priority);
+    if (params.visibility) query.append('visibility', params.visibility);
+    if (params.search) query.append('search', params.search);
+    if (params.startDate) query.append('startDate', params.startDate);
+    if (params.endDate) query.append('endDate', params.endDate);
+    if (params.meetingId) query.append('meetingId', params.meetingId);
+    if (params.resolutionId) query.append('resolutionId', params.resolutionId);
+    if (params.committeeTermId) query.append('committeeTermId', params.committeeTermId);
+    if (params.memberId) query.append('memberId', params.memberId);
+    if (params.staffId) query.append('staffId', params.staffId);
+    if (params.sortBy) query.append('sortBy', params.sortBy);
+
+    const queryString = query.toString();
+    const url = `/official-documents${queryString ? `?${queryString}` : ''}`;
+    const res = await this.request<OfficialDocument[]>(url);
+    return res.data || [];
+  }
+
+  async getOfficialDocumentStats(): Promise<{
+    total: number;
+    draftCount: number;
+    pendingApprovalCount: number;
+    approvedCount: number;
+    sentCount: number;
+    replyAwaitedCount: number;
+    inProgressCount: number;
+    resolvedCount: number;
+    urgentCount: number;
+    byType: Record<string, number>;
+    byStatus: Record<string, number>;
+    recentDocuments: OfficialDocument[];
+  }> {
+    const res = await this.request<any>('/official-documents/summary/stats');
+    return res.data || {
+      total: 0,
+      draftCount: 0,
+      pendingApprovalCount: 0,
+      approvedCount: 0,
+      sentCount: 0,
+      replyAwaitedCount: 0,
+      inProgressCount: 0,
+      resolvedCount: 0,
+      urgentCount: 0,
+      byType: {},
+      byStatus: {},
+      recentDocuments: [],
+    };
+  }
+
+  async getOfficialDocument(id: string): Promise<OfficialDocument> {
+    const res = await this.request<OfficialDocument>(`/official-documents/${id}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'দাপ্তরিক নথি লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async createOfficialDocument(data: Partial<OfficialDocument>): Promise<OfficialDocument> {
+    const res = await this.request<OfficialDocument>('/official-documents', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'দাপ্তরিক নথি সংরক্ষণ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateOfficialDocument(id: string, data: Partial<OfficialDocument>): Promise<OfficialDocument> {
+    const res = await this.request<OfficialDocument>(`/official-documents/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'দাপ্তরিক নথি হালনাগাদ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateOfficialDocumentStatus(id: string, status: OfficialDocumentStatus, notes?: string): Promise<OfficialDocument> {
+    const res = await this.request<OfficialDocument>(`/official-documents/${id}/status`, {
+      method: 'POST',
+      body: JSON.stringify({ status, notes }),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'স্ট্যাটাস পরিবর্তন করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async deleteOfficialDocument(id: string): Promise<{ success: boolean; message: string }> {
+    const res = await this.request<any>(`/official-documents/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.success) throw new Error(res.error?.message || 'দাপ্তরিক নথি মুছে ফেলতে ব্যর্থ হয়েছে');
+    return res.data || { success: true, message: 'দাপ্তরিক নথি সফলভাবে মুছে ফেলা হয়েছে।' };
+  }
+
+  async getOfficialDocumentTemplates(): Promise<OfficialDocumentTemplate[]> {
+    const res = await this.request<OfficialDocumentTemplate[]>('/official-documents/templates/list');
+    return res.data || [];
+  }
+
+  async aiAssistOfficialDocument(payload: {
+    action?: 'GENERATE' | 'OFFICIAL' | 'SUMMARIZE' | 'ELABORATE' | 'SPELLCHECK';
+    docType?: string;
+    subject?: string;
+    keyPoints?: string;
+    currentText?: string;
+    tone?: string;
+    sender?: string;
+    recipient?: string;
+  }): Promise<{ resultText: string; action: string; tone?: string; isFallback?: boolean }> {
+    const res = await this.request<{ resultText: string; action: string; tone?: string; isFallback?: boolean }>('/official-documents/ai-assist', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'AI সহায়তায় ব্যর্থ হয়েছে');
+    return res.data;
   }
 
   // AI Advisor / Financial Auditor

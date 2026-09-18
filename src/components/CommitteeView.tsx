@@ -67,6 +67,7 @@ import { MemberFormModal } from './MemberFormModal';
 import { MemberProfileModal } from './MemberProfileModal';
 import { AdvisoryCouncilView } from './AdvisoryCouncilView';
 import { DocumentSection } from './DocumentSection';
+import { OfficialDocumentManagementView } from './documents/OfficialDocumentManagementView';
 
 interface CommitteeViewProps {
   terms: CommitteeTerm[];
@@ -290,7 +291,7 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
   onArchiveSubCommittee,
 }) => {
   const t = translations[language];
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'members' | 'terms' | 'meetings' | 'action-plans' | 'performance' | 'financial-history' | 'sub-committees'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'members' | 'terms' | 'meetings' | 'action-plans' | 'performance' | 'financial-history' | 'sub-committees' | 'official-documents'>(initialTab);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
   // Search & Filter for members

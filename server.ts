@@ -12042,6 +12042,652 @@ app.get('/api/v1/management/all', authenticate, (req: AuthRequest, res: Response
 });
 
 // ==========================================
+// 13. OFFICIAL DOCUMENTS & CORRESPONDENCE API
+// ==========================================
+
+// Helper: Generate next document number
+function getNextOfficialDocNumber(mosqueId: string, docType: string): { docNumber: string; serial: number } {
+  const currentYear = new Date().getFullYear();
+  const existingForType = db.officialDocuments.filter(
+    d => d.mosqueId === mosqueId && d.docType === docType
+  );
+  
+  const serial = existingForType.length + 1;
+  const serialStr = String(serial).padStart(3, '0');
+
+  let prefix = 'নথি';
+  switch (docType) {
+    case 'NOTICE': prefix = 'নোটিশ'; break;
+    case 'APPLICATION': prefix = 'আবেদন'; break;
+    case 'ANNOUNCEMENT': prefix = 'ঘোষণা'; break;
+    case 'OUTGOING_LETTER': prefix = 'স্মারক'; break;
+    case 'INCOMING_LETTER': prefix = 'প্রাপ্তি'; break;
+    case 'OFFICE_ORDER': prefix = 'অফিস'; break;
+    case 'CERTIFICATE': prefix = 'সনদ'; break;
+    case 'RECOMMENDATION': prefix = 'সুপারিশ'; break;
+    case 'MEMO_REGISTER': prefix = 'রেজি'; break;
+    default: prefix = 'নথি'; break;
+  }
+
+  return {
+    docNumber: `${prefix}/${currentYear}/${serialStr}`,
+    serial,
+  };
+}
+
+// 1. Get Official Documents (Filtered / Paginated / Search)
+app.get('/api/v1/official-documents', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const user = req.user;
+  const {
+    docType,
+    subType,
+    status,
+    priority,
+    visibility,
+    search,
+    startDate,
+    endDate,
+    meetingId,
+    resolutionId,
+    committeeTermId,
+    memberId,
+    staffId,
+    sortBy = 'newest',
+  } = req.query as Record<string, string | undefined>;
+
+  let docs = db.officialDocuments.filter(d => d.mosqueId === mosqueId);
+
+  // Security / Role Filter
+  const isAdmin = user && (user.role === 'SUPER_ADMIN' || user.role === 'MOSQUE_ADMIN' || user.role === 'ACCOUNTANT');
+  docs = docs.filter(d => {
+    if (d.visibility === 'PUBLIC') return true;
+    if (isAdmin) return true;
+    if (user && d.createdBy === user.id) return true;
+    if (d.visibility === 'RESTRICTED' && user && user.role !== 'VIEWER') return true;
+    return false;
+  });
+
+  // Filter by docType
+  if (docType && docType !== 'ALL') {
+    docs = docs.filter(d => d.docType === docType);
+  }
+
+  // Filter by subType
+  if (subType && subType !== 'ALL') {
+    docs = docs.filter(d => d.subType === subType);
+  }
+
+  // Filter by status
+  if (status && status !== 'ALL') {
+    docs = docs.filter(d => d.status === status);
+  }
+
+  // Filter by priority
+  if (priority && priority !== 'ALL') {
+    docs = docs.filter(d => d.priority === priority);
+  }
+
+  // Filter by visibility
+  if (visibility && visibility !== 'ALL') {
+    docs = docs.filter(d => d.visibility === visibility);
+  }
+
+  // Link Filters
+  if (meetingId) docs = docs.filter(d => d.meetingId === meetingId);
+  if (resolutionId) docs = docs.filter(d => d.resolutionId === resolutionId);
+  if (committeeTermId) docs = docs.filter(d => d.committeeTermId === committeeTermId);
+  if (memberId) docs = docs.filter(d => d.memberId === memberId);
+  if (staffId) docs = docs.filter(d => d.staffId === staffId);
+
+  // Date Range Filter
+  if (startDate) {
+    docs = docs.filter(d => d.documentDate >= startDate);
+  }
+  if (endDate) {
+    docs = docs.filter(d => d.documentDate <= endDate);
+  }
+
+  // Search Filter
+  if (search && search.trim()) {
+    const q = search.trim().toLowerCase();
+    docs = docs.filter(d =>
+      d.title?.toLowerCase().includes(q) ||
+      d.documentNumber?.toLowerCase().includes(q) ||
+      d.memoNumber?.toLowerCase().includes(q) ||
+      d.applicationNumber?.toLowerCase().includes(q) ||
+      d.summary?.toLowerCase().includes(q) ||
+      d.senderName?.toLowerCase().includes(q) ||
+      d.recipientName?.toLowerCase().includes(q) ||
+      d.recipientOrg?.toLowerCase().includes(q) ||
+      d.certificateFor?.toLowerCase().includes(q) ||
+      d.recommendationFor?.toLowerCase().includes(q) ||
+      d.body?.toLowerCase().includes(q)
+    );
+  }
+
+  // Sorting
+  if (sortBy === 'oldest') {
+    docs.sort((a, b) => new Date(a.documentDate || a.createdAt).getTime() - new Date(b.documentDate || b.createdAt).getTime());
+  } else if (sortBy === 'number') {
+    docs.sort((a, b) => a.documentNumber.localeCompare(b.documentNumber, 'bn'));
+  } else if (sortBy === 'title') {
+    docs.sort((a, b) => a.title.localeCompare(b.title, 'bn'));
+  } else {
+    // Newest first
+    docs.sort((a, b) => new Date(b.documentDate || b.createdAt).getTime() - new Date(a.documentDate || a.createdAt).getTime());
+  }
+
+  res.json({
+    success: true,
+    data: docs,
+    total: docs.length,
+  });
+});
+
+// 2. Get Official Documents Stats Summary
+app.get('/api/v1/official-documents/summary/stats', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const docs = db.officialDocuments.filter(d => d.mosqueId === mosqueId);
+
+  const total = docs.length;
+  const byType: Record<string, number> = {};
+  const byStatus: Record<string, number> = {};
+
+  let draftCount = 0;
+  let pendingApprovalCount = 0;
+  let approvedCount = 0;
+  let sentCount = 0;
+  let replyAwaitedCount = 0;
+  let inProgressCount = 0;
+  let resolvedCount = 0;
+  let urgentCount = 0;
+
+  for (const d of docs) {
+    byType[d.docType] = (byType[d.docType] || 0) + 1;
+    byStatus[d.status] = (byStatus[d.status] || 0) + 1;
+
+    if (d.status === 'DRAFT') draftCount++;
+    if (d.status === 'PENDING_APPROVAL' || d.status === 'UNDER_REVIEW') pendingApprovalCount++;
+    if (d.status === 'APPROVED') approvedCount++;
+    if (d.status === 'SENT') sentCount++;
+    if (d.status === 'REPLY_AWAITED' || d.replyRequired) replyAwaitedCount++;
+    if (d.status === 'IN_PROGRESS') inProgressCount++;
+    if (d.status === 'RESOLVED') resolvedCount++;
+    if (d.priority === 'HIGH' || d.priority === 'URGENT') urgentCount++;
+  }
+
+  res.json({
+    success: true,
+    data: {
+      total,
+      draftCount,
+      pendingApprovalCount,
+      approvedCount,
+      sentCount,
+      replyAwaitedCount,
+      inProgressCount,
+      resolvedCount,
+      urgentCount,
+      byType,
+      byStatus,
+      recentDocuments: docs.slice(0, 5),
+    }
+  });
+});
+
+// 3. Get Single Official Document by ID
+app.get('/api/v1/official-documents/:id', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const doc = db.officialDocuments.find(d => d.id === req.params.id && d.mosqueId === mosqueId);
+
+  if (!doc) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'দাপ্তরিক নথি পাওয়া যায়নি।' } });
+  }
+
+  res.json({ success: true, data: doc });
+});
+
+// 4. Create Official Document
+app.post('/api/v1/official-documents', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const user = req.user!;
+  const body = req.body;
+
+  if (!body.title || !body.title.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'MISSING_TITLE', message: 'নথির বিষয় / শিরোনাম প্রদান আবশ্যক।' } });
+  }
+
+  if (!body.docType) {
+    return res.status(400).json({ success: false, error: { code: 'MISSING_DOC_TYPE', message: 'নথির ধরন নির্বাচন করুন।' } });
+  }
+
+  const { docNumber, serial } = getNextOfficialDocNumber(mosqueId, body.docType);
+  const now = new Date().toISOString();
+  const docId = `offdoc-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+
+  const newDoc: any = {
+    id: docId,
+    mosqueId,
+    docType: body.docType,
+    subType: body.subType || undefined,
+    documentNumber: body.documentNumber?.trim() || docNumber,
+    memoNumber: body.memoNumber?.trim() || (body.docType === 'OUTGOING_LETTER' ? docNumber : undefined),
+    applicationNumber: body.applicationNumber?.trim() || (body.docType === 'APPLICATION' ? docNumber : undefined),
+    serialNumber: serial,
+    referenceNumber: body.referenceNumber?.trim() || undefined,
+    title: body.title.trim(),
+    documentDate: body.documentDate || now.split('T')[0],
+    effectiveDate: body.effectiveDate || undefined,
+    timeStr: body.timeStr || undefined,
+    venueStr: body.venueStr || undefined,
+    senderName: body.senderName?.trim() || undefined,
+    senderDesignation: body.senderDesignation?.trim() || undefined,
+    senderOrg: body.senderOrg?.trim() || undefined,
+    senderAddress: body.senderAddress?.trim() || undefined,
+    recipientName: body.recipientName?.trim() || undefined,
+    recipientDesignation: body.recipientDesignation?.trim() || undefined,
+    recipientOrg: body.recipientOrg?.trim() || undefined,
+    recipientAddress: body.recipientAddress?.trim() || undefined,
+    recipientType: body.recipientType || 'ALL',
+    body: body.body || '<p></p>',
+    summary: body.summary?.trim() || undefined,
+    status: body.status || 'DRAFT',
+    priority: body.priority || 'NORMAL',
+    visibility: body.visibility || 'PUBLIC',
+    committeeTermId: body.committeeTermId || undefined,
+    meetingId: body.meetingId || undefined,
+    meetingTitle: body.meetingTitle || undefined,
+    resolutionId: body.resolutionId || undefined,
+    resolutionNumber: body.resolutionNumber || undefined,
+    memberId: body.memberId || undefined,
+    memberName: body.memberName || undefined,
+    staffId: body.staffId || undefined,
+    staffName: body.staffName || undefined,
+    actionPlanId: body.actionPlanId || undefined,
+    financialAccountId: body.financialAccountId || undefined,
+    dispatchMethod: body.dispatchMethod || undefined,
+    dispatchedAt: body.dispatchedAt || undefined,
+    dispatchedBy: body.dispatchedBy || undefined,
+    replyRequired: Boolean(body.replyRequired),
+    replyDeadline: body.replyDeadline || undefined,
+    replyReceivedAt: body.replyReceivedAt || undefined,
+    replyDocumentId: body.replyDocumentId || undefined,
+    actionTaken: body.actionTaken?.trim() || undefined,
+    resolvedAt: body.resolvedAt || undefined,
+    certificateFor: body.certificateFor?.trim() || undefined,
+    certificateSubject: body.certificateSubject?.trim() || undefined,
+    certificateRecipientNid: body.certificateRecipientNid?.trim() || undefined,
+    recommendationFor: body.recommendationFor?.trim() || undefined,
+    recommendationReason: body.recommendationReason?.trim() || undefined,
+    officeOrderSubject: body.officeOrderSubject?.trim() || undefined,
+    announcementCategory: body.announcementCategory?.trim() || undefined,
+    includeLetterhead: body.includeLetterhead !== undefined ? Boolean(body.includeLetterhead) : true,
+    signatories: Array.isArray(body.signatories) ? body.signatories : [],
+    attachments: Array.isArray(body.attachments) ? body.attachments : [],
+    createdBy: user.id,
+    createdByName: user.name,
+    createdAt: now,
+    updatedAt: now,
+    auditTrail: [
+      {
+        action: 'CREATE',
+        performedBy: user.id,
+        performedByName: user.name,
+        timestamp: now,
+        notes: `নতুন দাপ্তরিক নথি সৃষ্টি করা হয়েছে (${newDoc?.documentNumber || docNumber})`,
+        newStatus: body.status || 'DRAFT',
+      }
+    ],
+  };
+
+  db.officialDocuments.unshift(newDoc);
+  db.save();
+
+  // Audit Log
+  db.logAudit(
+    mosqueId,
+    user.id,
+    user.name,
+    user.role,
+    'CREATE',
+    'DOCUMENT',
+    `দাপ্তরিক নথি তৈরি: ${newDoc.title} (${newDoc.documentNumber})`,
+    newDoc.id,
+    req.ip || '127.0.0.1',
+    {
+      newState: JSON.stringify({
+        id: newDoc.id,
+        title: newDoc.title,
+        docType: newDoc.docType,
+        documentNumber: newDoc.documentNumber,
+        status: newDoc.status,
+      })
+    }
+  );
+
+  res.status(201).json({
+    success: true,
+    data: newDoc,
+    message: 'দাপ্তরিক নথি সফলভাবে সংরক্ষণ করা হয়েছে।'
+  });
+});
+
+// 5. Update Official Document
+app.put('/api/v1/official-documents/:id', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const user = req.user!;
+  const doc = db.officialDocuments.find(d => d.id === req.params.id && d.mosqueId === mosqueId);
+
+  if (!doc) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'দাপ্তরিক নথি পাওয়া যায়নি।' } });
+  }
+
+  const previousState = JSON.stringify(doc);
+  const body = req.body;
+  const now = new Date().toISOString();
+
+  // Update fields
+  if (body.title !== undefined) doc.title = body.title.trim();
+  if (body.docType !== undefined) doc.docType = body.docType;
+  if (body.subType !== undefined) doc.subType = body.subType;
+  if (body.documentNumber !== undefined) doc.documentNumber = body.documentNumber;
+  if (body.memoNumber !== undefined) doc.memoNumber = body.memoNumber;
+  if (body.applicationNumber !== undefined) doc.applicationNumber = body.applicationNumber;
+  if (body.referenceNumber !== undefined) doc.referenceNumber = body.referenceNumber;
+  if (body.documentDate !== undefined) doc.documentDate = body.documentDate;
+  if (body.effectiveDate !== undefined) doc.effectiveDate = body.effectiveDate;
+  if (body.timeStr !== undefined) doc.timeStr = body.timeStr;
+  if (body.venueStr !== undefined) doc.venueStr = body.venueStr;
+  if (body.senderName !== undefined) doc.senderName = body.senderName;
+  if (body.senderDesignation !== undefined) doc.senderDesignation = body.senderDesignation;
+  if (body.senderOrg !== undefined) doc.senderOrg = body.senderOrg;
+  if (body.senderAddress !== undefined) doc.senderAddress = body.senderAddress;
+  if (body.recipientName !== undefined) doc.recipientName = body.recipientName;
+  if (body.recipientDesignation !== undefined) doc.recipientDesignation = body.recipientDesignation;
+  if (body.recipientOrg !== undefined) doc.recipientOrg = body.recipientOrg;
+  if (body.recipientAddress !== undefined) doc.recipientAddress = body.recipientAddress;
+  if (body.recipientType !== undefined) doc.recipientType = body.recipientType;
+  if (body.body !== undefined) doc.body = body.body;
+  if (body.summary !== undefined) doc.summary = body.summary;
+  if (body.priority !== undefined) doc.priority = body.priority;
+  if (body.visibility !== undefined) doc.visibility = body.visibility;
+  if (body.includeLetterhead !== undefined) doc.includeLetterhead = Boolean(body.includeLetterhead);
+  if (body.signatories !== undefined) doc.signatories = body.signatories;
+  if (body.attachments !== undefined) doc.attachments = body.attachments;
+  if (body.dispatchMethod !== undefined) doc.dispatchMethod = body.dispatchMethod;
+  if (body.dispatchedAt !== undefined) doc.dispatchedAt = body.dispatchedAt;
+  if (body.dispatchedBy !== undefined) doc.dispatchedBy = body.dispatchedBy;
+  if (body.replyRequired !== undefined) doc.replyRequired = Boolean(body.replyRequired);
+  if (body.replyDeadline !== undefined) doc.replyDeadline = body.replyDeadline;
+  if (body.replyReceivedAt !== undefined) doc.replyReceivedAt = body.replyReceivedAt;
+  if (body.replyDocumentId !== undefined) doc.replyDocumentId = body.replyDocumentId;
+  if (body.actionTaken !== undefined) doc.actionTaken = body.actionTaken;
+  if (body.resolvedAt !== undefined) doc.resolvedAt = body.resolvedAt;
+  if (body.certificateFor !== undefined) doc.certificateFor = body.certificateFor;
+  if (body.certificateSubject !== undefined) doc.certificateSubject = body.certificateSubject;
+  if (body.certificateRecipientNid !== undefined) doc.certificateRecipientNid = body.certificateRecipientNid;
+  if (body.recommendationFor !== undefined) doc.recommendationFor = body.recommendationFor;
+  if (body.recommendationReason !== undefined) doc.recommendationReason = body.recommendationReason;
+  if (body.officeOrderSubject !== undefined) doc.officeOrderSubject = body.officeOrderSubject;
+  if (body.announcementCategory !== undefined) doc.announcementCategory = body.announcementCategory;
+
+  // Status Change Tracking
+  const previousStatus = doc.status;
+  if (body.status !== undefined && body.status !== previousStatus) {
+    doc.status = body.status;
+    if (!doc.auditTrail) doc.auditTrail = [];
+    doc.auditTrail.push({
+      action: 'STATUS_CHANGE',
+      performedBy: user.id,
+      performedByName: user.name,
+      timestamp: now,
+      previousStatus,
+      newStatus: body.status,
+      notes: body.statusNotes || `স্ট্যাটাস পরিবর্তন: ${previousStatus} ➔ ${body.status}`
+    });
+  } else {
+    if (!doc.auditTrail) doc.auditTrail = [];
+    doc.auditTrail.push({
+      action: 'UPDATE',
+      performedBy: user.id,
+      performedByName: user.name,
+      timestamp: now,
+      notes: 'নথির বিষয়বস্তু বা বিবরণ সম্পাদনা করা হয়েছে।'
+    });
+  }
+
+  doc.updatedAt = now;
+  db.save();
+
+  // Audit Log
+  db.logAudit(
+    mosqueId,
+    user.id,
+    user.name,
+    user.role,
+    'UPDATE',
+    'DOCUMENT',
+    `দাপ্তরিক নথি হালনাগাদ: ${doc.title} (${doc.documentNumber})`,
+    doc.id,
+    req.ip || '127.0.0.1',
+    {
+      previousState,
+      newState: JSON.stringify(doc),
+    }
+  );
+
+  res.json({
+    success: true,
+    data: doc,
+    message: 'দাপ্তরিক নথি সফলভাবে হালনাগাদ করা হয়েছে।'
+  });
+});
+
+// 6. Quick Status Update
+app.post('/api/v1/official-documents/:id/status', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const user = req.user!;
+  const doc = db.officialDocuments.find(d => d.id === req.params.id && d.mosqueId === mosqueId);
+
+  if (!doc) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'দাপ্তরিক নথি পাওয়া যায়নি।' } });
+  }
+
+  const { status, notes } = req.body;
+  if (!status) {
+    return res.status(400).json({ success: false, error: { code: 'MISSING_STATUS', message: 'নতুন স্ট্যাটাস প্রদান করুন।' } });
+  }
+
+  const previousStatus = doc.status;
+  const now = new Date().toISOString();
+  doc.status = status;
+  doc.updatedAt = now;
+
+  if (status === 'RESOLVED' && !doc.resolvedAt) {
+    doc.resolvedAt = now.split('T')[0];
+  }
+
+  if (!doc.auditTrail) doc.auditTrail = [];
+  doc.auditTrail.push({
+    action: 'STATUS_CHANGE',
+    performedBy: user.id,
+    performedByName: user.name,
+    timestamp: now,
+    previousStatus,
+    newStatus: status,
+    notes: notes || `স্ট্যাটাস পরিবর্তন: ${previousStatus} ➔ ${status}`
+  });
+
+  db.save();
+
+  res.json({
+    success: true,
+    data: doc,
+    message: 'নথির স্ট্যাটাস সফলভাবে পরিবর্তন করা হয়েছে।'
+  });
+});
+
+// 7. Delete Official Document
+app.delete('/api/v1/official-documents/:id', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const user = req.user!;
+  const index = db.officialDocuments.findIndex(d => d.id === req.params.id && d.mosqueId === mosqueId);
+
+  if (index === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'দাপ্তরিক নথি পাওয়া যায়নি।' } });
+  }
+
+  const doc = db.officialDocuments[index];
+  const isAdmin = user.role === 'SUPER_ADMIN' || user.role === 'MOSQUE_ADMIN';
+  if (!isAdmin && doc.createdBy !== user.id) {
+    return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'এই নথি মুছে ফেলার অনুমতি নেই।' } });
+  }
+
+  const previousState = JSON.stringify(doc);
+  db.officialDocuments.splice(index, 1);
+  db.save();
+
+  // Audit Log
+  db.logAudit(
+    mosqueId,
+    user.id,
+    user.name,
+    user.role,
+    'DELETE',
+    'DOCUMENT',
+    `দাপ্তরিক নথি মুছে ফেলা হয়েছে: ${doc.title} (${doc.documentNumber})`,
+    doc.id,
+    req.ip || '127.0.0.1',
+    {
+      previousState,
+    }
+  );
+
+  res.json({
+    success: true,
+    message: 'দাপ্তরিক নথি সফলভাবে মুছে ফেলা হয়েছে।'
+  });
+});
+
+// 8. Get Document Templates
+app.get('/api/v1/official-documents/templates/list', authenticate, (req: AuthRequest, res: Response) => {
+  const templates = db.officialDocumentTemplates && db.officialDocumentTemplates.length > 0
+    ? db.officialDocumentTemplates
+    : DEFAULT_DOCUMENT_TEMPLATES;
+  res.json({ success: true, data: templates });
+});
+
+// 9. AI Writing Assistant Endpoint (Gemini Model)
+app.post('/api/v1/official-documents/ai-assist', authenticate, async (req: AuthRequest, res: Response) => {
+  const mosque = req.currentMosque || db.mosques[0];
+  const {
+    action = 'GENERATE', // 'GENERATE' | 'OFFICIAL' | 'SUMMARIZE' | 'ELABORATE' | 'SPELLCHECK'
+    docType = 'NOTICE',
+    subject = '',
+    keyPoints = '',
+    currentText = '',
+    tone = 'অফিসিয়াল ও মার্জিত', // 'অফিসিয়াল' | 'বিনীত' | 'সংক্ষিপ্ত' | 'জরুরি' | 'প্রশাসনিক'
+    sender = 'মসজিদ পরিচালনা পরিষদ',
+    recipient = 'সকল সম্মানিত মুসল্লিয়ানে কেরাম',
+  } = req.body;
+
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (apiKey) {
+    try {
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          },
+        },
+      });
+
+      let systemPrompt = `You are the Expert Official Bengali Administrative Letter and Document Drafter of "${mosque?.nameBn || 'মসজিদলেজার'}".
+Generate high-register, respectful, flawless Bengali official document drafts, notices, applications, announcements, certificates, or office orders.
+Use correct administrative Bengali prose, standard Islamic greetings (আসসালামু আলাইকুম ওয়া রাহমাতুল্লাহি ওয়া বারাকাতুহ), respectful closing, and clear structural formatting.
+Output clean HTML tags (<p>, <strong>, <ol>, <li>, <ul>, <br>) suitable for a rich text editor. Do NOT wrap output in markdown code blocks like \`\`\`html.`;
+
+      let userPrompt = '';
+      if (action === 'GENERATE') {
+        userPrompt = `Generate a complete official Bengali document draft for:
+Mosque Name: ${mosque?.nameBn || 'বায়তুল আমান জামে মসজিদ'}
+Document Type: ${docType}
+Subject: ${subject || 'সাধারণ দাপ্তরিক নোটিশ'}
+Key Points / Instructions: ${keyPoints || 'বিষয়বস্তু বিস্তারিত উপস্থাপন'}
+Sender: ${sender}
+Recipient: ${recipient}
+Tone: ${tone}
+
+Please produce a comprehensive, beautifully phrased, ready-to-print official document in valid HTML paragraphs (<p>, <strong>, <ol>, etc.).`;
+      } else if (action === 'OFFICIAL') {
+        userPrompt = `Rewrite the following Bengali text into formal, high-register, authoritative yet respectful mosque administrative Bengali prose:
+Current Text:
+${currentText}
+
+Tone: ${tone}
+Output formatted clean HTML paragraphs (<p>, <strong>, etc.).`;
+      } else if (action === 'SUMMARIZE') {
+        userPrompt = `Provide a concise 1-2 sentence administrative summary in professional Bengali for this document:
+${currentText || keyPoints}`;
+      } else if (action === 'ELABORATE') {
+        userPrompt = `Elaborate and expand the following points into a formal multi-paragraph official administrative letter/notice in clean HTML:
+Points:
+${currentText || keyPoints}`;
+      } else if (action === 'SPELLCHECK') {
+        userPrompt = `Proofread, fix all Bengali spelling errors, grammar, punctuation, and refine Islamic honorifics in the following text while retaining the meaning:
+${currentText}`;
+      }
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: `${systemPrompt}\n\n${userPrompt}`,
+      });
+
+      let generated = response.text || '';
+      // Clean up accidental markdown code fence if present
+      generated = generated.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/```$/i, '').trim();
+
+      return res.json({
+        success: true,
+        data: {
+          resultText: generated,
+          action,
+          tone,
+        }
+      });
+    } catch (err: any) {
+      console.warn('[Gemini AI Document Assist] Error:', err);
+      // Graceful fallback to rule-based template
+    }
+  }
+
+  // Graceful rule-based fallback if API key is missing or network failure
+  let fallbackText = '';
+  if (action === 'SUMMARIZE') {
+    fallbackText = `${subject || 'দাপ্তরিক বিজ্ঞপ্তি'}: ${keyPoints ? keyPoints.slice(0, 80) + '...' : 'মসজিদের সার্বিক কার্যক্রম ও শৃঙ্খলা বজায় রাখার জন্য আনুষ্ঠানিকভাবে জারি করা হয়েছে।'}`;
+  } else {
+    fallbackText = `<p><strong>${mosque?.nameBn || 'বায়তুল আমান জামে মসজিদ'} পরিচালনা পরিষদ</strong></p>
+<p>এতদ্বারা সম্মানিত <strong>${recipient || 'সকল সংশ্লিষ্ট ব্যক্তিবর্গের'}</strong> সদয় অবগতির জন্য জানানো যাচ্ছে যে, <strong>${subject || 'দাপ্তরিক বিষয়'}</strong> সংক্রান্ত বিষয়ে নিম্নোক্ত সিদ্ধান্ত গৃহীত হয়েছে:</p>
+<p>${keyPoints ? keyPoints : 'মসজিদের কার্যক্রম সুষ্ঠুভাবে পরিচালনার স্বার্থে সকলের সহযোগিতা একান্তভাবে কাম্য।'}</p>
+<p>অতএব, উক্ত বিষয়ে সংশ্লিষ্ট সকলকে প্রয়োজনীয় সতর্কতা ও দায়িত্বশীলতার সাথে অনুসরণের জন্য বিনীত অনুরোধ জানানো হলো।</p>`;
+  }
+
+  res.json({
+    success: true,
+    data: {
+      resultText: fallbackText,
+      action,
+      tone,
+      isFallback: true,
+    }
+  });
+});
+
+
+// ==========================================
 // 14. REPORTS API
 // ==========================================
 // ==========================================
