@@ -77,14 +77,15 @@ export const GlobalAttachmentManager: React.FC<GlobalAttachmentManagerProps> = (
     setSaving(true);
     try {
       await api.createDocument({
-        title: title.trim(),
+        name: title.trim(),
         entityType: entityType as any,
+        entityId: 'central-repo',
+        entityTitle: 'কেন্দ্রীয় নথি ভাণ্ডার',
         documentType: documentType as any,
-        googleDriveLink: googleDriveLink.trim() || undefined,
+        googleDriveUrl: googleDriveLink.trim() || undefined,
         fileUrl: fileUrl.trim() || undefined,
-        fileName: fileName.trim() || undefined,
+        originalFileName: fileName.trim() || undefined,
         description: description.trim() || undefined,
-        tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : [],
         visibility: 'PUBLIC',
       });
       setShowAddModal(false);

@@ -272,6 +272,36 @@ export function populateTemplate(
   return result;
 }
 
+export function replaceTemplatePlaceholders(
+  templateStr: string,
+  data: Record<string, string | number | undefined>
+): string {
+  let result = templateStr;
+  const mapping: Record<string, string | number | undefined> = {
+    ...data,
+    '{{মসজিদের_নাম}}': data.mosqueName || data['{{মসজিদের_নাম}}'],
+    '{{mosqueName}}': data.mosqueName || data['{{mosqueName}}'],
+    '{{তারিখ}}': data.date || data['{{তারিখ}}'],
+    '{{date}}': data.date || data['{{date}}'],
+    '{{সময়}}': data.time || data['{{সময়}}'],
+    '{{time}}': data.time || data['{{time}}'],
+    '{{স্থান}}': data.venue || data['{{স্থান}}'],
+    '{{venue}}': data.venue || data['{{venue}}'],
+    '{{সভার_তারিখ}}': data.date || data.meetingDate || data['{{সভার_তারিখ}}'],
+    '{{সভার_সময়}}': data.time || data.meetingTime || data['{{সভার_সময়}}'],
+    '{{সভার_স্থান}}': data.venue || data.meetingVenue || data['{{সভার_স্থান}}'],
+  };
+
+  for (const [key, value] of Object.entries(mapping)) {
+    if (value !== undefined && value !== null) {
+      const placeholder = key.startsWith('{{') ? key : `{{${key}}}`;
+      const regex = new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+      result = result.replace(regex, String(value));
+    }
+  }
+  return result;
+}
+
 /**
  * Document Number Generators
  */

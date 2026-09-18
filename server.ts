@@ -6,6 +6,7 @@ import { GoogleGenAI } from '@google/genai';
 import { db } from './src/server/db';
 import { realtime } from './src/server/ws';
 import { buildDailyPrayerSchedule, buildMonthlyPrayerCalendar } from './src/lib/prayerEngine';
+import { DEFAULT_DOCUMENT_TEMPLATES } from './src/lib/officialDocumentTemplates';
 import {
   User,
   Mosque,
@@ -12335,7 +12336,7 @@ app.post('/api/v1/official-documents', authenticate, (req: AuthRequest, res: Res
         performedBy: user.id,
         performedByName: user.name,
         timestamp: now,
-        notes: `নতুন দাপ্তরিক নথি সৃষ্টি করা হয়েছে (${newDoc?.documentNumber || docNumber})`,
+        notes: `নতুন দাপ্তরিক নথি সৃষ্টি করা হয়েছে (${docNumber})`,
         newStatus: body.status || 'DRAFT',
       }
     ],

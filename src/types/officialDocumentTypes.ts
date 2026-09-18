@@ -25,6 +25,10 @@ export type OfficialDocumentStatus =
   | 'CANCELLED'           // বাতিল
   | 'ARCHIVED';           // সংরক্ষিত
 
+export type OfficialDocumentPriority = 'NORMAL' | 'URGENT' | 'HIGH';
+export type OfficialDocumentVisibility = DocumentVisibility;
+export type DocumentAttachment = DocumentAttachmentItem;
+
 export interface DocumentSignatory {
   id: string;
   title: string;          // e.g. 'সভাপতি', 'সাধারণ সম্পাদক', 'হিসাবরক্ষক', 'খতিব / পেশ ইমাম'
@@ -94,7 +98,7 @@ export interface OfficialDocument {
 
   // Tracking & Status
   status: OfficialDocumentStatus;
-  priority?: 'NORMAL' | 'URGENT' | 'HIGH';
+  priority?: OfficialDocumentPriority;
   visibility: DocumentVisibility;
 
   // Official Linking
@@ -149,9 +153,11 @@ export interface OfficialDocumentTemplate {
   name: string;
   docType: OfficialDocumentType;
   subType: string;
-  titleTemplate: string;
+  titleTemplate?: string;
+  defaultTitle?: string;
   bodyTemplate: string;
   placeholders: string[];
+  defaultSignatories?: DocumentSignatory[];
   isDefault?: boolean;
   description?: string;
 }

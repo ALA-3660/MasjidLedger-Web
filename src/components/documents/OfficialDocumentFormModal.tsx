@@ -36,7 +36,7 @@ import {
   DocumentSignatory,
   DocumentAttachment,
 } from '../../types/officialDocumentTypes';
-import { Mosque, CommitteeTerm, CommitteeMeeting, MeetingResolution, Member, Staff } from '../../types';
+import { Mosque, CommitteeTerm, CommitteeMeeting, MeetingResolution, CommitteeMember, Staff } from '../../types';
 import { DEFAULT_DOCUMENT_TEMPLATES, replaceTemplatePlaceholders } from '../../lib/officialDocumentTemplates';
 import { OfficialDocumentAiModal } from './OfficialDocumentAiModal';
 
