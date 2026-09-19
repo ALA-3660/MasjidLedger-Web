@@ -648,8 +648,274 @@
   "notifications": [],
   "transfers": [],
   "uploadedFiles": [],
+  "centralDocuments": [],
   "qrCodes": [],
   "auditLogs": [
+    {
+      "id": "aud-1789841462753-zenfg",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "LOGIN",
+      "module": "AUTH",
+      "details": "সফলভাবে লগইন করেছেন",
+      "timestamp": "2026-09-19T18:11:02.753Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "aud-1789841457027-mn0wy",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "EDIT_INCOME",
+      "module": "MUSALLI_DATABASE",
+      "recordId": "COL-00004",
+      "details": "অনুদান সংগ্রহের স্ট্যাটাস পরিবর্তন: COL-00004 -> NOT_COLLECTED",
+      "timestamp": "2026-09-19T18:10:57.027Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "aud-1789841457023-vfl8f",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "EDIT_INCOME",
+      "module": "MUSALLI_DATABASE",
+      "recordId": "COL-00004",
+      "details": "অনুদান সংগ্রহ তথ্য আপডেট: COL-00004 (টেস্ট মুসল্লি)",
+      "timestamp": "2026-09-19T18:10:57.023Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "aud-1789841457018-f4423",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "CREATE_INCOME",
+      "module": "MUSALLI_DATABASE",
+      "recordId": "COL-00004",
+      "details": "অনুদান সংগ্রহ কার্যক্রম তৈরি: COL-00004 (টেস্ট মুসল্লি - AUDIT-1789841457016)",
+      "timestamp": "2026-09-19T18:10:57.018Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "aud-1789841456993-fxh0r",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "LOGIN",
+      "module": "AUTH",
+      "details": "সফলভাবে লগইন করেছেন",
+      "timestamp": "2026-09-19T18:10:56.993Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "aud-1789841453300-buz60",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "EDIT_INCOME",
+      "module": "MUSALLI_DATABASE",
+      "recordId": "COL-00003",
+      "details": "অনুদান সংগ্রহের স্ট্যাটাস পরিবর্তন: COL-00003 -> NOT_COLLECTED",
+      "timestamp": "2026-09-19T18:10:53.300Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "aud-1789841453295-7puvz",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "EDIT_INCOME",
+      "module": "MUSALLI_DATABASE",
+      "recordId": "COL-00003",
+      "details": "অনুদান সংগ্রহ তথ্য আপডেট: COL-00003 (টেস্ট মুসল্লি)",
+      "timestamp": "2026-09-19T18:10:53.295Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "aud-1789841453291-kg0pg",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "CREATE_INCOME",
+      "module": "MUSALLI_DATABASE",
+      "recordId": "COL-00003",
+      "details": "অনুদান সংগ্রহ কার্যক্রম তৈরি: COL-00003 (টেস্ট মুসল্লি - AUDIT-1789841453289)",
+      "timestamp": "2026-09-19T18:10:53.291Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "aud-1789841453266-s4pv3",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "LOGIN",
+      "module": "AUTH",
+      "details": "সফলভাবে লগইন করেছেন",
+      "timestamp": "2026-09-19T18:10:53.266Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "aud-1789841443172-3xzd6",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "EDIT_INCOME",
+      "module": "MUSALLI_DATABASE",
+      "recordId": "COL-00002",
+      "details": "অনুদান সংগ্রহের স্ট্যাটাস পরিবর্তন: COL-00002 -> NOT_COLLECTED",
+      "timestamp": "2026-09-19T18:10:43.172Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "aud-1789841443167-p42pp",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "EDIT_INCOME",
+      "module": "MUSALLI_DATABASE",
+      "recordId": "COL-00002",
+      "details": "অনুদান সংগ্রহ তথ্য আপডেট: COL-00002 (টেস্ট মুসল্লি)",
+      "timestamp": "2026-09-19T18:10:43.167Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "aud-1789841443162-k4f0w",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "CREATE_INCOME",
+      "module": "MUSALLI_DATABASE",
+      "recordId": "COL-00002",
+      "details": "অনুদান সংগ্রহ কার্যক্রম তৈরি: COL-00002 (টেস্ট মুসল্লি - AUDIT-1789841443159)",
+      "timestamp": "2026-09-19T18:10:43.162Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "aud-1789841443127-gac1o",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "LOGIN",
+      "module": "AUTH",
+      "details": "সফলভাবে লগইন করেছেন",
+      "timestamp": "2026-09-19T18:10:43.127Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "aud-1789830018915-g0hyw",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "EDIT_INCOME",
+      "module": "MUSALLI_DATABASE",
+      "recordId": "COL-00001",
+      "details": "অনুদান সংগ্রহের স্ট্যাটাস পরিবর্তন: COL-00001 -> PENDING",
+      "timestamp": "2026-09-19T15:00:18.915Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "aud-1789830018906-jguc8",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "CREATE_INCOME",
+      "module": "MUSALLI_DATABASE",
+      "recordId": "COL-00001",
+      "details": "অনুদান সংগ্রহ কার্যক্রম তৈরি: COL-00001 (টেস্ট মুসল্লি - 2026-3321)",
+      "timestamp": "2026-09-19T15:00:18.906Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "aud-1789830018901-w1ovf",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "CREATE_INCOME",
+      "module": "MUSALLI_DATABASE",
+      "recordId": "plan-1789830018900-kq2s2",
+      "details": "নতুন অনুদান পরিকল্পনা তৈরি: PLAN-00001 (টেস্ট মুসল্লি - মাসিক ৳1000)",
+      "timestamp": "2026-09-19T15:00:18.901Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "aud-1789830018895-aiazz",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "SYSTEM_INITIALIZE",
+      "module": "MUSALLI_DATABASE",
+      "recordId": "per-1789830018894-n3h5l",
+      "details": "নতুন মুসল্লি / ব্যক্তি নথিভুক্ত করা হয়েছে: টেস্ট মুসল্লি (P-00001)",
+      "timestamp": "2026-09-19T15:00:18.896Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "aud-1789830018881-wbbuv",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "LOGIN",
+      "module": "AUTH",
+      "details": "সফলভাবে লগইন করেছেন",
+      "timestamp": "2026-09-19T15:00:18.881Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
     {
       "id": "aud-1789462980634-2cioy",
       "mosqueId": "mosque-mamun-001",
@@ -695,5 +961,831 @@
   "idempotencyMap": {},
   "backupRecords": [],
   "restoreRecords": [],
-  "backupSettings": {}
+  "backupSettings": {},
+  "officialDocuments": [
+    {
+      "id": "doc-notice-001",
+      "mosqueId": "mosque-mamun-001",
+      "docType": "NOTICE",
+      "subType": "MEETING_NOTICE",
+      "documentNumber": "নোটিশ/2026/০০১",
+      "memoNumber": "স্মারক-নোটিশ/2026/০০১",
+      "serialNumber": 1,
+      "title": "পরিচালনা পরিষদের মাসিক সাধারণ সভা আহ্বান সংক্রান্ত নোটিশ",
+      "documentDate": "2026-09-19",
+      "timeStr": "বাদ মাগরিব (সন্ধ্যা ৬:৪৫)",
+      "venueStr": "মসজিদ কনফারেন্স রুম / ২য় তলা",
+      "recipientType": "MEMBERS",
+      "recipientName": "পরিচালনা পরিষদের সম্মানিত সকল সদস্যবৃন্দ",
+      "body": "<p>এতদ্বারা <strong>মামুন জামে মসজিদ ওয়াকফ এস্টেট</strong>-এর পরিচালনা পরিষদের সম্মানিত সকল সদস্য মহোদয়কে জানানো যাচ্ছে যে, আগামী শুক্রবার বাদ মাগরিব মসজিদ কার্যালয়ে এক সাধারণ সভা অনুষ্ঠিত হবে।</p>\n<p><strong>আলোচ্যসূচি (Agenda):</strong></p>\n<ol>\n  <li>বিগত সভার কার্যবিবরণী পাঠ ও সর্বসম্মত অনুমোদন।</li>\n  <li>চলতি মাসের আয়-ব্যয় হিসাব পর্যালোচনা ও ক্যাশ স্থিতি রিপোর্ট পেশ।</li>\n  <li>আসন্ন পবিত্র রমজানুল মোবারক উপলক্ষে তারাবি ও ইফতার প্রস্তুতি।</li>\n  <li>মসজিদের অজুখানা ও উত্তর পাশের মেঝের উন্নয়নমূলক কাজ।</li>\n</ol>\n<p>উক্ত সভায় যথাসময়ে উপস্থিত থেকে সুচিন্তিত মতামত প্রদানের জন্য বিনীত অনুরোধ জানানো হলো।</p>",
+      "summary": "পরিচালনা পরিষদের মাসিক নিয়মিত সভা ও রমজানের পূর্ব প্রস্তুতি সভা আহ্বান।",
+      "status": "APPROVED",
+      "priority": "HIGH",
+      "visibility": "PUBLIC",
+      "includeLetterhead": true,
+      "signatories": [
+        {
+          "id": "sig-1",
+          "title": "সাধারণ সম্পাদক",
+          "name": "আলহাজ্ব মো: রফিকুল ইসলাম",
+          "designation": "সাধারণ সম্পাদক",
+          "signed": true,
+          "signedAt": "2026-09-19"
+        },
+        {
+          "id": "sig-2",
+          "title": "সভাপতি",
+          "name": "জনাব মো: নুরুল হুদা চৌধুরী",
+          "designation": "সভাপতি",
+          "signed": true,
+          "signedAt": "2026-09-19"
+        }
+      ],
+      "attachments": [],
+      "createdBy": "user-admin",
+      "createdByName": "অ্যাডমিন",
+      "createdAt": "2026-09-17T14:59:25.738Z",
+      "updatedAt": "2026-09-17T14:59:25.738Z",
+      "auditTrail": [
+        {
+          "action": "CREATE",
+          "performedBy": "user-admin",
+          "performedByName": "অ্যাডমিন",
+          "timestamp": "2026-09-17T14:59:25.738Z",
+          "notes": "নোটিশ খসড়া তৈরি ও অনুমোদন সম্পন্ন।"
+        }
+      ]
+    },
+    {
+      "id": "doc-app-001",
+      "mosqueId": "mosque-mamun-001",
+      "docType": "APPLICATION",
+      "subType": "LEAVE_APPLICATION",
+      "documentNumber": "আবেদন/2026/০০১",
+      "applicationNumber": "আবেদন-2026/০০১",
+      "serialNumber": 1,
+      "title": "পবিত্র ওমরাহ পালনের উদ্দেশ্যে ১৫ দিনের নৈমিত্তিক ছুটির আবেদন",
+      "documentDate": "2026-09-19",
+      "senderName": "মাওলানা হাফেজ মুফতি আব্দুল্লাহ",
+      "senderDesignation": "সম্মানিত পেশ ইমাম ও খতিব",
+      "recipientType": "ORGANIZATION",
+      "recipientName": "সভাপতি / সাধারণ সম্পাদক, পরিচালনা পরিষদ",
+      "body": "<p>বরাবর,<br>সভাপতি / সাধারণ সম্পাদক<br>পরিচালনা পরিষদ, <strong>মামুন জামে মসজিদ ওয়াকফ এস্টেট</strong></p>\n<p><strong>বিষয়: পবিত্র ওমরাহ পালনের উদ্দেশ্যে ১৫ দিনের নৈমিত্তিক ছুটির আবেদন।</strong></p>\n<p>মহোদয়,<br>বিনীত নিবেদন এই যে, আমি নিম্নস্বাক্ষরকারী আপনার ঐতিহ্যবাহী মসজিদে পেশ ইমাম হিসেবে নিয়োজিত আছি। পবিত্র ওমরাহ হজের উদ্দেশ্যে আগামী ১০ দিন পর থেকে মোট ১৫ দিনের জন্য সৌদি আরব গমন করতে ইচ্ছুক।</p>\n<p>আমার ছুটিকালীন সময়ে নামাজের জামাত পরিচালনার দায়িত্ব সম্মানিত সহকারী ইমাম ও মুয়াজ্জিন সাহেব যথাযথভাবে সম্পন্ন করবেন।</p>\n<p>অতএব, প্রার্থনা এই যে—আমার আবেদনটি সদয় মঞ্জুর করে ওমরাহ পালনে যাওয়ার অনুমতি প্রদানে বাধিত করবেন।</p>",
+      "summary": "পেশ ইমাম সাহেবের ওমরাহ হজের জন্য ১৫ দিনের ছুটির আবেদন।",
+      "status": "APPROVED",
+      "priority": "NORMAL",
+      "visibility": "RESTRICTED",
+      "actionTaken": "পরিচালনা পরিষদের জরুরি বৈঠকে পেশ ইমাম সাহেবের ছুটি মঞ্জুর করা হয়েছে এবং মুয়াজ্জিন সাহেবকে ভারপ্রাপ্ত ইমামতি পালনের নির্দেশ দেওয়া হয়েছে।",
+      "resolvedAt": "2026-09-19",
+      "includeLetterhead": false,
+      "signatories": [
+        {
+          "id": "sig-1",
+          "title": "আবেদনকারী",
+          "name": "মাওলানা হাফেজ মুফতি আব্দুল্লাহ",
+          "designation": "পেশ ইমাম",
+          "signed": true,
+          "signedAt": "2026-09-19"
+        },
+        {
+          "id": "sig-2",
+          "title": "মঞ্জুরকারী (সভাপতি)",
+          "name": "জনাব মো: নুরুল হুদা চৌধুরী",
+          "designation": "সভাপতি",
+          "signed": true,
+          "signedAt": "2026-09-19"
+        }
+      ],
+      "attachments": [],
+      "createdBy": "user-admin",
+      "createdByName": "অ্যাডমিন",
+      "createdAt": "2026-09-14T14:59:25.738Z",
+      "updatedAt": "2026-09-19",
+      "auditTrail": [
+        {
+          "action": "CREATE",
+          "performedBy": "user-admin",
+          "performedByName": "অ্যাডমিন",
+          "timestamp": "2026-09-14T14:59:25.738Z",
+          "notes": "ছুটির আবেদন নিবন্ধিত।"
+        },
+        {
+          "action": "STATUS_CHANGE",
+          "performedBy": "user-admin",
+          "performedByName": "অ্যাডমিন",
+          "timestamp": "2026-09-19",
+          "notes": "আবেদন মঞ্জুর ও অনুমোদিত।"
+        }
+      ]
+    },
+    {
+      "id": "doc-ann-001",
+      "mosqueId": "mosque-mamun-001",
+      "docType": "ANNOUNCEMENT",
+      "subType": "JUMMAH_ANNOUNCEMENT",
+      "documentNumber": "ঘোষণা/2026/০০১",
+      "serialNumber": 1,
+      "title": "জুমার জামাত পূর্ববর্তী অফিসিয়াল ঘোষণা ও উন্নয়ন তহবিল রিপোর্ট",
+      "documentDate": "2026-09-19",
+      "recipientType": "PUBLIC",
+      "recipientName": "মসজিদের সম্মানিত মুসল্লিয়ানে কেরাম",
+      "body": "<p><strong>আসসালামু আলাইকুম ওয়া রাহমাতুল্লাহি ওয়া বারাকাতুহ।</strong></p>\n<p>সম্মানিত মুসল্লি ভাই ও বোনেরা, <strong>মামুন জামে মসজিদ ওয়াকফ এস্টেট</strong> পরিচালনা পরিষদের পক্ষ হতে আজকের গুরুত্বপূর্ণ তথ্যাবলি:</p>\n<p>১. মসজিদের নতুন সোলার প্যানেল স্থাপন কাজ সমাপ্ত হয়েছে এবং আলহামদুলিল্লাহ বিদ্যুৎ সাশ্রয় শুরু হয়েছে।<br>\n২. আগামী রোববার থেকে বাদ ফজর বয়স্কদের বিশুদ্ধ কুরআন শিক্ষা কোর্স আরম্ভ হবে।<br>\n৩. মসজিদের অজুখানার সংস্কার কাজের জন্য মুসল্লিদের স্বেচ্ছাদানের আহ্বান জানানো হচ্ছে।</p>\n<p>আল্লাহ তায়ালা আমাদের সকলের দান ও ইবাদত কবুল করুন। আমিন।</p>",
+      "summary": "জুমার আনুষ্ঠানিক বয়ান ও চলমান সংস্কার কাজের অগ্রগতি ঘোষণা।",
+      "status": "APPROVED",
+      "priority": "NORMAL",
+      "visibility": "PUBLIC",
+      "includeLetterhead": true,
+      "signatories": [
+        {
+          "id": "sig-1",
+          "title": "সাধারণ সম্পাদক",
+          "name": "আলহাজ্ব মো: রফিকুল ইসলাম",
+          "designation": "সাধারণ সম্পাদক",
+          "signed": true,
+          "signedAt": "2026-09-19"
+        }
+      ],
+      "attachments": [],
+      "createdBy": "user-admin",
+      "createdByName": "অ্যাডমিন",
+      "createdAt": "2026-09-19",
+      "updatedAt": "2026-09-19",
+      "auditTrail": [
+        {
+          "action": "CREATE",
+          "performedBy": "user-admin",
+          "performedByName": "অ্যাডমিন",
+          "timestamp": "2026-09-19",
+          "notes": "জুমার আনুষ্ঠানিক ঘোষণা তৈরি।"
+        }
+      ]
+    },
+    {
+      "id": "doc-out-001",
+      "mosqueId": "mosque-mamun-001",
+      "docType": "OUTGOING_LETTER",
+      "subType": "GOV_LETTER",
+      "documentNumber": "স্মারক/2026/০০১",
+      "memoNumber": "স্মারক নং: ব.আ.জ.ম/প্রশা/2026/০১৪",
+      "serialNumber": 1,
+      "title": "মসজিদের সামনের প্রধান সড়কে স্পিড ব্রেকার / গতিরোধক স্থাপনের আবেদন",
+      "documentDate": "2026-09-19",
+      "senderName": "সভাপতি / সাধারণ সম্পাদক",
+      "senderDesignation": "পরিচালনা পরিষদ",
+      "recipientType": "GOV_OFFICE",
+      "recipientName": "উপজেলা নির্বাহী অফিসার (ইউএনও)",
+      "recipientOrg": "উপজেলা প্রশাসন",
+      "recipientAddress": "উপজেলা পরিষদ কার্যালয়",
+      "body": "<p>স্মারক নং: <strong>ব.আ.জ.ম/প্রশা/2026/০১৪</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;তারিখ: <strong>2026-09-19</strong></p>\n<p>বরাবর,<br><strong>উপজেলা নির্বাহী অফিসার (ইউএনও)</strong><br>উপজেলা পরিষদ কার্যালয়</p>\n<p><strong>বিষয়: মামুন জামে মসজিদ ওয়াকফ এস্টেট-এর সম্মুখস্থ সড়কে মুসল্লি ও পথচারীদের নিরাপত্তার্থে গতিরোধক (Speed Breaker) স্থাপনের আবেদন।</strong></p>\n<p>জনাব,<br>সম্মানপূর্বক বিনীত নিবেদন এই যে, <strong>মামুন জামে মসজিদ ওয়াকফ এস্টেট</strong> অত্র উপজেলার একটি ব্যস্ততম স্থানে অবস্থিত। দৈনিক ৫ ওয়াক্ত নামাজে শত শত মুসল্লি ও শিশু শিক্ষার্থী উক্ত রাস্তা অতিক্রম করেন। দ্রুতগতির যানবাহনের কারণে প্রায়ই দুর্ঘটনার আশঙ্কা বিরাজ করে।</p>\n<p>এমতাবস্থায়, মুসল্লি ও সাধারণ পথচারীদের জীবনের নিরাপত্তা নিশ্চিতকল্পে মসজিদের উভয় পাশে দুটি স্ট্যান্ডার্ড গতিরোধক স্থাপনের জন্য আপনার সদয় প্রশাসনিক নির্দেশনা ও সহায়তা কামনা করছি।</p>",
+      "summary": "মসজিদের সামনের রাস্তায় গতিরোধক স্থাপনের জন্য ইউএনও মহোদয় বরাবর স্মারকপত্র।",
+      "status": "SENT",
+      "priority": "HIGH",
+      "visibility": "RESTRICTED",
+      "dispatchMethod": "HAND_DELIVERY",
+      "dispatchedAt": "2026-09-19",
+      "replyRequired": true,
+      "includeLetterhead": true,
+      "signatories": [
+        {
+          "id": "sig-1",
+          "title": "সাধারণ সম্পাদক",
+          "name": "আলহাজ্ব মো: রফিকুল ইসলাম",
+          "designation": "সাধারণ সম্পাদক",
+          "signed": true,
+          "signedAt": "2026-09-19"
+        },
+        {
+          "id": "sig-2",
+          "title": "সভাপতি",
+          "name": "জনাব মো: নুরুল হুদা চৌধুরী",
+          "designation": "সভাপতি",
+          "signed": true,
+          "signedAt": "2026-09-19"
+        }
+      ],
+      "attachments": [],
+      "createdBy": "user-admin",
+      "createdByName": "অ্যাডমিন",
+      "createdAt": "2026-09-19",
+      "updatedAt": "2026-09-19",
+      "auditTrail": [
+        {
+          "action": "CREATE",
+          "performedBy": "user-admin",
+          "performedByName": "অ্যাডমিন",
+          "timestamp": "2026-09-19",
+          "notes": "সরকারি দপ্তরে প্রেরিত স্মারকপত্র তৈরি ও রওয়ানা।"
+        }
+      ]
+    },
+    {
+      "id": "doc-in-001",
+      "mosqueId": "mosque-mamun-001",
+      "docType": "INCOMING_LETTER",
+      "subType": "INCOMING_RECORD",
+      "documentNumber": "প্রাপ্তি/2026/০০১",
+      "memoNumber": "স্মারক: ইফা/জেকা/২০২৬/৮৮২",
+      "serialNumber": 1,
+      "title": "ইসলামিক ফাউন্ডেশন হতে জাতীয় বৃক্ষরোপণ কর্মসূচি পালন সংক্রান্ত পত্র",
+      "documentDate": "2026-09-19",
+      "senderName": "উপ-পরিচালক",
+      "senderOrg": "ইসলামিক ফাউন্ডেশন জেলা কার্যালয়",
+      "senderAddress": "জেলা সদর",
+      "recipientType": "ORGANIZATION",
+      "recipientName": "সভাপতি / সাধারণ সম্পাদক, মামুন জামে মসজিদ ওয়াকফ এস্টেট",
+      "body": "<p><strong>প্রাপ্তি ক্রমিক:</strong> ০০১ &nbsp;|&nbsp; <strong>স্মারক নং:</strong> ইফা/জেকা/২০২৬/৮৮২ &nbsp;|&nbsp; <strong>প্রাপ্তির তারিখ:</strong> 2026-09-19</p>\n<p><strong>প্রেরক:</strong> উপ-পরিচালক, ইসলামিক ফাউন্ডেশন জেলা কার্যালয়<br>\n<strong>বিষয়: পরিবেশ সংরক্ষণে মসজিদ চত্বর ও ওয়াকফ জমিতে ফলজ ও ওষধি বৃক্ষরোপণ কর্মসূচি বাস্তবায়ন।</strong></p>\n<p><strong>পত্রের সারসংক্ষেপ:</strong><br>\nআসন্ন বর্ষা মৌসুমে সকল জাতীয় ও স্থানীয় মসজিদ প্রাঙ্গণে কমপক্ষে ২০টি করে বৃক্ষরোপণ ও নিয়মিত পরিচর্যার জন্য নির্দেশনা প্রদান করা হয়েছে।</p>\n<p><strong>গৃহীত সিদ্ধান্ত ও করণীয়:</strong><br>\nপরিচালনা পরিষদের উন্নয়ন সাব-কমিটিকে আগামী সপ্তাহের মধ্যে ৫০টি ফলজ গাছের চারা সংগ্রহ ও রোপণ কার্যক্রম বাস্তবায়নের দায়িত্ব দেওয়া হয়েছে।</p>",
+      "summary": "ইসলামিক ফাউন্ডেশন জেলা কার্যালয় থেকে বৃক্ষরোপণ সংক্রান্ত সরকারি পত্র প্রাপ্তি ও রেজিস্ট্রিকরণ।",
+      "status": "IN_PROGRESS",
+      "priority": "NORMAL",
+      "visibility": "RESTRICTED",
+      "actionTaken": "উন্নয়ন উইংকে চারা রোপণের দায়িত্ব অর্পণ।",
+      "includeLetterhead": false,
+      "signatories": [
+        {
+          "id": "sig-1",
+          "title": "প্রাপ্তিস্বীকারকারী",
+          "name": "অফিস সহকারী / সাধারণ সম্পাদক",
+          "designation": "সাধারণ সম্পাদক",
+          "signed": true,
+          "signedAt": "2026-09-19"
+        }
+      ],
+      "attachments": [],
+      "createdBy": "user-admin",
+      "createdByName": "অ্যাডমিন",
+      "createdAt": "2026-09-19",
+      "updatedAt": "2026-09-19",
+      "auditTrail": [
+        {
+          "action": "CREATE",
+          "performedBy": "user-admin",
+          "performedByName": "অ্যাডমিন",
+          "timestamp": "2026-09-19",
+          "notes": "প্রাপ্ত পত্র ইনকামিং রেজিস্টারে নথিভুক্ত।"
+        }
+      ]
+    },
+    {
+      "id": "doc-ord-001",
+      "mosqueId": "mosque-mamun-001",
+      "docType": "OFFICE_ORDER",
+      "subType": "DUTY_ASSIGNMENT",
+      "documentNumber": "অফিস/2026/০০১",
+      "memoNumber": "আদেশ নং: ব.আ.জ.ম/অআ/2026/০০১",
+      "serialNumber": 1,
+      "title": "মসজিদের সার্বিক পরিচ্ছন্নতা ও জেনারেটর রক্ষণাবেক্ষণের দায়িত্ব বণ্টন আদেশ",
+      "documentDate": "2026-09-19",
+      "effectiveDate": "2026-09-19",
+      "recipientType": "STAFF",
+      "recipientName": "মোহাম্মদ করিম (প্রধান খাদেম) ও মো: আলী (সহকারী খাদেম)",
+      "body": "<p>অফিস আদেশ নং: <strong>ব.আ.জ.ম/অআ/2026/০০১</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;তারিখ: <strong>2026-09-19</strong></p>\n<p>এতদ্বারা <strong>মামুন জামে মসজিদ ওয়াকফ এস্টেট</strong>-এর সংশ্লিষ্ট কর্মচারীদের অবগতির জন্য জানানো যাচ্ছে যে, আজ থেকে মসজিদের সার্বিক শৃঙ্খলা ও রক্ষণাবেক্ষণ নিম্নরূপ বণ্টন করা হলো:</p>\n<ol>\n  <li><strong>প্রধান খাদেম:</strong> মূল নামাজ কক্ষ, মিম্বর, মেহরাব এবং জেনারেটর পরিচালনা ও ফুয়েল পরীক্ষা।</li>\n  <li><strong>সহকারী খাদেম:</strong> অজুখানা, ওয়াশরুম, বাথরুম দিনে তিনবার জীবাণুনাশক দিয়ে পরিষ্কার করা এবং উত্তর গেট লক নিশ্চিত করা।</li>\n</ol>\n<p>এ আদেশ অবিলম্বে কার্যকর হবে এবং দায়িত্বে কোনো প্রকার অবহেলা গ্রহণযোগ্য হবে না।</p>",
+      "summary": "খাদেমদের কাজের নির্দিষ্ট শিডিউল ও পরিষ্কার-পরিচ্ছন্নতা বিষয়ক অফিশিয়াল আদেশ।",
+      "status": "APPROVED",
+      "priority": "HIGH",
+      "visibility": "RESTRICTED",
+      "includeLetterhead": true,
+      "signatories": [
+        {
+          "id": "sig-1",
+          "title": "সাধারণ সম্পাদক",
+          "name": "আলহাজ্ব মো: রফিকুল ইসলাম",
+          "designation": "সাধারণ সম্পাদক",
+          "signed": true,
+          "signedAt": "2026-09-19"
+        },
+        {
+          "id": "sig-2",
+          "title": "সভাপতি",
+          "name": "জনাব মো: নুরুল হুদা চৌধুরী",
+          "designation": "সভাপতি",
+          "signed": true,
+          "signedAt": "2026-09-19"
+        }
+      ],
+      "attachments": [],
+      "createdBy": "user-admin",
+      "createdByName": "অ্যাডমিন",
+      "createdAt": "2026-09-19",
+      "updatedAt": "2026-09-19",
+      "auditTrail": [
+        {
+          "action": "CREATE",
+          "performedBy": "user-admin",
+          "performedByName": "অ্যাডমিন",
+          "timestamp": "2026-09-19",
+          "notes": "অফিস আদেশ জারি করা হলো।"
+        }
+      ]
+    },
+    {
+      "id": "doc-cert-001",
+      "mosqueId": "mosque-mamun-001",
+      "docType": "CERTIFICATE",
+      "subType": "MEMBER_CERTIFICATE",
+      "documentNumber": "সনদ/2026/০০১",
+      "serialNumber": 1,
+      "title": "পরিচালনা পরিষদের সিনিয়র সহ-সভাপতি হিসেবে দায়িত্বপালন সংক্রান্ত প্রত্যয়নপত্র",
+      "documentDate": "2026-09-19",
+      "certificateFor": "আলহাজ্ব মো: শামসুল হক",
+      "certificateSubject": "কমিটি সদস্যপদ ও প্রশংসাপত্র",
+      "recipientType": "INDIVIDUAL",
+      "recipientName": "আলহাজ্ব মো: শামসুল হক",
+      "body": "<div style=\"text-align: center; margin-bottom: 24px;\">\n  <h2 style=\"font-size: 24px; font-weight: bold; margin: 0; color: #1e3a8a;\">প্রত্যয়নপত্র ও প্রশংসাপত্র</h2>\n  <p style=\"font-size: 13px; color: #64748b;\">সনদ নং: সনদ/2026/০০১ &nbsp;|&nbsp; তারিখ: 2026-09-19</p>\n</div>\n<p>এই মর্মে প্রত্যয়ন করা যাচ্ছে যে, জনাব <strong>আলহাজ্ব মো: শামসুল হক</strong>, পিতা: মরহুম আব্দুল লতিফ, <strong>মামুন জামে মসজিদ ওয়াকফ এস্টেট</strong> পরিচালনা পরিষদের ২০২৪-২০২৬ মেয়াদে অত্যন্ত বিশ্বস্ততা, নিষ্ঠা ও সুনামের সাথে <strong>সিনিয়র সহ-সভাপতি</strong> হিসেবে দায়িত্ব পালন করছেন।</p>\n<p>তিনি মসজিদের বহুতল ভবন নির্মাণ ও ওয়াকফ সম্পত্তি সংরক্ষণে অনন্য ভূমিকা রেখেছেন। তাঁর সামাজিক ও ধর্মীয় অবদান সর্বজনবিদিত ও প্রশংসনীয়।</p>\n<p>আমি তাঁর দীর্ঘায়ু, সুস্বাস্থ্য ও ইহলৌকিক-পরলৌকিক সার্বিক সাফল্য কামনা করি।</p>",
+      "summary": "সিনিয়র সহ-সভাপতি মহোদয়ের অনুকূলে প্রশংসাপত্র ও সদস্যপদ প্রত্যয়নপত্র জারি।",
+      "status": "APPROVED",
+      "priority": "NORMAL",
+      "visibility": "PUBLIC",
+      "includeLetterhead": true,
+      "signatories": [
+        {
+          "id": "sig-1",
+          "title": "সভাপতি",
+          "name": "জনাব মো: নুরুল হুদা চৌধুরী",
+          "designation": "সভাপতি",
+          "signed": true,
+          "signedAt": "2026-09-19"
+        }
+      ],
+      "attachments": [],
+      "createdBy": "user-admin",
+      "createdByName": "অ্যাডমিন",
+      "createdAt": "2026-09-19",
+      "updatedAt": "2026-09-19",
+      "auditTrail": [
+        {
+          "action": "CREATE",
+          "performedBy": "user-admin",
+          "performedByName": "অ্যাডমিন",
+          "timestamp": "2026-09-19",
+          "notes": "প্রত্যয়নপত্র তৈরি ও মঞ্জুর।"
+        }
+      ]
+    },
+    {
+      "id": "doc-rec-001",
+      "mosqueId": "mosque-mamun-001",
+      "docType": "RECOMMENDATION",
+      "subType": "GENERAL_RECOMMENDATION",
+      "documentNumber": "সুপারিশ/2026/০০১",
+      "serialNumber": 1,
+      "title": "মেধাবী ও অসচ্ছল শিক্ষার্থীর উচ্চশিক্ষা বৃত্তির জন্য সুপারিশপত্র",
+      "documentDate": "2026-09-19",
+      "recommendationFor": "হাফেজ মো: তানভীর আহমেদ",
+      "recommendationReason": "ইসলামিক বিশ্ববিদ্যালয়ে উচ্চশিক্ষা অধ্যয়ন ও অসচ্ছল পরিবার",
+      "recipientType": "ORGANIZATION",
+      "recipientName": "চেয়ারম্যান / ট্রাস্টি বোর্ড",
+      "recipientOrg": "আল-ফালাহ শিক্ষা কল্যাণ ট্রাস্ট",
+      "body": "<p>সুপারিশ পত্র নং: <strong>সুপারিশ/2026/০০১</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;তারিখ: <strong>2026-09-19</strong></p>\n<p>বরাবর,<br><strong>চেয়ারম্যান / নির্বাহী পরিচালক</strong><br>আল-ফালাহ শিক্ষা কল্যাণ ট্রাস্ট</p>\n<p><strong>বিষয়: হাফেজ মো: তানভীর আহমেদ-এর উচ্চশিক্ষা বৃত্তির অনুকূলে জোরালো সুপারিশ প্রদান প্রসঙ্গে।</strong></p>\n<p>মহোদয়,<br>অত্যন্ত আনন্দের সাথে জানাচ্ছি যে, <strong>হাফেজ মো: তানভীর আহমেদ</strong>, পিতা: মো: লোকমান হাকিম, আমাদের <strong>মামুন জামে মসজিদ ওয়াকফ এস্টেট</strong>-এর একজন কৃতি সন্তান। তিনি অত্যন্ত সুনামের সাথে হিফজ সমাপ্ত করে বর্তমানে ইসলামিক বিশ্ববিদ্যালয়ে অনার্স কোর্সে সুযোগ পেয়েছেন।</p>\n<p>তাঁর পিতা একজন সাধারণ দিনমজুর এবং আর্থিক অনটনের কারণে তাঁর উচ্চশিক্ষা চালিয়ে নেওয়া অত্যন্ত দুরূহ হয়ে পড়েছে। তানভীর একজন বিনম্র, চরিত্রবান ও প্রখর মেধাবী ছাত্র।</p>\n<p>অতএব, তাঁর মেধা ও শিক্ষাজীবন রক্ষার্থে আপনার ট্রাস্টের পক্ষ হতে শিক্ষাবৃত্তি প্রদানের জন্য মসজিদ পরিচালনা পরিষদের পক্ষ থেকে বিশেষ সুপারিশ জ্ঞাপন করছি।</p>",
+      "summary": "মেধাবী শিক্ষার্থীর জন্য ট্রাস্টে উচ্চশিক্ষা বৃত্তির অফিশিয়াল সুপারিশপত্র।",
+      "status": "APPROVED",
+      "priority": "HIGH",
+      "visibility": "RESTRICTED",
+      "includeLetterhead": true,
+      "signatories": [
+        {
+          "id": "sig-1",
+          "title": "পেশ ইমাম",
+          "name": "মাওলানা হাফেজ মুফতি আব্দুল্লাহ",
+          "designation": "পেশ ইমাম",
+          "signed": true,
+          "signedAt": "2026-09-19"
+        },
+        {
+          "id": "sig-2",
+          "title": "সভাপতি",
+          "name": "জনাব মো: নুরুল হুদা চৌধুরী",
+          "designation": "সভাপতি",
+          "signed": true,
+          "signedAt": "2026-09-19"
+        }
+      ],
+      "attachments": [],
+      "createdBy": "user-admin",
+      "createdByName": "অ্যাডমিন",
+      "createdAt": "2026-09-19",
+      "updatedAt": "2026-09-19",
+      "auditTrail": [
+        {
+          "action": "CREATE",
+          "performedBy": "user-admin",
+          "performedByName": "অ্যাডমিন",
+          "timestamp": "2026-09-19",
+          "notes": "সুপারিশপত্র তৈরি ও সত্যায়িত।"
+        }
+      ]
+    }
+  ],
+  "officialDocumentTemplates": [
+    {
+      "id": "tmpl-notice-general",
+      "name": "সাধারণ নোটিশ",
+      "docType": "NOTICE",
+      "subType": "GENERAL_NOTICE",
+      "titleTemplate": "সাধারণ জরুরি অবগতি সংক্রান্ত নোটিশ",
+      "placeholders": [
+        "{{মসজিদের_নাম}}",
+        "{{তারিখ}}",
+        "{{নোটিশ_নং}}",
+        "{{বিষয়}}",
+        "{{বক্তব্য}}"
+      ],
+      "description": "মসজিদের সম্মানিত মুসল্লিয়ানে কেরাম ও সাধারণ ব্যক্তিবর্গের অবগতির জন্য সাধারণ নোটিশ।",
+      "bodyTemplate": "<p>এতদ্বারা <strong>{{মসজিদের_নাম}}</strong>-এর সম্মানিত সকল মুসল্লিয়ানে কেরাম ও এলাকাবাসীর সদয় অবগতির জন্য জানানো যাচ্ছে যে,</p>\n<p>{{বক্তব্য}}</p>\n<p>অতএব, উক্ত বিষয়ে সংশ্লিষ্ট সকলকে প্রয়োজনীয় সহযোগিতা ও সতর্কতা অবলম্বনের জন্য বিনীত অনুরোধ জানানো যাচ্ছে।</p>"
+    },
+    {
+      "id": "tmpl-notice-meeting",
+      "name": "কমিটি সভার নোটিশ",
+      "docType": "NOTICE",
+      "subType": "MEETING_NOTICE",
+      "titleTemplate": "পরিচালনা পরিষদের সাধারণ/জরুরি সভার নোটিশ",
+      "placeholders": [
+        "{{মসজিদের_নাম}}",
+        "{{তারিখ}}",
+        "{{নোটিশ_নং}}",
+        "{{সভার_তারিখ}}",
+        "{{সভার_সময়}}",
+        "{{সভার_স্থান}}",
+        "{{এজেন্ডা}}"
+      ],
+      "description": "মসজিদ পরিচালনা কমিটির সাধারণ বা বিশেষ সভার জন্য আনুষ্ঠানিক নোটিশ।",
+      "bodyTemplate": "<p>এতদ্বারা <strong>{{মসজিদের_নাম}}</strong>-এর পরিচালনা পরিষদের সম্মানিত সকল সদস্য মহোদয়কে জানানো যাচ্ছে যে, আগামী <strong>{{সভার_তারিখ}}</strong> রোজ <strong>{{বার}}</strong>, সময় <strong>{{সভার_সময়}}</strong>, স্থান <strong>{{সভার_স্থান}}</strong>-এ এক সাধারণ/জরুরি সভা আহ্বান করা হয়েছে।</p>\n<p><strong>সভার আলোচ্যসূচি (Agenda):</strong></p>\n<ol>\n  <li>বিগত সভার কার্যবিবরণী পাঠ ও অনুমোদন।</li>\n  <li>মসজিদের মাসিক আয়-ব্যয় হিসাব পর্যালোচনা ও পেশ।</li>\n  <li>মসজিদ উন্নয়নমূলক কর্মপরিকল্পনা ও অগ্রগতি পর্যালোচনা।</li>\n  <li>বিবিধ।</li>\n</ol>\n<p>উক্ত সভায় যথাসময়ে উপস্থিত থেকে মূল্যবান মতামত প্রদানের জন্য পরিচালনা পরিষদের সম্মানিত সকল সদস্যকে বিনীত অনুরোধ করা যাচ্ছে।</p>"
+    },
+    {
+      "id": "tmpl-notice-staff",
+      "name": "কর্মী / দায়িত্ব সংক্রান্ত নোটিশ",
+      "docType": "NOTICE",
+      "subType": "STAFF_NOTICE",
+      "titleTemplate": "মসজিদের সম্মানিত কর্মকর্তা ও কর্মচারীবৃন্দের অবগতি ও দায়িত্ব পালন সংক্রান্ত",
+      "placeholders": [
+        "{{মসজিদের_নাম}}",
+        "{{তারিখ}}",
+        "{{নোটিশ_নং}}",
+        "{{বিষয়}}",
+        "{{বক্তব্য}}"
+      ],
+      "description": "ইমাম, মুয়াজ্জিন, খাদেম ও অন্যান্য স্টাফদের দায়িত্ব পালন ও নিয়মানুবর্তিতা সংক্রান্ত নোটিশ।",
+      "bodyTemplate": "<p>এতদ্বারা <strong>{{মসজিদের_নাম}}</strong>-এ কর্মরত সম্মানিত ইমাম, মুয়াজ্জিন ও খাদেম মহোদয়কে জানানো যাচ্ছে যে,</p>\n<p>{{বক্তব্য}}</p>\n<p>মসজিদের সার্বিক শৃঙ্খলা ও সেবার মান সমুন্নত রাখতে নির্ধারিত নিয়মানুযায়ী স্ব-স্ব দায়িত্ব পালনে সচেতন হওয়ার নির্দেশ দেওয়া হলো।</p>"
+    },
+    {
+      "id": "tmpl-notice-showcause",
+      "name": "কারণ দর্শানোর নোটিশ (Show Cause)",
+      "docType": "NOTICE",
+      "subType": "SHOW_CAUSE_NOTICE",
+      "titleTemplate": "কর্তব্যে অবহেলা / শৃঙ্খলাভঙ্গের প্রেক্ষিতে কারণ দর্শানোর নোটিশ",
+      "placeholders": [
+        "{{মসজিদের_নাম}}",
+        "{{তারিখ}}",
+        "{{নোটিশ_নং}}",
+        "{{প্রাপকের_নাম}}",
+        "{{পদবী}}",
+        "{{কারণ}}",
+        "{{সময়সীমা}}"
+      ],
+      "description": "কর্তব্য পালনে ব্যত্যয় বা শৃঙ্খলাভঙ্গের ক্ষেত্রে ব্যাখ্যা চেয়ে অফিসিয়াল নোটিশ।",
+      "bodyTemplate": "<p>বরাবর,<br><strong>{{প্রাপকের_নাম}}</strong>, {{পদবী}}<br>{{মসজিদের_নাম}}</p>\n<p><strong>বিষয়: কর্তব্যে অনীহা/অনুপস্থিতির প্রেক্ষিতে কারণ দর্শানোর নোটিশ।</strong></p>\n<p>জনাব,<br>আপনার অবগতির জন্য জানানো যাচ্ছে যে, {{কারণ}}। আপনার এহেন আচরণ মসজিদের নিয়মিত কার্যক্রম ও শৃঙ্খলার পরিপন্থী।</p>\n<p>অতএব, পত্র প্রাপ্তির আগামী <strong>{{সময়সীমা}}</strong> কর্মদিবসের মধ্যে কেন আপনার বিরুদ্ধে প্রশাসনিক ব্যবস্থা গ্রহণ করা হবে না, তার সন্তোষজনক লিখিত ব্যাখ্যা পরিচালনা পরিষদের সভাপতি/সাধারণ সম্পাদক বরাবর দাখিলের জন্য নির্দেশ প্রদান করা হলো।</p>"
+    },
+    {
+      "id": "tmpl-app-leave",
+      "name": "ছুটির আবেদন (Leave Application)",
+      "docType": "APPLICATION",
+      "subType": "LEAVE_APPLICATION",
+      "titleTemplate": "নৈমিত্তিক / বিশেষ ছুটির জন্য আবেদন",
+      "placeholders": [
+        "{{মসজিদের_নাম}}",
+        "{{আবেদনকারীর_নাম}}",
+        "{{পদবী}}",
+        "{{ছুটির_ধরন}}",
+        "{{ছুটির_দিন}}",
+        "{{শুরুর_তারিখ}}",
+        "{{শেষ_তারিখ}}",
+        "{{কারণ}}"
+      ],
+      "description": "মসজিদের স্টাফ বা কমিটির সদস্য কর্তৃক ছুটির আনুষ্ঠানিক আবেদন।",
+      "bodyTemplate": "<p>বরাবর,<br>সভাপতি / সাধারণ সম্পাদক<br>পরিচালনা পরিষদ, <strong>{{মসজিদের_নাম}}</strong></p>\n<p><strong>বিষয়: {{ছুটির_ধরন}} ছুটির জন্য আবেদন।</strong></p>\n<p>মহোদয়,<br>বিনীত নিবেদন এই যে, আমি নিম্নস্বাক্ষরকারী আপনার মসজিদে <strong>{{পদবী}}</strong> হিসেবে নিয়োজিত আছি। {{কারণ}} কারণে আগামী <strong>{{শুরুর_তারিখ}}</strong> হতে <strong>{{শেষ_তারিখ}}</strong> পর্যন্ত মোট <strong>{{ছুটির_দিন}}</strong> দিনের ছুটি প্রয়োজন।</p>\n<p>ছুটিকালীন সময়ে আমার দায়িত্ব যথাযথভাবে পালনের জন্য বিকল্প ব্যবস্থা গ্রহণ করা হবে।</p>\n<p>অতএব, মহোদয়ের নিকট আকুল আবেদন—উক্ত দিনগুলোর ছুটি মঞ্জুর করে বাধিত করবেন।</p>"
+    },
+    {
+      "id": "tmpl-app-financial-aid",
+      "name": "আর্থিক সহায়তা / অনুদানের আবেদন",
+      "docType": "APPLICATION",
+      "subType": "FINANCIAL_AID_APPLICATION",
+      "titleTemplate": "চিকিৎসা / দুস্থ সহায়তা অনুদানের আবেদন",
+      "placeholders": [
+        "{{মসজিদের_নাম}}",
+        "{{আবেদনকারীর_নাম}}",
+        "{{ঠিকানা}}",
+        "{{মোবাইল}}",
+        "{{কারণ}}",
+        "{{অনুরোধকৃত_টাকা}}"
+      ],
+      "description": "চিকিৎসা বা সামাজিক কল্যাণ তহবিল থেকে আর্থিক অনুদানের আবেদন।",
+      "bodyTemplate": "<p>বরাবর,<br>সভাপতি / সাধারণ সম্পাদক<br>পরিচালনা পরিষদ, <strong>{{মসজিদের_নাম}}</strong></p>\n<p><strong>বিষয়: মসজিদ কল্যাণ তহবিল থেকে আর্থিক সহায়তার আবেদন।</strong></p>\n<p>মহোদয়,<br>বিনীত নিবেদন এই যে, আমি <strong>{{আবেদনকারীর_নাম}}</strong>, স্থায়ী ঠিকানা: {{ঠিকানা}}। আমি অত্যন্ত দরিদ্র ও অসহায় অবস্থায় দিনাতিপাত করছি। সম্প্রতি {{কারণ}}জনিত কারণে আমার জরুরি আর্থিক সহায়তা প্রয়োজন।</p>\n<p>অতএব, মানবিক দিক বিবেচনা করে মসজিদ ফান্ড/যাকাত তহবিল হতে আমাকে <strong>৳ {{অনুরোধকৃত_টাকা}}</strong> আর্থিক সহায়তা প্রদান করে কৃতজ্ঞতাপাশে আবদ্ধ করবেন।</p>"
+    },
+    {
+      "id": "tmpl-app-general",
+      "name": "সাধারণ আবেদন / দরখাস্ত",
+      "docType": "APPLICATION",
+      "subType": "GENERAL_APPLICATION",
+      "titleTemplate": "প্রশাসনিক / বিশেষ বিষয়ে সাধারণ আবেদন",
+      "placeholders": [
+        "{{মসজিদের_নাম}}",
+        "{{আবেদনকারীর_নাম}}",
+        "{{বিষয়}}",
+        "{{বক্তব্য}}"
+      ],
+      "description": "মসজিদ কর্তৃপক্ষের নিকট যে কোনো প্রাসঙ্গিক প্রশাসনিক আবেদন।",
+      "bodyTemplate": "<p>বরাবর,<br>সভাপতি / সাধারণ সম্পাদক<br>পরিচালনা পরিষদ, <strong>{{মসজিদের_নাম}}</strong></p>\n<p><strong>বিষয়: {{বিষয়}}</strong></p>\n<p>মহোদয়,<br>বিনীত নিবেদন এই যে, {{বক্তব্য}}।</p>\n<p>অতএব, বিষয়টি সদয় বিবেচনাপূর্বক প্রয়োজনীয় ব্যবস্থা গ্রহণে আপনার একান্ত মর্জি হয়।</p>"
+    },
+    {
+      "id": "tmpl-announcement-jummah",
+      "name": "জুমার বয়ান ও ঘোষণা",
+      "docType": "ANNOUNCEMENT",
+      "subType": "JUMMAH_ANNOUNCEMENT",
+      "titleTemplate": "জুমার নামাজের পূর্বের আনুষ্ঠানিক ধর্মীয় ও উন্নয়নমূলক ঘোষণা",
+      "placeholders": [
+        "{{মসজিদের_নাম}}",
+        "{{তারিখ}}",
+        "{{ঘোষণার_বিষয়}}",
+        "{{বিস্তারিত}}"
+      ],
+      "description": "জুমার জামাতের পূর্বে মুসল্লিদের সামনে পাঠের জন্য অফিশিয়াল ঘোষণা।",
+      "bodyTemplate": "<p><strong>আসসালামু আলাইকুম ওয়া রাহমাতুল্লাহি ওয়া বারাকাতুহ।</strong></p>\n<p>সম্মানিত মুসল্লিয়ানে কেরাম, অদ্য জুমার দিনে <strong>{{মসজিদের_নাম}}</strong> পরিচালনা পরিষদের পক্ষ হতে গুরুত্বপূর্ণ কিছু ঘোষণা রয়েছে:</p>\n<p>১. {{বিস্তারিত}}</p>\n<p>২. মসজিদের সার্বিক পরিচ্ছন্নতা ও উন্নয়নমূলক কাজে সকলের আন্তরিক দোয়া ও মুক্তহস্তে দান কামনা করছি।</p>"
+    },
+    {
+      "id": "tmpl-announcement-ramadan",
+      "name": "রমজান / তারাবি / ইফতার ঘোষণা",
+      "docType": "ANNOUNCEMENT",
+      "subType": "RAMADAN_ANNOUNCEMENT",
+      "titleTemplate": "পবিত্র মাহে রমজানের তারাবি ও ইফতার কর্মসূচি সংক্রান্ত ঘোষণা",
+      "placeholders": [
+        "{{মসজিদের_নাম}}",
+        "{{বছর}}",
+        "{{তারাবি_সময়}}",
+        "{{হাফেজ_সাহেব}}",
+        "{{ইফতার_ব্যবস্থা}}"
+      ],
+      "description": "পবিত্র রমজান মাসের ইবাদত ও কর্মসূচি সংক্রান্ত আনুষ্ঠানিক ঘোষণা।",
+      "bodyTemplate": "<p>পবিত্র মাহে রমজান উপলক্ষে <strong>{{মসজিদের_নাম}}</strong>-এ খতমে তারাবি ও বিশেষ ইফতারের আয়োজন করা হয়েছে।</p>\n<p>• <strong>খতমে তারাবি:</strong> প্রতিদিন এশার নামাজের পরপরই শুরু হবে। জামাতে ইমামতি করবেন বিশিষ্ট হাফেজ মাওলানা {{হাফেজ_সাহেব}}।<br>\n• <strong>রোজাদারদের ইফতার:</strong> মসজিদে আগত মুসল্লিদের জন্য প্রতিদিন সম্মিলিত ইফতারের সুব্যবস্থা রয়েছে।</p>\n<p>সম্মানিত মুসল্লি ভাইদেরকে সময়মতো উপস্থিত থেকে খতমে তারাবি ও অন্যান্য আমলে অংশ নিতে বিনীত আহ্বান জানানো যাচ্ছে।</p>"
+    },
+    {
+      "id": "tmpl-outgoing-gov",
+      "name": "সরকারি / প্রশাসন দপ্তরে পত্র",
+      "docType": "OUTGOING_LETTER",
+      "subType": "GOV_LETTER",
+      "titleTemplate": "উপজেলা নির্বাহী অফিসার / সরকারি দপ্তরে দাপ্তরিক পত্র",
+      "placeholders": [
+        "{{মসজিদের_নাম}}",
+        "{{স্মারক_নং}}",
+        "{{তারিখ}}",
+        "{{প্রাপক_পদবী}}",
+        "{{দপ্তর}}",
+        "{{ঠিকানা}}",
+        "{{বিষয়}}",
+        "{{বক্তব্য}}"
+      ],
+      "description": "উপজেলা প্রশাসন, ইসলামিক ফাউন্ডেশন বা অন্যান্য সরকারি দপ্তরে প্রেরিত আনুষ্ঠানিক পত্র।",
+      "bodyTemplate": "<p>স্মারক নং: <strong>{{স্মারক_নং}}</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;তারিখ: <strong>{{তারিখ}}</strong></p>\n<p>বরাবর,<br><strong>{{প্রাপক_পদবী}}</strong><br>{{দপ্তর}}<br>{{ঠিকানা}}</p>\n<p><strong>বিষয়: {{বিষয়}}</strong></p>\n<p>মহোদয়,<br>সম্মানপূর্বক বিনীত নিবেদন এই যে, <strong>{{মসজিদের_নাম}}</strong> অত্র এলাকার একটি ঐতিহ্যবাহী ধর্মীয় প্রতিষ্ঠান। {{বক্তব্য}}।</p>\n<p>এমতাবস্থায়, অত্র প্রতিষ্ঠানের স্বার্থে বিষয়টি সরেজমিনে বিবেচনাপূর্বক প্রয়োজনীয় প্রশাসনিক অনুমোদন/সহায়তা প্রদানের জন্য অনুরোধ জ্ঞাপন করছি।</p>"
+    },
+    {
+      "id": "tmpl-outgoing-org",
+      "name": "বেসরকারি প্রতিষ্ঠান / সংস্থায় পত্র",
+      "docType": "OUTGOING_LETTER",
+      "subType": "ORG_LETTER",
+      "titleTemplate": "ব্যাংক / কর্পোরেট / দাতব্য সংস্থায় আনুষ্ঠানিক পত্র",
+      "placeholders": [
+        "{{মসজিদের_নাম}}",
+        "{{স্মারক_নং}}",
+        "{{তারিখ}}",
+        "{{প্রাপক_নাম}}",
+        "{{প্রতিষ্ঠান}}",
+        "{{বিষয়}}",
+        "{{বক্তব্য}}"
+      ],
+      "description": "ব্যাংক, বিদ্যুৎ অফিস বা দাতব্য সংস্থায় প্রেরিত পত্র।",
+      "bodyTemplate": "<p>স্মারক নং: <strong>{{স্মারক_নং}}</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;তারিখ: <strong>{{তারিখ}}</strong></p>\n<p>বরাবর,<br><strong>{{প্রাপক_নাম}}</strong><br>{{প্রতিষ্ঠান}}</p>\n<p><strong>বিষয়: {{বিষয়}}</strong></p>\n<p>জনাব,<br><strong>{{মসজিদের_নাম}}</strong> পরিচালনা পরিষদের পক্ষ থেকে শুভেচ্ছা গ্রহণ করবেন। {{বক্তব্য}}।</p>\n<p>এ বিষয়ে আপনার প্রতিষ্ঠানের আন্তরিক সহযোগিতা ও দ্রুত পদক্ষেপ কামনা করছি।</p>"
+    },
+    {
+      "id": "tmpl-incoming-record",
+      "name": "প্রাপ্ত পত্রের সারসংক্ষেপ ও নির্দেশপত্র",
+      "docType": "INCOMING_LETTER",
+      "subType": "INCOMING_RECORD",
+      "titleTemplate": "সরকারি / বহিরাগত দপ্তর হতে প্রাপ্ত পত্রের সারসংক্ষেপ ও গৃহীত ব্যবস্থা",
+      "placeholders": [
+        "{{মসজিদের_নাম}}",
+        "{{প্রাপ্তি_নং}}",
+        "{{প্রাপ্তির_তারিখ}}",
+        "{{প্রেরকের_নাম}}",
+        "{{বিষয়}}",
+        "{{সারাংশ}}",
+        "{{করণীয়}}"
+      ],
+      "description": "বাইরে থেকে আসা সরকারি বা প্রাতিষ্ঠানিক চিঠির প্রাপ্তি রেজিস্ট্রি ও ব্যবস্থা গ্রহণ।",
+      "bodyTemplate": "<p><strong>প্রাপ্তি নং:</strong> {{প্রাপ্তি_নং}}&nbsp;&nbsp;|&nbsp;&nbsp;<strong>প্রাপ্তির তারিখ:</strong> {{প্রাপ্তির_তারিখ}}</p>\n<p><strong>প্রেরক:</strong> {{প্রেরকের_নাম}}<br>\n<strong>বিষয়:</strong> {{বিষয়}}</p>\n<p><strong>পত্রের মূল বক্তব্য / সারসংক্ষেপ:</strong><br>{{সারাংশ}}</p>\n<p><strong>গৃহীত সিদ্ধান্ত ও পরবর্তী করণীয়:</strong><br>{{করণীয়}}</p>"
+    },
+    {
+      "id": "tmpl-office-order-duty",
+      "name": "দায়িত্ব অর্পণ / পরিবর্তন অফিস আদেশ",
+      "docType": "OFFICE_ORDER",
+      "subType": "DUTY_ASSIGNMENT",
+      "titleTemplate": "কর্মকর্তা ও কর্মচারীর দায়িত্ব পুনর্বণ্টন / অর্পণ আদেশ",
+      "placeholders": [
+        "{{মসজিদের_নাম}}",
+        "{{অফিস_আদেশ_নং}}",
+        "{{তারিখ}}",
+        "{{কর্মীর_নাম}}",
+        "{{পদবী}}",
+        "{{কার্যকর_তারিখ}}",
+        "{{দায়িত্ব_বিবরণ}}"
+      ],
+      "description": "স্টাফদের কার্যভার অর্পণ বা দায়িত্ব পরিবর্তনের আনুষ্ঠানিক অফিস আদেশ।",
+      "bodyTemplate": "<p>অফিস আদেশ নং: <strong>{{অফিস_আদেশ_নং}}</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;তারিখ: <strong>{{তারিখ}}</strong></p>\n<p>এতদ্বারা <strong>{{মসজিদের_নাম}}</strong>-এ কর্মরত জনাব <strong>{{কর্মীর_নাম}}</strong>, {{পদবী}}-কে নির্দেশ প্রদান করা যাচ্ছে যে, আগামী <strong>{{কার্যকর_তারিখ}}</strong> হতে তিনি নিম্নোক্ত দায়িত্বসমূহ যথাযথভাবে পালন করবেন:</p>\n<p>{{দায়িত্ব_বিবরণ}}</p>\n<p>কর্তৃপক্ষের অনুমোদনক্রমে এ আদেশ জারি করা হলো এবং অবিলম্বে কার্যকর হবে।</p>"
+    },
+    {
+      "id": "tmpl-office-order-admin",
+      "name": "প্রশাসনিক নির্দেশনা অফিস আদেশ",
+      "docType": "OFFICE_ORDER",
+      "subType": "ADMIN_DIRECTIVE",
+      "titleTemplate": "মসজিদের অভ্যন্তরীণ শৃঙ্খলা ও ব্যবস্থাপনা সংক্রান্ত প্রশাসনিক আদেশ",
+      "placeholders": [
+        "{{মসজিদের_নাম}}",
+        "{{অফিস_আদেশ_নং}}",
+        "{{তারিখ}}",
+        "{{বিষয়}}",
+        "{{নির্দেশনা}}"
+      ],
+      "description": "মসজিদ পরিচালনার অভ্যন্তরীণ নীতিমালা ও নির্দেশ জারি।",
+      "bodyTemplate": "<p>অফিস আদেশ নং: <strong>{{অফিস_আদেশ_নং}}</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;তারিখ: <strong>{{তারিখ}}</strong></p>\n<p><strong>বিষয়: {{বিষয়}}</strong></p>\n<p>মসজিদের সার্বিক সুরক্ষা, নিরাপত্তা ও সুষ্ঠু ব্যবস্থাপনা নিশ্চিতকল্পে পরিচালনা পরিষদের সিদ্ধান্ত মোতাবেক নিম্নরূপ নির্দেশাবলি জারি করা হলো:</p>\n<p>{{নির্দেশনা}}</p>\n<p>সংশ্লিষ্ট সকল দায়িত্বপ্রাপ্ত ব্যক্তি ও কমিটি সদস্যকে এ আদেশ পুঙ্খানুপুঙ্খ অনুসরণের জন্য নির্দেশ দেওয়া হলো।</p>"
+    },
+    {
+      "id": "tmpl-certificate-membership",
+      "name": "কমিটি সদস্য প্রত্যয়নপত্র / সনদ",
+      "docType": "CERTIFICATE",
+      "subType": "MEMBER_CERTIFICATE",
+      "titleTemplate": "পরিচালনা পরিষদের সদস্যপদ সংক্রান্ত প্রত্যয়নপত্র",
+      "placeholders": [
+        "{{মসজিদের_নাম}}",
+        "{{সনদ_নং}}",
+        "{{তারিখ}}",
+        "{{সদস্যের_নাম}}",
+        "{{পিতার_নাম}}",
+        "{{পদবী}}",
+        "{{মেয়াদকাল}}"
+      ],
+      "description": "কমিটির সম্মানিত সদস্য বা উপদেষ্টাদের অনুকূলে প্রদত্ত অফিসিয়াল সনদপত্র।",
+      "bodyTemplate": "<div style=\"text-align: center; margin-bottom: 20px;\">\n  <h2 style=\"font-size: 22px; font-weight: bold; margin: 0; color: #1e3a8a;\">প্রত্যয়নপত্র / সনদ</h2>\n  <p style=\"font-size: 13px; color: #64748b;\">সনদ নং: {{সনদ_নং}} &nbsp;|&nbsp; তারিখ: {{তারিখ}}</p>\n</div>\n<p>এই মর্মে প্রত্যয়ন করা যাচ্ছে যে, জনাব <strong>{{সদস্যের_নাম}}</strong>, পিতা: {{পিতার_নাম}}, <strong>{{মসজিদের_নাম}}</strong> পরিচালনা পরিষদের <strong>{{মেয়াদকাল}}</strong> মেয়াদে অত্যন্ত নিষ্ঠা ও সুনামের সাথে <strong>{{পদবী}}</strong> পদে দায়িত্ব পালন করছেন/করেছেন।</p>\n<p>তাঁর দায়িত্বপালনকালে তিনি মসজিদের ধর্মীয় ও অবকাঠামোগত উন্নয়নে উল্লেখযোগ্য অবদান রেখেছেন। তাঁর নৈতিক চরিত্র ও সামাজিক গ্রহণযোগ্যতা প্রশংসনীয়।</p>\n<p>আমি তাঁর ভবিষ্যৎ জীবনের সার্বিক কল্যাণ ও মঙ্গল কামনা করি।</p>"
+    },
+    {
+      "id": "tmpl-certificate-employee",
+      "name": "কর্মরত / অভিজ্ঞতা সনদ (Experience Certificate)",
+      "docType": "CERTIFICATE",
+      "subType": "EMPLOYEE_CERTIFICATE",
+      "titleTemplate": "ইমাম / মুয়াজ্জিন / খাদেম মহোদয়ের কর্মরত ও চারিত্রিক প্রত্যয়নপত্র",
+      "placeholders": [
+        "{{মসজিদের_নাম}}",
+        "{{সনদ_নং}}",
+        "{{তারিখ}}",
+        "{{কর্মীর_নাম}}",
+        "{{পিতার_নাম}}",
+        "{{পদবী}}",
+        "{{যোগদানের_তারিখ}}",
+        "{{বর্তমান_অবস্থা}}"
+      ],
+      "description": "মসজিদের স্টাফদের কর্মকাল ও দায়িত্বপালনের অভিজ্ঞতার প্রত্যয়ন।",
+      "bodyTemplate": "<div style=\"text-align: center; margin-bottom: 20px;\">\n  <h2 style=\"font-size: 22px; font-weight: bold; margin: 0; color: #1e3a8a;\">প্রত্যয়নপত্র (To Whom It May Concern)</h2>\n  <p style=\"font-size: 13px; color: #64748b;\">সনদ নং: {{সনদ_নং}} &nbsp;|&nbsp; তারিখ: {{তারিখ}}</p>\n</div>\n<p>এই মর্মে প্রত্যয়ন করা যাচ্ছে যে, জনাব <strong>{{কর্মীর_নাম}}</strong>, পিতা: {{পিতার_নাম}}, বিগত <strong>{{যোগদানের_তারিখ}}</strong> তারিখ হতে অদ্যাবধি <strong>{{মসজিদের_নাম}}</strong>-এ অত্যন্ত বিশ্বস্ততার সাথে <strong>{{পদবী}}</strong> পদে দায়িত্ব পালন করে আসছেন।</p>\n<p>তাঁর কর্মকালীন সময়ে তাঁর কোনো নৈতিক বা পেশাগত ত্রুটি পরিলক্ষিত হয়নি। তিনি একজন বিনম্র, ধর্মপরায়ণ ও কর্তব্যপরায়ণ ব্যক্তি।</p>\n<p>আমরা তাঁর উত্তরোত্তর সাফল্য ও সুস্বাস্থ্য কামনা করি।</p>"
+    },
+    {
+      "id": "tmpl-recommendation-general",
+      "name": "সাধারণ সুপারিশপত্র",
+      "docType": "RECOMMENDATION",
+      "subType": "GENERAL_RECOMMENDATION",
+      "titleTemplate": "যোগ্য প্রার্থী / শিক্ষার্থী / কল্যাণমূলক কাজের সুপারিশপত্র",
+      "placeholders": [
+        "{{মসজিদের_নাম}}",
+        "{{সুপারিশ_নং}}",
+        "{{তারিখ}}",
+        "{{প্রাপক_প্রতিষ্ঠান}}",
+        "{{ব্যক্তির_নাম}}",
+        "{{পিতার_নাম}}",
+        "{{সুপারিশের_কারণ}}"
+      ],
+      "description": "চাকরি, উচ্চশিক্ষা, সরকারি ভাতা বা কোনো আর্থিক সংস্থায় অনুকূল সুপারিশপত্র।",
+      "bodyTemplate": "<p>সুপারিশ পত্র নং: <strong>{{সুপারিশ_নং}}</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;তারিখ: <strong>{{তারিখ}}</strong></p>\n<p>বরাবর,<br><strong>{{প্রাপক_প্রতিষ্ঠান}}</strong></p>\n<p><strong>বিষয়: জনাব {{ব্যক্তির_নাম}}-এর অনুকূলে সুপারিশ প্রদান প্রসঙ্গে।</strong></p>\n<p>মহোদয়,<br>অত্যন্ত আনন্দের সাথে জানাচ্ছি যে, জনাব <strong>{{ব্যক্তির_নাম}}</strong>, পিতা: {{পিতার_নাম}}, আমাদের মসজিদের একজন নিয়মিত মুসল্লি ও দায়িত্বশীল নাগরিক। তিনি একজন সৎ, পরিশ্রমী ও আদর্শ ব্যক্তি।</p>\n<p>{{সুপারিশের_কারণ}}।</p>\n<p>অতএব, তাঁর মেধা ও যোগ্যতার মূল্যায়নপূর্বক তাঁকে প্রয়োজনীয় সুযোগ ও সহযোগিতা প্রদানের জন্য আপনার সদয় বিবেচনার জন্য জোরালো সুপারিশ জ্ঞাপন করছি।</p>"
+    }
+  ],
+  "officialDocumentNumbering": {},
+  "areas": [],
+  "families": [],
+  "persons": [
+    {
+      "id": "per-1789830018894-n3h5l",
+      "personCode": "P-00001",
+      "mosqueId": "mosque-mamun-001",
+      "fullName": "টেস্ট মুসল্লি",
+      "gender": "MALE",
+      "isFamilyHead": false,
+      "mobile": "01700112233",
+      "status": "ACTIVE",
+      "createdAt": "2026-09-19T15:00:18.894Z",
+      "updatedAt": "2026-09-19T15:00:18.894Z",
+      "createdBy": "usr-admin-1",
+      "updatedBy": "usr-admin-1"
+    }
+  ],
+  "donationPlans": [
+    {
+      "id": "plan-1789830018900-kq2s2",
+      "planCode": "PLAN-00001",
+      "mosqueId": "mosque-mamun-001",
+      "personId": "per-1789830018894-n3h5l",
+      "planType": "MONTHLY",
+      "amount": 1000,
+      "plannedAmount": 1000,
+      "startDate": "2026-09-19",
+      "collectionRequired": false,
+      "status": "ACTIVE",
+      "notes": "Test Plan",
+      "createdAt": "2026-09-19T15:00:18.900Z",
+      "updatedAt": "2026-09-19T15:00:18.900Z",
+      "createdBy": "usr-admin-1",
+      "updatedBy": "usr-admin-1"
+    }
+  ],
+  "collectionWorkers": [],
+  "donationCollections": [
+    {
+      "id": "COL-00001",
+      "mosqueId": "mosque-mamun-001",
+      "donationPlanId": "plan-1789830018900-kq2s2",
+      "personId": "per-1789830018894-n3h5l",
+      "personNameBn": "টেস্ট মুসল্লি",
+      "personCode": "P-00001",
+      "collectionPeriod": "2026-3321",
+      "plannedAmount": 1500,
+      "collectedAmount": 0,
+      "status": "PENDING",
+      "collectionNote": "ফিল্ডে পাঠানো হয়েছে",
+      "createdAt": "2026-09-19T15:00:18.905Z",
+      "updatedAt": "2026-09-19T15:00:18.914Z",
+      "createdBy": "usr-admin-1",
+      "createdByName": "মুহাম্মদ রফিকুল ইসলাম",
+      "updatedBy": "usr-admin-1",
+      "updatedByName": "মুহাম্মদ রফিকুল ইসলাম"
+    },
+    {
+      "id": "COL-00002",
+      "mosqueId": "mosque-mamun-001",
+      "donationPlanId": "plan-1789830018900-kq2s2",
+      "personId": "per-1789830018894-n3h5l",
+      "personNameBn": "টেস্ট মুসল্লি",
+      "personCode": "P-00001",
+      "collectionPeriod": "AUDIT-1789841443159",
+      "plannedAmount": 3000,
+      "collectedAmount": 0,
+      "status": "NOT_COLLECTED",
+      "collectionNote": "Musalli was out of station",
+      "createdAt": "2026-09-19T18:10:43.161Z",
+      "updatedAt": "2026-09-19T18:10:43.171Z",
+      "createdBy": "usr-admin-1",
+      "createdByName": "মুহাম্মদ রফিকুল ইসলাম",
+      "updatedBy": "usr-admin-1",
+      "updatedByName": "মুহাম্মদ রফিকুল ইসলাম"
+    },
+    {
+      "id": "COL-00003",
+      "mosqueId": "mosque-mamun-001",
+      "donationPlanId": "plan-1789830018900-kq2s2",
+      "personId": "per-1789830018894-n3h5l",
+      "personNameBn": "টেস্ট মুসল্লি",
+      "personCode": "P-00001",
+      "collectionPeriod": "AUDIT-1789841453289",
+      "plannedAmount": 3000,
+      "collectedAmount": 0,
+      "status": "NOT_COLLECTED",
+      "collectionNote": "Musalli was out of station",
+      "createdAt": "2026-09-19T18:10:53.290Z",
+      "updatedAt": "2026-09-19T18:10:53.299Z",
+      "createdBy": "usr-admin-1",
+      "createdByName": "মুহাম্মদ রফিকুল ইসলাম",
+      "updatedBy": "usr-admin-1",
+      "updatedByName": "মুহাম্মদ রফিকুল ইসলাম"
+    },
+    {
+      "id": "COL-00004",
+      "mosqueId": "mosque-mamun-001",
+      "donationPlanId": "plan-1789830018900-kq2s2",
+      "personId": "per-1789830018894-n3h5l",
+      "personNameBn": "টেস্ট মুসল্লি",
+      "personCode": "P-00001",
+      "collectionPeriod": "AUDIT-1789841457016",
+      "plannedAmount": 3000,
+      "collectedAmount": 0,
+      "status": "NOT_COLLECTED",
+      "collectionNote": "Musalli was out of station",
+      "createdAt": "2026-09-19T18:10:57.017Z",
+      "updatedAt": "2026-09-19T18:10:57.026Z",
+      "createdBy": "usr-admin-1",
+      "createdByName": "মুহাম্মদ রফিকুল ইসলাম",
+      "updatedBy": "usr-admin-1",
+      "updatedByName": "মুহাম্মদ রফিকুল ইসলাম"
+    }
+  ]
 }

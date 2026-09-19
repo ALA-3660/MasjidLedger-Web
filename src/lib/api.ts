@@ -45,6 +45,11 @@ import {
   AdvisorMember,
   AdvisorConsultation,
   CentralDocument,
+  AreaMaster,
+  FamilyMaster,
+  PersonMaster,
+  DonationPlan,
+  CollectionWorker,
 } from '../types';
 import {
   OfficialDocument,
@@ -650,6 +655,15 @@ class ApiService {
       body: JSON.stringify(data),
     });
     if (!res.success) throw new Error(res.error?.message || 'Failed to create donation');
+    return res.data!;
+  }
+
+  async cancelDonation(id: string, reason?: string): Promise<Donation> {
+    const res = await this.request<Donation>(`/donations/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to cancel donation');
     return res.data!;
   }
 
@@ -1957,6 +1971,291 @@ class ApiService {
     const query = new URLSearchParams({ q, category });
     const res = await this.request<any[]>(`/search/global?${query.toString()}`);
     return res.data || [];
+  }
+
+  // ==========================================
+  // MUSALLI & DONOR DATABASE FOUNDATION HELPERS
+  // ==========================================
+
+  // --- Areas ---
+  async getAreas(): Promise<AreaMaster[]> {
+    const res = await this.request<AreaMaster[]>('/areas');
+    return res.data || [];
+  }
+
+  async getArea(id: string): Promise<AreaMaster> {
+    const res = await this.request<AreaMaster>(`/areas/${id}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'এলাকার তথ্য পাওয়া যায়নি');
+    return res.data;
+  }
+
+  async createArea(data: Partial<AreaMaster>): Promise<AreaMaster> {
+    const res = await this.request<AreaMaster>('/areas', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'এলাকা তৈরি করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateArea(id: string, data: Partial<AreaMaster>): Promise<AreaMaster> {
+    const res = await this.request<AreaMaster>(`/areas/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'এলাকার তথ্য হালনাগাদ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateAreaStatus(id: string, status: 'ACTIVE' | 'INACTIVE'): Promise<AreaMaster> {
+    const res = await this.request<AreaMaster>(`/areas/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'এলাকার স্ট্যাটাস পরিবর্তন ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  // --- Families ---
+  async getFamilies(params?: { areaId?: string; search?: string; status?: 'ACTIVE' | 'INACTIVE' }): Promise<FamilyMaster[]> {
+    const q = new URLSearchParams();
+    if (params?.areaId) q.set('areaId', params.areaId);
+    if (params?.search) q.set('search', params.search);
+    if (params?.status) q.set('status', params.status);
+    const queryString = q.toString() ? `?${q.toString()}` : '';
+    const res = await this.request<FamilyMaster[]>(`/families${queryString}`);
+    return res.data || [];
+  }
+
+  async getFamily(id: string): Promise<FamilyMaster> {
+    const res = await this.request<FamilyMaster>(`/families/${id}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'পরিবারের তথ্য পাওয়া যায়নি');
+    return res.data;
+  }
+
+  async checkDuplicateFamily(payload: {
+    name?: string;
+    areaId?: string;
+    familyCode?: string;
+    mobile?: string;
+    address?: string;
+    houseRoadBlock?: string;
+    excludeId?: string;
+  }): Promise<{ hasPotentialDuplicates: boolean; matches: { family: FamilyMaster; reasons: string[] }[] }> {
+    const res = await this.request<{ hasPotentialDuplicates: boolean; matches: { family: FamilyMaster; reasons: string[] }[] }>('/families/check-duplicate', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    return res.data || { hasPotentialDuplicates: false, matches: [] };
+  }
+
+  async createFamily(data: Partial<FamilyMaster>): Promise<FamilyMaster> {
+    const res = await this.request<FamilyMaster>('/families', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'পরিবার তৈরি করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateFamily(id: string, data: Partial<FamilyMaster>): Promise<FamilyMaster> {
+    const res = await this.request<FamilyMaster>(`/families/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'পরিবারের তথ্য হালনাগাদ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateFamilyStatus(id: string, status: 'ACTIVE' | 'INACTIVE'): Promise<FamilyMaster> {
+    const res = await this.request<FamilyMaster>(`/families/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'পরিবারের স্ট্যাটাস পরিবর্তন ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  // --- Persons ---
+  async getPersons(params?: { familyId?: string; areaId?: string; search?: string; status?: string; profession?: string; isFamilyHead?: boolean }): Promise<PersonMaster[]> {
+    const q = new URLSearchParams();
+    if (params?.familyId) q.set('familyId', params.familyId);
+    if (params?.areaId) q.set('areaId', params.areaId);
+    if (params?.search) q.set('search', params.search);
+    if (params?.status) q.set('status', params.status);
+    if (params?.profession) q.set('profession', params.profession);
+    if (params?.isFamilyHead !== undefined) q.set('isFamilyHead', String(params.isFamilyHead));
+    const queryString = q.toString() ? `?${q.toString()}` : '';
+    const res = await this.request<PersonMaster[]>(`/persons${queryString}`);
+    return res.data || [];
+  }
+
+  async getPerson(id: string): Promise<PersonMaster> {
+    const res = await this.request<PersonMaster>(`/persons/${id}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'ব্যক্তির তথ্য পাওয়া যায়নি');
+    return res.data;
+  }
+
+  async checkDuplicatePerson(payload: {
+    fullName?: string;
+    fatherOrHusbandName?: string;
+    mobile?: string;
+    nidNumber?: string;
+    dateOfBirth?: string;
+    familyId?: string;
+    areaId?: string;
+    address?: string;
+    excludeId?: string;
+  }): Promise<{ hasPotentialDuplicates: boolean; matches: { person: PersonMaster; reasons: string[] }[] }> {
+    const res = await this.request<{ hasPotentialDuplicates: boolean; matches: { person: PersonMaster; reasons: string[] }[] }>('/persons/check-duplicate', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    return res.data || { hasPotentialDuplicates: false, matches: [] };
+  }
+
+  async createPerson(data: Partial<PersonMaster>): Promise<PersonMaster> {
+    const res = await this.request<PersonMaster>('/persons', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'ব্যক্তি তৈরি করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updatePerson(id: string, data: Partial<PersonMaster>): Promise<PersonMaster> {
+    const res = await this.request<PersonMaster>(`/persons/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'ব্যক্তির তথ্য হালনাগাদ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updatePersonStatus(id: string, status: 'ACTIVE' | 'INACTIVE'): Promise<PersonMaster> {
+    const res = await this.request<PersonMaster>(`/persons/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'ব্যক্তির স্ট্যাটাস পরিবর্তন ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  // --- Donation Plans ---
+  async getDonationPlans(params?: {
+    personId?: string;
+    familyId?: string;
+    areaId?: string;
+    planType?: string;
+    status?: string;
+    collectionRequired?: boolean | string;
+    collectionWorkerId?: string;
+    search?: string;
+  }): Promise<DonationPlan[]> {
+    const q = new URLSearchParams();
+    if (params?.personId) q.set('personId', params.personId);
+    if (params?.familyId) q.set('familyId', params.familyId);
+    if (params?.areaId) q.set('areaId', params.areaId);
+    if (params?.planType) q.set('planType', params.planType);
+    if (params?.status) q.set('status', params.status);
+    if (params?.collectionRequired !== undefined) q.set('collectionRequired', String(params.collectionRequired));
+    if (params?.collectionWorkerId) q.set('collectionWorkerId', params.collectionWorkerId);
+    if (params?.search) q.set('search', params.search);
+    const queryString = q.toString() ? `?${q.toString()}` : '';
+    const res = await this.request<DonationPlan[]>(`/donation-plans${queryString}`);
+    return res.data || [];
+  }
+
+  async checkOverlapDonationPlan(payload: {
+    personId: string;
+    planType: string;
+    excludeId?: string;
+  }): Promise<{ hasOverlappingPlan: boolean; activePlans: DonationPlan[]; reasons: string[] }> {
+    const res = await this.request<{ hasOverlappingPlan: boolean; activePlans: DonationPlan[]; reasons: string[] }>('/donation-plans/check-overlap', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    return res.data || { hasOverlappingPlan: false, activePlans: [], reasons: [] };
+  }
+
+  async getDonationPlan(id: string): Promise<DonationPlan> {
+    const res = await this.request<DonationPlan>(`/donation-plans/${id}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'দান পরিকল্পনার তথ্য পাওয়া যায়নি');
+    return res.data;
+  }
+
+  async createDonationPlan(data: Partial<DonationPlan>): Promise<DonationPlan> {
+    const res = await this.request<DonationPlan>('/donation-plans', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'দান পরিকল্পনা তৈরি করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateDonationPlan(id: string, data: Partial<DonationPlan>): Promise<DonationPlan> {
+    const res = await this.request<DonationPlan>(`/donation-plans/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'দান পরিকল্পনা হালনাগাদ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateDonationPlanStatus(id: string, status: 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'CANCELLED' | 'INACTIVE'): Promise<DonationPlan> {
+    const res = await this.request<DonationPlan>(`/donation-plans/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'দান পরিকল্পনার স্ট্যাটাস পরিবর্তন ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async deleteDonationPlan(id: string): Promise<boolean> {
+    const res = await this.request<{ success: boolean }>(`/donation-plans/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.success) throw new Error(res.error?.message || 'দান পরিকল্পনা মুছতে ব্যর্থ হয়েছে');
+    return true;
+  }
+
+  // --- Collection Workers ---
+  async getCollectionWorkers(): Promise<CollectionWorker[]> {
+    const res = await this.request<CollectionWorker[]>('/collection-workers');
+    return res.data || [];
+  }
+
+  async getCollectionWorker(id: string): Promise<CollectionWorker> {
+    const res = await this.request<CollectionWorker>(`/collection-workers/${id}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'সংগ্রহকারীর তথ্য পাওয়া যায়নি');
+    return res.data;
+  }
+
+  async createCollectionWorker(data: Partial<CollectionWorker>): Promise<CollectionWorker> {
+    const res = await this.request<CollectionWorker>('/collection-workers', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'সংগ্রহকারী তৈরি করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateCollectionWorker(id: string, data: Partial<CollectionWorker>): Promise<CollectionWorker> {
+    const res = await this.request<CollectionWorker>(`/collection-workers/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'সংগ্রহকারীর তথ্য হালনাগাদ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateCollectionWorkerStatus(id: string, status: 'ACTIVE' | 'INACTIVE'): Promise<CollectionWorker> {
+    const res = await this.request<CollectionWorker>(`/collection-workers/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'সংগ্রহকারীর স্ট্যাটাস পরিবর্তন ব্যর্থ হয়েছে');
+    return res.data;
   }
 }
 

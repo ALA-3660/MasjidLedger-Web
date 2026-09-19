@@ -44,11 +44,23 @@ export type Permission =
   | 'CREATE_MUSALLI'
   | 'EDIT_MUSALLI'
   | 'DELETE_MUSALLI'
+  | 'VIEW_DONATION_PLAN'
+  | 'CREATE_DONATION_PLAN'
+  | 'EDIT_DONATION_PLAN'
+  | 'DELETE_DONATION_PLAN'
   | 'VIEW_DONATION_HISTORY'
   | 'MANAGE_DONATION_PLAN'
   | 'MANAGE_COLLECTION_WORKER'
+  | 'EXPORT_DONATION_PLAN'
   | 'EXPORT_MUSALLI_DATA'
-  | 'VIEW_PERSONAL_DOCUMENTS';
+  | 'VIEW_PERSONAL_DOCUMENTS'
+  | 'VIEW_DONATION_COLLECTION'
+  | 'CREATE_DONATION_COLLECTION'
+  | 'EDIT_DONATION_COLLECTION'
+  | 'UPDATE_DONATION_COLLECTION_STATUS'
+  | 'ASSIGN_COLLECTION_WORKER'
+  | 'MANAGE_DONATION_COLLECTION'
+  | 'VIEW_ASSIGNED_COLLECTION';
 
 export interface User {
   id: string;
@@ -728,13 +740,21 @@ export interface Donation {
   receivedByName: string;
   incomeEntryId?: string;
   denominationData?: CashDenominationData;
-  // Optional Musalli / Person linkage fields for future and backward compatibility
+  // Optional Musalli / Person & Donation Plan linkage fields (Phase B3/B4/B5)
   personId?: string;
+  personCode?: string;
   familyId?: string;
   areaId?: string;
+  donationPlanId?: string;
+  planCode?: string;
   collectionWorkerId?: string;
   status: 'COMPLETED' | 'CANCELLED';
+  cancellationReason?: string;
+  cancelledAt?: string;
+  cancelledBy?: string;
   createdAt: string;
+  updatedAt?: string;
+  updatedBy?: string;
 }
 
 // ==========================================================
@@ -747,6 +767,8 @@ export interface AreaMaster {
   areaCode?: string;
   name: string;
   boundaryDescription?: string;
+  description?: string;
+  assignedCollectionWorkerId?: string;
   collectionWorkerIds?: string[];
   status: 'ACTIVE' | 'INACTIVE';
   notes?: string;
@@ -763,7 +785,10 @@ export interface FamilyMaster {
   name: string;
   areaId: string;
   familyHeadPersonId?: string;
+  mobile?: string;
   address?: string;
+  houseRoadBlock?: string;
+  description?: string;
   memberCount?: number;
   status: 'ACTIVE' | 'INACTIVE';
   notes?: string;
@@ -780,19 +805,29 @@ export interface PersonMaster {
 
   fullName: string;
   fatherOrHusbandName?: string;
+  gender?: 'MALE' | 'FEMALE' | 'OTHER';
+  dateOfBirth?: string;
+  maritalStatus?: string;
 
   familyId?: string;
   areaId?: string;
+  familyRelation?: string;
+  isFamilyHead?: boolean;
 
   mobile?: string;
+  alternativeMobile?: string;
   email?: string;
 
   address?: string;
   houseRoadBlock?: string;
 
   occupation?: string;
+  profession?: string;
+  organization?: string;
 
+  photoUrl?: string;
   photoDocumentId?: string;
+  nidNumber?: string;
   nidDocumentId?: string;
 
   bloodGroup?: string;
@@ -811,14 +846,19 @@ export interface PersonMaster {
   updatedBy?: string;
 }
 
+export type DonationPlanType = 'MONTHLY' | 'YEARLY' | 'IRREGULAR' | 'NO_PLAN';
+export type DonationPlanStatus = 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'CANCELLED' | 'INACTIVE';
+
 export interface DonationPlan {
   id: string;
+  planCode?: string; // e.g. PLAN-00001
   mosqueId: string;
   personId: string;
 
-  planType: 'MONTHLY' | 'YEARLY' | 'IRREGULAR' | 'NO_PLAN';
+  planType: DonationPlanType;
 
-  plannedAmount?: number;
+  amount?: number;
+  plannedAmount?: number; // fallback alias
 
   startDate?: string;
   endDate?: string;
@@ -826,8 +866,11 @@ export interface DonationPlan {
   collectionRequired: boolean;
 
   collectionWorkerId?: string;
+  collectionDay?: string | number;
+  collectionNote?: string;
+  description?: string;
 
-  status: 'ACTIVE' | 'INACTIVE';
+  status: DonationPlanStatus;
 
   notes?: string;
 
@@ -861,6 +904,44 @@ export interface CollectionWorker {
 
   createdBy?: string;
   updatedBy?: string;
+}
+
+export type CollectionStatus =
+  | 'SCHEDULED'
+  | 'PENDING'
+  | 'PARTIALLY_COLLECTED'
+  | 'COLLECTED'
+  | 'NOT_COLLECTED'
+  | 'PAUSED'
+  | 'CANCELLED';
+
+export interface DonationCollection {
+  id: string;
+  mosqueId: string;
+  donationPlanId: string;
+  personId: string;
+  personNameBn?: string;
+  personCode?: string;
+  familyId?: string;
+  familyNameBn?: string;
+  areaId?: string;
+  areaNameBn?: string;
+  collectionWorkerId?: string;
+  collectionWorkerNameBn?: string;
+  collectionPeriod: string; // e.g. "2026-09" or "September 2026"
+  scheduledDate?: string;   // YYYY-MM-DD
+  plannedAmount: number;
+  collectedAmount: number;
+  status: CollectionStatus;
+  collectionNote?: string;
+  workerNote?: string;
+  lastCollectionDate?: string;
+  createdAt: string;
+  updatedAt?: string;
+  createdBy?: string;
+  createdByName?: string;
+  updatedBy?: string;
+  updatedByName?: string;
 }
 
 export interface DenominationCount {

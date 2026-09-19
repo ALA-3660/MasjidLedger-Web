@@ -8,6 +8,7 @@ import {
   Wallet,
   Landmark,
   Layers,
+  Users,
   Users2,
   CalendarCheck,
   UserCheck,
@@ -53,6 +54,7 @@ export type NavTab =
   | 'income_reports'
   | 'expense'
   | 'accountHeads'
+  | 'musalliDatabase'
   | 'committee'
   | 'advisors'
   | 'meetings'
@@ -143,6 +145,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
           label: language === 'bn' ? '📑 আয়-ব্যয় খাত (হেড)' : t.accountHeads,
           icon: Layers,
           color: 'text-slate-600',
+        },
+      ],
+    },
+    {
+      title: language === 'bn' ? 'মুসল্লি ও সমাজ' : 'Community & Donors',
+      items: [
+        {
+          id: 'musalliDatabase' as NavTab,
+          label: language === 'bn' ? '👥 মুসল্লি ও দাতা ডেটাবেস' : 'Musalli & Donor DB',
+          icon: Users,
+          badge: language === 'bn' ? '৭টি বিভাগ' : '7 Sections',
+          color: 'text-emerald-700',
         },
       ],
     },

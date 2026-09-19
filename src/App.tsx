@@ -43,6 +43,7 @@ import { CashBookView } from './components/CashBookView';
 import { BankBookView } from './components/BankBookView';
 import { OpeningBalanceView } from './components/OpeningBalanceView';
 import { AccountHeadsView } from './components/AccountHeadsView';
+import { MusalliDonorManagementView } from './components/MusalliDonorManagementView';
 import { CommitteeView } from './components/CommitteeView';
 import { CommitteeManagementView } from './components/CommitteeManagementView';
 import { ManagementView } from './components/ManagementView';
@@ -1241,6 +1242,16 @@ export default function App() {
           onAddAccountHead={handleAddAccountHead}
           onUpdateAccountHead={handleUpdateAccountHead}
           onDeleteAccountHead={handleDeleteAccountHead}
+        />
+      )}
+
+      {/* 5.5 Musalli & Donor Central Database View with Left Secondary Sidebar */}
+      {(currentTab === 'musalliDatabase' || (currentTab as string) === 'musalli-database') && (
+        <MusalliDonorManagementView
+          currentMosque={mosque}
+          currentUser={currentUser}
+          language={language}
+          onNavigateTab={(tab) => setCurrentTab(tab as NavTab)}
         />
       )}
 

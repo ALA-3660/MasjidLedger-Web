@@ -52,6 +52,12 @@ import {
   AdvisorMember,
   AdvisorConsultation,
   CentralDocument,
+  AreaMaster,
+  FamilyMaster,
+  PersonMaster,
+  DonationPlan,
+  CollectionWorker,
+  DonationCollection,
 } from '../types';
 import {
   OfficialDocument,
@@ -109,6 +115,12 @@ export class DatabaseStore {
   officialDocuments: OfficialDocument[] = [];
   officialDocumentTemplates: OfficialDocumentTemplate[] = [];
   officialDocumentNumbering: Record<string, Record<string, DocumentNumberingConfig>> = {};
+  areas: AreaMaster[] = [];
+  families: FamilyMaster[] = [];
+  persons: PersonMaster[] = [];
+  donationPlans: DonationPlan[] = [];
+  collectionWorkers: CollectionWorker[] = [];
+  donationCollections: DonationCollection[] = [];
 
   constructor() {
     this.init();
@@ -302,6 +314,7 @@ export class DatabaseStore {
         this.persons = parsed.persons || [];
         this.donationPlans = parsed.donationPlans || [];
         this.collectionWorkers = parsed.collectionWorkers || [];
+        this.donationCollections = parsed.donationCollections || [];
 
         return;
       }
@@ -372,6 +385,7 @@ export class DatabaseStore {
         persons: this.persons,
         donationPlans: this.donationPlans,
         collectionWorkers: this.collectionWorkers,
+        donationCollections: this.donationCollections,
       };
       fs.writeFileSync(DB_FILE_PATH, JSON.stringify(data, null, 2), 'utf-8');
     } catch (e) {
@@ -1618,8 +1632,47 @@ export class DatabaseStore {
     return `plan-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   }
 
+  generateDonationPlanCode(mosqueId: string): string {
+    const existing = this.donationPlans.filter(p => p.mosqueId === mosqueId);
+    let maxNum = 0;
+    for (const p of existing) {
+      const code = p.planCode || p.id;
+      if (code) {
+        const match = code.match(/\d+/);
+        if (match) {
+          const num = parseInt(match[0], 10);
+          if (num > maxNum) maxNum = num;
+        }
+      }
+    }
+    const nextNum = Math.max(existing.length + 1, maxNum + 1);
+    return `PLAN-${String(nextNum).padStart(5, '0')}`;
+  }
+
   generateCollectionWorkerId(mosqueId: string): string {
     return `cw-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  }
+
+  generateDonationCollectionId(mosqueId: string): string {
+    const existing = this.donationCollections.filter(c => c.mosqueId === mosqueId);
+    let maxNum = 0;
+    for (const c of existing) {
+      if (c.id) {
+        const match = c.id.match(/\d+/);
+        if (match) {
+          const num = parseInt(match[0], 10);
+          if (num > maxNum) maxNum = num;
+        }
+      }
+    }
+    const nextNum = Math.max(existing.length + 1, maxNum + 1);
+    let candidate = `COL-${String(nextNum).padStart(5, '0')}`;
+    let counter = nextNum;
+    while (this.donationCollections.some(c => c.id === candidate && c.mosqueId === mosqueId)) {
+      counter++;
+      candidate = `COL-${String(counter).padStart(5, '0')}`;
+    }
+    return candidate;
   }
 
   checkPotentialDuplicatePerson(
@@ -1628,6 +1681,8 @@ export class DatabaseStore {
       fullName?: string;
       fatherOrHusbandName?: string;
       mobile?: string;
+      nidNumber?: string;
+      dateOfBirth?: string;
       familyId?: string;
       areaId?: string;
       address?: string;
@@ -1645,23 +1700,31 @@ export class DatabaseStore {
 
     const norm = (str?: string) => (str ? str.trim().toLowerCase().replace(/\s+/g, ' ') : '');
     const cleanPhone = (str?: string) => (str ? str.replace(/[^\d]/g, '') : '');
+    const cleanNid = (str?: string) => (str ? str.replace(/[^\d]/g, '') : '');
 
     const targetName = norm(payload.fullName);
     const targetFather = norm(payload.fatherOrHusbandName);
     const targetMobile = cleanPhone(payload.mobile);
+    const targetNid = cleanNid(payload.nidNumber);
 
     for (const p of persons) {
       const reasons: string[] = [];
       const pName = norm(p.fullName);
       const pFather = norm(p.fatherOrHusbandName);
       const pMobile = cleanPhone(p.mobile);
+      const pNid = cleanNid(p.nidNumber);
 
-      // 1. Mobile exact match (if mobile is provided)
+      // 1. NID exact match (if provided)
+      if (targetNid && pNid && targetNid.length >= 10 && targetNid === pNid) {
+        reasons.push(`জাতীয় পরিচয়পত্র (NID: ${p.nidNumber}) হুবহু মিলে গেছে`);
+      }
+
+      // 2. Mobile exact match (if mobile is provided)
       if (targetMobile && pMobile && targetMobile.length >= 10 && (targetMobile === pMobile || targetMobile.endsWith(pMobile) || pMobile.endsWith(targetMobile))) {
         reasons.push(`মোবাইল নম্বর (${p.mobile}) হুবহু মিলে গেছে`);
       }
 
-      // 2. Full Name exact/strong match
+      // 3. Full Name exact/strong match
       if (targetName && pName) {
         if (targetName === pName) {
           // If also father name matches or family matches
@@ -1674,6 +1737,10 @@ export class DatabaseStore {
           } else {
             reasons.push(`নাম (${p.fullName}) হুবহু মিলে গেছে`);
           }
+        } else if (targetName.length > 4 && (pName.includes(targetName) || targetName.includes(pName))) {
+          if (targetFather && pFather && targetFather === pFather) {
+            reasons.push(`কাছাকাছি নাম (${p.fullName}) এবং একই পিতা/স্বামীর নাম (${p.fatherOrHusbandName})`);
+          }
         }
       }
 
@@ -1685,6 +1752,121 @@ export class DatabaseStore {
     return {
       hasPotentialDuplicates: matches.length > 0,
       matches,
+    };
+  }
+
+  checkPotentialDuplicateFamily(
+    mosqueId: string,
+    payload: {
+      name?: string;
+      areaId?: string;
+      familyCode?: string;
+      mobile?: string;
+      address?: string;
+      houseRoadBlock?: string;
+    },
+    excludeId?: string
+  ): {
+    hasPotentialDuplicates: boolean;
+    matches: {
+      family: FamilyMaster;
+      reasons: string[];
+    }[];
+  } {
+    const families = this.families.filter(f => f.mosqueId === mosqueId && (!excludeId || f.id !== excludeId));
+    const matches: { family: FamilyMaster; reasons: string[] }[] = [];
+
+    const norm = (str?: string) => (str ? str.trim().toLowerCase().replace(/\s+/g, ' ') : '');
+    const cleanPhone = (str?: string) => (str ? str.replace(/[^\d]/g, '') : '');
+
+    const targetName = norm(payload.name);
+    const targetMobile = cleanPhone(payload.mobile);
+    const targetCode = norm(payload.familyCode);
+    const targetAreaId = payload.areaId;
+    const targetAddress = norm(payload.address);
+    const targetHouseRoad = norm(payload.houseRoadBlock);
+
+    for (const f of families) {
+      const reasons: string[] = [];
+      const fName = norm(f.name);
+      const fMobile = cleanPhone(f.mobile);
+      const fCode = norm(f.familyCode);
+      const fAddress = norm(f.address);
+      const fHouseRoad = norm(f.houseRoadBlock);
+
+      // 1. Code match
+      if (targetCode && fCode && targetCode === fCode) {
+        reasons.push(`পারিবারিক কোড (${f.familyCode}) হুবহু মিলে গেছে`);
+      }
+
+      // 2. Mobile match
+      if (targetMobile && fMobile && targetMobile.length >= 10 && (targetMobile === fMobile || targetMobile.endsWith(fMobile) || fMobile.endsWith(targetMobile))) {
+        reasons.push(`মোবাইল নম্বর (${f.mobile}) মিলে গেছে`);
+      }
+
+      // 3. Name in same area
+      if (targetName && fName) {
+        if (targetName === fName) {
+          if (targetAreaId && f.areaId && targetAreaId === f.areaId) {
+            reasons.push(`একই এলাকায় হুবহু একই নামের পরিবার (${f.name}) ইতিমধ্যে বিদ্যমান`);
+          } else {
+            reasons.push(`একই নামের পরিবার (${f.name}) অন্য এলাকায় বিদ্যমান`);
+          }
+        } else if (targetAreaId && f.areaId && targetAreaId === f.areaId) {
+          // Check substring / fuzzy similarity in same area
+          if (targetName.includes(fName) || fName.includes(targetName)) {
+            reasons.push(`একই এলাকায় কাছাকাছি নামের পরিবার (${f.name}) বিদ্যমান`);
+          }
+        }
+      }
+
+      // 4. Same Area and exact House/Road
+      if (targetAreaId && f.areaId && targetAreaId === f.areaId) {
+        if (targetHouseRoad && fHouseRoad && targetHouseRoad === fHouseRoad && targetHouseRoad.length > 3) {
+          reasons.push(`একই এলাকায় একই বাড়ি/রোড/ব্লক (${f.houseRoadBlock}) পাওয়া গেছে`);
+        } else if (targetAddress && fAddress && targetAddress === fAddress && targetAddress.length > 5) {
+          reasons.push(`একই এলাকায় একই ঠিকানা (${f.address}) পাওয়া গেছে`);
+        }
+      }
+
+      if (reasons.length > 0) {
+        matches.push({ family: f, reasons });
+      }
+    }
+
+    return {
+      hasPotentialDuplicates: matches.length > 0,
+      matches,
+    };
+  }
+
+  checkOverlappingDonationPlan(
+    mosqueId: string,
+    personId: string,
+    planType: string,
+    excludeId?: string
+  ): {
+    hasOverlappingPlan: boolean;
+    activePlans: DonationPlan[];
+    reasons: string[];
+  } {
+    const activePlans = this.donationPlans.filter(
+      p => p.mosqueId === mosqueId && p.personId === personId && p.status === 'ACTIVE' && (!excludeId || p.id !== excludeId)
+    );
+
+    const reasons: string[] = [];
+    const sameType = activePlans.filter(p => p.planType === planType);
+    if (sameType.length > 0) {
+      const typeLabel = planType === 'MONTHLY' ? 'মাসিক' : planType === 'YEARLY' ? 'বার্ষিক' : planType === 'IRREGULAR' ? 'অনিয়মিত' : 'পরিকল্পনা';
+      reasons.push(`এই ব্যক্তির জন্য ইতোমধ্যে ১টি সক্রিয় ${typeLabel} অনুদান পরিকল্পনা চালু রয়েছে (${sameType[0].planCode || sameType[0].id})`);
+    } else if (activePlans.length > 0) {
+      reasons.push(`এই ব্যক্তির জন্য ইতোমধ্যে ${activePlans.length}টি সক্রিয় অনুদান পরিকল্পনা চালু রয়েছে`);
+    }
+
+    return {
+      hasOverlappingPlan: reasons.length > 0,
+      activePlans,
+      reasons,
     };
   }
 }
