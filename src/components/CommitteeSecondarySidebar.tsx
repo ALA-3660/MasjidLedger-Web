@@ -12,6 +12,7 @@ import {
   Repeat,
   Layers,
   FileBarChart,
+  FileText,
   Menu,
   X,
   ChevronRight,
@@ -35,7 +36,8 @@ export type CommitteeSubSection =
   | 'financial-history'
   | 'handover'
   | 'sub-committees'
-  | 'reports';
+  | 'reports'
+  | 'documents';
 
 export interface CommitteeSidebarItem {
   id: CommitteeSubSection;
@@ -164,6 +166,13 @@ export const CommitteeSecondarySidebar: React.FC<CommitteeSecondarySidebarProps>
       icon: FileBarChart,
       badge: isBn ? 'পিডিএফ/প্রিন্ট' : 'PDF/Print',
       badgeColor: 'bg-emerald-100 text-emerald-800',
+    },
+    {
+      id: 'documents',
+      label: isBn ? 'দাপ্তরিক নথি ও যোগাযোগ' : 'Official Documents',
+      icon: FileText,
+      badge: isBn ? 'স্মারক/নথি' : 'Docs',
+      badgeColor: 'bg-purple-100 text-purple-700 font-medium',
     },
   ];
 

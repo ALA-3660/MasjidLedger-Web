@@ -66,6 +66,11 @@ import {
   DocumentVisibility,
   DOCUMENT_ENTITY_LABELS,
   DOCUMENT_CATEGORY_LABELS,
+  AreaMaster,
+  FamilyMaster,
+  PersonMaster,
+  DonationPlan,
+  CollectionWorker,
 } from './src/types';
 
 const app = express();
@@ -13552,6 +13557,876 @@ function startServerScheduler() {
     }
   }, 60000); // Check every 60 seconds
 }
+
+// ==========================================
+// MUSALLI & DONOR MASTER DATABASE ENDPOINTS
+// ==========================================
+
+// --- Areas Endpoints ---
+app.get('/api/v1/areas', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const list = db.areas.filter(a => a.mosqueId === mosqueId);
+  res.json({ success: true, data: list });
+});
+
+app.get('/api/v1/areas/:id', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const area = db.areas.find(a => a.id === req.params.id && a.mosqueId === mosqueId);
+  if (!area) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'এলাকা / মহল্লা পাওয়া যায়নি।' } });
+  }
+  res.json({ success: true, data: area });
+});
+
+app.post('/api/v1/areas', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { name, areaCode, boundaryDescription, collectionWorkerIds, notes, status } = req.body;
+
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'এলাকার নাম আবশ্যক।' } });
+  }
+
+  const newArea: AreaMaster = {
+    id: db.generateAreaId(mosqueId),
+    mosqueId,
+    areaCode: areaCode?.trim() || db.generateAreaCode(mosqueId),
+    name: name.trim(),
+    boundaryDescription: boundaryDescription?.trim() || '',
+    collectionWorkerIds: Array.isArray(collectionWorkerIds) ? collectionWorkerIds : [],
+    status: status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE',
+    notes: notes?.trim() || '',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    createdBy: req.user?.id || 'system',
+    updatedBy: req.user?.id || 'system',
+  };
+
+  db.areas.push(newArea);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'SYSTEM_INITIALIZE',
+    'MUSALLI_DATABASE',
+    `নতুন এলাকা / মহল্লা যোগ করা হয়েছে: ${newArea.name} (${newArea.areaCode})`,
+    newArea.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'AREA_CREATED', newArea, { senderId: req.user?.id });
+
+  res.status(201).json({
+    success: true,
+    data: newArea,
+    message: 'এলাকা / মহল্লা সফলভাবে তৈরি করা হয়েছে।'
+  });
+});
+
+app.put('/api/v1/areas/:id', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const areaIdx = db.areas.findIndex(a => a.id === req.params.id && a.mosqueId === mosqueId);
+  if (areaIdx === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'এলাকা / মহল্লা পাওয়া যায়নি।' } });
+  }
+
+  const { name, areaCode, boundaryDescription, collectionWorkerIds, notes, status } = req.body;
+  const current = db.areas[areaIdx];
+
+  const updatedArea: AreaMaster = {
+    ...current,
+    name: name !== undefined && typeof name === 'string' && name.trim() ? name.trim() : current.name,
+    areaCode: areaCode !== undefined ? areaCode.trim() : current.areaCode,
+    boundaryDescription: boundaryDescription !== undefined ? boundaryDescription.trim() : current.boundaryDescription,
+    collectionWorkerIds: Array.isArray(collectionWorkerIds) ? collectionWorkerIds : current.collectionWorkerIds,
+    status: status === 'INACTIVE' || status === 'ACTIVE' ? status : current.status,
+    notes: notes !== undefined ? notes.trim() : current.notes,
+    updatedAt: new Date().toISOString(),
+    updatedBy: req.user?.id || 'system',
+  };
+
+  db.areas[areaIdx] = updatedArea;
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'SYSTEM_INITIALIZE',
+    'MUSALLI_DATABASE',
+    `এলাকা / মহল্লা আপডেট করা হয়েছে: ${updatedArea.name}`,
+    updatedArea.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'AREA_UPDATED', updatedArea, { senderId: req.user?.id });
+
+  res.json({
+    success: true,
+    data: updatedArea,
+    message: 'এলাকার তথ্য সফলভাবে আপডেট করা হয়েছে।'
+  });
+});
+
+app.patch('/api/v1/areas/:id/status', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const areaIdx = db.areas.findIndex(a => a.id === req.params.id && a.mosqueId === mosqueId);
+  if (areaIdx === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'এলাকা পাওয়া যায়নি।' } });
+  }
+
+  const { status } = req.body;
+  if (status !== 'ACTIVE' && status !== 'INACTIVE') {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_STATUS', message: 'সঠিক স্ট্যাটাস প্রদান করুন।' } });
+  }
+
+  db.areas[areaIdx].status = status;
+  db.areas[areaIdx].updatedAt = new Date().toISOString();
+  db.areas[areaIdx].updatedBy = req.user?.id || 'system';
+  db.save();
+
+  res.json({ success: true, data: db.areas[areaIdx], message: 'স্ট্যাটাস সফলভাবে পরিবর্তন করা হয়েছে।' });
+});
+
+// --- Families Endpoints ---
+app.get('/api/v1/families', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { areaId, search } = req.query;
+  let list = db.families.filter(f => f.mosqueId === mosqueId);
+
+  if (areaId && typeof areaId === 'string') {
+    list = list.filter(f => f.areaId === areaId);
+  }
+  if (search && typeof search === 'string' && search.trim()) {
+    const q = search.trim().toLowerCase();
+    list = list.filter(f => f.name.toLowerCase().includes(q) || (f.familyCode && f.familyCode.toLowerCase().includes(q)));
+  }
+
+  res.json({ success: true, data: list });
+});
+
+app.get('/api/v1/families/:id', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const fam = db.families.find(f => f.id === req.params.id && f.mosqueId === mosqueId);
+  if (!fam) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'পরিবার পাওয়া যায়নি।' } });
+  }
+  res.json({ success: true, data: fam });
+});
+
+app.post('/api/v1/families', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { name, areaId, familyCode, familyHeadPersonId, address, memberCount, notes, status } = req.body;
+
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'পরিবার / বাড়ির নাম আবশ্যক।' } });
+  }
+  if (!areaId || typeof areaId !== 'string') {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'এলাকা / মহল্লা নির্বাচন আবশ্যক।' } });
+  }
+
+  // Validate area exists
+  const area = db.areas.find(a => a.id === areaId && a.mosqueId === mosqueId);
+  if (!area) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_AREA', message: 'নির্বাচিত এলাকাটি সঠিক নয়।' } });
+  }
+
+  const newFamily: FamilyMaster = {
+    id: db.generateFamilyId(mosqueId),
+    mosqueId,
+    familyCode: familyCode?.trim() || db.generateFamilyCode(mosqueId),
+    name: name.trim(),
+    areaId,
+    familyHeadPersonId: familyHeadPersonId || undefined,
+    address: address?.trim() || '',
+    memberCount: Number(memberCount) >= 0 ? Number(memberCount) : 1,
+    status: status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE',
+    notes: notes?.trim() || '',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    createdBy: req.user?.id || 'system',
+    updatedBy: req.user?.id || 'system',
+  };
+
+  db.families.push(newFamily);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'SYSTEM_INITIALIZE',
+    'MUSALLI_DATABASE',
+    `নতুন পরিবার অন্তর্ভুক্ত করা হয়েছে: ${newFamily.name} (${newFamily.familyCode})`,
+    newFamily.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'FAMILY_CREATED', newFamily, { senderId: req.user?.id });
+
+  res.status(201).json({
+    success: true,
+    data: newFamily,
+    message: 'পরিবার সফলভাবে যুক্ত করা হয়েছে।'
+  });
+});
+
+app.put('/api/v1/families/:id', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const famIdx = db.families.findIndex(f => f.id === req.params.id && f.mosqueId === mosqueId);
+  if (famIdx === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'পরিবার পাওয়া যায়নি।' } });
+  }
+
+  const { name, areaId, familyCode, familyHeadPersonId, address, memberCount, notes, status } = req.body;
+  const current = db.families[famIdx];
+
+  if (areaId && areaId !== current.areaId) {
+    const area = db.areas.find(a => a.id === areaId && a.mosqueId === mosqueId);
+    if (!area) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_AREA', message: 'নির্বাচিত এলাকাটি সঠিক নয়।' } });
+    }
+  }
+
+  const updatedFamily: FamilyMaster = {
+    ...current,
+    name: name !== undefined && typeof name === 'string' && name.trim() ? name.trim() : current.name,
+    areaId: areaId || current.areaId,
+    familyCode: familyCode !== undefined ? familyCode.trim() : current.familyCode,
+    familyHeadPersonId: familyHeadPersonId !== undefined ? familyHeadPersonId : current.familyHeadPersonId,
+    address: address !== undefined ? address.trim() : current.address,
+    memberCount: memberCount !== undefined && Number(memberCount) >= 0 ? Number(memberCount) : current.memberCount,
+    status: status === 'INACTIVE' || status === 'ACTIVE' ? status : current.status,
+    notes: notes !== undefined ? notes.trim() : current.notes,
+    updatedAt: new Date().toISOString(),
+    updatedBy: req.user?.id || 'system',
+  };
+
+  db.families[famIdx] = updatedFamily;
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'SYSTEM_INITIALIZE',
+    'MUSALLI_DATABASE',
+    `পরিবারের তথ্য আপডেট করা হয়েছে: ${updatedFamily.name}`,
+    updatedFamily.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'FAMILY_UPDATED', updatedFamily, { senderId: req.user?.id });
+
+  res.json({
+    success: true,
+    data: updatedFamily,
+    message: 'পরিবারের তথ্য সফলভাবে আপডেট করা হয়েছে।'
+  });
+});
+
+app.patch('/api/v1/families/:id/status', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const famIdx = db.families.findIndex(f => f.id === req.params.id && f.mosqueId === mosqueId);
+  if (famIdx === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'পরিবার পাওয়া যায়নি।' } });
+  }
+
+  const { status } = req.body;
+  if (status !== 'ACTIVE' && status !== 'INACTIVE') {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_STATUS', message: 'সঠিক স্ট্যাটাস প্রদান করুন।' } });
+  }
+
+  db.families[famIdx].status = status;
+  db.families[famIdx].updatedAt = new Date().toISOString();
+  db.families[famIdx].updatedBy = req.user?.id || 'system';
+  db.save();
+
+  res.json({ success: true, data: db.families[famIdx], message: 'স্ট্যাটাস সফলভাবে পরিবর্তন করা হয়েছে।' });
+});
+
+// --- Persons Endpoints ---
+app.get('/api/v1/persons', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { areaId, familyId, search, status } = req.query;
+  let list = db.persons.filter(p => p.mosqueId === mosqueId);
+
+  if (areaId && typeof areaId === 'string') {
+    list = list.filter(p => p.areaId === areaId);
+  }
+  if (familyId && typeof familyId === 'string') {
+    list = list.filter(p => p.familyId === familyId);
+  }
+  if (status && (status === 'ACTIVE' || status === 'INACTIVE')) {
+    list = list.filter(p => p.status === status);
+  }
+  if (search && typeof search === 'string' && search.trim()) {
+    const q = search.trim().toLowerCase();
+    list = list.filter(p =>
+      p.fullName.toLowerCase().includes(q) ||
+      p.personCode.toLowerCase().includes(q) ||
+      (p.mobile && p.mobile.includes(q)) ||
+      (p.fatherOrHusbandName && p.fatherOrHusbandName.toLowerCase().includes(q))
+    );
+  }
+
+  res.json({ success: true, data: list });
+});
+
+app.get('/api/v1/persons/:id', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const person = db.persons.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (!person) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'মুসল্লি / ব্যক্তি পাওয়া যায়নি।' } });
+  }
+  res.json({ success: true, data: person });
+});
+
+app.post('/api/v1/persons/check-duplicate', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { fullName, fatherOrHusbandName, mobile, familyId, areaId, address, excludeId } = req.body;
+  const result = db.checkPotentialDuplicatePerson(
+    mosqueId,
+    { fullName, fatherOrHusbandName, mobile, familyId, areaId, address },
+    excludeId
+  );
+  res.json({ success: true, data: result });
+});
+
+app.post('/api/v1/persons', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const {
+    fullName,
+    fatherOrHusbandName,
+    familyId,
+    areaId,
+    mobile,
+    email,
+    address,
+    houseRoadBlock,
+    occupation,
+    photoDocumentId,
+    nidDocumentId,
+    bloodGroup,
+    status,
+    notes,
+    linkedCommitteeMemberId,
+    linkedStaffId,
+  } = req.body;
+
+  if (!fullName || typeof fullName !== 'string' || !fullName.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'মুসল্লির পূর্ণ নাম আবশ্যক।' } });
+  }
+
+  // Auto-resolve area if familyId is provided without areaId
+  let resolvedAreaId = areaId;
+  if (familyId && !resolvedAreaId) {
+    const fam = db.families.find(f => f.id === familyId && f.mosqueId === mosqueId);
+    if (fam) resolvedAreaId = fam.areaId;
+  }
+
+  const newPerson: PersonMaster = {
+    id: db.generatePersonId(mosqueId),
+    personCode: db.generatePersonCode(mosqueId),
+    mosqueId,
+    fullName: fullName.trim(),
+    fatherOrHusbandName: fatherOrHusbandName?.trim() || undefined,
+    familyId: familyId || undefined,
+    areaId: resolvedAreaId || undefined,
+    mobile: mobile?.trim() || undefined,
+    email: email?.trim() || undefined,
+    address: address?.trim() || undefined,
+    houseRoadBlock: houseRoadBlock?.trim() || undefined,
+    occupation: occupation?.trim() || undefined,
+    photoDocumentId: photoDocumentId || undefined,
+    nidDocumentId: nidDocumentId || undefined,
+    bloodGroup: bloodGroup?.trim() || undefined,
+    status: status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE',
+    notes: notes?.trim() || undefined,
+    linkedCommitteeMemberId: linkedCommitteeMemberId || undefined,
+    linkedStaffId: linkedStaffId || undefined,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    createdBy: req.user?.id || 'system',
+    updatedBy: req.user?.id || 'system',
+  };
+
+  db.persons.push(newPerson);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'SYSTEM_INITIALIZE',
+    'MUSALLI_DATABASE',
+    `নতুন মুসল্লি / ব্যক্তি নথিভুক্ত করা হয়েছে: ${newPerson.fullName} (${newPerson.personCode})`,
+    newPerson.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'PERSON_CREATED', newPerson, { senderId: req.user?.id });
+
+  res.status(201).json({
+    success: true,
+    data: newPerson,
+    message: 'মুসল্লির তথ্য সফলভাবে সংরক্ষণ করা হয়েছে।'
+  });
+});
+
+app.put('/api/v1/persons/:id', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const pIdx = db.persons.findIndex(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (pIdx === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'মুসল্লি পাওয়া যায়নি।' } });
+  }
+
+  const current = db.persons[pIdx];
+  const {
+    fullName,
+    fatherOrHusbandName,
+    familyId,
+    areaId,
+    mobile,
+    email,
+    address,
+    houseRoadBlock,
+    occupation,
+    photoDocumentId,
+    nidDocumentId,
+    bloodGroup,
+    status,
+    notes,
+    linkedCommitteeMemberId,
+    linkedStaffId,
+  } = req.body;
+
+  let resolvedAreaId = areaId !== undefined ? areaId : current.areaId;
+  if (familyId && familyId !== current.familyId && !areaId) {
+    const fam = db.families.find(f => f.id === familyId && f.mosqueId === mosqueId);
+    if (fam) resolvedAreaId = fam.areaId;
+  }
+
+  const updatedPerson: PersonMaster = {
+    ...current,
+    fullName: fullName !== undefined && typeof fullName === 'string' && fullName.trim() ? fullName.trim() : current.fullName,
+    fatherOrHusbandName: fatherOrHusbandName !== undefined ? fatherOrHusbandName.trim() : current.fatherOrHusbandName,
+    familyId: familyId !== undefined ? familyId : current.familyId,
+    areaId: resolvedAreaId,
+    mobile: mobile !== undefined ? mobile.trim() : current.mobile,
+    email: email !== undefined ? email.trim() : current.email,
+    address: address !== undefined ? address.trim() : current.address,
+    houseRoadBlock: houseRoadBlock !== undefined ? houseRoadBlock.trim() : current.houseRoadBlock,
+    occupation: occupation !== undefined ? occupation.trim() : current.occupation,
+    photoDocumentId: photoDocumentId !== undefined ? photoDocumentId : current.photoDocumentId,
+    nidDocumentId: nidDocumentId !== undefined ? nidDocumentId : current.nidDocumentId,
+    bloodGroup: bloodGroup !== undefined ? bloodGroup.trim() : current.bloodGroup,
+    status: status === 'INACTIVE' || status === 'ACTIVE' ? status : current.status,
+    notes: notes !== undefined ? notes.trim() : current.notes,
+    linkedCommitteeMemberId: linkedCommitteeMemberId !== undefined ? linkedCommitteeMemberId : current.linkedCommitteeMemberId,
+    linkedStaffId: linkedStaffId !== undefined ? linkedStaffId : current.linkedStaffId,
+    updatedAt: new Date().toISOString(),
+    updatedBy: req.user?.id || 'system',
+  };
+
+  db.persons[pIdx] = updatedPerson;
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'SYSTEM_INITIALIZE',
+    'MUSALLI_DATABASE',
+    `মুসল্লির তথ্য আপডেট করা হয়েছে: ${updatedPerson.fullName} (${updatedPerson.personCode})`,
+    updatedPerson.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'PERSON_UPDATED', updatedPerson, { senderId: req.user?.id });
+
+  res.json({
+    success: true,
+    data: updatedPerson,
+    message: 'মুসল্লির তথ্য সফলভাবে আপডেট করা হয়েছে।'
+  });
+});
+
+app.patch('/api/v1/persons/:id/status', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const pIdx = db.persons.findIndex(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (pIdx === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'মুসল্লি পাওয়া যায়নি।' } });
+  }
+
+  const { status } = req.body;
+  if (status !== 'ACTIVE' && status !== 'INACTIVE') {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_STATUS', message: 'সঠিক স্ট্যাটাস প্রদান করুন।' } });
+  }
+
+  db.persons[pIdx].status = status;
+  db.persons[pIdx].updatedAt = new Date().toISOString();
+  db.persons[pIdx].updatedBy = req.user?.id || 'system';
+  db.save();
+
+  res.json({ success: true, data: db.persons[pIdx], message: 'স্ট্যাটাস সফলভাবে পরিবর্তন করা হয়েছে।' });
+});
+
+// --- Donation Plans Endpoints ---
+app.get('/api/v1/donation-plans', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { personId, planType, status } = req.query;
+  let list = db.donationPlans.filter(dp => dp.mosqueId === mosqueId);
+
+  if (personId && typeof personId === 'string') {
+    list = list.filter(dp => dp.personId === personId);
+  }
+  if (planType && typeof planType === 'string') {
+    list = list.filter(dp => dp.planType === planType);
+  }
+  if (status && (status === 'ACTIVE' || status === 'INACTIVE')) {
+    list = list.filter(dp => dp.status === status);
+  }
+
+  res.json({ success: true, data: list });
+});
+
+app.get('/api/v1/donation-plans/:id', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const plan = db.donationPlans.find(dp => dp.id === req.params.id && dp.mosqueId === mosqueId);
+  if (!plan) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'দান পরিকল্পনা পাওয়া যায়নি।' } });
+  }
+  res.json({ success: true, data: plan });
+});
+
+app.post('/api/v1/donation-plans', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { personId, planType, plannedAmount, startDate, endDate, collectionRequired, collectionWorkerId, status, notes } = req.body;
+
+  if (!personId || typeof personId !== 'string') {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'ব্যক্তি / মুসল্লি নির্বাচন আবশ্যক।' } });
+  }
+
+  const person = db.persons.find(p => p.id === personId && p.mosqueId === mosqueId);
+  if (!person) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_PERSON', message: 'নির্বাচিত ব্যক্তি পাওয়া যায়নি।' } });
+  }
+
+  const validTypes = ['MONTHLY', 'YEARLY', 'IRREGULAR', 'NO_PLAN'];
+  const resolvedType = validTypes.includes(planType) ? planType : 'MONTHLY';
+
+  const newPlan: DonationPlan = {
+    id: db.generateDonationPlanId(mosqueId),
+    mosqueId,
+    personId,
+    planType: resolvedType,
+    plannedAmount: plannedAmount !== undefined && Number(plannedAmount) >= 0 ? Number(plannedAmount) : undefined,
+    startDate: startDate || new Date().toISOString().split('T')[0],
+    endDate: endDate || undefined,
+    collectionRequired: Boolean(collectionRequired),
+    collectionWorkerId: collectionWorkerId || undefined,
+    status: status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE',
+    notes: notes?.trim() || undefined,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    createdBy: req.user?.id || 'system',
+    updatedBy: req.user?.id || 'system',
+  };
+
+  db.donationPlans.push(newPlan);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'SYSTEM_INITIALIZE',
+    'MUSALLI_DATABASE',
+    `দান পরিকল্পনা তৈরি করা হয়েছে: ${person.fullName} (${newPlan.planType})`,
+    newPlan.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'DONATION_PLAN_CREATED', newPlan, { senderId: req.user?.id });
+
+  res.status(201).json({
+    success: true,
+    data: newPlan,
+    message: 'দান পরিকল্পনা সফলভাবে সংরক্ষণ করা হয়েছে।'
+  });
+});
+
+app.put('/api/v1/donation-plans/:id', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const planIdx = db.donationPlans.findIndex(dp => dp.id === req.params.id && dp.mosqueId === mosqueId);
+  if (planIdx === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'দান পরিকল্পনা পাওয়া যায়নি।' } });
+  }
+
+  const current = db.donationPlans[planIdx];
+  const { planType, plannedAmount, startDate, endDate, collectionRequired, collectionWorkerId, status, notes } = req.body;
+
+  const validTypes = ['MONTHLY', 'YEARLY', 'IRREGULAR', 'NO_PLAN'];
+
+  const updatedPlan: DonationPlan = {
+    ...current,
+    planType: planType && validTypes.includes(planType) ? planType : current.planType,
+    plannedAmount: plannedAmount !== undefined && Number(plannedAmount) >= 0 ? Number(plannedAmount) : current.plannedAmount,
+    startDate: startDate !== undefined ? startDate : current.startDate,
+    endDate: endDate !== undefined ? endDate : current.endDate,
+    collectionRequired: collectionRequired !== undefined ? Boolean(collectionRequired) : current.collectionRequired,
+    collectionWorkerId: collectionWorkerId !== undefined ? collectionWorkerId : current.collectionWorkerId,
+    status: status === 'INACTIVE' || status === 'ACTIVE' ? status : current.status,
+    notes: notes !== undefined ? notes.trim() : current.notes,
+    updatedAt: new Date().toISOString(),
+    updatedBy: req.user?.id || 'system',
+  };
+
+  db.donationPlans[planIdx] = updatedPlan;
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'SYSTEM_INITIALIZE',
+    'MUSALLI_DATABASE',
+    `দান পরিকল্পনা আপডেট করা হয়েছে: Plan ID ${updatedPlan.id}`,
+    updatedPlan.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'DONATION_PLAN_UPDATED', updatedPlan, { senderId: req.user?.id });
+
+  res.json({
+    success: true,
+    data: updatedPlan,
+    message: 'দান পরিকল্পনা সফলভাবে আপডেট করা হয়েছে।'
+  });
+});
+
+app.patch('/api/v1/donation-plans/:id/status', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const planIdx = db.donationPlans.findIndex(dp => dp.id === req.params.id && dp.mosqueId === mosqueId);
+  if (planIdx === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'দান পরিকল্পনা পাওয়া যায়নি।' } });
+  }
+
+  const { status } = req.body;
+  if (status !== 'ACTIVE' && status !== 'INACTIVE') {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_STATUS', message: 'সঠিক স্ট্যাটাস প্রদান করুন।' } });
+  }
+
+  db.donationPlans[planIdx].status = status;
+  db.donationPlans[planIdx].updatedAt = new Date().toISOString();
+  db.donationPlans[planIdx].updatedBy = req.user?.id || 'system';
+  db.save();
+
+  res.json({ success: true, data: db.donationPlans[planIdx], message: 'স্ট্যাটাস সফলভাবে পরিবর্তন করা হয়েছে।' });
+});
+
+// --- Collection Workers Endpoints ---
+app.get('/api/v1/collection-workers', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const list = db.collectionWorkers.filter(cw => cw.mosqueId === mosqueId);
+  res.json({ success: true, data: list });
+});
+
+app.get('/api/v1/collection-workers/:id', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const worker = db.collectionWorkers.find(cw => cw.id === req.params.id && cw.mosqueId === mosqueId);
+  if (!worker) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সংগ্রহকারী পাওয়া যায়নি।' } });
+  }
+  res.json({ success: true, data: worker });
+});
+
+app.post('/api/v1/collection-workers', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { name, mobile, personId, staffId, committeeMemberId, areaIds, familyIds, notes, status } = req.body;
+
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'সংগ্রহকারীর নাম আবশ্যক।' } });
+  }
+
+  const newWorker: CollectionWorker = {
+    id: db.generateCollectionWorkerId(mosqueId),
+    mosqueId,
+    name: name.trim(),
+    mobile: mobile?.trim() || undefined,
+    personId: personId || undefined,
+    staffId: staffId || undefined,
+    committeeMemberId: committeeMemberId || undefined,
+    areaIds: Array.isArray(areaIds) ? areaIds : [],
+    familyIds: Array.isArray(familyIds) ? familyIds : [],
+    status: status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE',
+    notes: notes?.trim() || undefined,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    createdBy: req.user?.id || 'system',
+    updatedBy: req.user?.id || 'system',
+  };
+
+  db.collectionWorkers.push(newWorker);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'SYSTEM_INITIALIZE',
+    'MUSALLI_DATABASE',
+    `নতুন সংগ্রহকারী নিযুক্ত করা হয়েছে: ${newWorker.name}`,
+    newWorker.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'COLLECTION_WORKER_CREATED', newWorker, { senderId: req.user?.id });
+
+  res.status(201).json({
+    success: true,
+    data: newWorker,
+    message: 'সংগ্রহকারী সফলভাবে যুক্ত করা হয়েছে।'
+  });
+});
+
+app.put('/api/v1/collection-workers/:id', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const wIdx = db.collectionWorkers.findIndex(cw => cw.id === req.params.id && cw.mosqueId === mosqueId);
+  if (wIdx === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সংগ্রহকারী পাওয়া যায়নি।' } });
+  }
+
+  const current = db.collectionWorkers[wIdx];
+  const { name, mobile, personId, staffId, committeeMemberId, areaIds, familyIds, notes, status } = req.body;
+
+  const updatedWorker: CollectionWorker = {
+    ...current,
+    name: name !== undefined && typeof name === 'string' && name.trim() ? name.trim() : current.name,
+    mobile: mobile !== undefined ? mobile.trim() : current.mobile,
+    personId: personId !== undefined ? personId : current.personId,
+    staffId: staffId !== undefined ? staffId : current.staffId,
+    committeeMemberId: committeeMemberId !== undefined ? committeeMemberId : current.committeeMemberId,
+    areaIds: Array.isArray(areaIds) ? areaIds : current.areaIds,
+    familyIds: Array.isArray(familyIds) ? familyIds : current.familyIds,
+    status: status === 'INACTIVE' || status === 'ACTIVE' ? status : current.status,
+    notes: notes !== undefined ? notes.trim() : current.notes,
+    updatedAt: new Date().toISOString(),
+    updatedBy: req.user?.id || 'system',
+  };
+
+  db.collectionWorkers[wIdx] = updatedWorker;
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'SYSTEM_INITIALIZE',
+    'MUSALLI_DATABASE',
+    `সংগ্রহকারীর তথ্য আপডেট করা হয়েছে: ${updatedWorker.name}`,
+    updatedWorker.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'COLLECTION_WORKER_UPDATED', updatedWorker, { senderId: req.user?.id });
+
+  res.json({
+    success: true,
+    data: updatedWorker,
+    message: 'সংগ্রহকারীর তথ্য সফলভাবে আপডেট করা হয়েছে।'
+  });
+});
+
+app.patch('/api/v1/collection-workers/:id/status', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const wIdx = db.collectionWorkers.findIndex(cw => cw.id === req.params.id && cw.mosqueId === mosqueId);
+  if (wIdx === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সংগ্রহকারী পাওয়া যায়নি।' } });
+  }
+
+  const { status } = req.body;
+  if (status !== 'ACTIVE' && status !== 'INACTIVE') {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_STATUS', message: 'সঠিক স্ট্যাটাস প্রদান করুন।' } });
+  }
+
+  db.collectionWorkers[wIdx].status = status;
+  db.collectionWorkers[wIdx].updatedAt = new Date().toISOString();
+  db.collectionWorkers[wIdx].updatedBy = req.user?.id || 'system';
+  db.save();
+
+  res.json({ success: true, data: db.collectionWorkers[wIdx], message: 'স্ট্যাটাস সফলভাবে পরিবর্তন করা হয়েছে।' });
+});
+
+// --- Musalli Hub Stats Summary Endpoint ---
+app.get('/api/v1/musalli/stats', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+
+  const mosqueAreas = db.areas.filter(a => a.mosqueId === mosqueId);
+  const mosqueFamilies = db.families.filter(f => f.mosqueId === mosqueId);
+  const mosquePersons = db.persons.filter(p => p.mosqueId === mosqueId);
+  const mosquePlans = db.donationPlans.filter(dp => dp.mosqueId === mosqueId);
+  const mosqueWorkers = db.collectionWorkers.filter(cw => cw.mosqueId === mosqueId);
+
+  const activeAreas = mosqueAreas.filter(a => a.status === 'ACTIVE').length;
+  const activeFamilies = mosqueFamilies.filter(f => f.status === 'ACTIVE').length;
+  const activePersons = mosquePersons.filter(p => p.status === 'ACTIVE').length;
+  const activePlans = mosquePlans.filter(p => p.status === 'ACTIVE').length;
+  const activeWorkers = mosqueWorkers.filter(w => w.status === 'ACTIVE').length;
+
+  const totalFamilyMembersSum = mosqueFamilies
+    .filter(f => f.status === 'ACTIVE')
+    .reduce((sum, f) => sum + (f.memberCount || 1), 0);
+
+  const monthlyDonationTarget = mosquePlans
+    .filter(p => p.status === 'ACTIVE' && p.planType === 'MONTHLY')
+    .reduce((sum, p) => sum + (p.plannedAmount || 0), 0);
+
+  const yearlyDonationTarget = mosquePlans
+    .filter(p => p.status === 'ACTIVE' && p.planType === 'YEARLY')
+    .reduce((sum, p) => sum + (p.plannedAmount || 0), 0);
+
+  res.json({
+    success: true,
+    data: {
+      totalAreas: mosqueAreas.length,
+      activeAreas,
+      totalFamilies: mosqueFamilies.length,
+      activeFamilies,
+      totalPersons: mosquePersons.length,
+      activePersons,
+      totalPlans: mosquePlans.length,
+      activePlans,
+      totalWorkers: mosqueWorkers.length,
+      activeWorkers,
+      totalFamilyMembersSum,
+      monthlyDonationTarget,
+      yearlyDonationTarget,
+    }
+  });
+});
 
 // ==========================================
 // HTTP SERVER & VITE INTEGRATION

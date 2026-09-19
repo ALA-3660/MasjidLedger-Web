@@ -58,6 +58,7 @@ import { CommitteeFinancialHistoryView } from './CommitteeFinancialHistoryView';
 import { CommitteeHandoverView } from './CommitteeHandoverView';
 import { SubCommitteesView } from './SubCommitteesView';
 import { CommitteeReportsView } from './CommitteeReportsView';
+import { OfficialDocumentManagementView } from './documents/OfficialDocumentManagementView';
 import { MemberFormModal } from './MemberFormModal';
 import { MemberProfileModal } from './MemberProfileModal';
 import { MeetingDocumentPrint } from './MeetingDocumentPrint';
@@ -156,6 +157,7 @@ export const CommitteeManagementView: React.FC<CommitteeManagementViewProps> = (
     if (sec === 'handover') return 'handover';
     if (sec === 'sub-committees' || sec === 'subCommittees') return 'sub-committees';
     if (sec === 'reports') return 'reports';
+    if (sec === 'documents' || sec === 'official-documents' || sec === 'officialDocuments') return 'documents';
     if (sec === 'current-committee' || sec === 'currentCommittee') return 'current-committee';
     return 'dashboard';
   };
@@ -1476,6 +1478,17 @@ export const CommitteeManagementView: React.FC<CommitteeManagementViewProps> = (
             subCommittees={subCommittees}
             mosque={mosque}
             language={language}
+          />
+        )}
+
+        {/* SECTION 13: 📑 দাপ্তরিক নথি ও যোগাযোগ (Official Documents & Communications) */}
+        {activeSection === 'documents' && (
+          <OfficialDocumentManagementView
+            mosque={mosque}
+            committeeTerms={terms}
+            committeeMeetings={meetings}
+            resolutions={resolutions}
+            members={members}
           />
         )}
       </main>

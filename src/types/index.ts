@@ -39,7 +39,16 @@ export type Permission =
   | 'EDIT_EVALUATION'
   | 'ADD_MEMBER_ACTIVITY'
   | 'UPDATE_RESPONSIBILITY_STATUS'
-  | 'PRINT_PERFORMANCE_REPORT';
+  | 'PRINT_PERFORMANCE_REPORT'
+  | 'VIEW_MUSALLI'
+  | 'CREATE_MUSALLI'
+  | 'EDIT_MUSALLI'
+  | 'DELETE_MUSALLI'
+  | 'VIEW_DONATION_HISTORY'
+  | 'MANAGE_DONATION_PLAN'
+  | 'MANAGE_COLLECTION_WORKER'
+  | 'EXPORT_MUSALLI_DATA'
+  | 'VIEW_PERSONAL_DOCUMENTS';
 
 export interface User {
   id: string;
@@ -719,8 +728,139 @@ export interface Donation {
   receivedByName: string;
   incomeEntryId?: string;
   denominationData?: CashDenominationData;
+  // Optional Musalli / Person linkage fields for future and backward compatibility
+  personId?: string;
+  familyId?: string;
+  areaId?: string;
+  collectionWorkerId?: string;
   status: 'COMPLETED' | 'CANCELLED';
   createdAt: string;
+}
+
+// ==========================================================
+// MUSALLI & DONOR MASTER DATABASE ENTITIES (FOUNDATION)
+// ==========================================================
+
+export interface AreaMaster {
+  id: string;
+  mosqueId: string;
+  areaCode?: string;
+  name: string;
+  boundaryDescription?: string;
+  collectionWorkerIds?: string[];
+  status: 'ACTIVE' | 'INACTIVE';
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: string;
+  updatedBy?: string;
+}
+
+export interface FamilyMaster {
+  id: string;
+  mosqueId: string;
+  familyCode?: string;
+  name: string;
+  areaId: string;
+  familyHeadPersonId?: string;
+  address?: string;
+  memberCount?: number;
+  status: 'ACTIVE' | 'INACTIVE';
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: string;
+  updatedBy?: string;
+}
+
+export interface PersonMaster {
+  id: string;
+  personCode: string; // Permanent system-generated ID e.g. P-00001
+  mosqueId: string;
+
+  fullName: string;
+  fatherOrHusbandName?: string;
+
+  familyId?: string;
+  areaId?: string;
+
+  mobile?: string;
+  email?: string;
+
+  address?: string;
+  houseRoadBlock?: string;
+
+  occupation?: string;
+
+  photoDocumentId?: string;
+  nidDocumentId?: string;
+
+  bloodGroup?: string;
+
+  status: 'ACTIVE' | 'INACTIVE';
+
+  notes?: string;
+
+  linkedCommitteeMemberId?: string;
+  linkedStaffId?: string;
+
+  createdAt: string;
+  updatedAt: string;
+
+  createdBy?: string;
+  updatedBy?: string;
+}
+
+export interface DonationPlan {
+  id: string;
+  mosqueId: string;
+  personId: string;
+
+  planType: 'MONTHLY' | 'YEARLY' | 'IRREGULAR' | 'NO_PLAN';
+
+  plannedAmount?: number;
+
+  startDate?: string;
+  endDate?: string;
+
+  collectionRequired: boolean;
+
+  collectionWorkerId?: string;
+
+  status: 'ACTIVE' | 'INACTIVE';
+
+  notes?: string;
+
+  createdAt: string;
+  updatedAt: string;
+
+  createdBy?: string;
+  updatedBy?: string;
+}
+
+export interface CollectionWorker {
+  id: string;
+  mosqueId: string;
+
+  personId?: string;
+  staffId?: string;
+  committeeMemberId?: string;
+
+  name: string;
+  mobile?: string;
+
+  areaIds?: string[];
+  familyIds?: string[];
+
+  status: 'ACTIVE' | 'INACTIVE';
+
+  notes?: string;
+
+  createdAt: string;
+  updatedAt: string;
+
+  createdBy?: string;
+  updatedBy?: string;
 }
 
 export interface DenominationCount {
@@ -2687,6 +2827,8 @@ export type DocumentEntityType =
   | 'CEMETERY'
   | 'STAFF'
   | 'WORK_PLAN'
+  | 'PERSON'
+  | 'FAMILY'
   | 'OTHER';
 
 export type DocumentCategoryType =
@@ -2760,6 +2902,8 @@ export const DOCUMENT_ENTITY_LABELS: Record<DocumentEntityType, string> = {
   CEMETERY: 'কবরস্থান',
   STAFF: 'ইমাম ও স্টাফ',
   WORK_PLAN: 'কর্মপরিকল্পনা ও অগ্রগতি',
+  PERSON: 'ব্যক্তি ও মুসল্লি',
+  FAMILY: 'পরিবার ও বাড়ি',
   OTHER: 'অন্যান্য নথি',
 };
 

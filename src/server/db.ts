@@ -296,6 +296,13 @@ export class DatabaseStore {
           : DEFAULT_DOCUMENT_TEMPLATES;
         this.officialDocumentNumbering = parsed.officialDocumentNumbering || {};
 
+        // Musalli & Donor collections
+        this.areas = parsed.areas || [];
+        this.families = parsed.families || [];
+        this.persons = parsed.persons || [];
+        this.donationPlans = parsed.donationPlans || [];
+        this.collectionWorkers = parsed.collectionWorkers || [];
+
         return;
       }
     } catch (e) {
@@ -360,6 +367,11 @@ export class DatabaseStore {
         officialDocuments: this.officialDocuments,
         officialDocumentTemplates: this.officialDocumentTemplates,
         officialDocumentNumbering: this.officialDocumentNumbering,
+        areas: this.areas,
+        families: this.families,
+        persons: this.persons,
+        donationPlans: this.donationPlans,
+        collectionWorkers: this.collectionWorkers,
       };
       fs.writeFileSync(DB_FILE_PATH, JSON.stringify(data, null, 2), 'utf-8');
     } catch (e) {
@@ -1546,6 +1558,134 @@ export class DatabaseStore {
       this.save();
     }
     return found || null;
+  }
+
+  // ==========================================================
+  // MUSALLI & DONOR MASTER DATABASE HELPERS
+  // ==========================================================
+
+  generateAreaId(mosqueId: string): string {
+    return `area-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  }
+
+  generateAreaCode(mosqueId: string): string {
+    const existing = this.areas.filter(a => a.mosqueId === mosqueId);
+    const count = existing.length + 1;
+    return `AREA-${String(count).padStart(2, '0')}`;
+  }
+
+  generateFamilyId(mosqueId: string): string {
+    return `fam-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  }
+
+  generateFamilyCode(mosqueId: string): string {
+    const existing = this.families.filter(f => f.mosqueId === mosqueId);
+    let maxNum = 0;
+    for (const f of existing) {
+      if (f.familyCode) {
+        const match = f.familyCode.match(/\d+/);
+        if (match) {
+          const num = parseInt(match[0], 10);
+          if (num > maxNum) maxNum = num;
+        }
+      }
+    }
+    const nextNum = Math.max(existing.length + 1, maxNum + 1);
+    return `FAM-${String(nextNum).padStart(4, '0')}`;
+  }
+
+  generatePersonId(mosqueId: string): string {
+    return `per-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  }
+
+  generatePersonCode(mosqueId: string): string {
+    const existing = this.persons.filter(p => p.mosqueId === mosqueId);
+    let maxNum = 0;
+    for (const p of existing) {
+      if (p.personCode) {
+        const match = p.personCode.match(/\d+/);
+        if (match) {
+          const num = parseInt(match[0], 10);
+          if (num > maxNum) maxNum = num;
+        }
+      }
+    }
+    const nextNum = Math.max(existing.length + 1, maxNum + 1);
+    return `P-${String(nextNum).padStart(5, '0')}`;
+  }
+
+  generateDonationPlanId(mosqueId: string): string {
+    return `plan-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  }
+
+  generateCollectionWorkerId(mosqueId: string): string {
+    return `cw-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  }
+
+  checkPotentialDuplicatePerson(
+    mosqueId: string,
+    payload: {
+      fullName?: string;
+      fatherOrHusbandName?: string;
+      mobile?: string;
+      familyId?: string;
+      areaId?: string;
+      address?: string;
+    },
+    excludeId?: string
+  ): {
+    hasPotentialDuplicates: boolean;
+    matches: {
+      person: PersonMaster;
+      reasons: string[];
+    }[];
+  } {
+    const persons = this.persons.filter(p => p.mosqueId === mosqueId && (!excludeId || p.id !== excludeId));
+    const matches: { person: PersonMaster; reasons: string[] }[] = [];
+
+    const norm = (str?: string) => (str ? str.trim().toLowerCase().replace(/\s+/g, ' ') : '');
+    const cleanPhone = (str?: string) => (str ? str.replace(/[^\d]/g, '') : '');
+
+    const targetName = norm(payload.fullName);
+    const targetFather = norm(payload.fatherOrHusbandName);
+    const targetMobile = cleanPhone(payload.mobile);
+
+    for (const p of persons) {
+      const reasons: string[] = [];
+      const pName = norm(p.fullName);
+      const pFather = norm(p.fatherOrHusbandName);
+      const pMobile = cleanPhone(p.mobile);
+
+      // 1. Mobile exact match (if mobile is provided)
+      if (targetMobile && pMobile && targetMobile.length >= 10 && (targetMobile === pMobile || targetMobile.endsWith(pMobile) || pMobile.endsWith(targetMobile))) {
+        reasons.push(`মোবাইল নম্বর (${p.mobile}) হুবহু মিলে গেছে`);
+      }
+
+      // 2. Full Name exact/strong match
+      if (targetName && pName) {
+        if (targetName === pName) {
+          // If also father name matches or family matches
+          if (targetFather && pFather && targetFather === pFather) {
+            reasons.push(`নাম (${p.fullName}) এবং পিতা/স্বামীর নাম (${p.fatherOrHusbandName}) হুবহু এক`);
+          } else if (payload.familyId && p.familyId && payload.familyId === p.familyId) {
+            reasons.push(`নাম (${p.fullName}) এবং একই পরিবারে অন্তর্ভুক্তি মিলে গেছে`);
+          } else if (payload.areaId && p.areaId && payload.areaId === p.areaId) {
+            reasons.push(`নাম (${p.fullName}) এবং একই এলাকা/মহল্লায় অন্তর্ভুক্তি মিলে গেছে`);
+          } else {
+            reasons.push(`নাম (${p.fullName}) হুবহু মিলে গেছে`);
+          }
+        }
+      }
+
+      if (reasons.length > 0) {
+        matches.push({ person: p, reasons });
+      }
+    }
+
+    return {
+      hasPotentialDuplicates: matches.length > 0,
+      matches,
+    };
   }
 }
 
