@@ -31,6 +31,7 @@ import {
   Menu,
   FileSpreadsheet,
   ShieldCheck,
+  Sparkles,
 } from 'lucide-react';
 import {
   IncomeEntry,
@@ -43,6 +44,7 @@ import {
   Donation,
   DonationBox,
   DonationBoxCollection,
+  MosqueProperty,
 } from '../types';
 import { Language, translations, formatCurrency, formatDate } from '../lib/i18n';
 import { ChangeCalculatorModal } from './ChangeCalculatorModal';
@@ -51,6 +53,7 @@ import { EditTransactionModal } from './EditModals';
 import { SmsPreviewModal } from './SmsPreviewModal';
 import { JumaCollectionModal } from './JumaCollectionModal';
 import { DonationView } from './DonationView';
+import { UnifiedIncomeEntryModal, IncomeEntryType } from './UnifiedIncomeEntryModal';
 import { QrScanResult } from '../types/qrBarcodeTypes';
 import {
   DateFilterState,
@@ -65,9 +68,12 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 
 export type IncomeSecondaryTab =
   | 'income_overview'
+  | 'new_income_entry'
   | 'juma'
   | 'donations'
   | 'donation_boxes'
+  | 'income_waqf'
+  | 'income_other'
   | 'register'
   | 'analytics'
   | 'reports';
@@ -81,6 +87,7 @@ interface IncomeManagementViewProps {
   donations?: Donation[];
   donationBoxes?: DonationBox[];
   boxCollections?: DonationBoxCollection[];
+  properties?: MosqueProperty[];
   currentUser: User | null;
   currentMosque?: Mosque | null;
   language?: Language;
@@ -93,6 +100,7 @@ interface IncomeManagementViewProps {
   onCollectBox?: (data: any) => Promise<void>;
   onAddDonationBox?: (data: any) => Promise<void>;
   onUpdateDonationBox?: (id: string, data: any) => Promise<void>;
+  onCollectPropertyRent?: (propertyId: string, data: any) => Promise<any>;
   onPrintReceipt?: (donation: Donation, format?: 'A4' | 'POS_80' | 'POS_58', isReprint?: boolean) => void;
   onPrintVoucher: (
     item: IncomeEntry,
@@ -112,6 +120,7 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
   donations = [],
   donationBoxes = [],
   boxCollections = [],
+  properties = [],
   currentUser,
   currentMosque,
   language = 'bn',
@@ -124,6 +133,7 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
   onCollectBox,
   onAddDonationBox,
   onUpdateDonationBox,
+  onCollectPropertyRent,
   onPrintReceipt,
   onPrintVoucher,
   onSendSms,
@@ -136,17 +146,57 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
   useEffect(() => {
     if (initialTab) {
       setActiveTab(initialTab);
+      if (initialTab === 'new_income_entry') {
+        handleOpenUnifiedIncome('DONATION');
+      } else if (initialTab === 'income_waqf') {
+        handleOpenUnifiedIncome('WAQF_RENT');
+      } else if (initialTab === 'income_other') {
+        handleOpenUnifiedIncome('OTHER_INCOME');
+      }
     }
   }, [initialTab]);
+
+  // Unified Income Entry State
+  const [isUnifiedIncomeModalOpen, setIsUnifiedIncomeModalOpen] = useState(false);
+  const [unifiedIncomeType, setUnifiedIncomeType] = useState<IncomeEntryType>('DONATION');
+  const [unifiedBoxId, setUnifiedBoxId] = useState<string | undefined>(undefined);
+  const [unifiedPersonId, setUnifiedPersonId] = useState<string | undefined>(undefined);
+  const [unifiedPlanId, setUnifiedPlanId] = useState<string | undefined>(undefined);
+  const [unifiedCollection, setUnifiedCollection] = useState<any>(null);
+
+  const handleOpenUnifiedIncome = (
+    type: IncomeEntryType = 'DONATION',
+    boxId?: string,
+    personId?: string,
+    planId?: string,
+    collection?: any
+  ) => {
+    setUnifiedIncomeType(type);
+    setUnifiedBoxId(boxId);
+    setUnifiedPersonId(personId);
+    setUnifiedPlanId(planId);
+    setUnifiedCollection(collection || null);
+    setIsUnifiedIncomeModalOpen(true);
+  };
 
   const handleSubTabChange = (tabId: IncomeSecondaryTab) => {
     setActiveTab(tabId);
     setIsMobileDrawerOpen(false);
+    if (tabId === 'new_income_entry') {
+      handleOpenUnifiedIncome('DONATION');
+    } else if (tabId === 'income_waqf') {
+      handleOpenUnifiedIncome('WAQF_RENT');
+    } else if (tabId === 'income_other') {
+      handleOpenUnifiedIncome('OTHER_INCOME');
+    }
     const tabMap: Record<IncomeSecondaryTab, string> = {
       income_overview: 'income',
+      new_income_entry: 'new_income_entry',
       juma: 'income_juma',
       donations: 'donations',
       donation_boxes: 'donationBox',
+      income_waqf: 'income_waqf',
+      income_other: 'income_other',
       register: 'income_register',
       analytics: 'income_analytics',
       reports: 'income_reports',
@@ -161,7 +211,7 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
     if (!scannedActionIntent) return;
     if (scannedActionIntent.actionKey === 'ACT-INC-NEW' || (scannedActionIntent.actionKey as string) === 'ACT_INC_NEW') {
       setActiveTab('income_overview');
-      openCreateModal();
+      handleOpenUnifiedIncome('DONATION');
       onClearScannedAction?.();
     }
   }, [scannedActionIntent]);
@@ -495,13 +545,16 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
 
   // Secondary Sidebar items definition
   const sidebarItems: { id: IncomeSecondaryTab; label: string; icon: any; count?: number; badgeColor?: string }[] = [
-    { id: 'income_overview', label: '📥 আয় ও প্রাপ্তি', icon: ArrowDownLeft },
+    { id: 'income_overview', label: '📊 ড্যাশবোর্ড', icon: ArrowDownLeft },
+    { id: 'new_income_entry', label: '➕ নতুন আয় গ্রহণ', icon: Plus, badgeColor: 'bg-emerald-100 text-emerald-800' },
     { id: 'juma', label: '🕌 জুমার কালেকশন', icon: Banknote, count: jumaIncomeRecords.length, badgeColor: 'bg-teal-100 text-teal-800' },
     { id: 'donations', label: '🤲 দান ও অনুদান', icon: HeartHandshake, count: donations.length, badgeColor: 'bg-blue-100 text-blue-800' },
     { id: 'donation_boxes', label: '📦 দানবাক্স কালেকশন', icon: Box, count: donationBoxes.length, badgeColor: 'bg-purple-100 text-purple-800' },
-    { id: 'register', label: '📊 আয় রেজিস্টার', icon: Layers, count: incomes.length, badgeColor: 'bg-slate-100 text-slate-800' },
-    { id: 'analytics', label: '📈 আয় বিশ্লেষণ', icon: TrendingUp },
-    { id: 'reports', label: '🖨️ রিপোর্ট ও প্রিন্ট', icon: Printer },
+    { id: 'income_waqf', label: '🏠 ওয়াক্ফ সম্পত্তির ভাড়া', icon: Building, badgeColor: 'bg-indigo-100 text-indigo-800' },
+    { id: 'income_other', label: '💰 অন্যান্য বিবিধ আয়', icon: FileText, badgeColor: 'bg-amber-100 text-amber-800' },
+    { id: 'register', label: '📋 আয় রেজিস্টার', icon: Layers, count: incomes.length, badgeColor: 'bg-slate-100 text-slate-800' },
+    { id: 'analytics', label: '📊 আয় বিশ্লেষণ', icon: TrendingUp },
+    { id: 'reports', label: '📑 রিপোর্ট ও এক্সপোর্ট', icon: Printer },
   ];
 
   return (
@@ -543,11 +596,11 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
 
             <button
               id="btn-add-income-main"
-              onClick={openCreateModal}
+              onClick={() => handleOpenUnifiedIncome('DONATION')}
               className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 flex items-center space-x-1.5 transition-all shadow-xs cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>➕ আয় এন্ট্রি</span>
+              <span>➕ নতুন আয় গ্রহণ</span>
             </button>
           </div>
         </div>
@@ -631,6 +684,98 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
 
         {/* RIGHT MAIN CONTENT AREA */}
         <main className="lg:col-span-9 space-y-5">
+          {/* ==================== SUBTAB: NEW UNIFIED INCOME ENTRY PORTAL ==================== */}
+          {activeTab === 'new_income_entry' && (
+            <div className="space-y-6">
+              <div className="bg-gradient-to-r from-emerald-800 to-teal-900 rounded-3xl p-6 text-white shadow-md relative overflow-hidden">
+                <div className="relative z-10 max-w-2xl">
+                  <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-700/60 text-emerald-200 text-xs font-bold mb-3 border border-emerald-500/30 font-siliguri">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>একীভূত আয় গ্রহণ ও ক্যাশ পোস্টিং পোর্টাল</span>
+                  </div>
+                  <h2 className="text-xl sm:text-2xl font-black font-siliguri">
+                    ➕ নতুন আয় গ্রহণ (Unified Income Entry)
+                  </h2>
+                  <p className="text-xs sm:text-sm text-emerald-100 font-tiro mt-1 leading-relaxed">
+                    মসজিদের সকল প্রকার আর্থিক প্রাপ্তি একটি নিরাপদ কেন্দ্রীয় এন্ট্রি পয়েন্ট থেকে গ্রহণ করুন। জুমার কালেকশন, মুসল্লিদের দান-অনুদানের মানি রিসিট কিংবা স্থায়ী দানবাক্স উন্মুক্তকরণ—সবই স্বয়ংক্রিয়ভাবে অ্যাকাউন্ট লেজারে জমা হবে।
+                  </p>
+                </div>
+              </div>
+
+              {/* 3 Interactive Income Type Action Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                {/* 1. Juma Collection Card */}
+                <div className="bg-white p-5 rounded-2xl border border-teal-200 shadow-xs hover:shadow-md transition-all flex flex-col justify-between group">
+                  <div>
+                    <div className="w-12 h-12 rounded-xl bg-teal-100 text-teal-700 flex items-center justify-center text-xl font-bold mb-3 group-hover:scale-105 transition-transform">
+                      🕌
+                    </div>
+                    <h3 className="font-bold text-slate-800 text-base font-siliguri">জুমার কালেকশন</h3>
+                    <p className="text-xs text-slate-600 font-tiro mt-1.5 leading-relaxed">
+                      পবিত্র জুমার জামাতে মুসল্লিদের সংগৃহীত উন্মুক্ত সাধারণ দান। জুমার তারিখ, গণনা টিম, সাক্ষী ও ক্যাশ নোট গণনা সহ ভাউচার এন্ট্রি।
+                    </p>
+                  </div>
+                  <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between">
+                    <span className="text-[11px] text-teal-700 font-bold font-siliguri">সাধারণ আয় লেজার</span>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenUnifiedIncome('JUMMA')}
+                      className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold font-siliguri flex items-center space-x-1 shadow-xs transition-all cursor-pointer"
+                    >
+                      <span>কালেকশন শুরু &rarr;</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. Donation & Money Receipt Card */}
+                <div className="bg-white p-5 rounded-2xl border border-blue-200 shadow-xs hover:shadow-md transition-all flex flex-col justify-between group">
+                  <div>
+                    <div className="w-12 h-12 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center text-xl font-bold mb-3 group-hover:scale-105 transition-transform">
+                      🤲
+                    </div>
+                    <h3 className="font-bold text-slate-800 text-base font-siliguri">দান ও অনুদান</h3>
+                    <p className="text-xs text-slate-600 font-tiro mt-1.5 leading-relaxed">
+                      সাধারণ বা নিবন্ধিত মুসল্লি/দাতার ব্যক্তিগত এককালীন বা মাসিক অনুদান। বেনামী দান সুবিধা এবং তাৎক্ষণিক ৩ ফরম্যাটের মানি রিসিট প্রিন্ট।
+                    </p>
+                  </div>
+                  <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between">
+                    <span className="text-[11px] text-blue-700 font-bold font-siliguri">রিসিট ও প্ল্যান সমন্বিত</span>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenUnifiedIncome('DONATION')}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold font-siliguri flex items-center space-x-1 shadow-xs transition-all cursor-pointer"
+                    >
+                      <span>অনুদান গ্রহণ &rarr;</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 3. Donation Box Card */}
+                <div className="bg-white p-5 rounded-2xl border border-purple-200 shadow-xs hover:shadow-md transition-all flex flex-col justify-between group">
+                  <div>
+                    <div className="w-12 h-12 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center text-xl font-bold mb-3 group-hover:scale-105 transition-transform">
+                      📦
+                    </div>
+                    <h3 className="font-bold text-slate-800 text-base font-siliguri">দানবাক্স কালেকশন</h3>
+                    <p className="text-xs text-slate-600 font-tiro mt-1.5 leading-relaxed">
+                      মসজিদ বা দোকান-বাজারে স্থাপিত স্থায়ী দানবাক্স উন্মুক্তকরণ, গণনা টিম ও সাক্ষীদের উপস্থিতিতে হিসাব এবং মূল ব্যাংক/ক্যাশ একাউন্টে জমা।
+                    </p>
+                  </div>
+                  <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between">
+                    <span className="text-[11px] text-purple-700 font-bold font-siliguri">বাক্স ইতিহাস সংরক্ষিত</span>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenUnifiedIncome('DONATION_BOX')}
+                      className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold font-siliguri flex items-center space-x-1 shadow-xs transition-all cursor-pointer"
+                    >
+                      <span>টাকা জমা &rarr;</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* ==================== SUBTAB 1: INCOME OVERVIEW / DASHBOARD ==================== */}
           {activeTab === 'income_overview' && (
             <div className="space-y-5">
@@ -812,7 +957,7 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
                     <span>🖨️ জুমার রিপোর্ট প্রিন্ট</span>
                   </button>
                   <button
-                    onClick={() => setIsJumaModalOpen(true)}
+                    onClick={() => handleOpenUnifiedIncome('JUMMA')}
                     className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs transition-all cursor-pointer shrink-0"
                   >
                     <Plus className="w-4 h-4" />
@@ -938,6 +1083,7 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
                 currentMosque={currentMosque}
                 currentUser={currentUser}
                 language={language}
+                onOpenUnifiedIncome={handleOpenUnifiedIncome}
                 onAddDonation={onAddDonation || (async () => ({} as any))}
                 onCollectBox={onCollectBox || (async () => {})}
                 onAddDonationBox={onAddDonationBox}
@@ -962,6 +1108,7 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
                 currentMosque={currentMosque}
                 currentUser={currentUser}
                 language={language}
+                onOpenUnifiedIncome={handleOpenUnifiedIncome}
                 onAddDonation={onAddDonation || (async () => ({} as any))}
                 onCollectBox={onCollectBox || (async () => {})}
                 onAddDonationBox={onAddDonationBox}
@@ -1681,6 +1828,59 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
           </tr>
         }
         onExcel={handleExportExcel}
+      />
+
+      {/* Centralized Unified Income Entry Modal */}
+      <UnifiedIncomeEntryModal
+        isOpen={isUnifiedIncomeModalOpen}
+        onClose={() => setIsUnifiedIncomeModalOpen(false)}
+        initialType={unifiedIncomeType}
+        initialBoxId={unifiedBoxId}
+        initialPersonId={unifiedPersonId}
+        initialPlanId={unifiedPlanId}
+        initialCollection={unifiedCollection}
+        accounts={accounts}
+        accountHeads={accountHeads}
+        donationBoxes={donationBoxes}
+        properties={properties}
+        currentUser={currentUser}
+        currentMosque={currentMosque}
+        language={language}
+        onSaveJuma={async (data, opts) => {
+          const res = await onAddIncome(data);
+          if (opts?.print && onPrintVoucher) {
+            onPrintVoucher(res, 'INCOME', 'POS_80', false);
+          }
+          return res;
+        }}
+        onSaveDonation={async (data, opts) => {
+          const res = await onAddDonation(data);
+          if (opts?.print && onPrintReceipt) {
+            onPrintReceipt(res, 'POS_80', false);
+          }
+          return res;
+        }}
+        onSaveBoxCollection={async (data, opts) => {
+          const res = await onCollectBox(data);
+          return res;
+        }}
+        onSaveWaqfRent={
+          onCollectPropertyRent
+            ? async (propId, data, opts) => {
+                const res = await onCollectPropertyRent(propId, data);
+                return res;
+              }
+            : undefined
+        }
+        onSaveOtherIncome={async (data, opts) => {
+          const res = await onAddIncome(data);
+          if (opts?.print && onPrintVoucher) {
+            onPrintVoucher(res, 'INCOME', 'POS_80', false);
+          }
+          return res;
+        }}
+        onPrintReceipt={onPrintReceipt}
+        onPrintVoucher={onPrintVoucher}
       />
     </div>
   );

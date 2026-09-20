@@ -46,9 +46,12 @@ export type NavTab =
   | 'cashbook'
   | 'bank'
   | 'income'
+  | 'new_income_entry'
   | 'income_juma'
   | 'donations'
   | 'donationBox'
+  | 'income_waqf'
+  | 'income_other'
   | 'income_register'
   | 'income_analytics'
   | 'income_reports'
@@ -271,9 +274,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   } else if (item.id === 'income') {
                     isActive = [
                       'income',
+                      'new_income_entry',
                       'income_juma',
                       'donations',
                       'donationBox',
+                      'income_waqf',
+                      'income_other',
                       'income_register',
                       'income_analytics',
                       'income_reports',

@@ -982,6 +982,12 @@ export default function App() {
     await loadData(false);
   };
 
+  const handleCollectPropertyRent = async (propertyId: string, data: any) => {
+    const res = await api.collectPropertyRent(propertyId, data);
+    await loadData(false);
+    return res;
+  };
+
   const handleAddUser = async (data: any) => {
     await api.createUser(data);
     await loadData(false);
@@ -1109,20 +1115,29 @@ export default function App() {
 
       {/* 2. Income & Receipts Management View */}
       {(currentTab === 'income' ||
+        currentTab === 'new_income_entry' ||
         currentTab === 'income_juma' ||
         currentTab === 'donations' ||
         currentTab === 'donationBox' ||
+        currentTab === 'income_waqf' ||
+        currentTab === 'income_other' ||
         currentTab === 'income_register' ||
         currentTab === 'income_analytics' ||
         currentTab === 'income_reports') && (
         <IncomeManagementView
           initialTab={
-            currentTab === 'income_juma'
+            currentTab === 'new_income_entry'
+              ? 'new_income_entry'
+              : currentTab === 'income_juma'
               ? 'juma'
               : currentTab === 'donations'
               ? 'donations'
               : currentTab === 'donationBox'
               ? 'donation_boxes'
+              : currentTab === 'income_waqf'
+              ? 'income_waqf'
+              : currentTab === 'income_other'
+              ? 'income_other'
               : currentTab === 'income_register'
               ? 'register'
               : currentTab === 'income_analytics'
@@ -1150,6 +1165,8 @@ export default function App() {
           donations={donations}
           donationBoxes={donationBoxes}
           boxCollections={boxCollections}
+          properties={properties}
+          onCollectPropertyRent={handleCollectPropertyRent}
           onAddDonation={handleAddDonation}
           onCollectBox={handleCollectBox}
           onAddDonationBox={handleAddDonationBox}

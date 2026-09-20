@@ -793,6 +793,42 @@ export class DatabaseStore {
       createdAt: "2026-01-01T00:00:00.000Z"
     });
 
+    const sampleProperty: MosqueProperty = {
+      id: "prop-waqf-001",
+      mosqueId: mosque1.id,
+      propertyCode: "PROP-2026-001",
+      name: "মসজিদ মার্কেট কমপ্লেক্স",
+      nameBn: "মসজিদ মার্কেট কমপ্লেক্স (ওয়াকফ সম্পত্তি)",
+      type: "MARKET",
+      description: "মসজিদ মার্কেট কমপ্লেক্স বাণিজ্যিক ওয়াকফ সম্পত্তি",
+      location: "মসজিদ সংলগ্ন পূর্ব পার্শ্ব",
+      area: "৫ শতাংশ",
+      ownershipType: "WAQF",
+      currentUse: "ভাড়া প্রদানকৃত বাণিজ্যিক মার্কেট",
+      status: "ACTIVE",
+      tenants: [
+        {
+          id: "tenant-001",
+          mosqueId: mosque1.id,
+          propertyId: "prop-waqf-001",
+          tenantCode: "TNT-001",
+          name: "হাজী আব্দুর রহিম",
+          mobile: "01819000111",
+          unitOrShopNo: "দোকান নং-০১ (গ্রাউন্ড ফ্লোর)",
+          monthlyRent: 6000,
+          securityDeposit: 50000,
+          startDate: "2026-01-01",
+          endDate: "2027-12-31",
+          status: "ACTIVE",
+          createdAt: "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      rentCollections: [],
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z"
+    };
+    this.properties.push(sampleProperty);
+
     this.auditLogs.push({
       id: "aud-init-001",
       mosqueId: mosque1.id,

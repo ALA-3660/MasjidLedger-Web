@@ -20,12 +20,14 @@ import {
   MapPin,
   Home,
   Phone,
+  Lock,
 } from 'lucide-react';
 import {
   PersonMaster,
   FamilyMaster,
   AreaMaster,
   DonationPlan,
+  DonationCollection,
   CollectionWorker,
   FinancialAccount,
   PaymentMethod,
@@ -50,6 +52,7 @@ interface ActualDonationFormModalProps {
   language?: Language;
   initialPersonId?: string;
   initialPlanId?: string;
+  initialCollection?: DonationCollection | null;
 }
 
 export const ActualDonationFormModal: React.FC<ActualDonationFormModalProps> = ({
@@ -66,6 +69,7 @@ export const ActualDonationFormModal: React.FC<ActualDonationFormModalProps> = (
   language = 'bn',
   initialPersonId,
   initialPlanId,
+  initialCollection,
 }) => {
   const isBn = language === 'bn';
 
@@ -118,7 +122,19 @@ export const ActualDonationFormModal: React.FC<ActualDonationFormModalProps> = (
       setReference('');
       setDescription('');
 
-      if (initialPersonId) {
+      if (initialCollection) {
+        // Phase B6-C: Pre-fill context from B6 Donation Collection
+        setDonorType('REGISTERED');
+        setSelectedPersonId(initialCollection.personId);
+        setSelectedPlanId(initialCollection.donationPlanId);
+        if (initialCollection.collectionWorkerId) {
+          setCollectionWorkerId(initialCollection.collectionWorkerId);
+        }
+        const remaining = Math.max(0, initialCollection.plannedAmount - (initialCollection.collectedAmount || 0));
+        setAmount(String(remaining > 0 ? remaining : initialCollection.plannedAmount));
+        setReference(`Collection: ${initialCollection.id} (${initialCollection.collectionPeriod})`);
+        setDescription(`সংগ্রহ কার্যক্রম ${initialCollection.id} (${initialCollection.collectionPeriod}) এর বিপরীতে অনুদান আদায়`);
+      } else if (initialPersonId) {
         setDonorType('REGISTERED');
         setSelectedPersonId(initialPersonId);
         if (initialPlanId) {
@@ -143,7 +159,7 @@ export const ActualDonationFormModal: React.FC<ActualDonationFormModalProps> = (
         setDonorPhone('');
       }
     }
-  }, [isOpen, initialPersonId, initialPlanId, accounts, plans]);
+  }, [isOpen, initialPersonId, initialPlanId, initialCollection, accounts, plans]);
 
   // Selected person object
   const selectedPerson = useMemo(() => {
@@ -271,6 +287,9 @@ export const ActualDonationFormModal: React.FC<ActualDonationFormModalProps> = (
         }
         if (selectedPerson?.familyId) payload.familyId = selectedPerson.familyId;
         if (selectedPerson?.areaId) payload.areaId = selectedPerson.areaId;
+        if (initialCollection?.id) {
+          payload.collectionId = initialCollection.id;
+        }
       } else {
         payload.isAnonymous = !customDonorName.trim();
         payload.donorName = customDonorName.trim() ? customDonorName.trim() : 'আল্লাহর এক বান্দা (Anonymous)';
@@ -334,11 +353,74 @@ export const ActualDonationFormModal: React.FC<ActualDonationFormModalProps> = (
             </div>
           )}
 
+          {/* Phase B6-C: B6 Collection Context Banner */}
+          {initialCollection && (
+            <div className="p-3.5 bg-emerald-50/90 border border-emerald-300 rounded-2xl space-y-2.5 shadow-2xs">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-200 pb-2">
+                <div className="flex items-center space-x-2">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-700 text-white flex items-center justify-center font-bold text-xs">
+                    B6
+                  </div>
+                  <div>
+                    <span className="font-bold text-emerald-950 font-siliguri text-xs block">
+                      {isBn ? 'সংগ্রহ কার্যক্রম রেফারেন্স (B6 Context)' : 'Collection Reference (B6 Context)'}
+                    </span>
+                    <span className="text-[10px] text-emerald-700 font-mono">
+                      ID: {initialCollection.id}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-1.5">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white border border-emerald-300 text-emerald-800">
+                    {initialCollection.collectionPeriod}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-900">
+                    {initialCollection.status}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-0.5 text-slate-700">
+                <div className="bg-white/80 p-2 rounded-xl border border-emerald-200/60">
+                  <span className="text-[10px] text-slate-500 block">{isBn ? 'পরিকল্পনা আইডি' : 'Plan ID'}</span>
+                  <span className="font-bold font-mono text-emerald-900 text-[11px]">
+                    {initialCollection.donationPlanId}
+                  </span>
+                </div>
+                <div className="bg-white/80 p-2 rounded-xl border border-emerald-200/60">
+                  <span className="text-[10px] text-slate-500 block">{isBn ? 'পরিকল্পিত পরিমাণ' : 'Planned Amount'}</span>
+                  <span className="font-bold font-baloo text-slate-900 text-xs">
+                    ৳{toBanglaNumber(initialCollection.plannedAmount.toLocaleString())}
+                  </span>
+                </div>
+                <div className="bg-white/80 p-2 rounded-xl border border-emerald-200/60">
+                  <span className="text-[10px] text-slate-500 block">{isBn ? 'ইতোপূর্বে সংগৃহীত' : 'Collected So Far'}</span>
+                  <span className="font-bold font-baloo text-emerald-700 text-xs">
+                    ৳{toBanglaNumber((initialCollection.collectedAmount || 0).toLocaleString())}
+                  </span>
+                </div>
+                <div className="bg-white/80 p-2 rounded-xl border border-emerald-200/60">
+                  <span className="text-[10px] text-slate-500 block">{isBn ? 'অবশিষ্ট সংগ্রহ' : 'Remaining Collection'}</span>
+                  <span className="font-bold font-baloo text-amber-700 text-xs">
+                    ৳{toBanglaNumber(Math.max(0, initialCollection.plannedAmount - (initialCollection.collectedAmount || 0)).toLocaleString())}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Section 1: Donor Type Toggle */}
           <div className="space-y-2">
-            <label className="block text-xs font-bold text-slate-700">
-              {isBn ? 'দাতার ধরন নির্বাচন করুন *' : 'Select Donor Type *'}
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-700">
+                {isBn ? 'দাতার ধরন নির্বাচন করুন *' : 'Select Donor Type *'}
+              </label>
+              {initialCollection && (
+                <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  {isBn ? 'সংগ্রহের মুসল্লি অপরিবর্তনীয়' : 'Locked to Collection Donor'}
+                </span>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
@@ -358,14 +440,18 @@ export const ActualDonationFormModal: React.FC<ActualDonationFormModalProps> = (
 
               <button
                 type="button"
+                disabled={Boolean(initialCollection)}
                 onClick={() => {
+                  if (initialCollection) return;
                   setDonorType('ANONYMOUS');
                   setSelectedPersonId('');
                   setSelectedPlanId('');
                   setErrorMessage('');
                 }}
                 className={`p-3 rounded-xl border flex items-center justify-center space-x-2 transition-all font-bold ${
-                  donorType === 'ANONYMOUS'
+                  initialCollection
+                    ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed opacity-60'
+                    : donorType === 'ANONYMOUS'
                     ? 'bg-teal-50 border-teal-500 text-teal-800 shadow-2xs'
                     : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
                 }`}
@@ -380,9 +466,17 @@ export const ActualDonationFormModal: React.FC<ActualDonationFormModalProps> = (
           {donorType === 'REGISTERED' ? (
             <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-4 space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  {isBn ? 'মুসল্লি / ব্যক্তি অনুসন্ধান ও নির্বাচন *' : 'Search & Select Musalli *'}
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold text-slate-700">
+                    {isBn ? 'মুসল্লি / ব্যক্তি তথ্য *' : 'Musalli / Person Details *'}
+                  </label>
+                  {initialCollection && (
+                    <span className="text-[10px] text-emerald-800 font-bold bg-emerald-100/70 px-2 py-0.5 rounded border border-emerald-300 flex items-center space-x-1">
+                      <Lock className="w-2.5 h-2.5 text-emerald-700" />
+                      <span>{isBn ? 'সংগ্রহের সঙ্গে সরাসরি সংযুক্ত' : 'Directly Linked to Collection'}</span>
+                    </span>
+                  )}
+                </div>
 
                 {selectedPerson ? (
                   <div className="bg-white border border-emerald-300 rounded-xl p-3.5 flex items-center justify-between shadow-2xs">
@@ -421,17 +515,19 @@ export const ActualDonationFormModal: React.FC<ActualDonationFormModalProps> = (
                         </div>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedPersonId('');
-                        setSelectedPlanId('');
-                        setIsSearchingPerson(true);
-                      }}
-                      className="px-2.5 py-1 text-[11px] font-bold text-emerald-700 hover:bg-emerald-50 rounded-lg border border-emerald-200 transition-colors"
-                    >
-                      {isBn ? 'পরিবর্তন' : 'Change'}
-                    </button>
+                    {!initialCollection && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedPersonId('');
+                          setSelectedPlanId('');
+                          setIsSearchingPerson(true);
+                        }}
+                        className="px-2.5 py-1 text-[11px] font-bold text-emerald-700 hover:bg-emerald-50 rounded-lg border border-emerald-200 transition-colors"
+                      >
+                        {isBn ? 'পরিবর্তন' : 'Change'}
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <div className="relative">

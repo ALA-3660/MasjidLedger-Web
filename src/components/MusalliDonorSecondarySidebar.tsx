@@ -46,6 +46,7 @@ interface MusalliDonorSecondarySidebarProps {
   familiesCount?: number;
   areasCount?: number;
   plansCount?: number;
+  collectionsCount?: number;
   donationsCount?: number;
   workersCount?: number;
   language?: Language;
@@ -58,6 +59,7 @@ export const MusalliDonorSecondarySidebar: React.FC<MusalliDonorSecondarySidebar
   familiesCount = 0,
   areasCount = 0,
   plansCount = 0,
+  collectionsCount = 0,
   donationsCount = 0,
   workersCount = 0,
   language = 'bn',
@@ -107,10 +109,10 @@ export const MusalliDonorSecondarySidebar: React.FC<MusalliDonorSecondarySidebar
     {
       id: 'collections',
       label: isBn ? 'অনুদান সংগ্রহ' : 'Donation Collections',
-      subLabel: isBn ? 'অপারেশনাল ট্র্যাকিং (B6)' : 'Collection Foundation',
+      subLabel: isBn ? 'অপারেশনাল ট্র্যাকিং (B6)' : 'Collection Management',
       icon: Inbox,
-      badge: isBn ? 'কোর' : 'Core',
-      badgeColor: 'bg-emerald-100 text-emerald-800',
+      badge: collectionsCount > 0 ? (isBn ? toBanglaNumber(collectionsCount) : collectionsCount) : undefined,
+      badgeColor: 'bg-emerald-100 text-emerald-800 font-bold',
     },
     {
       id: 'donations',
@@ -122,11 +124,11 @@ export const MusalliDonorSecondarySidebar: React.FC<MusalliDonorSecondarySidebar
     },
     {
       id: 'workers',
-      label: isBn ? 'সংগ্রহকারী' : 'Collection Workers',
-      subLabel: isBn ? 'দায়িত্বশীল স্বেচ্ছাসেবক' : 'Volunteers & Field Agents',
+      label: isBn ? 'সংগ্রহকারী কার্যক্রম' : 'Collection Worker Operations',
+      subLabel: isBn ? 'দায়িত্ব, রুট ও সংগ্রহ অগ্রগতি' : 'Assignments & Field Operations',
       icon: Briefcase,
       badge: workersCount > 0 ? (isBn ? toBanglaNumber(workersCount) : workersCount) : undefined,
-      badgeColor: 'bg-indigo-100 text-indigo-800',
+      badgeColor: 'bg-indigo-100 text-indigo-800 font-bold',
     },
     {
       id: 'reports',

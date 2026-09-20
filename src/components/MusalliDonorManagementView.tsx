@@ -30,6 +30,7 @@ import {
   PersonMaster,
   DonationPlan,
   CollectionWorker,
+  DonationCollection,
   Donation,
   FinancialAccount,
 } from '../types';
@@ -45,6 +46,8 @@ import { FamilyManagementSection } from './musalli/FamilyManagementSection';
 import { PersonManagementSection } from './musalli/PersonManagementSection';
 import { DonationPlanManagementSection } from './musalli/DonationPlanManagementSection';
 import { ActualDonationManagementSection } from './musalli/ActualDonationManagementSection';
+import { DonationCollectionManagementSection } from './musalli/DonationCollectionManagementSection';
+import { CollectionWorkerManagementSection } from './musalli/CollectionWorkerManagementSection';
 
 export interface MusalliDonorManagementViewProps {
   currentMosque?: Mosque | null;
@@ -66,6 +69,7 @@ export const MusalliDonorManagementView: React.FC<MusalliDonorManagementViewProp
   const [families, setFamilies] = useState<FamilyMaster[]>([]);
   const [persons, setPersons] = useState<PersonMaster[]>([]);
   const [plans, setPlans] = useState<DonationPlan[]>([]);
+  const [collections, setCollections] = useState<DonationCollection[]>([]);
   const [donations, setDonations] = useState<Donation[]>([]);
   const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
   const [workers, setWorkers] = useState<CollectionWorker[]>([]);
@@ -73,6 +77,7 @@ export const MusalliDonorManagementView: React.FC<MusalliDonorManagementViewProp
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [preselectedPersonId, setPreselectedPersonId] = useState<string | undefined>(undefined);
   const [preselectedPlanId, setPreselectedPlanId] = useState<string | undefined>(undefined);
+  const [preselectedCollection, setPreselectedCollection] = useState<DonationCollection | null>(null);
   const [triggerNewDonation, setTriggerNewDonation] = useState<boolean>(false);
 
   const isBn = language === 'bn';
@@ -80,11 +85,12 @@ export const MusalliDonorManagementView: React.FC<MusalliDonorManagementViewProp
   const loadData = async () => {
     try {
       setLoading(true);
-      const [areasRes, familiesRes, personsRes, plansRes, donationsRes, accountsRes, workersRes] = await Promise.all([
+      const [areasRes, familiesRes, personsRes, plansRes, collectionsRes, donationsRes, accountsRes, workersRes] = await Promise.all([
         api.getAreas().catch(() => []),
         api.getFamilies().catch(() => []),
         api.getPersons().catch(() => []),
         api.getDonationPlans().catch(() => []),
+        api.getDonationCollections().catch(() => []),
         api.getDonations().catch(() => []),
         api.getAccounts().catch(() => []),
         api.getCollectionWorkers().catch(() => []),
@@ -93,6 +99,7 @@ export const MusalliDonorManagementView: React.FC<MusalliDonorManagementViewProp
       setFamilies(familiesRes);
       setPersons(personsRes);
       setPlans(plansRes);
+      setCollections(collectionsRes);
       setDonations(donationsRes);
       setAccounts(accountsRes);
       setWorkers(workersRes);
@@ -118,9 +125,10 @@ export const MusalliDonorManagementView: React.FC<MusalliDonorManagementViewProp
     await loadData();
   };
 
-  const handleDirectReceiveDonation = (personId?: string, planId?: string) => {
-    setPreselectedPersonId(personId);
-    setPreselectedPlanId(planId);
+  const handleDirectReceiveDonation = (personId?: string, planId?: string, collection?: DonationCollection) => {
+    setPreselectedPersonId(personId || collection?.personId);
+    setPreselectedPlanId(planId || collection?.donationPlanId);
+    setPreselectedCollection(collection || null);
     setTriggerNewDonation(true);
     setActiveSection('donations');
   };
@@ -166,8 +174,8 @@ export const MusalliDonorManagementView: React.FC<MusalliDonorManagementViewProp
       icon: Coins,
     },
     workers: {
-      title: isBn ? 'সংগ্রহকারী ও ভলান্টিয়ার' : 'Collection Workers & Volunteers',
-      subtitle: isBn ? 'মহল্লাভিত্তিক চাঁদা ও দান কালেকশন প্রতিনিধি' : 'Field agents & area collection representatives',
+      title: isBn ? 'সংগ্রহকারী কার্যক্রম' : 'Collection Worker Operations',
+      subtitle: isBn ? 'সংগ্রহকারীদের দায়িত্ব, নির্ধারিত সংগ্রহ এবং কার্যক্রমের অগ্রগতি পরিচালনা করুন।' : 'Manage collection worker assignments, assigned collections and operational progress.',
       icon: Briefcase,
     },
     reports: {
@@ -287,6 +295,7 @@ export const MusalliDonorManagementView: React.FC<MusalliDonorManagementViewProp
           familiesCount={families.length}
           areasCount={areas.length}
           plansCount={plans.length}
+          collectionsCount={collections.length}
           donationsCount={donations.length}
           workersCount={workers.length}
           language={language}
@@ -332,8 +341,8 @@ export const MusalliDonorManagementView: React.FC<MusalliDonorManagementViewProp
                 <div className="text-xs text-emerald-900 font-tiro leading-snug">
                   <span className="font-bold font-siliguri">{isBn ? 'আইডেন্টিটি ও ফিন্যান্সিয়াল ফ্লো: ' : 'Identity & Financial Flow: '}</span>
                   {isBn
-                    ? 'এলাকা (Area) ➔ পরিবার (Family) ➔ ব্যক্তি/মুসল্লি (Person) ➔ দান পরিকল্পনা (Plan) ➔ অনুদান রসিদ (Donation) ➔ আর্থিক খতিয়ান'
-                    : 'Area ➔ Family ➔ Person ➔ Donation Plan ➔ Actual Donation ➔ Financial Ledger'}
+                    ? 'এলাকা (B1) ➔ পরিবার (B2) ➔ ব্যক্তি (B3) ➔ দান পরিকল্পনা (B4) ➔ অনুদান সংগ্রহ (B6) ➔ অনুদান রসিদ (B5) ➔ আর্থিক খতিয়ান'
+                    : 'Area (B1) ➔ Family (B2) ➔ Person (B3) ➔ Donation Plan (B4) ➔ Collection (B6) ➔ Actual Donation (B5) ➔ Financial Ledger'}
                 </div>
               </div>
 
@@ -397,6 +406,22 @@ export const MusalliDonorManagementView: React.FC<MusalliDonorManagementViewProp
                 onReceiveDonation={handleDirectReceiveDonation}
                 loading={loading}
               />
+            ) : activeSection === 'collections' ? (
+              <DonationCollectionManagementSection
+                collections={collections}
+                plans={plans}
+                persons={persons}
+                families={families}
+                areas={areas}
+                collectionWorkers={workers}
+                donations={donations}
+                currentMosque={currentMosque}
+                currentUser={currentUser}
+                language={language}
+                onRefresh={loadData}
+                onCollectDonation={handleDirectReceiveDonation}
+                loading={loading}
+              />
             ) : activeSection === 'donations' ? (
               <ActualDonationManagementSection
                 donations={donations}
@@ -405,6 +430,7 @@ export const MusalliDonorManagementView: React.FC<MusalliDonorManagementViewProp
                 families={families}
                 areas={areas}
                 accounts={accounts}
+                collectionWorkers={workers}
                 currentMosque={currentMosque}
                 currentUser={currentUser}
                 language={language}
@@ -413,6 +439,7 @@ export const MusalliDonorManagementView: React.FC<MusalliDonorManagementViewProp
                 initialOpenCreateModal={triggerNewDonation}
                 initialPersonId={preselectedPersonId}
                 initialPlanId={preselectedPlanId}
+                initialCollection={preselectedCollection}
               />
             ) : activeSection === 'dashboard' ? (
               <div className="space-y-6">
@@ -514,6 +541,54 @@ export const MusalliDonorManagementView: React.FC<MusalliDonorManagementViewProp
                   </div>
 
                   <div
+                    onClick={() => setActiveSection('collections')}
+                    className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/40 hover:bg-emerald-100/50 hover:border-emerald-300 transition-all cursor-pointer group shadow-2xs"
+                  >
+                    <div className="flex items-center justify-between text-emerald-800 font-bold text-xs mb-2 font-siliguri">
+                      <div className="flex items-center space-x-2">
+                        <Inbox className="w-4 h-4 text-emerald-700" />
+                        <span>{isBn ? 'অনুদান সংগ্রহ (B6)' : 'Collections (B6)'}</span>
+                      </div>
+                      <ArrowRight className="w-3.5 h-3.5 text-emerald-500 group-hover:text-emerald-800 transition-transform group-hover:translate-x-1" />
+                    </div>
+                    <p className="text-xs text-emerald-900/80 font-tiro leading-relaxed">
+                      {isBn
+                        ? 'পরিকল্পনা ভিত্তিক সময়সূচি ও সংগ্রহ কার্যক্রম ট্র্যাকিং (বিশুদ্ধ অপারেশনাল)।'
+                        : 'Plan-based collection schedules, operational status and worker tracking.'}
+                    </p>
+                    <div className="mt-3 flex items-center justify-between text-[11px] font-semibold text-emerald-700 font-baloo">
+                      <span>{isBn ? `মোট সংগ্রহ: ${toBanglaNumber(collections.length)} টি` : `Total Collections: ${collections.length}`}</span>
+                      <span className="text-emerald-900 font-siliguri font-bold text-xs group-hover:underline">
+                        {isBn ? 'ব্যবস্থাপনা করুন ➔' : 'Manage ➔'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => setActiveSection('workers')}
+                    className="p-4 rounded-xl border border-indigo-200 bg-indigo-50/40 hover:bg-indigo-100/50 hover:border-indigo-300 transition-all cursor-pointer group shadow-2xs"
+                  >
+                    <div className="flex items-center justify-between text-indigo-800 font-bold text-xs mb-2 font-siliguri">
+                      <div className="flex items-center space-x-2">
+                        <Briefcase className="w-4 h-4 text-indigo-700" />
+                        <span>{isBn ? 'সংগ্রহকারী কার্যক্রম (B6-D)' : 'Worker Operations (B6-D)'}</span>
+                      </div>
+                      <ArrowRight className="w-3.5 h-3.5 text-indigo-500 group-hover:text-indigo-800 transition-transform group-hover:translate-x-1" />
+                    </div>
+                    <p className="text-xs text-indigo-900/80 font-tiro leading-relaxed">
+                      {isBn
+                        ? 'সংগ্রহকারী নির্বাচন, দায়িত্ব বণ্টন, নির্ধারিত কাজ ও মাঠ পর্যায়ের আদায় অগ্রগতি।'
+                        : 'Worker assignments, assigned collections, area routing & operational progress.'}
+                    </p>
+                    <div className="mt-3 flex items-center justify-between text-[11px] font-semibold text-indigo-700 font-baloo">
+                      <span>{isBn ? `নিযুক্ত কর্মী: ${toBanglaNumber(workers.length)} জন` : `Total Workers: ${workers.length}`}</span>
+                      <span className="text-indigo-900 font-siliguri font-bold text-xs group-hover:underline">
+                        {isBn ? 'ব্যবস্থাপনা করুন ➔' : 'Manage ➔'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div
                     onClick={() => setActiveSection('donations')}
                     className="p-4 rounded-xl border border-teal-200 bg-teal-50/40 hover:bg-teal-100/50 hover:border-teal-300 transition-all cursor-pointer group shadow-2xs"
                   >
@@ -544,12 +619,12 @@ export const MusalliDonorManagementView: React.FC<MusalliDonorManagementViewProp
                     <Database className="w-5 h-5" />
                   </div>
                   <h3 className="text-base font-bold text-slate-800 font-siliguri">
-                    {isBn ? '📊 মুসল্লি ও দাতা ডেটাবেস — Phase B1 থেকে B5 সফলভাবে কার্যকর' : '📊 Musalli & Donor Database — Phase B1 to B5 Fully Active'}
+                    {isBn ? '📊 মুসল্লি ও দাতা ডেটাবেস — Phase B1 থেকে B6 সফলভাবে কার্যকর' : '📊 Musalli & Donor Database — Phase B1 to B6 Fully Active'}
                   </h3>
                   <p className="text-xs text-slate-600 max-w-lg mx-auto font-tiro leading-relaxed">
                     {isBn
-                      ? 'এলাকা ➔ পরিবার ➔ ব্যক্তি/মুসল্লি ➔ দান পরিকল্পনা ➔ প্রকৃত অনুদান গ্রহণ ➔ বিদ্যমান আর্থিক খতিয়ান — এই সম্পূর্ণ রিলেশনাল চেইন সম্পূর্ণ সুরক্ষিত ও নিখুঁতভাবে সমন্বিত।'
-                      : 'Area ➔ Family ➔ Person ➔ Donation Plan ➔ Actual Donation ➔ Financial Ledger chain is fully validated and operational.'}
+                      ? 'এলাকা ➔ পরিবার ➔ ব্যক্তি/মুসল্লি ➔ দান পরিকল্পনা ➔ সংগ্রহকারী কার্যক্রম ➔ অনুদান সংগ্রহ ➔ প্রকৃত অনুদান গ্রহণ ➔ বিদ্যমান আর্থিক খতিয়ান — এই সম্পূর্ণ রিলেশনাল চেইন সম্পূর্ণ সুরক্ষিত ও নিখুঁতভাবে সমন্বিত।'
+                      : 'Area ➔ Family ➔ Person ➔ Donation Plan ➔ Worker Operations ➔ Donation Collection ➔ Actual Donation ➔ Financial Ledger chain is fully validated and operational.'}
                   </p>
                   <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
                     <div className="inline-flex items-center space-x-1.5 text-xs text-emerald-700 font-semibold bg-emerald-100/70 px-3 py-1 rounded-full font-siliguri">
@@ -568,6 +643,14 @@ export const MusalliDonorManagementView: React.FC<MusalliDonorManagementViewProp
                       <CheckCircle2 className="w-3.5 h-3.5" />
                       <span>{isBn ? 'B4 পরিকল্পনা' : 'B4 Plan'}</span>
                     </div>
+                    <div className="inline-flex items-center space-x-1.5 text-xs text-emerald-800 font-semibold bg-emerald-200/70 px-3 py-1 rounded-full font-siliguri">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>{isBn ? 'B6 সংগ্রহ' : 'B6 Collection'}</span>
+                    </div>
+                    <div className="inline-flex items-center space-x-1.5 text-xs text-indigo-800 font-semibold bg-indigo-200/70 px-3 py-1 rounded-full font-siliguri">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>{isBn ? 'B6-D কর্মী' : 'B6-D Workers'}</span>
+                    </div>
                     <div className="inline-flex items-center space-x-1.5 text-xs text-teal-800 font-semibold bg-teal-200/70 px-3 py-1 rounded-full font-siliguri">
                       <CheckCircle2 className="w-3.5 h-3.5" />
                       <span>{isBn ? 'B5 প্রকৃত অনুদান' : 'B5 Actual Donation'}</span>
@@ -575,6 +658,21 @@ export const MusalliDonorManagementView: React.FC<MusalliDonorManagementViewProp
                   </div>
                 </div>
               </div>
+            ) : activeSection === 'workers' ? (
+              <CollectionWorkerManagementSection
+                workers={workers}
+                collections={collections}
+                plans={plans}
+                persons={persons}
+                areas={areas}
+                donations={donations}
+                currentMosque={currentMosque || null}
+                currentUser={currentUser || null}
+                language={language}
+                onRefresh={loadData}
+                onCollectDonation={handleDirectReceiveDonation}
+                loading={loading}
+              />
             ) : (
               /* Other Subsections Shell */
               <div className="space-y-6">

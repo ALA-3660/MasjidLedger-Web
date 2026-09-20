@@ -2947,7 +2947,7 @@ app.post('/api/v1/accounting/income', authenticate, requirePermission('CREATE_IN
     paymentMethod: paymentMethod || 'CASH',
     accountId: account?.id || 'acc-cash-01',
     accountName: account?.nameBn || 'প্রধান ক্যাশ',
-    donorName: donorName || 'সম্মানিত দানশীল মুসল্লি',
+    donorName: donorName || (mainHead?.nameBn || 'সাধারণ আয়'),
     donorPhone,
     reference,
     description,
@@ -3330,6 +3330,7 @@ app.post('/api/v1/donations', authenticate, requirePermission('CREATE_INCOME'), 
     familyId,
     areaId,
     collectionWorkerId,
+    collectionId,
   } = req.body;
   const numAmount = Number(amount);
   if (!numAmount || numAmount <= 0) {
@@ -3346,6 +3347,29 @@ app.post('/api/v1/donations', authenticate, requirePermission('CREATE_INCOME'), 
   let verifiedPlanId: string | undefined = undefined;
   let verifiedPlanCode: string | undefined = undefined;
   let verifiedWorkerId: string | undefined = collectionWorkerId || undefined;
+  let verifiedCollectionId: string | undefined = undefined;
+  let targetCollection: any = undefined;
+
+  // Validation for Donation Collection linkage (Phase B6-C Integration)
+  if (collectionId) {
+    targetCollection = db.donationCollections.find((c) => c.id === collectionId && c.mosqueId === mosqueId);
+    if (!targetCollection) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_COLLECTION', message: 'নির্বাচিত সংগ্রহ কার্যক্রম এই মসজিদে অন্তর্ভুক্ত নয় বা বিদ্যমান নেই।' } });
+    }
+    if (targetCollection.status === 'CANCELLED') {
+      return res.status(400).json({ success: false, error: { code: 'COLLECTION_CANCELLED', message: 'বাতিলকৃত সংগ্রহের বিপরীতে নতুন অনুদান গ্রহণ করা সম্ভব নয়।' } });
+    }
+    verifiedCollectionId = targetCollection.id;
+    if (!verifiedWorkerId && targetCollection.collectionWorkerId) {
+      verifiedWorkerId = targetCollection.collectionWorkerId;
+    }
+    if (!verifiedFamilyId && targetCollection.familyId) {
+      verifiedFamilyId = targetCollection.familyId;
+    }
+    if (!verifiedAreaId && targetCollection.areaId) {
+      verifiedAreaId = targetCollection.areaId;
+    }
+  }
 
   if (personId) {
     const person = db.persons.find((p) => p.id === personId && p.mosqueId === mosqueId);
@@ -3358,9 +3382,26 @@ app.post('/api/v1/donations', authenticate, requirePermission('CREATE_INCOME'), 
     if (!verifiedAreaId && person.areaId) verifiedAreaId = person.areaId;
   }
 
+  // Cross-validation of collection with Person
+  if (targetCollection) {
+    if (verifiedPersonId && targetCollection.personId !== verifiedPersonId) {
+      return res.status(400).json({ success: false, error: { code: 'PERSON_COLLECTION_MISMATCH', message: 'সংগ্রহ কার্যক্রমটি নির্বাচিত মুসল্লির সঙ্গে সামঞ্জস্যপূর্ণ নয়।' } });
+    }
+    if (!verifiedPersonId) {
+      verifiedPersonId = targetCollection.personId;
+      const person = db.persons.find((p) => p.id === targetCollection.personId && p.mosqueId === mosqueId);
+      if (person) {
+        verifiedPersonCode = person.personCode;
+        if (!verifiedFamilyId && person.familyId) verifiedFamilyId = person.familyId;
+        if (!verifiedAreaId && person.areaId) verifiedAreaId = person.areaId;
+      }
+    }
+  }
+
   // Validation for Donation Plan linkage (Phase B4/B5)
-  if (donationPlanId) {
-    const plan = db.donationPlans.find((p) => p.id === donationPlanId && p.mosqueId === mosqueId);
+  const targetPlanId = donationPlanId || targetCollection?.donationPlanId;
+  if (targetPlanId) {
+    const plan = db.donationPlans.find((p) => p.id === targetPlanId && p.mosqueId === mosqueId);
     if (!plan) {
       return res.status(400).json({ success: false, error: { code: 'INVALID_PLAN', message: 'নির্বাচিত অনুদান পরিকল্পনা এই মসজিদে অন্তর্ভুক্ত নয় বা বিদ্যমান নেই।' } });
     }
@@ -3368,6 +3409,11 @@ app.post('/api/v1/donations', authenticate, requirePermission('CREATE_INCOME'), 
     if (verifiedPersonId && plan.personId !== verifiedPersonId) {
       return res.status(400).json({ success: false, error: { code: 'CROSS_PERSON_PLAN', message: 'নির্বাচিত অনুদান পরিকল্পনাটি এই ব্যক্তির নয়।' } });
     }
+    // Cross-plan collection protection
+    if (targetCollection && targetCollection.donationPlanId !== plan.id) {
+      return res.status(400).json({ success: false, error: { code: 'PLAN_COLLECTION_MISMATCH', message: 'সংগ্রহ কার্যক্রমটি নির্বাচিত দান পরিকল্পনার সঙ্গে সামঞ্জস্যপূর্ণ নয়।' } });
+    }
+
     verifiedPlanId = plan.id;
     verifiedPlanCode = plan.planCode || plan.id;
     if (!verifiedPersonId) {
@@ -3390,6 +3436,20 @@ app.post('/api/v1/donations', authenticate, requirePermission('CREATE_INCOME'), 
     const userWorker = db.users.find((u) => u.id === verifiedWorkerId && (u.mosqueId === mosqueId || !u.mosqueId));
     if (!worker && !userWorker) {
       return res.status(400).json({ success: false, error: { code: 'INVALID_WORKER', message: 'সংগ্রহকারী কর্মী এই মসজিদের অন্তর্ভুক্ত নয়।' } });
+    }
+  }
+
+  // Cross-tenant validation for family and area
+  if (verifiedFamilyId) {
+    const family = db.families.find((f) => f.id === verifiedFamilyId && f.mosqueId === mosqueId);
+    if (!family) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_FAMILY', message: 'নির্বাচিত পরিবার এই মসজিদে অন্তর্ভুক্ত নয় বা বিদ্যমান নেই।' } });
+    }
+  }
+  if (verifiedAreaId) {
+    const area = db.areas.find((a) => a.id === verifiedAreaId && a.mosqueId === mosqueId);
+    if (!area) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_AREA', message: 'নির্বাচিত এলাকা এই মসজিদে অন্তর্ভুক্ত নয় বা বিদ্যমান নেই।' } });
     }
   }
 
@@ -3450,6 +3510,7 @@ app.post('/api/v1/donations', authenticate, requirePermission('CREATE_INCOME'), 
     areaId: verifiedAreaId,
     donationPlanId: verifiedPlanId,
     planCode: verifiedPlanCode,
+    collectionId: verifiedCollectionId,
     collectionWorkerId: verifiedWorkerId,
     status: 'COMPLETED' as const,
     createdAt: new Date().toISOString(),
@@ -3457,6 +3518,39 @@ app.post('/api/v1/donations', authenticate, requirePermission('CREATE_INCOME'), 
 
   account.currentBalance += numAmount;
   db.donations.unshift(donation);
+
+  // Sync Donation Collection status if collectionId was provided (Phase B6-C Integration)
+  if (verifiedCollectionId && targetCollection) {
+    const validColDonations = db.donations.filter(
+      (d) => d.collectionId === verifiedCollectionId && d.status !== 'CANCELLED' && d.mosqueId === mosqueId
+    );
+    const totalCollected = validColDonations.reduce((sum, d) => sum + (d.amount || 0), 0);
+    targetCollection.collectedAmount = totalCollected;
+    targetCollection.lastCollectionDate = donation.date;
+    targetCollection.updatedAt = new Date().toISOString();
+    targetCollection.updatedBy = req.user!.id;
+    targetCollection.updatedByName = req.user!.name;
+
+    if (targetCollection.status !== 'CANCELLED') {
+      if (totalCollected >= targetCollection.plannedAmount) {
+        targetCollection.status = 'COLLECTED';
+      } else if (totalCollected > 0) {
+        targetCollection.status = 'PARTIALLY_COLLECTED';
+      } else {
+        targetCollection.status = 'PENDING';
+      }
+    }
+
+    db.logAudit(
+      mosqueId,
+      req.user!.id,
+      req.user!.name,
+      req.user!.role,
+      'UPDATE',
+      'DONATION_COLLECTION',
+      `সংগ্রহ কার্যক্রমে অনুদান সমন্বয় (${targetCollection.id}): সংগৃহীত ৳ ${totalCollected} / ৳ ${targetCollection.plannedAmount} (অবস্থা: ${targetCollection.status})`
+    );
+  }
 
   // Auto-create income entry for double entry consistency
   const incVoucherNumber = `INC-${year}-${String(db.incomeEntries.filter((i) => i.mosqueId === mosqueId).length + 1).padStart(6, '0')}`;
@@ -3510,6 +3604,9 @@ app.post('/api/v1/donations', authenticate, requirePermission('CREATE_INCOME'), 
 
   realtime.broadcastToMosque(mosqueId, 'DONATION_CREATED', donation, { senderId: req.user!.id });
   realtime.broadcastToMosque(mosqueId, 'INCOME_CREATED', incEntry, { senderId: req.user!.id });
+  if (verifiedCollectionId && targetCollection) {
+    realtime.broadcastToMosque(mosqueId, 'COLLECTION_UPDATED', targetCollection, { senderId: req.user!.id });
+  }
   realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
 
   res.json(responsePayload);
@@ -3551,6 +3648,50 @@ app.post('/api/v1/donations/:id/cancel', authenticate, requirePermission('CREATE
   donation.updatedAt = new Date().toISOString();
   donation.updatedBy = req.user!.id;
 
+  // Sync Donation Collection status upon cancellation (Phase B6-C Integration)
+  let updatedCollection: any = undefined;
+  const col = donation.collectionId
+    ? db.donationCollections.find((c) => c.id === donation.collectionId && c.mosqueId === mosqueId)
+    : (donation.donationPlanId && donation.personId
+        ? db.donationCollections.find(
+            (c) => c.donationPlanId === donation.donationPlanId && c.personId === donation.personId && (donation.date || '').startsWith(c.collectionPeriod.substring(0, 7)) && c.mosqueId === mosqueId
+          )
+        : undefined);
+
+  if (col) {
+    const remainingDonations = db.donations.filter(
+      (d) => (d.collectionId === col.id || (d.donationPlanId === col.donationPlanId && d.personId === col.personId && d.date.startsWith(col.collectionPeriod.substring(0, 7)))) && d.id !== donation.id && d.status !== 'CANCELLED' && d.mosqueId === mosqueId
+    );
+    const totalCollected = remainingDonations.reduce((sum, d) => sum + (d.amount || 0), 0);
+    col.collectedAmount = totalCollected;
+    col.updatedAt = new Date().toISOString();
+    col.updatedBy = req.user!.id;
+    col.updatedByName = req.user!.name;
+
+    if (col.status !== 'CANCELLED') {
+      if (totalCollected >= col.plannedAmount) {
+        col.status = 'COLLECTED';
+      } else if (totalCollected > 0) {
+        col.status = 'PARTIALLY_COLLECTED';
+      } else {
+        if (col.status !== 'PAUSED') {
+          col.status = 'PENDING';
+        }
+      }
+    }
+    updatedCollection = col;
+
+    db.logAudit(
+      mosqueId,
+      req.user!.id,
+      req.user!.name,
+      req.user!.role,
+      'UPDATE',
+      'DONATION_COLLECTION',
+      `সংগ্রহ কার্যক্রমে অনুদান বাতিল সমন্বয় (${col.id}): সংগৃহীত হ্রাস পেয়ে ৳ ${totalCollected} / ৳ ${col.plannedAmount} (অবস্থা: ${col.status})`
+    );
+  }
+
   db.save();
   db.logAudit(
     mosqueId,
@@ -3565,6 +3706,9 @@ app.post('/api/v1/donations/:id/cancel', authenticate, requirePermission('CREATE
   realtime.broadcastToMosque(mosqueId, 'DONATION_UPDATED', donation, { senderId: req.user!.id });
   if (incEntry) {
     realtime.broadcastToMosque(mosqueId, 'INCOME_UPDATED', incEntry, { senderId: req.user!.id });
+  }
+  if (updatedCollection) {
+    realtime.broadcastToMosque(mosqueId, 'COLLECTION_UPDATED', updatedCollection, { senderId: req.user!.id });
   }
   realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
 
@@ -3697,6 +3841,12 @@ app.delete('/api/v1/donation-boxes/:id', authenticate, requirePermission('MANAGE
 });
 
 app.post('/api/v1/donation-boxes/collect', authenticate, requirePermission('CREATE_INCOME'), (req: AuthRequest, res: Response) => {
+  // Idempotency check
+  const cached = db.checkIdempotency(req.idempotencyKey);
+  if (cached) {
+    return res.json(cached);
+  }
+
   const { boxId, amount, witnesses, countingTeam, notes, accountId, date, denominationData } = req.body;
   const numAmount = Number(amount);
   const mosqueId = req.currentMosque!.id;
@@ -3780,7 +3930,16 @@ app.post('/api/v1/donation-boxes/collect', authenticate, requirePermission('CREA
   realtime.broadcastToMosque(mosqueId, 'INCOME_CREATED', incEntry, { senderId: req.user!.id });
   realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
 
-  res.json({ success: true, data: collection, message: 'দানবাক্সের টাকা সফলভাবে গণনা ও তহবিলে জমা করা হয়েছে।' });
+  const responsePayload = {
+    success: true,
+    data: collection,
+    box,
+    incomeVoucher: incEntry,
+    message: 'দানবাক্সের টাকা সফলভাবে গণনা ও তহবিলে জমা করা হয়েছে।'
+  };
+  db.saveIdempotency(req.idempotencyKey, responsePayload);
+
+  res.json(responsePayload);
 });
 
 // Update Donation Box Collection Denomination
@@ -11065,6 +11224,12 @@ app.post('/api/v1/properties/:id/cases', authenticate, requirePermission('MANAGE
 
 // Add / Record Rent Collection (Linked to Income Voucher & Accounting Ledger)
 app.post('/api/v1/properties/:id/rent-collections', authenticate, requirePermission('MANAGE_PROPERTY'), (req: AuthRequest, res: Response) => {
+  // Idempotency check
+  const cached = db.checkIdempotency(req.idempotencyKey);
+  if (cached) {
+    return res.json(cached);
+  }
+
   const mosqueId = req.currentMosque!.id;
   const property = db.properties.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
   if (!property) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সম্পত্তি পাওয়া যায়নি।' } });
@@ -11109,6 +11274,7 @@ app.post('/api/v1/properties/:id/rent-collections', authenticate, requirePermiss
 
   let incomeVoucherNumber = '';
   let incomeEntryId = '';
+  let incomeEntry: any = null;
 
   // Link to Accounting & Income Entry (Safely without double entry)
   if (isAccountingLinked && numPaid > 0) {
@@ -11119,7 +11285,7 @@ app.post('/api/v1/properties/:id/rent-collections', authenticate, requirePermiss
     incomeVoucherNumber = `INC-${year}-${String(incCount).padStart(6, '0')}`;
     incomeEntryId = `inc-prop-${Date.now()}`;
 
-    const incomeEntry: any = {
+    incomeEntry = {
       id: incomeEntryId,
       mosqueId,
       voucherNumber: incomeVoucherNumber,
@@ -11191,7 +11357,16 @@ app.post('/api/v1/properties/:id/rent-collections', authenticate, requirePermiss
   realtime.broadcastToMosque(mosqueId, 'PROPERTY_UPDATED', property, { senderId: req.user!.id });
   realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
 
-  res.json({ success: true, data: property, rentCollection: collectionRecord, message: 'ভাড়া আদায় সফলভাবে সম্পন্ন হয়েছে ও রসিদ তৈরি হয়েছে।' });
+  const responsePayload = {
+    success: true,
+    data: property,
+    rentCollection: collectionRecord,
+    incomeEntry,
+    message: 'ভাড়া আদায় সফলভাবে সম্পন্ন হয়েছে ও রসিদ তৈরি হয়েছে।'
+  };
+  db.saveIdempotency(req.idempotencyKey, responsePayload);
+
+  res.json(responsePayload);
 });
 
 // Delete / Reverse Rent Collection
@@ -14953,6 +15128,51 @@ app.post('/api/v1/collection-workers', authenticate, (req: AuthRequest, res: Res
     return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'সংগ্রহকারীর নাম আবশ্যক।' } });
   }
 
+  // Cross-tenant validation for linked human identity
+  if (personId) {
+    const personExists = db.persons.some(p => p.id === personId && p.mosqueId === mosqueId);
+    if (!personExists) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_PERSON', message: 'নির্বাচিত মুসল্লি/ব্যক্তি এই মসজিদে অন্তর্ভুক্ত নয় বা বিদ্যমান নেই।' } });
+    }
+    // Duplicate worker prevention for same person
+    const duplicatePersonWorker = db.collectionWorkers.find(cw => cw.personId === personId && cw.mosqueId === mosqueId);
+    if (duplicatePersonWorker) {
+      return res.status(400).json({ success: false, error: { code: 'DUPLICATE_WORKER', message: 'এই ব্যক্তির জন্য ইতোমধ্যে একটি সংগ্রহকারী প্রোফাইল বিদ্যমান রয়েছে।' } });
+    }
+  }
+
+  if (staffId) {
+    const staffExists = db.staffList.some(s => s.id === staffId && s.mosqueId === mosqueId);
+    if (!staffExists) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_STAFF', message: 'নির্বাচিত স্টাফ এই মসজিদে অন্তর্ভুক্ত নয় বা বিদ্যমান নেই।' } });
+    }
+    const duplicateStaffWorker = db.collectionWorkers.find(cw => cw.staffId === staffId && cw.mosqueId === mosqueId);
+    if (duplicateStaffWorker) {
+      return res.status(400).json({ success: false, error: { code: 'DUPLICATE_WORKER', message: 'এই স্টাফের জন্য ইতোমধ্যে একটি সংগ্রহকারী প্রোফাইল বিদ্যমান রয়েছে।' } });
+    }
+  }
+
+  if (committeeMemberId) {
+    const committeeExists = db.committeeMembers.some(c => c.id === committeeMemberId && c.mosqueId === mosqueId);
+    if (!committeeExists) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_COMMITTEE_MEMBER', message: 'নির্বাচিত কমিটি সদস্য এই মসজিদে অন্তর্ভুক্ত নয় বা বিদ্যমান নেই।' } });
+    }
+    const duplicateCommitteeWorker = db.collectionWorkers.find(cw => cw.committeeMemberId === committeeMemberId && cw.mosqueId === mosqueId);
+    if (duplicateCommitteeWorker) {
+      return res.status(400).json({ success: false, error: { code: 'DUPLICATE_WORKER', message: 'এই কমিটি সদস্যের জন্য ইতোমধ্যে একটি সংগ্রহকারী প্রোফাইল বিদ্যমান রয়েছে।' } });
+    }
+  }
+
+  // Cross-tenant validation for assigned areas
+  const validAreaIds: string[] = [];
+  if (Array.isArray(areaIds)) {
+    for (const aId of areaIds) {
+      if (db.areas.some(a => a.id === aId && a.mosqueId === mosqueId)) {
+        validAreaIds.push(aId);
+      }
+    }
+  }
+
   const newWorker: CollectionWorker = {
     id: db.generateCollectionWorkerId(mosqueId),
     mosqueId,
@@ -14961,7 +15181,7 @@ app.post('/api/v1/collection-workers', authenticate, (req: AuthRequest, res: Res
     personId: personId || undefined,
     staffId: staffId || undefined,
     committeeMemberId: committeeMemberId || undefined,
-    areaIds: Array.isArray(areaIds) ? areaIds : [],
+    areaIds: validAreaIds,
     familyIds: Array.isArray(familyIds) ? familyIds : [],
     status: status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE',
     notes: notes?.trim() || undefined,
@@ -14979,8 +15199,8 @@ app.post('/api/v1/collection-workers', authenticate, (req: AuthRequest, res: Res
     req.user!.id,
     req.user!.name,
     req.user!.role,
-    'SYSTEM_INITIALIZE',
-    'MUSALLI_DATABASE',
+    'CREATE',
+    'DONATION_COLLECTION_WORKER_ASSIGNED' as any,
     `নতুন সংগ্রহকারী নিযুক্ত করা হয়েছে: ${newWorker.name}`,
     newWorker.id,
     req.ip,
@@ -15006,14 +15226,57 @@ app.put('/api/v1/collection-workers/:id', authenticate, (req: AuthRequest, res: 
   const current = db.collectionWorkers[wIdx];
   const { name, mobile, personId, staffId, committeeMemberId, areaIds, familyIds, notes, status } = req.body;
 
+  // Cross-tenant validation for linked human identity
+  if (personId && personId !== current.personId) {
+    const personExists = db.persons.some(p => p.id === personId && p.mosqueId === mosqueId);
+    if (!personExists) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_PERSON', message: 'নির্বাচিত মুসল্লি/ব্যক্তি এই মসজিদে অন্তর্ভুক্ত নয় বা বিদ্যমান নেই।' } });
+    }
+    const duplicatePersonWorker = db.collectionWorkers.find(cw => cw.id !== current.id && cw.personId === personId && cw.mosqueId === mosqueId);
+    if (duplicatePersonWorker) {
+      return res.status(400).json({ success: false, error: { code: 'DUPLICATE_WORKER', message: 'এই ব্যক্তির জন্য ইতোমধ্যে একটি সংগ্রহকারী প্রোফাইল বিদ্যমান রয়েছে।' } });
+    }
+  }
+
+  if (staffId && staffId !== current.staffId) {
+    const staffExists = db.staffList.some(s => s.id === staffId && s.mosqueId === mosqueId);
+    if (!staffExists) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_STAFF', message: 'নির্বাচিত স্টাফ এই মসজিদে অন্তর্ভুক্ত নয় বা বিদ্যমান নেই।' } });
+    }
+    const duplicateStaffWorker = db.collectionWorkers.find(cw => cw.id !== current.id && cw.staffId === staffId && cw.mosqueId === mosqueId);
+    if (duplicateStaffWorker) {
+      return res.status(400).json({ success: false, error: { code: 'DUPLICATE_WORKER', message: 'এই স্টাফের জন্য ইতোমধ্যে একটি সংগ্রহকারী প্রোফাইল বিদ্যমান রয়েছে।' } });
+    }
+  }
+
+  if (committeeMemberId && committeeMemberId !== current.committeeMemberId) {
+    const committeeExists = db.committeeMembers.some(c => c.id === committeeMemberId && c.mosqueId === mosqueId);
+    if (!committeeExists) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_COMMITTEE_MEMBER', message: 'নির্বাচিত কমিটি সদস্য এই মসজিদে অন্তর্ভুক্ত নয় বা বিদ্যমান নেই।' } });
+    }
+    const duplicateCommitteeWorker = db.collectionWorkers.find(cw => cw.id !== current.id && cw.committeeMemberId === committeeMemberId && cw.mosqueId === mosqueId);
+    if (duplicateCommitteeWorker) {
+      return res.status(400).json({ success: false, error: { code: 'DUPLICATE_WORKER', message: 'এই কমিটি সদস্যের জন্য ইতোমধ্যে একটি সংগ্রহকারী প্রোফাইল বিদ্যমান রয়েছে।' } });
+    }
+  }
+
+  const validAreaIds: string[] = [];
+  if (Array.isArray(areaIds)) {
+    for (const aId of areaIds) {
+      if (db.areas.some(a => a.id === aId && a.mosqueId === mosqueId)) {
+        validAreaIds.push(aId);
+      }
+    }
+  }
+
   const updatedWorker: CollectionWorker = {
     ...current,
     name: name !== undefined && typeof name === 'string' && name.trim() ? name.trim() : current.name,
     mobile: mobile !== undefined ? mobile.trim() : current.mobile,
-    personId: personId !== undefined ? personId : current.personId,
-    staffId: staffId !== undefined ? staffId : current.staffId,
-    committeeMemberId: committeeMemberId !== undefined ? committeeMemberId : current.committeeMemberId,
-    areaIds: Array.isArray(areaIds) ? areaIds : current.areaIds,
+    personId: personId !== undefined ? (personId || undefined) : current.personId,
+    staffId: staffId !== undefined ? (staffId || undefined) : current.staffId,
+    committeeMemberId: committeeMemberId !== undefined ? (committeeMemberId || undefined) : current.committeeMemberId,
+    areaIds: areaIds !== undefined ? validAreaIds : current.areaIds,
     familyIds: Array.isArray(familyIds) ? familyIds : current.familyIds,
     status: status === 'INACTIVE' || status === 'ACTIVE' ? status : current.status,
     notes: notes !== undefined ? notes.trim() : current.notes,
@@ -15029,8 +15292,8 @@ app.put('/api/v1/collection-workers/:id', authenticate, (req: AuthRequest, res: 
     req.user!.id,
     req.user!.name,
     req.user!.role,
-    'SYSTEM_INITIALIZE',
-    'MUSALLI_DATABASE',
+    'UPDATE',
+    'DONATION_COLLECTION_WORKER_CHANGED' as any,
     `সংগ্রহকারীর তথ্য আপডেট করা হয়েছে: ${updatedWorker.name}`,
     updatedWorker.id,
     req.ip,
@@ -15121,6 +15384,22 @@ app.get('/api/v1/donation-collections', authenticate, (req: AuthRequest, res: Re
   // Sort descending by creation date
   list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
+  // Dynamically reconcile collectedAmount and status with authoritative B5 donations
+  list.forEach(c => {
+    if (c.status !== 'CANCELLED') {
+      const validColDonations = db.donations.filter(
+        d => d.collectionId === c.id && d.status !== 'CANCELLED' && d.mosqueId === mosqueId
+      );
+      const sum = validColDonations.reduce((tot, d) => tot + (d.amount || 0), 0);
+      c.collectedAmount = sum;
+      if (sum >= c.plannedAmount) {
+        c.status = 'COLLECTED';
+      } else if (sum > 0) {
+        c.status = 'PARTIALLY_COLLECTED';
+      }
+    }
+  });
+
   res.json({ success: true, data: list });
 });
 
@@ -15134,6 +15413,21 @@ app.get('/api/v1/donation-collections/:id', authenticate, (req: AuthRequest, res
       error: { code: 'NOT_FOUND', message: 'অনুদান সংগ্রহ রেকর্ড পাওয়া যায়নি।' }
     });
   }
+
+  // Reconcile with authoritative B5 donations
+  if (collection.status !== 'CANCELLED') {
+    const validColDonations = db.donations.filter(
+      d => d.collectionId === collection.id && d.status !== 'CANCELLED' && d.mosqueId === mosqueId
+    );
+    const sum = validColDonations.reduce((tot, d) => tot + (d.amount || 0), 0);
+    collection.collectedAmount = sum;
+    if (sum >= collection.plannedAmount) {
+      collection.status = 'COLLECTED';
+    } else if (sum > 0) {
+      collection.status = 'PARTIALLY_COLLECTED';
+    }
+  }
+
   res.json({ success: true, data: collection });
 });
 
@@ -15416,14 +15710,21 @@ app.put('/api/v1/donation-collections/:id', authenticate, (req: AuthRequest, res
   db.donationCollections[colIdx] = updatedCollection;
   db.save();
 
+  const workerChanged = current.collectionWorkerId !== resolvedWorkerId;
+  const auditAction = workerChanged 
+    ? (resolvedWorkerId ? 'DONATION_COLLECTION_WORKER_ASSIGNED' : 'DONATION_COLLECTION_WORKER_CHANGED')
+    : 'EDIT_INCOME';
+
   db.logAudit(
     mosqueId,
     req.user!.id,
     req.user!.name,
     req.user!.role,
-    'EDIT_INCOME' as any,
+    auditAction as any,
     'MUSALLI_DATABASE' as any,
-    `অনুদান সংগ্রহ তথ্য আপডেট: ${updatedCollection.id} (${updatedCollection.personNameBn || ''})`,
+    workerChanged
+      ? `অনুদান সংগ্রহে কর্মী পরিবর্তন: ${updatedCollection.id} (${resolvedWorkerName || 'কোনো কর্মী নেই'})`
+      : `অনুদান সংগ্রহ তথ্য আপডেট: ${updatedCollection.id} (${updatedCollection.personNameBn || ''})`,
     updatedCollection.id,
     req.ip,
     { status: 'SUCCESS' }

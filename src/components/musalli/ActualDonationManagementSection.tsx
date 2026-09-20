@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Coins,
   Search,
@@ -33,13 +33,15 @@ import {
   FamilyMaster,
   AreaMaster,
   DonationPlan,
+  DonationCollection,
   CollectionWorker,
   FinancialAccount,
   Mosque,
   User as AuthUser,
 } from '../../types';
 import { Language, toBanglaNumber, formatCurrency, formatDate } from '../../lib/i18n';
-import { ActualDonationFormModal } from './ActualDonationFormModal';
+import { api } from '../../lib/api';
+import { UnifiedIncomeEntryModal } from '../UnifiedIncomeEntryModal';
 import { ActualDonationDetailModal } from './ActualDonationDetailModal';
 
 interface ActualDonationManagementSectionProps {
@@ -54,10 +56,14 @@ interface ActualDonationManagementSectionProps {
   currentUser?: AuthUser | null;
   language?: Language;
   onRefresh?: () => void;
-  onSaveDonation: (payload: any, submitMode: 'SAVE_AND_PRINT' | 'SAVE_ONLY') => Promise<Donation | void>;
-  onPrintReceipt: (donation: Donation, format?: 'A4' | 'POS_80' | 'POS_58') => void;
+  onSaveDonation?: (payload: any, submitMode: 'SAVE_AND_PRINT' | 'SAVE_ONLY') => Promise<Donation | void>;
+  onPrintReceipt?: (donation: Donation, format?: 'A4' | 'POS_80' | 'POS_58') => void;
   onCancelDonation?: (id: string, reason: string) => Promise<void>;
   loading?: boolean;
+  initialOpenCreateModal?: boolean;
+  initialPersonId?: string;
+  initialPlanId?: string;
+  initialCollection?: DonationCollection | null;
 }
 
 export const ActualDonationManagementSection: React.FC<ActualDonationManagementSectionProps> = ({
@@ -76,12 +82,49 @@ export const ActualDonationManagementSection: React.FC<ActualDonationManagementS
   onPrintReceipt,
   onCancelDonation,
   loading = false,
+  initialOpenCreateModal = false,
+  initialPersonId,
+  initialPlanId,
+  initialCollection,
 }) => {
   const isBn = language === 'bn';
 
   // Modals state
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(initialOpenCreateModal);
   const [selectedDonationForDetail, setSelectedDonationForDetail] = useState<Donation | null>(null);
+
+  useEffect(() => {
+    if (initialOpenCreateModal) {
+      setIsCreateModalOpen(true);
+    }
+  }, [initialOpenCreateModal, initialCollection, initialPersonId]);
+
+  // Safe fallback handlers if not provided by parent
+  const handleSaveDonation = async (payload: any, submitMode: 'SAVE_AND_PRINT' | 'SAVE_ONLY') => {
+    if (onSaveDonation) {
+      return await onSaveDonation(payload, submitMode);
+    }
+    const res = await api.createDonation(payload);
+    if (onRefresh) onRefresh();
+    return res;
+  };
+
+  const handleCancelDonation = async (id: string, reason: string) => {
+    if (onCancelDonation) {
+      await onCancelDonation(id, reason);
+    } else {
+      await api.cancelDonation(id, reason);
+    }
+    if (onRefresh) onRefresh();
+  };
+
+  const handlePrintReceipt = (donation: Donation, format?: 'A4' | 'POS_80' | 'POS_58') => {
+    if (onPrintReceipt) {
+      onPrintReceipt(donation, format);
+    } else {
+      window.print();
+    }
+  };
 
   // Filters State
   const [searchQuery, setSearchQuery] = useState('');
@@ -717,7 +760,7 @@ export const ActualDonationManagementSection: React.FC<ActualDonationManagementS
 
                           <button
                             type="button"
-                            onClick={() => onPrintReceipt(donation, 'POS_80')}
+                            onClick={() => handlePrintReceipt(donation, 'POS_80')}
                             title={isBn ? 'মানি রিসিট প্রিন্ট' : 'Print Receipt'}
                             className="p-1.5 text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors"
                           >
@@ -734,20 +777,28 @@ export const ActualDonationManagementSection: React.FC<ActualDonationManagementS
         </div>
       </div>
 
-      {/* Form Modal */}
+      {/* Unified Income Entry Modal (Income Type = DONATION) */}
       {isCreateModalOpen && (
-        <ActualDonationFormModal
+        <UnifiedIncomeEntryModal
           isOpen={isCreateModalOpen}
           onClose={() => setIsCreateModalOpen(false)}
-          onSave={onSaveDonation}
+          initialType="DONATION"
+          initialPersonId={initialPersonId}
+          initialPlanId={initialPlanId}
+          initialCollection={initialCollection}
+          accounts={accounts}
           persons={persons}
+          plans={plans}
           families={families}
           areas={areas}
-          plans={plans}
           collectionWorkers={collectionWorkers}
-          accounts={accounts}
-          currentUser={currentUser}
+          currentUser={currentUser || null}
+          currentMosque={currentMosque || null}
           language={language}
+          onSuccess={() => {
+            if (onRefresh) onRefresh();
+          }}
+          onPrintReceipt={onPrintReceipt ? (don) => onPrintReceipt(don, 'POS_80') : undefined}
         />
       )}
 
@@ -764,8 +815,8 @@ export const ActualDonationManagementSection: React.FC<ActualDonationManagementS
           collectionWorkers={collectionWorkers}
           currentMosque={currentMosque}
           currentUser={currentUser}
-          onPrintReceipt={onPrintReceipt}
-          onCancelDonation={onCancelDonation}
+          onPrintReceipt={handlePrintReceipt}
+          onCancelDonation={handleCancelDonation}
           language={language}
         />
       )}

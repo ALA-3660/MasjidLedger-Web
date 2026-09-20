@@ -747,6 +747,7 @@ export interface Donation {
   areaId?: string;
   donationPlanId?: string;
   planCode?: string;
+  collectionId?: string;
   collectionWorkerId?: string;
   status: 'COMPLETED' | 'CANCELLED';
   cancellationReason?: string;
@@ -919,6 +920,9 @@ export interface DonationCollection {
   id: string;
   mosqueId: string;
   donationPlanId: string;
+  planCode?: string;
+  collectionCode?: string;
+  periodName?: string;
   personId: string;
   personNameBn?: string;
   personCode?: string;

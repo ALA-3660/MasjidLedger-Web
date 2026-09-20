@@ -50,6 +50,8 @@ import {
   PersonMaster,
   DonationPlan,
   CollectionWorker,
+  DonationCollection,
+  CollectionStatus,
 } from '../types';
 import {
   OfficialDocument,
@@ -649,9 +651,14 @@ class ApiService {
     return res.data || [];
   }
 
-  async createDonation(data: any): Promise<Donation> {
+  async createDonation(data: any, idempotencyKey?: string): Promise<Donation> {
+    const headers: Record<string, string> = {};
+    if (idempotencyKey) {
+      headers['X-Idempotency-Key'] = idempotencyKey;
+    }
     const res = await this.request<Donation>('/donations', {
       method: 'POST',
+      headers,
       body: JSON.stringify(data),
     });
     if (!res.success) throw new Error(res.error?.message || 'Failed to create donation');
@@ -1515,6 +1522,15 @@ class ApiService {
     return res.data!;
   }
 
+  async collectPropertyRent(propertyId: string, data: any): Promise<any> {
+    const res = await this.request<any>(`/properties/${propertyId}/rent-collections`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to collect property rent');
+    return res.data!;
+  }
+
   async getCemeteryRecords(): Promise<CemeteryRecord[]> {
     const res = await this.request<CemeteryRecord[]>('/cemetery');
     return res.data || [];
@@ -2255,6 +2271,56 @@ class ApiService {
       body: JSON.stringify({ status }),
     });
     if (!res.success || !res.data) throw new Error(res.error?.message || 'সংগ্রহকারীর স্ট্যাটাস পরিবর্তন ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  // --- Donation Collections (B6) ---
+  async getDonationCollections(params?: Record<string, string>): Promise<DonationCollection[]> {
+    let queryString = '';
+    if (params && Object.keys(params).length > 0) {
+      const searchParams = new URLSearchParams();
+      Object.entries(params).forEach(([key, val]) => {
+        if (val !== undefined && val !== null && val !== '') {
+          searchParams.append(key, val);
+        }
+      });
+      const qs = searchParams.toString();
+      if (qs) queryString = `?${qs}`;
+    }
+    const res = await this.request<DonationCollection[]>(`/donation-collections${queryString}`);
+    return res.data || [];
+  }
+
+  async getDonationCollection(id: string): Promise<DonationCollection> {
+    const res = await this.request<DonationCollection>(`/donation-collections/${id}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'সংগ্রহের তথ্য পাওয়া যায়নি');
+    return res.data;
+  }
+
+  async createDonationCollection(data: Partial<DonationCollection>): Promise<DonationCollection> {
+    const res = await this.request<DonationCollection>('/donation-collections', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'সংগ্রহ কার্যক্রম তৈরি করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateDonationCollection(id: string, data: Partial<DonationCollection>): Promise<DonationCollection> {
+    const res = await this.request<DonationCollection>(`/donation-collections/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'সংগ্রহের তথ্য হালনাগাদ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateDonationCollectionStatus(id: string, status: CollectionStatus, note?: string): Promise<DonationCollection> {
+    const res = await this.request<DonationCollection>(`/donation-collections/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, note }),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'সংগ্রহের স্ট্যাটাস পরিবর্তন ব্যর্থ হয়েছে');
     return res.data;
   }
 }

@@ -85,6 +85,7 @@ interface DonationViewProps {
     isReprint?: boolean
   ) => void;
   onSendSms?: (phone: string, message: string, tokenUrl?: string) => Promise<any>;
+  onOpenUnifiedIncome?: (type: 'JUMMA' | 'DONATION' | 'DONATION_BOX', boxId?: string) => void;
 }
 
 // Helper to calculate human readable duration elapsed since last opening or installation
@@ -153,6 +154,7 @@ export const DonationView: React.FC<DonationViewProps> = ({
   onUpdateBox,
   onPrintReceipt,
   onSendSms,
+  onOpenUnifiedIncome,
 }) => {
   const t = translations[language] || translations.bn;
   const [activeSubTab, setActiveSubTab] = useState<'donations' | 'boxes' | 'juma'>(forcedSubTab || 'donations');
@@ -740,6 +742,10 @@ export const DonationView: React.FC<DonationViewProps> = ({
           {activeSubTab === 'donations' && (
             <button
               onClick={() => {
+                if (onOpenUnifiedIncome) {
+                  onOpenUnifiedIncome('DONATION');
+                  return;
+                }
                 setDonorName('');
                 setDonorPhone('');
                 setDonorAddress('');
@@ -772,6 +778,10 @@ export const DonationView: React.FC<DonationViewProps> = ({
               <button
                 type="button"
                 onClick={() => {
+                  if (onOpenUnifiedIncome) {
+                    onOpenUnifiedIncome('DONATION_BOX', donationBoxes[0]?.id || '');
+                    return;
+                  }
                   setSelectedBoxId(donationBoxes[0]?.id || '');
                   setBoxAmount('');
                   setBoxNotes('');
@@ -798,7 +808,13 @@ export const DonationView: React.FC<DonationViewProps> = ({
               </button>
 
               <button
-                onClick={() => setIsJumaModalOpen(true)}
+                onClick={() => {
+                  if (onOpenUnifiedIncome) {
+                    onOpenUnifiedIncome('JUMMA');
+                    return;
+                  }
+                  setIsJumaModalOpen(true);
+                }}
                 className="bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2.5 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs transition-all cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
@@ -1175,6 +1191,10 @@ export const DonationView: React.FC<DonationViewProps> = ({
                         <button
                           type="button"
                           onClick={() => {
+                            if (onOpenUnifiedIncome) {
+                              onOpenUnifiedIncome('DONATION_BOX', box.id);
+                              return;
+                            }
                             setSelectedBoxId(box.id);
                             setBoxAmount('');
                             setBoxNotes('');
