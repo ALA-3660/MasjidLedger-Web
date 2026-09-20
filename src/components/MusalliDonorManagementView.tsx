@@ -48,6 +48,7 @@ import { DonationPlanManagementSection } from './musalli/DonationPlanManagementS
 import { ActualDonationManagementSection } from './musalli/ActualDonationManagementSection';
 import { DonationCollectionManagementSection } from './musalli/DonationCollectionManagementSection';
 import { CollectionWorkerManagementSection } from './musalli/CollectionWorkerManagementSection';
+import { MusalliReportsSection } from './musalli/MusalliReportsSection';
 
 export interface MusalliDonorManagementViewProps {
   currentMosque?: Mosque | null;
@@ -671,6 +672,21 @@ export const MusalliDonorManagementView: React.FC<MusalliDonorManagementViewProp
                 language={language}
                 onRefresh={loadData}
                 onCollectDonation={handleDirectReceiveDonation}
+                loading={loading}
+              />
+            ) : activeSection === 'reports' ? (
+              <MusalliReportsSection
+                collections={collections}
+                plans={plans}
+                persons={persons}
+                families={families}
+                areas={areas}
+                workers={workers}
+                donations={donations}
+                currentMosque={currentMosque || null}
+                currentUser={currentUser || null}
+                language={language}
+                onRefresh={loadData}
                 loading={loading}
               />
             ) : (
