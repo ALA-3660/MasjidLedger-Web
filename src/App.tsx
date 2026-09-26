@@ -1184,6 +1184,11 @@ export default function App() {
           expenses={expenses}
           accountHeads={accountHeads}
           accounts={accounts}
+          incomes={incomes}
+          transfers={transfers}
+          staff={staff}
+          assets={assets}
+          properties={properties}
           currentUser={currentUser}
           currentMosque={mosque}
           language={language}

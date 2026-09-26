@@ -3126,16 +3126,74 @@ app.post('/api/v1/accounting/expense', authenticate, requirePermission('CREATE_E
     return res.json(cached);
   }
 
-  const { mainHeadId, subHeadId, amount, paymentMethod, accountId, payeeName, payeePhone, reference, description, date, attachmentUrl } = req.body;
+  const { mainHeadId, subHeadId, amount, paymentMethod, accountId, payeeName, payeePhone, reference, description, date, attachmentUrl, sourceModule, sourceId, sourceType } = req.body;
   const numAmount = Number(amount);
-  if (!numAmount || numAmount <= 0) {
-    return res.status(400).json({ success: false, error: { code: 'INVALID_AMOUNT', message: 'খরচের পরিমাণ অবশ্যই শূন্যের চেয়ে বেশি হতে হবে।' } });
+  if (!numAmount || isNaN(numAmount) || !isFinite(numAmount) || numAmount <= 0) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_AMOUNT', message: 'খরচের পরিমাণ অবশ্যই বৈধ এবং শূন্যের চেয়ে বেশি হতে হবে।' } });
   }
 
   const mosqueId = req.currentMosque!.id;
-  const mainHead = db.accountHeads.find(h => h.id === mainHeadId);
-  const subHead = db.accountHeads.find(h => h.id === subHeadId);
-  const account = db.accounts.find(a => a.id === accountId) || db.accounts.find(a => a.mosqueId === mosqueId);
+
+  // Validate Account
+  if (!accountId) {
+    return res.status(400).json({ success: false, error: { code: 'REQUIRED_ACCOUNT', message: 'পরিশোধের আর্থিক হিসাব/অ্যাকাউন্ট নির্বাচন করা বাধ্যতামূলক।' } });
+  }
+
+  const account = db.accounts.find(a => a.id === accountId && a.mosqueId === mosqueId);
+  if (!account) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_ACCOUNT', message: 'পরিশোধের নির্বাচিত অ্যাকাউন্টটি সঠিক নয় বা এই মসজিদের আওতাভুক্ত নয়।' } });
+  }
+
+  if (account.status && account.status !== 'ACTIVE') {
+    return res.status(400).json({ success: false, error: { code: 'INACTIVE_ACCOUNT', message: 'নির্বাচিত অ্যাকাউন্টটি নিষ্ক্রিয় (Inactive)। দয়া করে সক্রিয় অ্যাকাউন্ট নির্বাচন করুন।' } });
+  }
+
+  // Authoritative Server-side Balance Validation
+  if (account.currentBalance < numAmount) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: 'INSUFFICIENT_BALANCE',
+        message: `হিসাবে অপর্যাপ্ত ব্যালেন্স। অ্যাকাউন্ট "${account.nameBn}"-এর বর্তমান স্থিতি: ৳${account.currentBalance.toLocaleString('en-IN')}, কিন্তু ব্যয়ের পরিমাণ: ৳${numAmount.toLocaleString('en-IN')}।`
+      }
+    });
+  }
+
+  // Validate Expense Head
+  if (!mainHeadId) {
+    return res.status(400).json({ success: false, error: { code: 'REQUIRED_HEAD', message: 'ব্যয়ের প্রধান খাত নির্বাচন করা বাধ্যতামূলক।' } });
+  }
+
+  const mainHead = db.accountHeads.find(h => h.id === mainHeadId && (h.mosqueId === mosqueId || !h.mosqueId));
+  if (!mainHead) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_HEAD', message: 'নির্বাচিত প্রধান ব্যয়ের খাতটি পাওয়া যায়নি।' } });
+  }
+
+  const subHead = subHeadId ? db.accountHeads.find(h => h.id === subHeadId && (h.mosqueId === mosqueId || !h.mosqueId)) : undefined;
+
+  // Validate Payee
+  const cleanPayee = (payeeName || '').trim();
+  if (!cleanPayee) {
+    return res.status(400).json({ success: false, error: { code: 'REQUIRED_PAYEE', message: 'প্রাপক বা সুবিধাভোগী ব্যক্তির নাম প্রদান করুন।' } });
+  }
+
+  // Validate Source entity if linked
+  if (sourceModule === 'STAFF_EXPENSE' && sourceId) {
+    const staff = db.staffList.find(s => s.id === sourceId && s.mosqueId === mosqueId);
+    if (!staff) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_SOURCE', message: 'সংযুক্ত স্টাফ রেকর্ডটি এই মসজিদে খুঁজে পাওয়া যায়নি।' } });
+    }
+  } else if (sourceModule === 'ASSET_EXPENSE' && sourceId) {
+    const asset = db.assets.find(a => a.id === sourceId && a.mosqueId === mosqueId);
+    if (!asset) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_SOURCE', message: 'সংযুক্ত সম্পদ (Asset) রেকর্ডটি এই মসজিদে খুঁজে পাওয়া যায়নি।' } });
+    }
+  } else if (sourceModule === 'PROPERTY_EXPENSE' && sourceId) {
+    const property = db.properties.find(p => p.id === sourceId && p.mosqueId === mosqueId);
+    if (!property) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_SOURCE', message: 'সংযুক্ত ওয়াকফ সম্পত্তি রেকর্ডটি এই মসজিদে খুঁজে পাওয়া যায়নি।' } });
+    }
+  }
 
   const year = new Date().getFullYear();
   const count = db.expenseEntries.filter(e => e.mosqueId === mosqueId).length + 1;
@@ -3148,17 +3206,20 @@ app.post('/api/v1/accounting/expense', authenticate, requirePermission('CREATE_E
     date: date || new Date().toISOString().split('T')[0],
     mainHeadId,
     mainHeadNameBn: mainHead?.nameBn || 'অন্যান্য ব্যয়',
-    subHeadId,
+    subHeadId: subHead?.id,
     subHeadNameBn: subHead?.nameBn,
     amount: numAmount,
     paymentMethod: paymentMethod || 'CASH',
-    accountId: account?.id || 'acc-cash-01',
-    accountName: account?.nameBn || 'প্রধান ক্যাশ',
-    payeeName: payeeName || 'সরবরাহকারী/স্টাফ',
-    payeePhone,
-    reference,
-    description,
-    attachmentUrl,
+    accountId: account.id,
+    accountName: account.nameBn || 'প্রধান ক্যাশ',
+    payeeName: cleanPayee,
+    payeePhone: payeePhone ? String(payeePhone).trim() : undefined,
+    reference: reference ? String(reference).trim() : undefined,
+    description: description ? String(description).trim() : undefined,
+    attachmentUrl: attachmentUrl ? String(attachmentUrl).trim() : undefined,
+    sourceModule: sourceModule || undefined,
+    sourceId: sourceId || undefined,
+    sourceType: sourceType || undefined,
     createdBy: req.user!.id,
     createdByName: req.user!.name,
     status: 'APPROVED' as const,
@@ -3169,14 +3230,22 @@ app.post('/api/v1/accounting/expense', authenticate, requirePermission('CREATE_E
     updatedAt: new Date().toISOString()
   };
 
-  if (account) {
-    account.currentBalance -= numAmount;
-  }
+  // Atomic Balance Deduction
+  account.currentBalance -= numAmount;
 
   db.expenseEntries.unshift(entry);
   db.save();
 
-  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'EXPENSE', `ব্যয় ভাউচার তৈরি (${voucherNumber}): ৳ ${numAmount}`, entry.id);
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'EXPENSE',
+    `ব্যয় ভাউচার তৈরি (${voucherNumber}): ৳${numAmount} [খাত: ${mainHead.nameBn}${subHead ? ` > ${subHead.nameBn}` : ''}, হিসাব: ${account.nameBn}, মাধ্যম: ${paymentMethod || 'CASH'}, উৎস: ${sourceModule || 'GENERAL_EXPENSE'}]`,
+    entry.id
+  );
 
   const responsePayload = { success: true, data: entry, message: 'ব্যয় ভাউচার সফলভাবে অনুমোদিত ও পরিশোধ রেকর্ড করা হয়েছে।' };
   db.saveIdempotency(req.idempotencyKey, responsePayload);
@@ -3197,17 +3266,27 @@ app.post('/api/v1/accounting/expense/:id/reverse', authenticate, requirePermissi
     return res.status(400).json({ success: false, error: { code: 'ALREADY_CANCELLED', message: 'এই ভাউচার ইতিমধ্যে বাতিল করা হয়েছে।' } });
   }
 
-  const account = db.accounts.find(a => a.id === item.accountId);
+  const account = db.accounts.find(a => a.id === item.accountId && a.mosqueId === req.currentMosque!.id);
   if (account && item.status === 'APPROVED') {
     account.currentBalance += item.amount;
   }
 
   item.status = 'CANCELLED';
+  item.isReversal = true;
   item.rejectionReason = reason || 'অ্যাডমিন কর্তৃক রিভার্সাল';
   item.updatedAt = new Date().toISOString();
   db.save();
 
-  db.logAudit(req.currentMosque!.id, req.user!.id, req.user!.name, req.user!.role, 'CANCEL', 'EXPENSE', `ব্যয় ভাউচার বাতিল (${item.voucherNumber}): ৳ ${item.amount}`, item.id);
+  db.logAudit(
+    req.currentMosque!.id,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CANCEL',
+    'EXPENSE',
+    `ব্যয় ভাউচার বাতিল (${item.voucherNumber}): ৳${item.amount} ফেরত প্রদান করা হয়েছে (${account ? account.nameBn : 'হিসাব'}). কারণ: ${reason || 'রিভার্সাল'}`,
+    item.id
+  );
 
   realtime.broadcastToMosque(req.currentMosque!.id, 'EXPENSE_REVERSED', item, { senderId: req.user!.id });
   realtime.broadcastToMosque(req.currentMosque!.id, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(req.currentMosque!.id));
@@ -3284,6 +3363,110 @@ app.put('/api/v1/accounting/expense/:id', authenticate, requirePermission('CREAT
   realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
 
   res.json({ success: true, data: item, message: 'ব্যয় ভাউচার সফলভাবে হালনাগাদ ও হিসাব সমন্বয় করা হয়েছে।' });
+});
+
+// ============================================================================
+// PHASE E6: BUDGET & EXPENSE CONTROL API ROUTES
+// (Planning & Control Layer - Zero Financial Delta)
+// ============================================================================
+
+app.get('/api/v1/budgets', authenticate, requirePermission('VIEW_BUDGET'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const includeArchived = req.query.includeArchived === 'true';
+  const type = req.query.type as string | undefined;
+  const items = db.getBudgets(mosqueId, { includeArchived, type });
+  res.json({ success: true, data: items });
+});
+
+app.get('/api/v1/budgets/:id', authenticate, requirePermission('VIEW_BUDGET'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const result = db.getBudgetById(req.params.id, mosqueId);
+  if (!result) {
+    return res.status(404).json({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'বাজেট রেকর্ড খুঁজে পাওয়া যায়নি।' },
+    });
+  }
+  res.json({ success: true, data: result });
+});
+
+app.post('/api/v1/budgets', authenticate, requirePermission('CREATE_BUDGET'), (req: AuthRequest, res: Response) => {
+  try {
+    const { budget, lines } = req.body;
+    if (!budget || !budget.budgetName || !lines || !Array.isArray(lines)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_DATA', message: 'বাজেটের নাম এবং খাতের বিবরণ আবশ্যক।' },
+      });
+    }
+    const result = db.createBudget({ budget, lines }, req.user!);
+    res.json({ success: true, data: result, message: 'নতুন বাজেট সফলভাবে তৈরি করা হয়েছে।' });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: { code: 'CREATE_ERROR', message: err.message } });
+  }
+});
+
+app.put('/api/v1/budgets/:id', authenticate, requirePermission('EDIT_BUDGET'), (req: AuthRequest, res: Response) => {
+  try {
+    const { budget, lines } = req.body;
+    const result = db.updateDraftBudget(req.params.id, { budget, lines }, req.user!);
+    res.json({ success: true, data: result, message: 'ড্রাফট বাজেট সফলভাবে হালনাগাদ করা হয়েছে।' });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: { code: 'UPDATE_ERROR', message: err.message } });
+  }
+});
+
+app.post('/api/v1/budgets/:id/submit', authenticate, requirePermission('SUBMIT_BUDGET'), (req: AuthRequest, res: Response) => {
+  try {
+    const budget = db.submitBudget(req.params.id, req.user!);
+    res.json({ success: true, data: budget, message: 'বাজেট অনুমোদনের জন্য সফলভাবে পেশ করা হয়েছে।' });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: { code: 'SUBMIT_ERROR', message: err.message } });
+  }
+});
+
+app.post('/api/v1/budgets/:id/approve', authenticate, requirePermission('APPROVE_BUDGET'), (req: AuthRequest, res: Response) => {
+  try {
+    const budget = db.approveBudget(req.params.id, req.user!);
+    res.json({ success: true, data: budget, message: 'বাজেট চূড়ান্তভাবে অনুমোদিত ও সক্রিয় করা হয়েছে।' });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: { code: 'APPROVE_ERROR', message: err.message } });
+  }
+});
+
+app.post('/api/v1/budgets/:id/revise', authenticate, requirePermission('REVISE_BUDGET'), (req: AuthRequest, res: Response) => {
+  try {
+    const { lines, notes } = req.body;
+    if (!lines || !Array.isArray(lines)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_DATA', message: 'সংশোধিত খাতের বিবরণ আবশ্যক।' },
+      });
+    }
+    const result = db.reviseBudget(req.params.id, lines, notes || '', req.user!);
+    res.json({ success: true, data: result, message: 'বাজেট সফলভাবে রিভাইজ ও নতুন রিভিশন সক্রিয় করা হয়েছে।' });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: { code: 'REVISE_ERROR', message: err.message } });
+  }
+});
+
+app.post('/api/v1/budgets/:id/close', authenticate, requirePermission('CLOSE_BUDGET'), (req: AuthRequest, res: Response) => {
+  try {
+    const { notes } = req.body;
+    const budget = db.closeBudget(req.params.id, notes || '', req.user!);
+    res.json({ success: true, data: budget, message: 'বাজেটের কার্যকাল সমাপ্ত (Closed) করা হয়েছে।' });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: { code: 'CLOSE_ERROR', message: err.message } });
+  }
+});
+
+app.delete('/api/v1/budgets/:id', authenticate, requirePermission('EDIT_BUDGET'), (req: AuthRequest, res: Response) => {
+  try {
+    db.deleteDraftBudget(req.params.id, req.user!);
+    res.json({ success: true, message: 'খসড়া বাজেট সফলভাবে মুছে ফেলা হয়েছে।' });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: { code: 'DELETE_ERROR', message: err.message } });
+  }
 });
 
 // ==========================================

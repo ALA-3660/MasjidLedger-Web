@@ -52,6 +52,9 @@ import {
   CollectionWorker,
   DonationCollection,
   CollectionStatus,
+  Budget,
+  BudgetLine,
+  CommitteeActionPlan,
 } from '../types';
 import {
   OfficialDocument,
@@ -2321,6 +2324,118 @@ class ApiService {
       body: JSON.stringify({ status, note }),
     });
     if (!res.success || !res.data) throw new Error(res.error?.message || 'সংগ্রহের স্ট্যাটাস পরিবর্তন ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  // ==========================================================================
+  // PHASE E6: BUDGET & EXPENSE CONTROL API METHODS
+  // (Zero Financial Delta - Planning & Control Layer Only)
+  // ==========================================================================
+
+  async getBudgets(params?: { includeArchived?: boolean; type?: string }): Promise<Budget[]> {
+    const query = new URLSearchParams();
+    if (params?.includeArchived) query.set('includeArchived', 'true');
+    if (params?.type && params.type !== 'ALL') query.set('type', params.type);
+    const qStr = query.toString() ? `?${query.toString()}` : '';
+    const res = await this.request<Budget[]>(`/budgets${qStr}`);
+    if (!res.success || !res.data) return [];
+    return res.data;
+  }
+
+  async getBudget(id: string): Promise<{ budget: Budget; lines: BudgetLine[] }> {
+    const res = await this.request<{ budget: Budget; lines: BudgetLine[] }>(`/budgets/${id}`);
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'বাজেট তথ্য লোড করা যায়নি');
+    }
+    return res.data;
+  }
+
+  async createBudget(data: {
+    budget: Partial<Budget>;
+    lines: Partial<BudgetLine>[];
+  }): Promise<{ budget: Budget; lines: BudgetLine[] }> {
+    const res = await this.request<{ budget: Budget; lines: BudgetLine[] }>('/budgets', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'বাজেট তৈরি করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async updateBudget(
+    id: string,
+    data: { budget?: Partial<Budget>; lines?: Partial<BudgetLine>[] }
+  ): Promise<{ budget: Budget; lines: BudgetLine[] }> {
+    const res = await this.request<{ budget: Budget; lines: BudgetLine[] }>(`/budgets/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'বাজেট হালনাগাদ করা যায়নি');
+    }
+    return res.data;
+  }
+
+  async submitBudget(id: string): Promise<Budget> {
+    const res = await this.request<Budget>(`/budgets/${id}/submit`, {
+      method: 'POST',
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'বাজেট সাবমিট করা যায়নি');
+    }
+    return res.data;
+  }
+
+  async approveBudget(id: string): Promise<Budget> {
+    const res = await this.request<Budget>(`/budgets/${id}/approve`, {
+      method: 'POST',
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'বাজেট অনুমোদন করা যায়নি');
+    }
+    return res.data;
+  }
+
+  async reviseBudget(
+    id: string,
+    data: { lines: Partial<BudgetLine>[]; notes?: string }
+  ): Promise<{ budget: Budget; lines: BudgetLine[] }> {
+    const res = await this.request<{ budget: Budget; lines: BudgetLine[] }>(`/budgets/${id}/revise`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'বাজেট রিভাইজ করা যায়নি');
+    }
+    return res.data;
+  }
+
+  async closeBudget(id: string, notes?: string): Promise<Budget> {
+    const res = await this.request<Budget>(`/budgets/${id}/close`, {
+      method: 'POST',
+      body: JSON.stringify({ notes }),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'বাজেট ক্লোজ করা যায়নি');
+    }
+    return res.data;
+  }
+
+  async deleteBudget(id: string): Promise<boolean> {
+    const res = await this.request(`/budgets/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.success) {
+      throw new Error(res.error?.message || 'বাজেট মুছতে ব্যর্থ হয়েছে');
+    }
+    return true;
+  }
+
+  async getActionPlans(): Promise<CommitteeActionPlan[]> {
+    const res = await this.request<CommitteeActionPlan[]>('/committee/action-plans');
+    if (!res.success || !res.data) return [];
     return res.data;
   }
 }

@@ -60,7 +60,16 @@ export type Permission =
   | 'UPDATE_DONATION_COLLECTION_STATUS'
   | 'ASSIGN_COLLECTION_WORKER'
   | 'MANAGE_DONATION_COLLECTION'
-  | 'VIEW_ASSIGNED_COLLECTION';
+  | 'VIEW_ASSIGNED_COLLECTION'
+  | 'VIEW_BUDGET'
+  | 'CREATE_BUDGET'
+  | 'EDIT_BUDGET'
+  | 'SUBMIT_BUDGET'
+  | 'APPROVE_BUDGET'
+  | 'REVISE_BUDGET'
+  | 'CLOSE_BUDGET'
+  | 'VIEW_BUDGET_ANALYSIS'
+  | 'EXPORT_BUDGET_REPORT';
 
 export interface User {
   id: string;
@@ -713,6 +722,9 @@ export interface ExpenseEntry {
   status: TransactionStatus;
   isReversal?: boolean;
   reversalOfId?: string;
+  sourceModule?: string;
+  sourceId?: string;
+  sourceType?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -3093,6 +3105,156 @@ export interface ApiResponse<T = any> {
     message: string;
     fields?: Record<string, string>;
   };
+}
+
+// ============================================================================
+// PHASE E6: BUDGET & EXPENSE CONTROL MODELS
+// ============================================================================
+
+export type BudgetType = 'OPERATING' | 'PROJECT';
+export type BudgetStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'ACTIVE' | 'REVISED' | 'CLOSED';
+export type BudgetWarningStatus = 'NORMAL' | 'WARNING' | 'HIGH_UTILIZATION' | 'OVER_BUDGET';
+
+export interface Budget {
+  id: string;
+  mosqueId: string;
+  budgetName: string;
+  budgetType: BudgetType;
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  status: BudgetStatus;
+  notes?: string;
+  totalPlannedAmount: number;
+  revisionNumber: number;
+  previousRevisionId?: string;
+  projectId?: string; // Linked to CommitteeActionPlan.id
+  createdBy: string;
+  createdByName?: string;
+  approvedBy?: string;
+  approvedByName?: string;
+  approvedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  isArchived?: boolean;
+}
+
+export interface BudgetLine {
+  id: string;
+  budgetId: string;
+  mainHeadId: string;
+  mainHeadNameBn: string;
+  subHeadId?: string;
+  subHeadNameBn?: string;
+  plannedAmount: number;
+  notes?: string;
+}
+
+export interface BudgetControlLineItem {
+  id: string;
+  budgetId: string;
+  budgetName: string;
+  budgetType: BudgetType;
+  budgetPeriod: string;
+  mainHeadId: string;
+  mainHeadNameBn: string;
+  subHeadId?: string;
+  subHeadNameBn?: string;
+  plannedAmount: number;
+  actualAmount: number;
+  remainingAmount: number;
+  utilizationPercent: number;
+  varianceAmount: number;
+  isOverBudget: boolean;
+  warningStatus: BudgetWarningStatus;
+  projectId?: string;
+  projectName?: string;
+  notes?: string;
+}
+
+export interface BudgetControlSummary {
+  totalPlannedAmount: number;
+  totalActualAmount: number;
+  remainingAmount: number;
+  overallUtilizationPercent: number;
+  varianceAmount: number;
+  isOverBudget: boolean;
+  normalCount: number;
+  warningCount: number;
+  highUtilizationCount: number;
+  overBudgetCount: number;
+  activeBudgetsCount: number;
+  activeProjectBudgetsCount: number;
+}
+
+export interface BudgetMonthlyBreakdownItem {
+  monthKey: string; // YYYY-MM
+  monthNameBn: string;
+  plannedAmount: number;
+  actualAmount: number;
+  remainingAmount: number;
+  utilizationPercent: number;
+  varianceAmount: number;
+  isOverBudget: boolean;
+  status: BudgetWarningStatus;
+}
+
+export interface BudgetHeadwiseBreakdownItem {
+  mainHeadId: string;
+  mainHeadNameBn: string;
+  plannedAmount: number;
+  actualAmount: number;
+  remainingAmount: number;
+  utilizationPercent: number;
+  varianceAmount: number;
+  isOverBudget: boolean;
+  status: BudgetWarningStatus;
+  subHeads: {
+    subHeadId?: string;
+    subHeadNameBn?: string;
+    plannedAmount: number;
+    actualAmount: number;
+    remainingAmount: number;
+    utilizationPercent: number;
+    varianceAmount: number;
+    isOverBudget: boolean;
+    status: BudgetWarningStatus;
+  }[];
+}
+
+export interface BudgetAnnualBreakdownItem {
+  year: number;
+  yearBn: string;
+  plannedAmount: number;
+  actualAmount: number;
+  remainingAmount: number;
+  utilizationPercent: number;
+  varianceAmount: number;
+  isOverBudget: boolean;
+  status: BudgetWarningStatus;
+}
+
+export interface BudgetProjectItem {
+  projectId: string;
+  projectName: string;
+  estimatedBudget: number;
+  approvedBudget: number;
+  actualExpense: number;
+  remaining: number;
+  utilizationPercent: number;
+  status: string;
+  warningStatus: BudgetWarningStatus;
+}
+
+export interface BudgetControlDataset {
+  budget: Budget | null;
+  lines: BudgetControlLineItem[];
+  summary: BudgetControlSummary;
+  monthlyBreakdown: BudgetMonthlyBreakdownItem[];
+  headwiseBreakdown: BudgetHeadwiseBreakdownItem[];
+  annualBreakdown: BudgetAnnualBreakdownItem[];
+  projectBudgets: BudgetProjectItem[];
+  overBudgetItems: BudgetControlLineItem[];
+  warningItems: BudgetControlLineItem[];
 }
 
 export * from './qrBarcodeTypes';

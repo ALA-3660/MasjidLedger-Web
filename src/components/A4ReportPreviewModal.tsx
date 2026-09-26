@@ -64,11 +64,12 @@ export function A4ReportPreviewModal<T>({
             includeLetterhead={includeLetterhead}
             onToggleLetterhead={setIncludeLetterhead}
             orientation={orientation}
-            onToggleOrientation={setOrientation}
+            onChangeOrientation={setOrientation}
             onPrint={handlePrint}
             onExcel={onExcel}
             onClose={onClose}
-            reportTitle={reportTitle}
+            title={reportTitle}
+            subtitle={reportSubtitle}
           />
         </div>
 
@@ -174,26 +175,35 @@ export function A4ReportPreviewModal<T>({
           </div>
 
           {/* Official Signatures Section */}
-          <div className="pt-12 pb-4 mt-8 border-t border-slate-200 text-xs">
-            <div className="grid grid-cols-3 gap-8 text-center">
+          <div className="pt-10 pb-3 mt-6 border-t border-slate-200 text-xs break-inside-avoid">
+            <div className="grid grid-cols-3 gap-8 text-center mb-6">
               <div>
-                <div className="border-t border-dashed border-slate-400 pt-1.5 font-bold text-slate-700">
+                <div className="border-t border-dashed border-slate-400 pt-1.5 font-bold text-slate-800 font-secondary">
                   প্রস্তুতকারীর স্বাক্ষর
                 </div>
-                <div className="text-[10px] text-slate-500">হিসাব সহকারী / ইউজার</div>
+                <div className="text-[10px] text-slate-500 font-secondary mt-0.5">হিসাব সহকারী / প্রস্তুতকারক</div>
+                <div className="text-[9px] text-slate-400 mt-0.5">তারিখ: .............................</div>
               </div>
               <div>
-                <div className="border-t border-dashed border-slate-400 pt-1.5 font-bold text-slate-700">
-                  যাচাইকারী / ক্যাশিয়ার
+                <div className="border-t border-dashed border-slate-400 pt-1.5 font-bold text-slate-800 font-secondary">
+                  হিসাব নিরীক্ষক / ক্যাশিয়ার
                 </div>
-                <div className="text-[10px] text-slate-500">অর্থ সম্পাদক</div>
+                <div className="text-[10px] text-slate-500 font-secondary mt-0.5">অর্থ সম্পাদক / অডিটর</div>
+                <div className="text-[9px] text-slate-400 mt-0.5">তারিখ: .............................</div>
               </div>
               <div>
-                <div className="border-t border-dashed border-slate-400 pt-1.5 font-bold text-slate-700">
+                <div className="border-t border-dashed border-slate-400 pt-1.5 font-bold text-slate-800 font-secondary">
                   সভাপতি / সাধারণ সম্পাদক
                 </div>
-                <div className="text-[10px] text-slate-500">মসজিদ পরিচালনা কমিটি</div>
+                <div className="text-[10px] text-slate-500 font-secondary mt-0.5">মসজিদ পরিচালনা কমিটি</div>
+                <div className="text-[9px] text-slate-400 mt-0.5">তারিখ: .............................</div>
               </div>
+            </div>
+
+            {/* Footer Document Audit Note */}
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400 font-secondary">
+              <span>MasjidLedger Pro v2.6 • অফিসিয়াল ব্যয় ও আর্থিক প্রতিবেদন</span>
+              <span>প্রস্তুতের সময়: {new Date().toLocaleString('bn-BD')}</span>
             </div>
           </div>
         </div>

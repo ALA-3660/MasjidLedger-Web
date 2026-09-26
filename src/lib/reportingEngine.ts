@@ -173,6 +173,12 @@ export interface ExcelColumnDef<T> {
   accessor: (item: T, index: number) => string | number;
 }
 
+export interface ExcelSheetData {
+  name: string;
+  aoa: any[][];
+  colWidths?: { wch: number }[];
+}
+
 export const exportToXlsx = <T>(options: {
   filename: string;
   sheetName: string;
@@ -182,46 +188,99 @@ export const exportToXlsx = <T>(options: {
   columns: ExcelColumnDef<T>[];
   data: T[];
   summaryRows?: { label: string; value: string | number }[];
+  sheets?: ExcelSheetData[];
+  grandTotalRow?: (string | number)[];
 }) => {
-  const { filename, sheetName, mosqueName, reportTitle, periodLabel, columns, data, summaryRows } = options;
+  const {
+    filename,
+    sheetName,
+    mosqueName,
+    reportTitle,
+    periodLabel,
+    columns,
+    data,
+    summaryRows,
+    sheets,
+    grandTotalRow,
+  } = options;
 
-  const aoa: any[][] = [];
-
-  // Header rows
-  aoa.push([mosqueName]);
-  aoa.push(['MasjidLedger Pro — ' + reportTitle]);
-  aoa.push(['সময়সীমা: ' + periodLabel]);
-  aoa.push(['রিপোর্ট তৈরির তারিখ: ' + new Date().toLocaleString('bn-BD')]);
-  aoa.push([]); // blank row
-
-  // Table Column Headers
-  aoa.push(['ক্রঃ নং', ...columns.map((c) => c.header)]);
-
-  // Data rows
-  data.forEach((item, idx) => {
-    const row = [idx + 1, ...columns.map((c) => c.accessor(item, idx))];
-    aoa.push(row);
-  });
-
-  // Summary rows if any
-  if (summaryRows && summaryRows.length > 0) {
-    aoa.push([]); // blank
-    aoa.push(['--- সারাংশ / মোট বিবরণ ---']);
-    summaryRows.forEach((s) => {
-      aoa.push([s.label, s.value]);
-    });
-  }
-
-  // Create worksheet
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-
-  // Set column widths
-  const colWidths = [{ wch: 8 }, ...columns.map((c) => ({ wch: Math.max(c.header.length * 2, 16) }))];
-  ws['!cols'] = colWidths;
-
-  // Create workbook
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, sheetName.slice(0, 31));
+
+  // If explicit custom sheets are provided, use them directly
+  if (sheets && sheets.length > 0) {
+    sheets.forEach((s) => {
+      const ws = XLSX.utils.aoa_to_sheet(s.aoa);
+      if (s.colWidths) {
+        ws['!cols'] = s.colWidths;
+      }
+      XLSX.utils.book_append_sheet(wb, ws, s.name.slice(0, 31));
+    });
+  } else {
+    // Standard 2-Sheet Architecture:
+    // Sheet 1: সারসংক্ষেপ (Summary KPIs & Metadata)
+    if (summaryRows && summaryRows.length > 0) {
+      const summaryAoa: any[][] = [];
+      summaryAoa.push([mosqueName]);
+      summaryAoa.push(['MasjidLedger Pro — ' + reportTitle]);
+      summaryAoa.push(['সময়সীমা: ' + periodLabel]);
+      summaryAoa.push(['রিপোর্ট প্রস্তুতের তারিখ: ' + new Date().toLocaleString('bn-BD')]);
+      summaryAoa.push(['সফটওয়্যার সংস্করণ: MasjidLedger Pro v2.6 (Audit Ready)']);
+      summaryAoa.push([]); // blank row
+      summaryAoa.push(['সারসংক্ষেপ মেট্রিক / সূচক', 'মান / পরিমাণ']);
+
+      summaryRows.forEach((s) => {
+        summaryAoa.push([s.label, s.value]);
+      });
+
+      const wsSummary = XLSX.utils.aoa_to_sheet(summaryAoa);
+      wsSummary['!cols'] = [{ wch: 36 }, { wch: 32 }];
+      XLSX.utils.book_append_sheet(wb, wsSummary, 'সারসংক্ষেপ (Summary)');
+    }
+
+    // Sheet 2: বিস্তারিত বিবরণ / খতিয়ান (Detailed Records)
+    const detailAoa: any[][] = [];
+
+    // Header block
+    detailAoa.push([mosqueName]);
+    detailAoa.push(['MasjidLedger Pro — ' + reportTitle]);
+    detailAoa.push(['সময়সীমা: ' + periodLabel + ' | প্রস্তুত: ' + new Date().toLocaleString('bn-BD')]);
+    detailAoa.push([]); // blank row
+
+    // Table Column Headers
+    detailAoa.push(['ক্রঃ নং', ...columns.map((c) => c.header)]);
+
+    // Data rows (Ensuring numeric cells remain numbers in Excel)
+    data.forEach((item, idx) => {
+      const row = [
+        idx + 1,
+        ...columns.map((c) => {
+          const val = c.accessor(item, idx);
+          // If value is null or undefined, return clean empty string
+          if (val === null || val === undefined) return '';
+          return val;
+        }),
+      ];
+      detailAoa.push(row);
+    });
+
+    // Grand total row if provided
+    if (grandTotalRow && grandTotalRow.length > 0) {
+      detailAoa.push([]); // blank separator
+      detailAoa.push(['সর্বমোট', ...grandTotalRow]);
+    } else if (summaryRows && (!summaryRows || summaryRows.length === 0)) {
+      // If no summary sheet, keep summary at bottom of single sheet
+    }
+
+    const wsDetail = XLSX.utils.aoa_to_sheet(detailAoa);
+    const colWidths = [
+      { wch: 8 },
+      ...columns.map((c) => ({ wch: Math.max(c.header.length * 2, 16) })),
+    ];
+    wsDetail['!cols'] = colWidths;
+
+    const detailSheetTitle = (sheetName || 'বিস্তারিত তথ্য').slice(0, 31);
+    XLSX.utils.book_append_sheet(wb, wsDetail, detailSheetTitle);
+  }
 
   // Trigger download
   const fullFilename = filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`;

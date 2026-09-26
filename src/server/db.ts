@@ -58,6 +58,8 @@ import {
   DonationPlan,
   CollectionWorker,
   DonationCollection,
+  Budget,
+  BudgetLine,
 } from '../types';
 import {
   OfficialDocument,
@@ -121,6 +123,8 @@ export class DatabaseStore {
   donationPlans: DonationPlan[] = [];
   collectionWorkers: CollectionWorker[] = [];
   donationCollections: DonationCollection[] = [];
+  budgets: Budget[] = [];
+  budgetLines: BudgetLine[] = [];
 
   constructor() {
     this.init();
@@ -142,7 +146,18 @@ export class DatabaseStore {
             ? { ...DEFAULT_PUBLIC_PORTAL_SETTINGS, ...m.publicPortalSettings }
             : { ...DEFAULT_PUBLIC_PORTAL_SETTINGS }
         }));
-        this.users = parsed.users || [];
+        this.users = (parsed.users || []).map((u: any) => {
+          if (u.role === 'ACCOUNTANT' || u.role === 'TREASURER') {
+            const existingPerms = new Set(u.permissions || []);
+            ['VIEW_BUDGET', 'CREATE_BUDGET', 'EDIT_BUDGET', 'SUBMIT_BUDGET', 'VIEW_BUDGET_ANALYSIS', 'EXPORT_BUDGET_REPORT'].forEach(p => existingPerms.add(p));
+            // Ensure accountant never has approval/revision/closing permissions
+            existingPerms.delete('APPROVE_BUDGET');
+            existingPerms.delete('REVISE_BUDGET');
+            existingPerms.delete('CLOSE_BUDGET');
+            return { ...u, permissions: Array.from(existingPerms) };
+          }
+          return u;
+        });
         this.accountHeads = parsed.accountHeads || [];
         this.accounts = parsed.accounts || [];
         this.incomeEntries = parsed.incomeEntries || [];
@@ -315,6 +330,8 @@ export class DatabaseStore {
         this.donationPlans = parsed.donationPlans || [];
         this.collectionWorkers = parsed.collectionWorkers || [];
         this.donationCollections = parsed.donationCollections || [];
+        this.budgets = parsed.budgets || [];
+        this.budgetLines = parsed.budgetLines || [];
 
         return;
       }
@@ -386,6 +403,8 @@ export class DatabaseStore {
         donationPlans: this.donationPlans,
         collectionWorkers: this.collectionWorkers,
         donationCollections: this.donationCollections,
+        budgets: this.budgets,
+        budgetLines: this.budgetLines,
       };
       fs.writeFileSync(DB_FILE_PATH, JSON.stringify(data, null, 2), 'utf-8');
     } catch (e) {
@@ -532,7 +551,8 @@ export class DatabaseStore {
         status: 'ACTIVE',
         permissions: [
           'VIEW_DASHBOARD', 'CREATE_INCOME', 'EDIT_INCOME', 'CREATE_EXPENSE', 'EDIT_EXPENSE',
-          'VIEW_REPORT', 'EXPORT_REPORT', 'MANAGE_ACCOUNTS', 'MANAGE_STAFF'
+          'VIEW_REPORT', 'EXPORT_REPORT', 'MANAGE_ACCOUNTS', 'MANAGE_STAFF',
+          'VIEW_BUDGET', 'CREATE_BUDGET', 'EDIT_BUDGET', 'SUBMIT_BUDGET', 'VIEW_BUDGET_ANALYSIS', 'EXPORT_BUDGET_REPORT'
         ],
         passwordHash: 'pass123',
         createdAt: '2026-01-01T00:00:00.000Z',
@@ -1904,6 +1924,375 @@ export class DatabaseStore {
       activePlans,
       reasons,
     };
+  }
+
+  // ==========================================================================
+  // PHASE E6: BUDGET & EXPENSE CONTROL STORE METHODS
+  // (Zero Financial Delta - Planning & Control Layer Only)
+  // ==========================================================================
+
+  getBudgets(
+    mosqueId: string,
+    options?: { includeArchived?: boolean; type?: string }
+  ): Budget[] {
+    return this.budgets.filter((b) => {
+      // Strict Mosque Isolation
+      if (b.mosqueId !== mosqueId) return false;
+      if (!options?.includeArchived && b.isArchived) return false;
+      if (options?.type && options.type !== 'ALL' && b.budgetType !== options.type) return false;
+      return true;
+    }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  getBudgetById(id: string, mosqueId: string): { budget: Budget; lines: BudgetLine[] } | null {
+    const budget = this.budgets.find((b) => b.id === id && b.mosqueId === mosqueId);
+    if (!budget) return null;
+    const lines = this.budgetLines.filter((l) => l.budgetId === budget.id);
+    return { budget, lines };
+  }
+
+  getBudgetLines(budgetId: string): BudgetLine[] {
+    return this.budgetLines.filter((l) => l.budgetId === budgetId);
+  }
+
+  validateAndCleanBudgetLines(
+    lines: Partial<BudgetLine>[],
+    budgetId: string
+  ): { cleanLines: BudgetLine[]; totalPlannedAmount: number } {
+    if (!lines || !Array.isArray(lines) || lines.length === 0) {
+      throw new Error('বাজেটের খাতের তালিকা আবশ্যক।');
+    }
+
+    const seenKeys = new Set<string>();
+    const cleanLines: BudgetLine[] = [];
+    let totalPlannedAmount = 0;
+
+    for (let idx = 0; idx < lines.length; idx++) {
+      const l = lines[idx];
+      const mainHeadId = (l.mainHeadId || '').trim();
+      if (!mainHeadId) {
+        throw new Error('বাজেটের প্রতিটি লাইনে প্রধান খাত নির্বাচন করা আবশ্যক।');
+      }
+      const subHeadId = (l.subHeadId || '').trim();
+      const key = `${mainHeadId}_${subHeadId}`;
+
+      if (seenKeys.has(key)) {
+        throw new Error('একই প্রধান খাত ও উপ-খাত এই বাজেটে ইতোমধ্যে যুক্ত আছে।');
+      }
+      seenKeys.add(key);
+
+      const rawVal = l.plannedAmount as unknown;
+      const numVal = Number(rawVal);
+      if (rawVal === null || rawVal === undefined || rawVal === '' || isNaN(numVal) || !isFinite(numVal) || numVal < 0) {
+        throw new Error('বাজেটের প্রাক্কলিত অর্থ অবশ্যই একটি বৈধ অ-ঋণাত্মক সংখ্যা হতে হবে।');
+      }
+
+      cleanLines.push({
+        id: l.id || `bl-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+        budgetId,
+        mainHeadId,
+        mainHeadNameBn: l.mainHeadNameBn || 'অনির্ধারিত খাত',
+        subHeadId: subHeadId || undefined,
+        subHeadNameBn: l.subHeadNameBn || undefined,
+        plannedAmount: numVal,
+        notes: l.notes || '',
+      });
+
+      totalPlannedAmount += numVal;
+    }
+
+    return { cleanLines, totalPlannedAmount };
+  }
+
+  createBudget(
+    data: { budget: Partial<Budget>; lines: Partial<BudgetLine>[] },
+    user: User
+  ): { budget: Budget; lines: BudgetLine[] } {
+    const budgetId = `bud-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const now = new Date().toISOString();
+
+    const { cleanLines, totalPlannedAmount } = this.validateAndCleanBudgetLines(data.lines, budgetId);
+
+    const newBudget: Budget = {
+      id: budgetId,
+      mosqueId: user.mosqueId, // Strict multi-tenant isolation
+      budgetName: data.budget.budgetName || 'নতুন বাজেট পরিকল্পনা',
+      budgetType: data.budget.budgetType || 'OPERATING',
+      startDate: data.budget.startDate || now.slice(0, 10),
+      endDate: data.budget.endDate || now.slice(0, 10),
+      status: (data.budget.status as any) || 'DRAFT',
+      notes: data.budget.notes || '',
+      totalPlannedAmount,
+      revisionNumber: 1,
+      projectId: data.budget.projectId || undefined,
+      createdBy: user.id,
+      createdByName: user.name,
+      createdAt: now,
+      updatedAt: now,
+      isArchived: false,
+    };
+
+    this.budgets.unshift(newBudget);
+    this.budgetLines.push(...cleanLines);
+    this.save();
+
+    this.logAudit(
+      user.mosqueId,
+      user.id,
+      user.name,
+      user.role,
+      'CREATE',
+      'BUDGET_CONTROL',
+      `নতুন বাজেট তৈরি করা হয়েছে: ${newBudget.budgetName} (মোট প্রাক্কলিত: ৳${newBudget.totalPlannedAmount})`,
+      newBudget.id,
+      undefined,
+      { newState: JSON.stringify(newBudget) }
+    );
+
+    return { budget: newBudget, lines: cleanLines };
+  }
+
+  updateDraftBudget(
+    id: string,
+    data: { budget?: Partial<Budget>; lines?: Partial<BudgetLine>[] },
+    user: User
+  ): { budget: Budget; lines: BudgetLine[] } {
+    const index = this.budgets.findIndex((b) => b.id === id && b.mosqueId === user.mosqueId);
+    if (index === -1) {
+      throw new Error('বাজেট রেকর্ড খুঁজে পাওয়া যায়নি বা অন্য মসজিদের ডেটা।');
+    }
+
+    const current = this.budgets[index];
+    if (current.status !== 'DRAFT') {
+      throw new Error('শুধুমাত্র ড্রাফট (খসড়া) অবস্থায় থাকা বাজেট সম্পাদনা করা যাবে।');
+    }
+
+    const now = new Date().toISOString();
+    const previousState = JSON.stringify(current);
+
+    let cleanLines = this.budgetLines.filter((l) => l.budgetId === id);
+    let totalPlannedAmount = current.totalPlannedAmount;
+    if (data.lines) {
+      const validated = this.validateAndCleanBudgetLines(data.lines, id);
+      cleanLines = validated.cleanLines;
+      totalPlannedAmount = validated.totalPlannedAmount;
+      // Replace existing lines with updated lines
+      this.budgetLines = this.budgetLines.filter((l) => l.budgetId !== id);
+      this.budgetLines.push(...cleanLines);
+    }
+
+    const updatedBudget: Budget = {
+      ...current,
+      budgetName: data.budget?.budgetName ?? current.budgetName,
+      budgetType: data.budget?.budgetType ?? current.budgetType,
+      startDate: data.budget?.startDate ?? current.startDate,
+      endDate: data.budget?.endDate ?? current.endDate,
+      notes: data.budget?.notes ?? current.notes,
+      projectId: data.budget?.projectId ?? current.projectId,
+      totalPlannedAmount,
+      updatedAt: now,
+    };
+
+    this.budgets[index] = updatedBudget;
+    this.save();
+
+    this.logAudit(
+      user.mosqueId,
+      user.id,
+      user.name,
+      user.role,
+      'UPDATE',
+      'BUDGET_CONTROL',
+      `ড্রাফট বাজেট হালনাগাদ করা হয়েছে: ${updatedBudget.budgetName} (মোট প্রাক্কলিত: ৳${updatedBudget.totalPlannedAmount})`,
+      updatedBudget.id,
+      undefined,
+      { previousState, newState: JSON.stringify(updatedBudget) }
+    );
+
+    return { budget: updatedBudget, lines: cleanLines };
+  }
+
+  submitBudget(id: string, user: User): Budget {
+    const index = this.budgets.findIndex((b) => b.id === id && b.mosqueId === user.mosqueId);
+    if (index === -1) {
+      throw new Error('বাজেট পাওয়া যায়নি।');
+    }
+    const current = this.budgets[index];
+    if (current.status !== 'DRAFT') {
+      throw new Error('শুধুমাত্র ড্রাফট বাজেট অনুমোদনের জন্য পেশ করা যাবে।');
+    }
+
+    current.status = 'SUBMITTED';
+    current.updatedAt = new Date().toISOString();
+    this.save();
+
+    this.logAudit(
+      user.mosqueId,
+      user.id,
+      user.name,
+      user.role,
+      'SUBMIT',
+      'BUDGET_CONTROL',
+      `বাজেট অনুমোদনের জন্য পেশ করা হয়েছে: ${current.budgetName}`,
+      current.id
+    );
+
+    return current;
+  }
+
+  approveBudget(id: string, user: User): Budget {
+    const index = this.budgets.findIndex((b) => b.id === id && b.mosqueId === user.mosqueId);
+    if (index === -1) {
+      throw new Error('বাজেট পাওয়া যায়নি।');
+    }
+    const current = this.budgets[index];
+    if (current.status !== 'SUBMITTED' && current.status !== 'DRAFT') {
+      throw new Error('শুধুমাত্র ড্রাফট বা পেশকৃত বাজেট অনুমোদন করা যাবে।');
+    }
+
+    const now = new Date().toISOString();
+    current.status = 'ACTIVE';
+    current.approvedBy = user.id;
+    current.approvedByName = user.name;
+    current.approvedAt = now;
+    current.updatedAt = now;
+    this.save();
+
+    this.logAudit(
+      user.mosqueId,
+      user.id,
+      user.name,
+      user.role,
+      'APPROVE',
+      'BUDGET_CONTROL',
+      `বাজেট চূড়ান্তভাবে অনুমোদন ও সক্রিয় করা হয়েছে: ${current.budgetName} (মোট: ৳${current.totalPlannedAmount})`,
+      current.id
+    );
+
+    return current;
+  }
+
+  reviseBudget(
+    budgetId: string,
+    newLines: Partial<BudgetLine>[],
+    notes: string,
+    user: User
+  ): { budget: Budget; lines: BudgetLine[] } {
+    const index = this.budgets.findIndex((b) => b.id === budgetId && b.mosqueId === user.mosqueId);
+    if (index === -1) {
+      throw new Error('বাজেট পাওয়া যায়নি।');
+    }
+    const current = this.budgets[index];
+    if (current.status !== 'APPROVED' && current.status !== 'ACTIVE') {
+      throw new Error('শুধুমাত্র অনুমোদিত বা সক্রিয় বাজেট সংশোধন (Revise) করা যাবে।');
+    }
+
+    const now = new Date().toISOString();
+    const previousState = JSON.stringify(current);
+
+    // 1. Mark existing budget as REVISED and archived
+    current.status = 'REVISED';
+    current.isArchived = true;
+    current.updatedAt = now;
+
+    // 2. Create newly revised Budget
+    const newBudgetId = `bud-${Date.now()}-rev-${current.revisionNumber + 1}`;
+    const { cleanLines, totalPlannedAmount } = this.validateAndCleanBudgetLines(newLines, newBudgetId);
+
+    const revisedBudget: Budget = {
+      id: newBudgetId,
+      mosqueId: user.mosqueId,
+      budgetName: current.budgetName,
+      budgetType: current.budgetType,
+      startDate: current.startDate,
+      endDate: current.endDate,
+      status: 'ACTIVE',
+      notes: notes || `সংশোধিত রিভিশন #${current.revisionNumber + 1}`,
+      totalPlannedAmount,
+      revisionNumber: current.revisionNumber + 1,
+      previousRevisionId: current.id,
+      projectId: current.projectId,
+      createdBy: user.id,
+      createdByName: user.name,
+      approvedBy: user.id,
+      approvedByName: user.name,
+      approvedAt: now,
+      createdAt: now,
+      updatedAt: now,
+      isArchived: false,
+    };
+
+    this.budgets.unshift(revisedBudget);
+    this.budgetLines.push(...cleanLines);
+    this.save();
+
+    this.logAudit(
+      user.mosqueId,
+      user.id,
+      user.name,
+      user.role,
+      'REVISE',
+      'BUDGET_CONTROL',
+      `বাজেট সংশোধন ও নতুন রিভিশন #${revisedBudget.revisionNumber} তৈরি করা হয়েছে: ${revisedBudget.budgetName}`,
+      revisedBudget.id,
+      undefined,
+      { previousState, newState: JSON.stringify(revisedBudget) }
+    );
+
+    return { budget: revisedBudget, lines: cleanLines };
+  }
+
+  closeBudget(id: string, notes: string, user: User): Budget {
+    const index = this.budgets.findIndex((b) => b.id === id && b.mosqueId === user.mosqueId);
+    if (index === -1) {
+      throw new Error('বাজেট পাওয়া যায়নি।');
+    }
+    const current = this.budgets[index];
+    current.status = 'CLOSED';
+    if (notes) current.notes = (current.notes ? current.notes + ' | ' : '') + notes;
+    current.updatedAt = new Date().toISOString();
+    this.save();
+
+    this.logAudit(
+      user.mosqueId,
+      user.id,
+      user.name,
+      user.role,
+      'CLOSE',
+      'BUDGET_CONTROL',
+      `বাজেট মেয়াদ বা কার্যকাল সমাপ্ত (Closed) করা হয়েছে: ${current.budgetName}`,
+      current.id
+    );
+
+    return current;
+  }
+
+  deleteDraftBudget(id: string, user: User): boolean {
+    const index = this.budgets.findIndex((b) => b.id === id && b.mosqueId === user.mosqueId);
+    if (index === -1) {
+      throw new Error('বাজেট পাওয়া যায়নি।');
+    }
+    const current = this.budgets[index];
+    if (current.status !== 'DRAFT') {
+      throw new Error('শুধুমাত্র খসড়া (Draft) অবস্থায় থাকা বাজেট মোছা যাবে। অনুমোদিত বা সক্রিয় বাজেট মোছা নিষিদ্ধ।');
+    }
+
+    this.budgets.splice(index, 1);
+    this.budgetLines = this.budgetLines.filter((l) => l.budgetId !== id);
+    this.save();
+
+    this.logAudit(
+      user.mosqueId,
+      user.id,
+      user.name,
+      user.role,
+      'DELETE',
+      'BUDGET_CONTROL',
+      `খসড়া বাজেট মুছে ফেলা হয়েছে: ${current.budgetName}`,
+      id
+    );
+
+    return true;
   }
 }
 
