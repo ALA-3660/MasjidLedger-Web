@@ -95,9 +95,15 @@ export interface MosqueLetterheadSettings {
   bismillahText?: string;
   showBismillah?: boolean;
   showWatermark?: boolean;
-  layout?: 'STANDARD' | 'CENTERED' | 'MODERN_EMERALD' | 'CLASSIC';
+  watermarkOpacity?: number;
+  layout?: 'CLASSICAL_WAQF' | 'CENTERED' | 'CENTERED_CREST' | 'MODERN_EMERALD' | 'MINIMAL_HEADER' | 'STANDARD' | 'CLASSIC';
   contactLineCustom?: string;
   footerNoteBn?: string;
+  presidentNameBn?: string;
+  presidentDesignationBn?: string;
+  secretaryNameBn?: string;
+  secretaryDesignationBn?: string;
+  showSignatures?: boolean;
 }
 
 export interface Mosque {

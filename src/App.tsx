@@ -71,6 +71,8 @@ import { UserManualView } from './components/UserManualView';
 import { AdvisoryCouncilView } from './components/AdvisoryCouncilView';
 import { DocumentCenter } from './components/DocumentCenter';
 import { SalaryBankTransferView } from './components/SalaryBankTransferView';
+import { AssetWaqfManagementView } from './components/AssetWaqfManagementView';
+import { OfficialDocumentManagementView } from './components/documents/OfficialDocumentManagementView';
 import { QrActionCardsModal } from './components/QrActionCardsModal';
 import { RecordActionModal } from './components/RecordActionModal';
 import { RecordPrintLabelModal } from './components/RecordPrintLabelModal';
@@ -1341,13 +1343,52 @@ export default function App() {
         />
       )}
 
-      {/* 7.1 Assets, Waqf Property & Cemetery View */}
-      {(currentTab === 'assets' ||
-        currentTab === 'property' ||
-        currentTab === 'cemetery' ||
-        currentTab === 'notices') && (
+      {/* 7.1 Consolidated Assets & Waqf Management (🏢 সম্পদ ও ওয়াকফ ব্যবস্থাপনা) */}
+      {(currentTab === 'assets' || currentTab === 'property') && (
+        <AssetWaqfManagementView
+          assets={assets}
+          properties={properties}
+          accounts={accounts}
+          accountHeads={accountHeads}
+          currentMosque={mosque}
+          currentUser={currentUser}
+          language={language}
+          initialSection={currentTab === 'property' ? 'properties' : 'assets'}
+          onNavigateTab={(tab) => setCurrentTab(tab as NavTab)}
+          onAddAsset={handleAddAsset}
+          onUpdateAsset={handleUpdateAsset}
+          onDeleteAsset={handleDeleteAsset}
+          onArchiveAsset={handleArchiveAsset}
+          onAddAssetService={handleAddAssetService}
+          onAddProperty={handleAddProperty}
+          onUpdateProperty={handleUpdateProperty}
+          onDeleteProperty={handleDeleteProperty}
+          onArchiveProperty={handleArchiveProperty}
+          onAddPropertyTenant={handleAddPropertyTenant}
+          onTerminatePropertyTenant={handleTerminatePropertyTenant}
+          onAddPropertyInspection={handleAddPropertyInspection}
+          onAddPropertyLegalCase={handleAddPropertyLegalCase}
+          onAddPropertyDocument={handleAddPropertyDocument}
+          onDeletePropertyDocument={handleDeletePropertyDocument}
+        />
+      )}
+
+      {/* 7.2 Official Document & Notice Management (📢 নোটিশ ও দাপ্তরিক যোগাযোগ - ১৪টি বিভাগ) */}
+      {currentTab === 'notices' && (
+        <OfficialDocumentManagementView
+          mosque={mosque}
+          committeeTerms={terms}
+          committeeMeetings={meetings}
+          resolutions={resolutions}
+          members={members}
+          staffList={staff}
+        />
+      )}
+
+      {/* 7.3 Cemetery Management (🪦 কবরস্থান ব্যবস্থাপনা) */}
+      {currentTab === 'cemetery' && (
         <ManagementView
-          initialTab={currentTab as any}
+          initialTab="cemetery"
           onNavigateToSalaryBankTransfer={() => setCurrentTab('staff')}
           staff={staff}
           staffPayments={staffPayments}

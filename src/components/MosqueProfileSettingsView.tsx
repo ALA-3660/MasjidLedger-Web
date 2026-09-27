@@ -55,6 +55,8 @@ import {
   ReverseGeocodeResult
 } from '../lib/bangladeshAdministrativeData';
 import { MosqueOfficialLetterhead } from './common/MosqueOfficialLetterhead';
+import { OfficialLetterheadPad, printOfficialLetterheadPad, LetterheadBodyMode } from './common/OfficialLetterheadPad';
+import { OfficialLetterheadPrintModal } from './common/OfficialLetterheadPrintModal';
 import { PublicPortalSettingsView } from './PublicPortalSettingsView';
 import { GoogleDriveBackupView } from './GoogleDriveBackupView';
 import { MosqueLocationPrayerSettings } from './MosqueLocationPrayerSettings';
@@ -133,9 +135,14 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
     letterheadSettings: {
       layout: 'CLASSICAL_WAQF',
       showBismillah: true,
+      bismillahText: 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ',
       subtitleBn: 'গায়েবী মসজিদ নামে পরিচিত খুরুশকুলে সবচেয়ে পুরাতন মসজিদ',
       footerNoteBn: 'ওয়াকফ এস্টেটের সকল দান ও আয়-ব্যয় সরকারি ও শরীয়াহ অডিট সাপেক্ষে সংরক্ষিত।',
       showWatermark: true,
+      presidentNameBn: '',
+      presidentDesignationBn: 'সভাপতি',
+      secretaryNameBn: '',
+      secretaryDesignationBn: 'সাধারণ সম্পাদক/ মোতাওয়াল্লী',
     },
     qrSettings: {
       bkashNumber: '',
@@ -149,6 +156,7 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
 
   // UI state
   const [isSaving, setIsSaving] = useState(false);
+  const [isPrintingLetterhead, setIsPrintingLetterhead] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [confirmDialog, setConfirmDialog] = useState<any>(null);
@@ -173,6 +181,12 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
   const logoInputRef = useRef<HTMLInputElement>(null);
   const presidentSigInputRef = useRef<HTMLInputElement>(null);
   const secretarySigInputRef = useRef<HTMLInputElement>(null);
+
+  // Letterhead Interactive Preview & Print states
+  const [isLetterheadPrintModalOpen, setIsLetterheadPrintModalOpen] = useState(false);
+  const [letterheadBodyMode, setLetterheadBodyMode] = useState<LetterheadBodyMode>('blank');
+  const [letterheadZoom, setLetterheadZoom] = useState<number>(100);
+  const [showLetterheadSigImages, setShowLetterheadSigImages] = useState<boolean>(true);
 
   // Sync with currentMosque baseline
   useEffect(() => {
@@ -206,12 +220,21 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
         presidentSignatureUrl: currentMosque.presidentSignatureUrl || '',
         secretarySignatureUrl: currentMosque.secretarySignatureUrl || '',
         establishedDate: currentMosque.establishedDate || '',
-        letterheadSettings: currentMosque.letterheadSettings || {
-          layout: 'CLASSICAL_WAQF',
-          showBismillah: true,
-          subtitleBn: 'গায়েবী মসজিদ নামে পরিচিত খুরুশকুলে সবচেয়ে পুরাতন মসজিদ',
-          footerNoteBn: 'ওয়াকফ এস্টেটের সকল দান ও আয়-ব্যয় সরকারি ও শরীয়াহ অডিট সাপেক্ষে সংরক্ষিত।',
-          showWatermark: true,
+        letterheadSettings: {
+          layout: currentMosque.letterheadSettings?.layout || 'CLASSICAL_WAQF',
+          showBismillah: currentMosque.letterheadSettings?.showBismillah !== false,
+          bismillahText: currentMosque.letterheadSettings?.bismillahText || 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ',
+          subtitleBn: currentMosque.letterheadSettings?.subtitleBn || 'গায়েবী মসজিদ নামে পরিচিত খুরুশকুলে সবচেয়ে পুরাতন মসজিদ',
+          footerNoteBn: currentMosque.letterheadSettings?.footerNoteBn || 'ওয়াকফ এস্টেটের সকল দান ও আয়-ব্যয় সরকারি ও শরীয়াহ অডিট সাপেক্ষে সংরক্ষিত।',
+          showWatermark: currentMosque.letterheadSettings?.showWatermark !== false,
+          presidentNameBn: currentMosque.letterheadSettings?.presidentNameBn || '',
+          presidentDesignationBn: (currentMosque.letterheadSettings?.presidentDesignationBn && currentMosque.letterheadSettings.presidentDesignationBn !== 'সভাপতি / মোতাওয়াল্লী' && currentMosque.letterheadSettings.presidentDesignationBn !== 'সভাপতি / মোতাওয়াল্লী স্বাক্ষর')
+            ? currentMosque.letterheadSettings.presidentDesignationBn
+            : 'সভাপতি',
+          secretaryNameBn: currentMosque.letterheadSettings?.secretaryNameBn || '',
+          secretaryDesignationBn: (currentMosque.letterheadSettings?.secretaryDesignationBn && currentMosque.letterheadSettings.secretaryDesignationBn !== 'সাধারণ সম্পাদক / খতিব' && currentMosque.letterheadSettings.secretaryDesignationBn !== 'সাধারণ সম্পাদক / খতিব স্বাক্ষর' && currentMosque.letterheadSettings.secretaryDesignationBn !== 'সাধারণ সম্পাদক / সেক্রেটারি' && currentMosque.letterheadSettings.secretaryDesignationBn !== 'সাধারণ সম্পাদক')
+            ? currentMosque.letterheadSettings.secretaryDesignationBn
+            : 'সাধারণ সম্পাদক/ মোতাওয়াল্লী',
         },
         qrSettings: currentMosque.qrSettings || {
           bkashNumber: '',
@@ -334,6 +357,22 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
       setErrorMsg(err.message || 'সংরক্ষণ করতে ব্যর্থ হয়েছে।');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // Blank Letterhead Pad Print Handler
+  const handlePrintLetterhead = async () => {
+    setIsPrintingLetterhead(true);
+    try {
+      const success = await printOfficialLetterheadPad('official-letterhead-a4-sheet');
+      if (!success) {
+        setIsLetterheadPrintModalOpen(true);
+      }
+    } catch (err) {
+      console.error('Print failed, opening dedicated modal:', err);
+      setIsLetterheadPrintModalOpen(true);
+    } finally {
+      setIsPrintingLetterhead(false);
     }
   };
 
@@ -1310,124 +1349,509 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
             </div>
           )}
 
-          {/* TAB 4: 📄 অফিসিয়াল Letterhead (Letterhead Management) */}
+          {/* TAB 4: 📄 অফিসিয়াল Letterhead (Official A4 Letterhead Pad) */}
           {activeSubTab === 'letterhead' && (
             <div className="space-y-6 animate-in fade-in duration-200">
-              <div className="border-b border-slate-100 pb-4 flex items-center justify-between">
+              {/* Header Action Bar */}
+              <div className="border-b border-slate-100 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-base font-bold text-slate-800">৪. অফিসিয়াল Letterhead প্যাড</h2>
-                  <p className="text-xs text-slate-500">প্রশাসনিক চিঠিপত্র, প্রত্যয়নপত্র ও নোটিশের জন্য নির্ধারিত অফিসিয়াল প্যাড</p>
+                  <h2 className="text-base font-bold text-slate-800">৪. অফিসিয়াল Letterhead প্যাড (Official A4 Letterhead Pad)</h2>
+                  <p className="text-xs text-slate-500">প্রশাসনিক চিঠিপত্র, প্রত্যয়নপত্র ও নোটিশের জন্য নির্ধারিত অফিসিয়াল পূর্ণাঙ্গ প্যাড</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center space-x-1.5 cursor-pointer"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>খালি প্যাড প্রিন্ট</span>
-                </button>
-              </div>
-
-              {/* Letterhead Configuration Controls */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-200">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">লেটারহেড লেআউট প্রিসেট</label>
-                  <select
-                    disabled={!canEdit}
-                    value={formData.letterheadSettings?.layout || 'CLASSICAL_WAQF'}
-                    onChange={(e) =>
-                      setFormData(prev => ({
-                        ...prev,
-                        letterheadSettings: {
-                          ...prev.letterheadSettings!,
-                          layout: e.target.value as any,
-                        },
-                      }))
-                    }
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs"
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsLetterheadPrintModalOpen(true)}
+                    className="px-3.5 py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold shadow-md flex items-center space-x-1.5 cursor-pointer active:scale-95 transition-all"
+                    title="পূর্ণাঙ্গ স্ক্রিন প্রিভিউ ও প্রিন্ট ডায়ালগ"
                   >
-                    <option value="CLASSICAL_WAQF">১. ক্লাসিক্যাল ওয়াকফ প্যাড (ঐতিহ্যবাহী)</option>
-                    <option value="CENTERED_CREST">২. সেন্টারড টাইপোগ্রাফি (Centered)</option>
-                    <option value="MODERN_EMERALD">৩. আধুনিক বাম লোগো + ডানে ব্লক</option>
-                    <option value="MINIMAL_HEADER">৪. মিনিমালিস্ট হেডার (Minimalist)</option>
-                  </select>
-                </div>
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>🖨️ পূর্ণ প্যাড প্রিন্ট ও প্রিভিউ</span>
+                  </button>
 
-                <div className="flex items-center space-x-4 pt-5">
-                  <label className="flex items-center space-x-2 text-xs font-medium cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formData.letterheadSettings?.showBismillah !== false}
-                      onChange={(e) =>
-                        setFormData(prev => ({
-                          ...prev,
-                          letterheadSettings: {
-                            ...prev.letterheadSettings!,
-                            showBismillah: e.target.checked,
-                          },
-                        }))
-                      }
-                      className="rounded text-emerald-600 focus:ring-emerald-500"
-                    />
-                    <span>বিসমিল্লাহির রাহমানির রাহীম প্রদর্শন</span>
-                  </label>
+                  <button
+                    type="button"
+                    disabled={isPrintingLetterhead}
+                    onClick={handlePrintLetterhead}
+                    className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-md flex items-center space-x-1.5 cursor-pointer active:scale-95 transition-all"
+                    title="খালি অফিসিয়াল প্যাড সরাসরি প্রিন্ট করুন"
+                  >
+                    {isPrintingLetterhead ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Printer className="w-3.5 h-3.5" />
+                    )}
+                    <span>সরাসরি খালি প্রিন্ট</span>
+                  </button>
 
-                  <label className="flex items-center space-x-2 text-xs font-medium cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formData.letterheadSettings?.showWatermark !== false}
-                      onChange={(e) =>
-                        setFormData(prev => ({
-                          ...prev,
-                          letterheadSettings: {
-                            ...prev.letterheadSettings!,
-                            showWatermark: e.target.checked,
-                          },
-                        }))
-                      }
-                      className="rounded text-emerald-600 focus:ring-emerald-500"
-                    />
-                    <span>জলছাপ (Watermark)</span>
-                  </label>
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    লেটারহেড সাবটাইটেল / দ্বীনি স্লোগান (Preserved)
-                  </label>
-                  <input
-                    type="text"
-                    disabled={!canEdit}
-                    value={formData.letterheadSettings?.subtitleBn || 'গায়েবী মসজিদ নামে পরিচিত খুরুশকুলে সবচেয়ে পুরাতন মসজিদ'}
-                    onChange={(e) =>
-                      setFormData(prev => ({
-                        ...prev,
-                        letterheadSettings: {
-                          ...prev.letterheadSettings!,
-                          subtitleBn: e.target.value,
-                        },
-                      }))
-                    }
-                    placeholder="গায়েবী মসজিদ নামে পরিচিত খুরুশকুলে সবচেয়ে পুরাতন মসজিদ"
-                    className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium"
-                  />
+                  {canEdit && (
+                    <button
+                      type="button"
+                      disabled={isSaving}
+                      onClick={() => handleSave()}
+                      className="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-1.5 cursor-pointer active:scale-95 transition-all"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      <span>লেটারহেড সেটিংস সংরক্ষণ</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
-              {/* Live Official Letterhead Preview */}
-              <div className="border border-slate-300 rounded-2xl p-6 bg-slate-100 shadow-inner">
-                <span className="text-[11px] font-bold text-slate-500 block mb-3">
-                  অফিসিয়াল লাইভ প্রিভিউ (A4 প্যাড ভিউ):
-                </span>
-                <div className="bg-white rounded-xl shadow-lg p-6 max-w-3xl mx-auto border border-slate-200">
-                  <MosqueOfficialLetterhead
-                    mosque={{
-                      ...(currentMosque || ({} as any)),
-                      ...formData,
-                    } as Mosque}
-                  />
-                  <div className="mt-8 pt-8 border-t border-dashed border-slate-300 min-h-[160px] flex items-center justify-center text-slate-300 text-xs italic">
-                    [এখানে দাপ্তরিক চিঠিপত্র, নোটিশ বা অনুমোদনপত্রের মূল বিষয়বস্তু মুদ্রিত হবে]
+              {/* 1. Layout Preset Selection Cards (4 Presets) */}
+              <div className="space-y-3">
+                <label className="block text-xs font-bold text-slate-700">
+                  লেটারহেড লেআউট প্রিসেট নির্বাচন করুন (৪টি প্রিমিয়াম লেআউট):
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {[
+                    {
+                      id: 'CLASSICAL_WAQF',
+                      title: '১. ক্লাসিক্যাল ওয়াকফ প্যাড',
+                      sub: 'Centered Arch • ঐতিহ্যবাহী ওয়াকফ রূপরেখা',
+                      icon: Landmark,
+                    },
+                    {
+                      id: 'CENTERED_CREST',
+                      title: '২. সেন্টার্ড টাইপোগ্রাফি',
+                      sub: 'Formal Centered • পরিচ্ছন্ন ও আনুষ্ঠানিক',
+                      icon: Layers,
+                    },
+                    {
+                      id: 'MODERN_EMERALD',
+                      title: '৩. মডার্ন পান্না সবুজ',
+                      sub: 'Left Logo + Right Block • আধুনিক প্রাতিষ্ঠানিক',
+                      icon: Sparkles,
+                    },
+                    {
+                      id: 'MINIMAL_HEADER',
+                      title: '৪. মিনিমালিস্ট',
+                      sub: 'Clean Minimal • ছিমছাম ও মার্জিত নকশা',
+                      icon: FileText,
+                    },
+                  ].map((preset) => {
+                    const isSelected =
+                      (formData.letterheadSettings?.layout || 'CLASSICAL_WAQF') === preset.id ||
+                      (preset.id === 'CENTERED_CREST' && formData.letterheadSettings?.layout === 'CENTERED') ||
+                      (preset.id === 'MINIMAL_HEADER' &&
+                        (formData.letterheadSettings?.layout === 'STANDARD' || formData.letterheadSettings?.layout === 'CLASSIC'));
+                    const PresetIcon = preset.icon;
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() =>
+                          setFormData(prev => ({
+                            ...prev,
+                            letterheadSettings: {
+                              ...prev.letterheadSettings!,
+                              layout: preset.id as any,
+                            },
+                          }))
+                        }
+                        className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                          isSelected
+                            ? 'bg-emerald-50/80 border-emerald-600 ring-2 ring-emerald-600/30 shadow-xs'
+                            : 'bg-slate-50 border-slate-200 hover:bg-slate-100 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <PresetIcon
+                            className={`w-4 h-4 ${isSelected ? 'text-emerald-700' : 'text-slate-400'}`}
+                          />
+                          {isSelected && (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                          )}
+                        </div>
+                        <div>
+                          <div className={`text-xs font-bold ${isSelected ? 'text-emerald-950' : 'text-slate-800'}`}>
+                            {preset.title}
+                          </div>
+                          <div className="text-[10px] text-slate-500 mt-0.5 leading-tight">
+                            {preset.sub}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 2. Detailed Controls: Header, Bismillah, Subtitle, Footers */}
+              <div className="p-5 bg-slate-50 rounded-3xl border border-slate-200 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Bismillah & Watermark Toggles */}
+                  <div className="p-3.5 bg-white rounded-2xl border border-slate-200 space-y-3">
+                    <span className="text-xs font-bold text-slate-800 block">উপাদান নিয়ন্ত্রণ</span>
+                    <div className="space-y-2">
+                      <label className="flex items-center space-x-2 text-xs font-medium cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.letterheadSettings?.showBismillah !== false}
+                          onChange={(e) =>
+                            setFormData(prev => ({
+                              ...prev,
+                              letterheadSettings: {
+                                ...prev.letterheadSettings!,
+                                showBismillah: e.target.checked,
+                              },
+                            }))
+                          }
+                          className="rounded text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <span>বিসমিল্লাহির রাহমানির রাহীম প্রদর্শন</span>
+                      </label>
+
+                      <label className="flex items-center space-x-2 text-xs font-medium cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.letterheadSettings?.showWatermark !== false}
+                          onChange={(e) =>
+                            setFormData(prev => ({
+                              ...prev,
+                              letterheadSettings: {
+                                ...prev.letterheadSettings!,
+                                showWatermark: e.target.checked,
+                              },
+                            }))
+                          }
+                          className="rounded text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <span>কেন্দ্রীয় জলছাপ (Logo Watermark) প্রদর্শন</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Subtitle / দ্বীনি স্লোগান */}
+                  <div className="p-3.5 bg-white rounded-2xl border border-slate-200 space-y-2">
+                    <label className="block text-xs font-bold text-slate-800">
+                      লেটারহেড সাবটাইটেল / দ্বীনি স্লোগান (Preserved)
+                    </label>
+                    <input
+                      type="text"
+                      disabled={!canEdit}
+                      value={formData.letterheadSettings?.subtitleBn ?? 'গায়েবী মসজিদ নামে পরিচিত খুরুশকুলে সবচেয়ে পুরাতন মসজিদ'}
+                      onChange={(e) =>
+                        setFormData(prev => ({
+                          ...prev,
+                          letterheadSettings: {
+                            ...prev.letterheadSettings!,
+                            subtitleBn: e.target.value,
+                          },
+                        }))
+                      }
+                      placeholder="গায়েবী মসজিদ নামে পরিচিত খুরুশকুলে সবচেয়ে পুরাতন মসজিদ"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-600"
+                    />
+                    <span className="text-[10px] text-slate-400 block">
+                      মসজিদের নাম ও ওয়াকফ পরিচয়ের নিচে এই মূল স্লোগান প্রদর্শিত হবে।
+                    </span>
+                  </div>
+
+                  {/* Footer Note */}
+                  <div className="md:col-span-2 p-3.5 bg-white rounded-2xl border border-slate-200 space-y-2">
+                    <label className="block text-xs font-bold text-slate-800">
+                      পাদটীকা / Footer Note
+                    </label>
+                    <input
+                      type="text"
+                      disabled={!canEdit}
+                      value={formData.letterheadSettings?.footerNoteBn ?? 'ওয়াকফ এস্টেটের সকল দান ও আয়-ব্যয় সরকারি ও শরীয়াহ অডিট সাপেক্ষে সংরক্ষিত।'}
+                      onChange={(e) =>
+                        setFormData(prev => ({
+                          ...prev,
+                          letterheadSettings: {
+                            ...prev.letterheadSettings!,
+                            footerNoteBn: e.target.value,
+                          },
+                        }))
+                      }
+                      placeholder="ওয়াকফ এস্টেটের সকল দান ও আয়-ব্যয় সরকারি ও শরীয়াহ অডিট সাপেক্ষে সংরক্ষিত।"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-600"
+                    />
+                  </div>
+                </div>
+
+                {/* 3. Authority Information (সভাপতি ও সেক্রেটারি ব্লক) */}
+                <div className="p-4 bg-white rounded-2xl border border-slate-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-800">
+                      অনুমোদিত স্বাক্ষরকারী ও কর্মকর্তা বিবরণ (Authority Signatories)
+                    </span>
+                    <span className="text-[11px] text-slate-400">
+                      প্যাডের নিচে এই নাম ও পদবি স্বয়ংক্রিয়ভাবে মুদ্রিত হবে
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                    {/* President Details */}
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2 text-xs">
+                      <div className="font-bold text-slate-700 flex items-center justify-between">
+                        <span>১. সভাপতি</span>
+                        {formData.presidentSignatureUrl ? (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold">
+                            স্বাক্ষর সংরক্ষিত
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-400">খালি দাগ প্রদর্শিত হবে</span>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-slate-500 mb-0.5">নাম:</label>
+                        <input
+                          type="text"
+                          disabled={!canEdit}
+                          value={formData.letterheadSettings?.presidentNameBn || ''}
+                          onChange={(e) =>
+                            setFormData(prev => ({
+                              ...prev,
+                              letterheadSettings: {
+                                ...prev.letterheadSettings!,
+                                presidentNameBn: e.target.value,
+                              },
+                            }))
+                          }
+                          placeholder="আলহাজ্ব মোহাম্মদ আলাউদ্দিন"
+                          className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-slate-500 mb-0.5">পদবি:</label>
+                        <input
+                          type="text"
+                          disabled={!canEdit}
+                          value={formData.letterheadSettings?.presidentDesignationBn || 'সভাপতি'}
+                          onChange={(e) =>
+                            setFormData(prev => ({
+                              ...prev,
+                              letterheadSettings: {
+                                ...prev.letterheadSettings!,
+                                presidentDesignationBn: e.target.value,
+                              },
+                            }))
+                          }
+                          placeholder="সভাপতি"
+                          className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Secretary Details */}
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2 text-xs">
+                      <div className="font-bold text-slate-700 flex items-center justify-between">
+                        <span>২. সাধারণ সম্পাদক/ মোতাওয়াল্লী</span>
+                        {formData.secretarySignatureUrl ? (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold">
+                            স্বাক্ষর সংরক্ষিত
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-400">খালি দাগ প্রদর্শিত হবে</span>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-slate-500 mb-0.5">নাম:</label>
+                        <input
+                          type="text"
+                          disabled={!canEdit}
+                          value={formData.letterheadSettings?.secretaryNameBn || ''}
+                          onChange={(e) =>
+                            setFormData(prev => ({
+                              ...prev,
+                              letterheadSettings: {
+                                ...prev.letterheadSettings!,
+                                secretaryNameBn: e.target.value,
+                              },
+                            }))
+                          }
+                          placeholder="মাওলানা মোঃ ইব্রাহিম খলিল"
+                          className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-slate-500 mb-0.5">পদবি:</label>
+                        <input
+                          type="text"
+                          disabled={!canEdit}
+                          value={formData.letterheadSettings?.secretaryDesignationBn || 'সাধারণ সম্পাদক/ মোতাওয়াল্লী'}
+                          onChange={(e) =>
+                            setFormData(prev => ({
+                              ...prev,
+                              letterheadSettings: {
+                                ...prev.letterheadSettings!,
+                                secretaryDesignationBn: e.target.value,
+                              },
+                            }))
+                          }
+                          placeholder="সাধারণ সম্পাদক/ মোতাওয়াল্লী"
+                          className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. Full A4 Live Preview Section */}
+              <div className="border border-slate-300 rounded-3xl p-4 sm:p-6 bg-slate-100/90 shadow-inner flex flex-col items-center">
+                <div className="w-full flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4 px-2">
+                  <div className="flex items-center space-x-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 animate-pulse" />
+                    <div>
+                      <span className="text-xs sm:text-sm font-bold text-slate-800 font-siliguri block">
+                        অফিসিয়াল লাইভ প্রিভিউ — পূর্ণ A4 লেটারহেড প্যাড (Full A4 Portrait Page)
+                      </span>
+                      <span className="text-[11px] text-slate-500 font-tiro">
+                        Header, Body ও Footer Authority সম্পূর্ণ কাঠামো একসাথে দৃশ্যমান
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[11px] text-slate-500 font-baloo bg-white px-2.5 py-1 rounded-lg border border-slate-200">
+                      A4 Portrait • ২১০মিমি × ২৯৭মিমি
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsLetterheadPrintModalOpen(true)}
+                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold shadow-2xs flex items-center space-x-1 cursor-pointer transition-all"
+                      title="ফুলস্ক্রিন প্রিন্ট ডায়ালগ"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>ফুলস্ক্রিন প্রিন্ট</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isPrintingLetterhead}
+                      onClick={handlePrintLetterhead}
+                      className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded-lg text-xs font-bold shadow-2xs flex items-center space-x-1 cursor-pointer transition-all"
+                    >
+                      {isPrintingLetterhead ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Printer className="w-3.5 h-3.5" />
+                      )}
+                      <span>প্রিন্ট</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Interactive Preview Controls Bar */}
+                <div className="w-full bg-white rounded-2xl border border-slate-200 p-2.5 mb-4 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+                  {/* Left: Mode Selection */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] font-bold text-slate-500 mr-1 hidden sm:inline">প্রিভিউ মোড:</span>
+                    <button
+                      type="button"
+                      onClick={() => setLetterheadBodyMode('blank')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        letterheadBodyMode === 'blank'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      📄 খালি প্যাড (Blank)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLetterheadBodyMode('sample_letter')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        letterheadBodyMode === 'sample_letter'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      📝 নমুনা প্রত্যয়নপত্র
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLetterheadBodyMode('sample_notice')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        letterheadBodyMode === 'sample_notice'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      📋 নমুনা নোটিশ
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLetterheadBodyMode('guidelines')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        letterheadBodyMode === 'guidelines'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      📏 গাইডলাইন
+                    </button>
+                  </div>
+
+                  {/* Right: Signature Toggle & Zoom */}
+                  <div className="flex items-center space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowLetterheadSigImages(!showLetterheadSigImages)}
+                      className={`px-2 py-1 rounded-lg text-[11px] font-semibold border flex items-center space-x-1 cursor-pointer transition-all ${
+                        showLetterheadSigImages
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                          : 'bg-slate-100 text-slate-600 border-slate-300'
+                      }`}
+                      title={showLetterheadSigImages ? 'ডিজিটাল স্বাক্ষর প্রদর্শিত হচ্ছে' : 'খালি স্বাক্ষর রেখা সক্রিয়'}
+                    >
+                      <span>{showLetterheadSigImages ? '✍️ ডিজিটাল স্বাক্ষর সহ' : '✍️ খালি স্বাক্ষর রেখা'}</span>
+                    </button>
+
+                    <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setLetterheadZoom(75)}
+                        className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                          letterheadZoom === 75 ? 'bg-white text-emerald-900 shadow-2xs' : 'text-slate-500'
+                        }`}
+                      >
+                        ৭৫%
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLetterheadZoom(100)}
+                        className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                          letterheadZoom === 100 ? 'bg-white text-emerald-900 shadow-2xs' : 'text-slate-500'
+                        }`}
+                      >
+                        ১০০%
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLetterheadZoom(125)}
+                        className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                          letterheadZoom === 125 ? 'bg-white text-emerald-900 shadow-2xs' : 'text-slate-500'
+                        }`}
+                      >
+                        ১২৫%
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* The Full A4 Portrait Sheet */}
+                <div className="w-full overflow-x-auto flex justify-center py-2">
+                  <div
+                    className="transition-transform duration-200 origin-top flex justify-center"
+                    style={{
+                      transform: letterheadZoom === 100 ? 'none' : `scale(${letterheadZoom / 100})`,
+                    }}
+                  >
+                    <OfficialLetterheadPad
+                      mosque={{
+                        ...(currentMosque || ({} as any)),
+                        ...formData,
+                        letterheadSettings: formData.letterheadSettings,
+                        presidentSignatureUrl: formData.presidentSignatureUrl,
+                        secretarySignatureUrl: formData.secretarySignatureUrl,
+                      } as Mosque}
+                      bodyMode={letterheadBodyMode}
+                      showSignatureImages={showLetterheadSigImages}
+                    />
                   </div>
                 </div>
               </div>
@@ -1447,8 +1871,8 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
                 <div className="p-5 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h4 className="text-xs font-bold text-slate-800">সভাপতি / মোতাওয়াল্লী স্বাক্ষর</h4>
-                      <p className="text-[11px] text-slate-500">President / Motawalli Authorized Signature</p>
+                      <h4 className="text-xs font-bold text-slate-800">সভাপতি</h4>
+                      <p className="text-[11px] text-slate-500">President Authorized Signature</p>
                     </div>
                     {formData.presidentSignatureUrl ? (
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">সংরক্ষিত</span>
@@ -1496,14 +1920,56 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
                       </button>
                     )}
                   </div>
+
+                  {/* Name & Designation fields linked to letterheadSettings */}
+                  <div className="space-y-2 pt-2 border-t border-slate-200">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">স্বাক্ষরকারীর নাম:</label>
+                      <input
+                        type="text"
+                        disabled={!canEdit}
+                        value={formData.letterheadSettings?.presidentNameBn || ''}
+                        onChange={(e) =>
+                          setFormData(prev => ({
+                            ...prev,
+                            letterheadSettings: {
+                              ...prev.letterheadSettings!,
+                              presidentNameBn: e.target.value,
+                            },
+                          }))
+                        }
+                        placeholder="আলহাজ্ব মোহাম্মদ আলাউদ্দিন"
+                        className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">পদবি:</label>
+                      <input
+                        type="text"
+                        disabled={!canEdit}
+                        value={formData.letterheadSettings?.presidentDesignationBn || 'সভাপতি'}
+                        onChange={(e) =>
+                          setFormData(prev => ({
+                            ...prev,
+                            letterheadSettings: {
+                              ...prev.letterheadSettings!,
+                              presidentDesignationBn: e.target.value,
+                            },
+                          }))
+                        }
+                        placeholder="সভাপতি"
+                        className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs"
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 {/* Secretary Signature Card */}
                 <div className="p-5 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h4 className="text-xs font-bold text-slate-800">সাধারণ সম্পাদক / খতিব স্বাক্ষর</h4>
-                      <p className="text-[11px] text-slate-500">Secretary / Khatib Authorized Signature</p>
+                      <h4 className="text-xs font-bold text-slate-800">সাধারণ সম্পাদক/ মোতাওয়াল্লী</h4>
+                      <p className="text-[11px] text-slate-500">General Secretary / Mutawalli Authorized Signature</p>
                     </div>
                     {formData.secretarySignatureUrl ? (
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">সংরক্ষিত</span>
@@ -1550,6 +2016,48 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
                         মুছে ফেলুন
                       </button>
                     )}
+                  </div>
+
+                  {/* Name & Designation fields linked to letterheadSettings */}
+                  <div className="space-y-2 pt-2 border-t border-slate-200">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">স্বাক্ষরকারীর নাম:</label>
+                      <input
+                        type="text"
+                        disabled={!canEdit}
+                        value={formData.letterheadSettings?.secretaryNameBn || ''}
+                        onChange={(e) =>
+                          setFormData(prev => ({
+                            ...prev,
+                            letterheadSettings: {
+                              ...prev.letterheadSettings!,
+                              secretaryNameBn: e.target.value,
+                            },
+                          }))
+                        }
+                        placeholder="মাওলানা মোঃ ইব্রাহিম খলিল"
+                        className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">পদবি:</label>
+                      <input
+                        type="text"
+                        disabled={!canEdit}
+                        value={formData.letterheadSettings?.secretaryDesignationBn || 'সাধারণ সম্পাদক/ মোতাওয়াল্লী'}
+                        onChange={(e) =>
+                          setFormData(prev => ({
+                            ...prev,
+                            letterheadSettings: {
+                              ...prev.letterheadSettings!,
+                              secretaryDesignationBn: e.target.value,
+                            },
+                          }))
+                        }
+                        placeholder="সাধারণ সম্পাদক/ মোতাওয়াল্লী"
+                        className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1810,6 +2318,20 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
           onClose={() => setConfirmDialog(null)}
         />
       )}
+
+      {/* Official Letterhead Full Pad Print & Preview Modal */}
+      <OfficialLetterheadPrintModal
+        isOpen={isLetterheadPrintModalOpen}
+        onClose={() => setIsLetterheadPrintModalOpen(false)}
+        mosque={{
+          ...(currentMosque || ({} as any)),
+          ...formData,
+          letterheadSettings: formData.letterheadSettings,
+          presidentSignatureUrl: formData.presidentSignatureUrl,
+          secretarySignatureUrl: formData.secretarySignatureUrl,
+        } as Mosque}
+        initialBodyMode={letterheadBodyMode}
+      />
     </div>
   );
 };

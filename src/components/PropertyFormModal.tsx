@@ -9,11 +9,17 @@ import {
   Save,
   Compass,
   AlertCircle,
+  CheckCircle2,
   HelpCircle,
-  Image as ImageIcon
+  Image as ImageIcon,
+  ArrowRight,
+  ArrowLeft,
+  Eye,
+  Layers,
+  Landmark
 } from 'lucide-react';
 import { MosqueProperty } from '../types';
-import { Language, translations } from '../lib/i18n';
+import { Language, translations, formatCurrency } from '../lib/i18n';
 
 interface PropertyFormModalProps {
   isOpen: boolean;
@@ -34,14 +40,16 @@ export const PROPERTY_CATEGORIES = [
 ];
 
 export const PROPERTY_TYPES = [
-  { id: 'COMMERCIAL_LAND', labelBn: 'বাণিজ্যিক জমি / মার্কেট', labelEn: 'Commercial Land / Market' },
-  { id: 'AGRICULTURAL_LAND', labelBn: 'কৃষি জমি / আবাদি জমি', labelEn: 'Agricultural Land' },
-  { id: 'RESIDENTIAL_PLOT', labelBn: 'আবাসিক প্লট / ভিটা জমি', labelEn: 'Residential Plot' },
-  { id: 'SHOP', labelBn: 'দোকানঘর', labelEn: 'Shop' },
-  { id: 'BUILDING', labelBn: 'পাকা ভবন / ইমারত', labelEn: 'Building' },
-  { id: 'POND', labelBn: 'পুকুর / মৎস্য খামার', labelEn: 'Pond / Fishery' },
-  { id: 'GRAVEYARD_ADJACENT', labelBn: 'কবরস্থান সংলগ্ন ওয়াকফ জমি', labelEn: 'Graveyard Adjacent Land' },
-  { id: 'OTHER', labelBn: 'অন্যান্য', labelEn: 'Other' }
+  { id: 'COMMERCIAL_LAND', categoryId: 'LAND', labelBn: 'বাণিজ্যিক জমি / মার্কেট সংলগ্ন', labelEn: 'Commercial Land' },
+  { id: 'AGRICULTURAL_LAND', categoryId: 'LAND', labelBn: 'কৃষি জমি / আবাদি জমি', labelEn: 'Agricultural Land' },
+  { id: 'RESIDENTIAL_PLOT', categoryId: 'LAND', labelBn: 'আবাসিক প্লট / ভিটা জমি', labelEn: 'Residential Plot' },
+  { id: 'GRAVEYARD_ADJACENT', categoryId: 'LAND', labelBn: 'কবরস্থান সংলগ্ন ওয়াকফ জমি', labelEn: 'Graveyard Adjacent Land' },
+  { id: 'MARKET', categoryId: 'MARKET', labelBn: 'পাকা বাণিজ্যিক মার্কেট', labelEn: 'Commercial Market' },
+  { id: 'SHOP', categoryId: 'SHOP', labelBn: 'দোকানঘর / বাণিজ্যিক কক্ষ', labelEn: 'Shop / Commercial Room' },
+  { id: 'BUILDING', categoryId: 'BUILDING', labelBn: 'পাকা ভবন / বহুতল ইমারত', labelEn: 'Building' },
+  { id: 'POND', categoryId: 'POND', labelBn: 'পুকুর / মৎস্য খামার', labelEn: 'Pond / Fishery' },
+  { id: 'GARDEN', categoryId: 'GARDEN', labelBn: 'বাগান / ফলদ বৃক্ষরাজি', labelEn: 'Garden' },
+  { id: 'OTHER', categoryId: 'OTHER', labelBn: 'অন্যান্য স্থাবর সম্পত্তি', labelEn: 'Other' }
 ];
 
 export const POSSESSION_STATUSES = [
@@ -82,7 +90,7 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
   onSubmit,
   language
 }) => {
-  const [activeTab, setActiveTab] = useState<'general' | 'land' | 'boundaries' | 'waqf'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'land' | 'boundaries' | 'waqf' | 'review'>('general');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -202,8 +210,9 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
       });
     } else {
       const year = new Date().getFullYear();
+      const randHex = Math.floor(100 + Math.random() * 900);
       setFormData({
-        propertyCode: `PROP-${year}-001`,
+        propertyCode: `WPF-${year}-${randHex}`,
         name: '',
         nameBn: '',
         category: 'LAND',
@@ -295,21 +304,25 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
     }
   };
 
+  const selectedCategoryObj = PROPERTY_CATEGORIES.find(c => c.id === formData.category);
+  const selectedTypeObj = PROPERTY_TYPES.find(t => t.id === formData.type);
+  const selectedPossessionObj = POSSESSION_STATUSES.find(p => p.id === formData.possessionStatus);
+
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 font-siliguri">
       <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-150">
         
         {/* Header */}
-        <div className="px-6 py-4 bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white flex items-center justify-between">
+        <div className="px-6 py-4 bg-gradient-to-r from-amber-900 via-stone-900 to-slate-900 text-white flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-blue-700/40 rounded-xl border border-blue-400/30">
-              <Building className="w-5 h-5 text-blue-200" />
+            <div className="p-2.5 bg-amber-700/40 rounded-xl border border-amber-400/30">
+              <Building className="w-5 h-5 text-amber-200" />
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-bold">
                 {property ? 'ওয়াকফ সম্পত্তি তথ্য সম্পাদনা' : 'নতুন ওয়াকফ সম্পত্তি অন্তর্ভুক্তি'}
               </h2>
-              <p className="text-xs text-blue-200">
+              <p className="text-xs text-amber-200 font-tiro">
                 ওয়াকফ এস্টেটের জমি, মার্কেট, দোকান ও স্থাবর সম্পত্তির মাস্টার রেজিস্টার
               </p>
             </div>
@@ -322,14 +335,14 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
           </button>
         </div>
 
-        {/* Tab Navigation */}
+        {/* Tab / Step Navigation */}
         <div className="flex border-b border-slate-200 bg-slate-50 px-6 gap-2 overflow-x-auto text-xs font-semibold">
           <button
             type="button"
             onClick={() => setActiveTab('general')}
             className={`py-3 px-3.5 border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors ${
               activeTab === 'general'
-                ? 'border-blue-600 text-blue-600 bg-white'
+                ? 'border-amber-600 text-amber-700 bg-white'
                 : 'border-transparent text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -341,7 +354,7 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
             onClick={() => setActiveTab('land')}
             className={`py-3 px-3.5 border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors ${
               activeTab === 'land'
-                ? 'border-blue-600 text-blue-600 bg-white'
+                ? 'border-amber-600 text-amber-700 bg-white'
                 : 'border-transparent text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -353,7 +366,7 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
             onClick={() => setActiveTab('boundaries')}
             className={`py-3 px-3.5 border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors ${
               activeTab === 'boundaries'
-                ? 'border-blue-600 text-blue-600 bg-white'
+                ? 'border-amber-600 text-amber-700 bg-white'
                 : 'border-transparent text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -365,12 +378,24 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
             onClick={() => setActiveTab('waqf')}
             className={`py-3 px-3.5 border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors ${
               activeTab === 'waqf'
-                ? 'border-blue-600 text-blue-600 bg-white'
+                ? 'border-amber-600 text-amber-700 bg-white'
                 : 'border-transparent text-slate-600 hover:text-slate-900'
             }`}
           >
             <User className="w-4 h-4" />
             ৪. ওয়াকিফ ও দখল অবস্থা
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('review')}
+            className={`py-3 px-3.5 border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors ${
+              activeTab === 'review'
+                ? 'border-amber-600 text-amber-700 bg-white'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Eye className="w-4 h-4" />
+            ৫. চূড়ান্ত পর্যালোচনা
           </button>
         </div>
 
@@ -390,16 +415,15 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    সম্পত্তি কোড / আইডি *
+                    সম্পত্তি কোড / আইডি (সিস্টেম জেনারেটেড) *
                   </label>
                   <input
                     type="text"
                     value={formData.propertyCode}
-                    onChange={(e) => setFormData({ ...formData, propertyCode: e.target.value })}
-                    required
-                    placeholder="e.g. PROP-2026-001"
-                    className="w-full text-xs font-mono font-bold px-3 py-2 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500"
+                    readOnly
+                    className="w-full text-xs font-baloo font-bold px-3 py-2 border border-slate-300 rounded-xl bg-slate-100 text-slate-600 cursor-not-allowed"
                   />
+                  <p className="text-[10px] text-slate-400 mt-0.5">স্বয়ংক্রিয় ইউনিক কোড</p>
                 </div>
 
                 <div className="sm:col-span-2">
@@ -411,8 +435,8 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value, nameBn: e.target.value })}
                     required
-                    placeholder="যেমন: মসজিদ সংলগ্ন পাকা মার্কেট ও দোকানঘর"
-                    className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                    placeholder="যেমন: খুরুশকুল বাজার সংলগ্ন ওয়াকফ মার্কেট ও জমি"
+                    className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500"
                   />
                 </div>
               </div>
@@ -423,7 +447,7 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
                   <select
                     value={formData.category}
                     onChange={(e) => setFormData({ ...formData, category: e.target.value as any })}
-                    className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
+                    className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-amber-500"
                   >
                     {PROPERTY_CATEGORIES.map((c) => (
                       <option key={c.id} value={c.id}>{c.labelBn}</option>
@@ -436,7 +460,7 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
                   <select
                     value={formData.type}
                     onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
-                    className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
+                    className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-amber-500"
                   >
                     {PROPERTY_TYPES.map((t) => (
                       <option key={t.id} value={t.id}>{t.labelBn}</option>
@@ -449,17 +473,17 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
                   <select
                     value={formData.ownershipType}
                     onChange={(e) => setFormData({ ...formData, ownershipType: e.target.value as any })}
-                    className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
+                    className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-amber-500"
                   >
-                    <option value="WAQF">ওয়াকফকৃত সম্পত্তি (Waqf)</option>
-                    <option value="PURCHASED">মসজিদের ক্রয়কৃত জমি</option>
+                    <option value="WAQF">ওয়াকফ সম্পত্তি (স্থায়ী)</option>
+                    <option value="PURCHASED">মসজিদ কর্তৃক ক্রয়কৃত</option>
                     <option value="DONATED">দানপত্র / হেবা সূত্রে প্রাপ্ত</option>
-                    <option value="LEASED">সরকারি বন্দোবস্ত / লিজ</option>
+                    <option value="LEASED">দীর্ঘমেয়াদী ইজারা নেওয়া</option>
                   </select>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">সাধারণ অবস্থান *</label>
                   <input
@@ -467,47 +491,49 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
                     value={formData.location}
                     onChange={(e) => setFormData({ ...formData, location: e.target.value })}
                     required
-                    placeholder="যেমন: মসজিদ সংলগ্ন মূল সড়ক, মিরপুর-১২"
-                    className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                    placeholder="যেমন: খুরুশকুল বাজার, কক্সবাজার"
+                    className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500"
                   />
                 </div>
 
-                <div>
+                <div className="sm:col-span-2">
                   <label className="block text-xs font-bold text-slate-700 mb-1">পূর্ণাঙ্গ ঠিকানা / হোল্ডিং নং</label>
                   <input
                     type="text"
                     value={formData.fullAddress}
                     onChange={(e) => setFormData({ ...formData, fullAddress: e.target.value })}
-                    placeholder="হোল্ডিং নং- ১২/এ, ব্লক-ডি, পল্লবী, ঢাকা"
-                    className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                    placeholder="গ্রাম/মহল্লা, ডাকঘর, উপজেলা, জেলা ও হোল্ডিং নম্বর"
+                    className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500"
                   />
                 </div>
               </div>
 
-              <div className="p-4 bg-blue-50/60 rounded-xl border border-blue-100 space-y-3">
-                <h4 className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
-                  <MapPin className="w-4 h-4 text-blue-700" />
-                  জমির পরিমাপ ও আর্থিক মূল্যায়ন
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="p-4 bg-amber-50/50 rounded-xl border border-amber-200/80 space-y-3">
+                <div className="font-bold text-xs text-amber-900 flex items-center gap-1.5">
+                  <Building className="w-4 h-4 text-amber-700" />
+                  <span>জমির পরিমাণ ও বর্তমান বাজারমূল্য</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">জমির পরিমাণ (সংখ্যায়)</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">পরিমাণ (সংখ্যায়)</label>
                     <input
                       type="number"
                       step="any"
+                      min="0"
                       value={formData.areaAmount || ''}
                       onChange={(e) => setFormData({ ...formData, areaAmount: parseFloat(e.target.value) || 0 })}
-                      placeholder="e.g. 6.50"
-                      className="w-full text-xs font-bold px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
+                      placeholder="যেমন: ১২.৫০"
+                      className="w-full text-xs font-baloo font-bold px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-amber-500"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">পরিমাপের একক</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">পরিমাপের একক</label>
                     <select
                       value={formData.areaUnit}
                       onChange={(e) => setFormData({ ...formData, areaUnit: e.target.value as any })}
-                      className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
+                      className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-amber-500"
                     >
                       {AREA_UNITS.map((u) => (
                         <option key={u.id} value={u.id}>{u.labelBn}</option>
@@ -516,27 +542,39 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">আনুমানিক বর্তমান বাজারমূল্য (৳)</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">আনুমানিক বর্তমান বাজারমূল্য (৳)</label>
                     <input
                       type="number"
+                      min="0"
                       value={formData.estimatedValue || ''}
                       onChange={(e) => setFormData({ ...formData, estimatedValue: parseFloat(e.target.value) || 0 })}
-                      placeholder="e.g. 12500000"
-                      className="w-full text-xs font-bold px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
+                      placeholder="টাকার পরিমাণ"
+                      className="w-full text-xs font-baloo font-bold px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-amber-500"
                     />
                   </div>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">ছবি বা সাইট ম্যাপের লিঙ্ক (URL)</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">সম্পত্তির ছবি / সাইট ম্যাপ URL</label>
                 <input
                   type="text"
                   value={formData.photoUrl}
                   onChange={(e) => setFormData({ ...formData, photoUrl: e.target.value })}
-                  placeholder="https://... (ছবি বা লেআউট নকশার লিংক)"
-                  className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                  placeholder="https://example.com/property-photo.jpg"
+                  className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500"
                 />
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('land')}
+                  className="px-4 py-2 bg-amber-700 hover:bg-amber-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span>পরবর্তী ধাপ: ভূমি রেকর্ড</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
               </div>
             </div>
           )}
@@ -546,24 +584,24 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
             <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">মৌজা *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">মৌজা নাম *</label>
                   <input
                     type="text"
                     value={formData.mouza}
                     onChange={(e) => setFormData({ ...formData, mouza: e.target.value })}
-                    placeholder="যেমন: সেনপাড়া পর্বতা / তেজগাঁও"
-                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                    placeholder="যেমন: খুরুশকুল"
+                    className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">জে.এল. নম্বর (J.L. No)</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">জে.এল. (JL) নম্বর</label>
                   <input
                     type="text"
                     value={formData.jlNumber}
                     onChange={(e) => setFormData({ ...formData, jlNumber: e.target.value })}
-                    placeholder="যেমন: ৪৫"
-                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                    placeholder="যেমন: ৪২"
+                    className="w-full text-xs font-baloo font-medium px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500"
                   />
                 </div>
 
@@ -573,218 +611,243 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
                     type="text"
                     value={formData.subRegistryOffice}
                     onChange={(e) => setFormData({ ...formData, subRegistryOffice: e.target.value })}
-                    placeholder="যেমন: মিরপুর সাব-রেজিস্ট্রি অফিস"
-                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                    placeholder="যেমন: কক্সবাজার সদর"
+                    className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500"
                   />
                 </div>
               </div>
 
-              {/* Dag / Plot Numbers Grid */}
+              {/* Khatian Details */}
               <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-                <h4 className="text-xs font-bold text-slate-900">দাগ নম্বরসমূহ (Plot / Dag Numbers)</h4>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div>
-                    <label className="block text-xs text-slate-600 mb-1">সি.এস. দাগ (CS)</label>
-                    <input
-                      type="text"
-                      value={formData.csPlotNo}
-                      onChange={(e) => setFormData({ ...formData, csPlotNo: e.target.value })}
-                      placeholder="দাগ নং"
-                      className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-slate-600 mb-1">এস.এ. দাগ (SA)</label>
-                    <input
-                      type="text"
-                      value={formData.saPlotNo}
-                      onChange={(e) => setFormData({ ...formData, saPlotNo: e.target.value })}
-                      placeholder="দাগ নং"
-                      className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-slate-600 mb-1">আর.এস. দাগ (RS)</label>
-                    <input
-                      type="text"
-                      value={formData.rsPlotNo}
-                      onChange={(e) => setFormData({ ...formData, rsPlotNo: e.target.value })}
-                      placeholder="দাগ নং"
-                      className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-blue-800 mb-1">বি.এস. / সিটি দাগ (BS)</label>
-                    <input
-                      type="text"
-                      value={formData.bsPlotNo}
-                      onChange={(e) => setFormData({ ...formData, bsPlotNo: e.target.value, plotNo: e.target.value })}
-                      placeholder="হাল দাগ নং"
-                      className="w-full text-xs font-bold px-3 py-2 border border-blue-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
+                <div className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                  <FileText className="w-4 h-4 text-blue-600" />
+                  <span>খতিয়ান নম্বরসমূহ</span>
                 </div>
-              </div>
-
-              {/* Khatian Numbers Grid */}
-              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-                <h4 className="text-xs font-bold text-slate-900">খতিয়ান নম্বরসমূহ (Khatian Numbers)</h4>
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                   <div>
-                    <label className="block text-xs text-slate-600 mb-1">সি.এস. খতিয়ান</label>
+                    <label className="block text-[11px] text-slate-500 mb-0.5">সি.এস (CS) খতিয়ান</label>
                     <input
                       type="text"
                       value={formData.csKhatianNo}
                       onChange={(e) => setFormData({ ...formData, csKhatianNo: e.target.value })}
-                      placeholder="খতিয়ান নং"
-                      className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
+                      className="w-full text-xs font-baloo px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-slate-600 mb-1">এস.এ. খতিয়ান</label>
+                    <label className="block text-[11px] text-slate-500 mb-0.5">এস.এ (SA) খতিয়ান</label>
                     <input
                       type="text"
                       value={formData.saKhatianNo}
                       onChange={(e) => setFormData({ ...formData, saKhatianNo: e.target.value })}
-                      placeholder="খতিয়ান নং"
-                      className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
+                      className="w-full text-xs font-baloo px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-slate-600 mb-1">আর.এস. খতিয়ান</label>
+                    <label className="block text-[11px] text-slate-500 mb-0.5">আর.এস (RS) খতিয়ান</label>
                     <input
                       type="text"
                       value={formData.rsKhatianNo}
                       onChange={(e) => setFormData({ ...formData, rsKhatianNo: e.target.value })}
-                      placeholder="খতিয়ান নং"
-                      className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
+                      className="w-full text-xs font-baloo px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-blue-800 mb-1">বি.এস. খতিয়ান</label>
+                    <label className="block text-[11px] text-slate-500 mb-0.5">বি.এস (BS) খতিয়ান</label>
                     <input
                       type="text"
                       value={formData.bsKhatianNo}
-                      onChange={(e) => setFormData({ ...formData, bsKhatianNo: e.target.value, khatianNo: e.target.value })}
-                      placeholder="হাল খতিয়ান"
-                      className="w-full text-xs font-bold px-3 py-2 border border-blue-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
+                      onChange={(e) => setFormData({ ...formData, bsKhatianNo: e.target.value })}
+                      className="w-full text-xs font-baloo px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white"
                     />
                   </div>
-                  <div className="col-span-2 sm:col-span-1">
-                    <label className="block text-xs font-bold text-emerald-800 mb-1">নামজারি খতিয়ান</label>
+                  <div>
+                    <label className="block text-[11px] text-slate-500 mb-0.5">নামজারি/মিউটেশন</label>
                     <input
                       type="text"
                       value={formData.mutationKhatianNo}
                       onChange={(e) => setFormData({ ...formData, mutationKhatianNo: e.target.value })}
-                      placeholder="মিউটেশন নং"
-                      className="w-full text-xs font-bold px-3 py-2 border border-emerald-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
+                      className="w-full text-xs font-baloo px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white font-bold text-blue-700"
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* Plot Numbers */}
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+                <div className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                  <MapPin className="w-4 h-4 text-emerald-600" />
+                  <span>দাগ নম্বরসমূহ</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-[11px] text-slate-500 mb-0.5">সি.এস (CS) দাগ</label>
+                    <input
+                      type="text"
+                      value={formData.csPlotNo}
+                      onChange={(e) => setFormData({ ...formData, csPlotNo: e.target.value })}
+                      className="w-full text-xs font-baloo px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-500 mb-0.5">এস.এ (SA) দাগ</label>
+                    <input
+                      type="text"
+                      value={formData.saPlotNo}
+                      onChange={(e) => setFormData({ ...formData, saPlotNo: e.target.value })}
+                      className="w-full text-xs font-baloo px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-500 mb-0.5">আর.এস (RS) দাগ</label>
+                    <input
+                      type="text"
+                      value={formData.rsPlotNo}
+                      onChange={(e) => setFormData({ ...formData, rsPlotNo: e.target.value })}
+                      className="w-full text-xs font-baloo px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-500 mb-0.5">বি.এস / হাল (BS) দাগ</label>
+                    <input
+                      type="text"
+                      value={formData.bsPlotNo}
+                      onChange={(e) => setFormData({ ...formData, bsPlotNo: e.target.value, plotNo: e.target.value })}
+                      className="w-full text-xs font-baloo px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white font-bold text-emerald-700"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-between pt-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('general')}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>পূর্ববর্তী</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('boundaries')}
+                  className="px-4 py-2 bg-amber-700 hover:bg-amber-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span>পরবর্তী ধাপ: চতুঃসীমানা</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
               </div>
             </div>
           )}
 
-          {/* TAB 3: BOUNDARIES & WAQF DEED */}
+          {/* TAB 3: BOUNDARIES & DEED */}
           {activeTab === 'boundaries' && (
             <div className="space-y-4">
-              <div className="p-4 bg-amber-50/60 rounded-xl border border-amber-200/80 space-y-3">
-                <h4 className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
-                  <Compass className="w-4 h-4 text-amber-700" />
-                  চতুঃসীমানা বিবরণী (Property Boundaries)
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Boundaries */}
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+                <div className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                  <Compass className="w-4 h-4 text-indigo-600" />
+                  <span>চতুঃসীমানা বিবরণ</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">উত্তরে (North)</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">উত্তর সীমানা</label>
                     <input
                       type="text"
                       value={formData.boundaryNorth}
                       onChange={(e) => setFormData({ ...formData, boundaryNorth: e.target.value })}
-                      placeholder="যেমন: প্রধান সড়ক ও ফুটপাত"
-                      className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
+                      placeholder="যেমন: সরকারি পাকা রাস্তা"
+                      className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl bg-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">দক্ষিণে (South)</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">দক্ষিণ সীমানা</label>
                     <input
                       type="text"
                       value={formData.boundarySouth}
                       onChange={(e) => setFormData({ ...formData, boundarySouth: e.target.value })}
-                      placeholder="যেমন: মসজিদ চত্বর"
-                      className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
+                      placeholder="যেমন: জামে মসজিদ চত্বর"
+                      className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl bg-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">পূর্বে (East)</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">পূর্ব সীমানা</label>
                     <input
                       type="text"
                       value={formData.boundaryEast}
                       onChange={(e) => setFormData({ ...formData, boundaryEast: e.target.value })}
-                      placeholder="যেমন: আবাসিক প্লট"
-                      className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
+                      placeholder="যেমন: মোঃ করিমের বাড়ি"
+                      className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl bg-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">পশ্চিমে (West)</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">পশ্চিম সীমানা</label>
                     <input
                       type="text"
                       value={formData.boundaryWest}
                       onChange={(e) => setFormData({ ...formData, boundaryWest: e.target.value })}
-                      placeholder="যেমন: সংযোগ রাস্তা ও ড্রেন"
-                      className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
+                      placeholder="যেমন: নদী / খাল"
+                      className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl bg-white"
                     />
                   </div>
                 </div>
               </div>
 
-              <div className="p-4 bg-indigo-50/60 rounded-xl border border-indigo-100 space-y-3">
-                <h4 className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
-                  <Shield className="w-4 h-4 text-indigo-700" />
-                  ওয়াকফ দলিল ও এস্টেট বিবরণী
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Waqf Deed */}
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+                <div className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                  <FileText className="w-4 h-4 text-purple-600" />
+                  <span>ওয়াকফ দলিল ও সরকারি তালিকাভুক্তি</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">ওয়াকফ এনরোলমেন্ট / ইসি নং</label>
-                    <input
-                      type="text"
-                      value={formData.waqfEnrollmentNo}
-                      onChange={(e) => setFormData({ ...formData, waqfEnrollmentNo: e.target.value })}
-                      placeholder="e.g. EC-18452/1988"
-                      className="w-full text-xs font-mono font-bold px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">ওয়াকফ দলিল নম্বর</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">ওয়াকফ দলিল নম্বর</label>
                     <input
                       type="text"
                       value={formData.waqfDeedNo}
                       onChange={(e) => setFormData({ ...formData, waqfDeedNo: e.target.value })}
-                      placeholder="যেমন: ৪৫১২/১৯৮৮"
-                      className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
+                      placeholder="দলিল নং"
+                      className="w-full text-xs font-baloo px-3 py-2 border border-slate-300 rounded-xl bg-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">ওয়াকফের সাল / দলিল তারিখ</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">দলিলের তারিখ</label>
+                    <input
+                      type="date"
+                      value={formData.waqfDeedDate}
+                      onChange={(e) => setFormData({ ...formData, waqfDeedDate: e.target.value })}
+                      className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">ওয়াকফ প্রশাসন তালিকাভুক্তি নং (E.C)</label>
                     <input
                       type="text"
-                      value={formData.waqfYear}
-                      onChange={(e) => setFormData({ ...formData, waqfYear: e.target.value })}
-                      placeholder="যেমন: ১৯৮৮ বা 1988-04-15"
-                      className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
+                      value={formData.waqfEnrollmentNo}
+                      onChange={(e) => setFormData({ ...formData, waqfEnrollmentNo: e.target.value })}
+                      placeholder="E.C নম্বর"
+                      className="w-full text-xs font-baloo px-3 py-2 border border-slate-300 rounded-xl bg-white"
                     />
                   </div>
                 </div>
+              </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">ওয়াকফ এস্টেটের নাম</label>
-                  <input
-                    type="text"
-                    value={formData.waqfEstateName}
-                    onChange={(e) => setFormData({ ...formData, waqfEstateName: e.target.value })}
-                    placeholder="যেমন: হাজী আলতাফ হোসেন ওয়াকফ এস্টেট"
-                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
+              <div className="flex justify-between pt-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('land')}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>পূর্ববর্তী</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('waqf')}
+                  className="px-4 py-2 bg-amber-700 hover:bg-amber-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span>পরবর্তী ধাপ: ওয়াকিফ ও দখল</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
               </div>
             </div>
           )}
@@ -792,64 +855,52 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
           {/* TAB 4: WAQIF & POSSESSION */}
           {activeTab === 'waqf' && (
             <div className="space-y-4">
-              {/* Waqif details */}
               <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-                <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                  <User className="w-4 h-4 text-blue-700" />
-                  ওয়াকিফ (দানকারী)-এর তথ্য
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                  <User className="w-4 h-4 text-teal-600" />
+                  <span>ওয়াকিফ / দানকারীর পরিচয়</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs text-slate-700 mb-1">ওয়াকিফের নাম</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">ওয়াকিফের নাম</label>
                     <input
                       type="text"
                       value={formData.waqifName}
                       onChange={(e) => setFormData({ ...formData, waqifName: e.target.value })}
-                      placeholder="যেমন: মরহুম হাজী মোহাম্মদ আলতাফ হোসেন"
-                      className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
+                      placeholder="ওয়াকিফের নাম"
+                      className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl bg-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-slate-700 mb-1">পিতা / স্বামীর নাম</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">পিতার নাম</label>
                     <input
                       type="text"
                       value={formData.waqifFatherName}
                       onChange={(e) => setFormData({ ...formData, waqifFatherName: e.target.value })}
-                      placeholder="যেমন: মরহুম মৌলভী আব্দুল করিম"
-                      className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
+                      placeholder="পিতার নাম"
+                      className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl bg-white"
                     />
                   </div>
                   <div className="sm:col-span-2">
-                    <label className="block text-xs text-slate-700 mb-1">ওয়াকিফের স্থায়ী ঠিকানা</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">ওয়াকিফের ঠিকানা</label>
                     <input
                       type="text"
                       value={formData.waqifAddress}
                       onChange={(e) => setFormData({ ...formData, waqifAddress: e.target.value })}
-                      placeholder="গ্রাম/রোড, ডাকঘর, থানা ও জেলা"
-                      className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="block text-xs text-slate-700 mb-1">ওয়াকফের উদ্দেশ্য ও বিশেষ শর্তাবলী</label>
-                    <textarea
-                      rows={2}
-                      value={formData.waqfPurpose}
-                      onChange={(e) => setFormData({ ...formData, waqfPurpose: e.target.value })}
-                      placeholder="যেমন: মসজিদের ইমাম-মুয়াজ্জিনের সম্মানী ও হিফজখানার ছাত্রদের সহায়তা"
-                      className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
+                      placeholder="ওয়াকিফের পূর্ণ ঠিকানা"
+                      className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl bg-white"
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Current Possession & Status */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">দখল অবস্থা (Possession Status) *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">বর্তমান দখল ও ব্যবহার অবস্থা *</label>
                   <select
                     value={formData.possessionStatus}
                     onChange={(e) => setFormData({ ...formData, possessionStatus: e.target.value as any })}
-                    className="w-full text-xs font-bold px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
+                    className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-amber-500"
                   >
                     {POSSESSION_STATUSES.map((p) => (
                       <option key={p.id} value={p.id}>{p.labelBn}</option>
@@ -858,11 +909,11 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">সম্পত্তির স্ট্যাটাস *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">সম্পত্তির সার্বিক অবস্থা *</label>
                   <select
                     value={formData.status}
                     onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                    className="w-full text-xs font-bold px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500"
+                    className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-amber-500"
                   >
                     {PROPERTY_STATUSES.map((s) => (
                       <option key={s.id} value={s.id}>{s.labelBn}</option>
@@ -872,79 +923,132 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">বর্তমান ব্যবহার বিবরণ *</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">বর্তমান ব্যবহারের বিবরণ</label>
                 <input
                   type="text"
                   value={formData.currentUse}
                   onChange={(e) => setFormData({ ...formData, currentUse: e.target.value })}
-                  required
-                  placeholder="যেমন: ১০টি দোকান ভাড়া দেওয়া আছে (মাসিক আয় মোট ৪৫,০০০ টাকা)"
-                  className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                  placeholder="যেমন: নিচতলায় ১২টি দোকান ভাড়া, দোতলায় হেফজখানা"
+                  className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">অতিরিক্ত নোট বা মন্তব্য</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">অতিরিক্ত নোট / বিশেষ নির্দেশনা</label>
                 <textarea
                   rows={2}
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  placeholder="অন্যান্য কোনো গুরুত্বপূর্ণ তথ্য বা কমিটির সিদ্ধান্ত..."
-                  className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                  placeholder="সম্পত্তি সংক্রান্ত অন্য কোনো তথ্য বা নির্দেশনাবলি..."
+                  className="w-full text-xs font-medium px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500"
                 />
+              </div>
+
+              <div className="flex justify-between pt-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('boundaries')}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>পূর্ববর্তী</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('review')}
+                  className="px-4 py-2 bg-amber-700 hover:bg-amber-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span>পরবর্তী ধাপ: চূড়ান্ত পর্যালোচনা</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
               </div>
             </div>
           )}
 
-          {/* Footer actions */}
-          <div className="pt-4 border-t border-slate-200 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {activeTab !== 'general' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (activeTab === 'waqf') setActiveTab('boundaries');
-                    else if (activeTab === 'boundaries') setActiveTab('land');
-                    else if (activeTab === 'land') setActiveTab('general');
-                  }}
-                  className="px-3.5 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
-                >
-                  পূর্ববর্তী ধাপ
-                </button>
-              )}
-              {activeTab !== 'waqf' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (activeTab === 'general') setActiveTab('land');
-                    else if (activeTab === 'land') setActiveTab('boundaries');
-                    else if (activeTab === 'boundaries') setActiveTab('waqf');
-                  }}
-                  className="px-3.5 py-2 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors"
-                >
-                  পরবর্তী ধাপ →
-                </button>
-              )}
-            </div>
+          {/* TAB 5: FINAL REVIEW BEFORE SAVE */}
+          {activeTab === 'review' && (
+            <div className="space-y-4">
+              <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-200 space-y-3">
+                <div className="flex items-center space-x-2 text-emerald-900 font-bold text-sm">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                  <span>সম্পত্তি সংরক্ষণের পূর্ববর্তী সারসংক্ষেপ পর্যালোচনা</span>
+                </div>
+                <p className="text-xs text-emerald-700 font-tiro">
+                  অনুগ্রহ করে তথ্যাবলি যাচাই করুন। সবকিছু সঠিক থাকলে নিচে "সম্পত্তি সংরক্ষণ করুন" বাটনে ক্লিক করুন।
+                </p>
 
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 rounded-xl transition-colors"
-              >
-                বাতিল
-              </button>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="px-5 py-2.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 rounded-xl shadow-xs flex items-center gap-2 transition-colors"
-              >
-                <Save className="w-4 h-4" />
-                {isSubmitting ? 'সংরক্ষণ হচ্ছে...' : property ? 'তথ্য আপডেট করুন' : 'সম্পত্তি সংরক্ষণ করুন'}
-              </button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-2">
+                  <div className="p-3 bg-white rounded-xl border border-emerald-100 space-y-1">
+                    <div className="text-[11px] text-slate-500">সম্পত্তির কোড ও নাম:</div>
+                    <div className="font-bold text-slate-900 text-sm">{formData.name || '—'}</div>
+                    <div className="font-baloo text-xs text-amber-800 font-semibold">{formData.propertyCode}</div>
+                    <div className="text-[11px] text-slate-600">{selectedCategoryObj?.labelBn} • {selectedTypeObj?.labelBn}</div>
+                  </div>
+
+                  <div className="p-3 bg-white rounded-xl border border-emerald-100 space-y-1">
+                    <div className="text-[11px] text-slate-500">অবস্থান ও পরিমাপ:</div>
+                    <div className="font-bold text-slate-800">{formData.location || '—'}</div>
+                    <div className="font-baloo font-bold text-emerald-700 text-sm">
+                      {formData.areaAmount > 0 ? `${formData.areaAmount} ${AREA_UNITS.find(u => u.id === formData.areaUnit)?.labelBn}` : (formData.area || '০ শতাংশ')}
+                    </div>
+                    {formData.estimatedValue > 0 && (
+                      <div className="text-[11px] text-slate-600 font-baloo">
+                        বাজারমূল্য: {formatCurrency(formData.estimatedValue)}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="p-3 bg-white rounded-xl border border-emerald-100 space-y-1">
+                    <div className="text-[11px] text-slate-500">ভূমি রেকর্ড (খতিয়ান ও দাগ):</div>
+                    <div className="text-slate-800">
+                      <strong>মৌজা:</strong> {formData.mouza || '—'} {formData.jlNumber ? `(JL: ${formData.jlNumber})` : ''}
+                    </div>
+                    <div className="text-[11px] text-slate-600 font-baloo">
+                      বি.এস দাগ: {formData.bsPlotNo || formData.plotNo || '—'} • নামজারি খতিয়ান: {formData.mutationKhatianNo || formData.bsKhatianNo || '—'}
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-white rounded-xl border border-emerald-100 space-y-1">
+                    <div className="text-[11px] text-slate-500">ওয়াকিফ ও দখল অবস্থা:</div>
+                    <div className="font-semibold text-slate-800">ওয়াকিফ: {formData.waqifName || '—'}</div>
+                    <div className="text-[11px] text-slate-600">দখল: {selectedPossessionObj?.labelBn || '—'}</div>
+                    {formData.waqfDeedNo && (
+                      <div className="text-[11px] text-slate-600 font-baloo">দলিল নং: {formData.waqfDeedNo}</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('waqf')}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>পূর্ববর্তী ধাপে সংশোধন</span>
+                </button>
+
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold cursor-pointer"
+                  >
+                    বাতিল
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="px-6 py-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-lg flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>{isSubmitting ? 'সংরক্ষণ হচ্ছে...' : '💾 সম্পত্তি সংরক্ষণ করুন'}</span>
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
         </form>
       </div>
     </div>

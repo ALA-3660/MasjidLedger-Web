@@ -391,7 +391,7 @@ aside button,
   }
 
   /* When portal modal is active outside #root */
-  body.print-modal-active #root,
+  body.print-modal-active:not(:has(.print-target-active)) #root,
   body.print-box-report-active #root,
   body.print-action-plan-active #root,
   body:has(.print-modal-portal) #root,
@@ -406,6 +406,20 @@ aside button,
     max-height: 0 !important;
     overflow: hidden !important;
     opacity: 0 !important;
+  }
+
+  /* When print-target-active is directly inside #root */
+  body.print-modal-active:has(.print-target-active) #root {
+    display: block !important;
+    visibility: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    opacity: 1 !important;
+  }
+  body.print-modal-active:has(.print-target-active) #root > *:not(:has(.print-target-active)) {
+    display: none !important;
+    visibility: hidden !important;
   }
 
   /* Reset all modal containers to clean, unconstrained block document */
@@ -438,6 +452,9 @@ aside button,
   .print-modal-card,
   div.fixed.inset-0 > div {
     position: static !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #ffffff !important;
     width: 100% !important;
     max-width: 100% !important;
     height: auto !important;
@@ -445,12 +462,25 @@ aside button,
     max-height: none !important;
     margin: 0 !important;
     padding: 0 !important;
-    border: none !important;
     border-radius: 0 !important;
-    box-shadow: none !important;
-    background: #ffffff !important;
     overflow: visible !important;
     display: block !important;
+  }
+
+  /* Exact A4 dimensions for official letterhead printing */
+  .official-letterhead-a4-sheet {
+    width: 210mm !important;
+    min-height: 297mm !important;
+    max-width: 210mm !important;
+    height: auto !important;
+    padding: 16mm 20mm 16mm 20mm !important;
+    margin: 0 auto !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #ffffff !important;
+    box-sizing: border-box !important;
+    page-break-inside: avoid !important;
+    page-break-after: avoid !important;
   }
 
   /* Document Body / Paper inside modals */
@@ -648,6 +678,37 @@ aside button,
 
 .animate-tv-marquee:hover {
   animation-play-state: paused;
+}
+
+/* ============================================================
+   OFFICIAL A4 LETTERHEAD PAD PRINT STYLING
+   ============================================================ */
+@media print {
+  /* Isolate letterhead pad when print is triggered directly */
+  body:has(#official-letterhead-a4-sheet) #app-shell-root > header,
+  body:has(#official-letterhead-a4-sheet) #app-shell-root > div > aside,
+  body:has(#official-letterhead-a4-sheet) #floating-financial-actions,
+  body:has(#official-letterhead-a4-sheet) .navbar-root {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  .official-letterhead-a4-sheet {
+    position: static !important;
+    width: 210mm !important;
+    min-height: 297mm !important;
+    max-width: 210mm !important;
+    margin: 0 auto !important;
+    padding: 12mm 15mm !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: #ffffff !important;
+    page-break-after: avoid !important;
+    page-break-inside: avoid !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
 }
 
 
