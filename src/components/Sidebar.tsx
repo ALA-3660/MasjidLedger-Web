@@ -180,9 +180,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       items: [
         {
           id: 'mosqueManagement' as NavTab,
-          label: language === 'bn' ? 'মসজিদ ব্যবস্থাপনা' : 'Mosque Management',
+          label: language === 'bn' ? '🏛️ মসজিদ পরিচিতি ও সেটিংস' : '🏛️ Mosque Identity & Settings',
           icon: Landmark,
-          badge: language === 'bn' ? 'মূল পরিচয়' : 'Identity',
           color: 'text-emerald-700',
         },
         {
@@ -217,7 +216,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       items: [
         { id: 'users' as NavTab, label: language === 'bn' ? 'ইউজার ব্যবস্থাপনা' : 'User Management', icon: Users2, color: 'text-blue-600' },
         { id: 'qrManagement' as NavTab, label: language === 'bn' ? 'QR ও কুইক এন্ট্রি' : 'QR Management', icon: QrCode, color: 'text-teal-600' },
-        { id: 'admin' as NavTab, label: t.mosqueSettings, icon: Settings },
         { id: 'audit' as NavTab, label: t.auditLogs, icon: ShieldAlert },
       ],
     },

@@ -21,7 +21,7 @@ export interface FloatingFinancialActionsProps {
   onOpenExpense: () => void;
   onOpenJuma: () => void;
   onOpenScanner: () => void;
-  onOpenCalculator: () => void;
+  onOpenCalculator?: () => void;
   language?: Language;
   className?: string;
 }
@@ -46,32 +46,32 @@ export const FloatingFinancialActions: React.FC<FloatingFinancialActionsProps> =
       {/* Expanded Action Buttons */}
       {isExpanded && (
         <div className="flex flex-col items-end gap-2 animate-in fade-in slide-in-from-bottom-3 duration-200">
-          {/* 1. New Income */}
+          {/* 1. New Income Entry */}
           <button
             id="float-btn-income"
             type="button"
             onClick={onOpenIncome}
             className="group flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-700 text-white pl-3 pr-3.5 py-2 rounded-2xl shadow-lg hover:shadow-xl border border-emerald-500/50 transition-all hover:scale-105 active:scale-95 cursor-pointer text-xs font-bold"
-            title="নতুন আয় ও প্রাপ্তি ভাউচার"
+            title="নতুন আয় গ্রহণ ভাউচার ও ফর্ম"
           >
             <div className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center">
               <Plus className="w-3.5 h-3.5 text-white" />
             </div>
-            <span>➕ আয় ও প্রাপ্তি</span>
+            <span>➕ নতুন আয় গ্রহণ</span>
           </button>
 
-          {/* 2. New Expense */}
+          {/* 2. New Expense Entry */}
           <button
             id="float-btn-expense"
             type="button"
             onClick={onOpenExpense}
             className="group flex items-center space-x-2 bg-rose-600 hover:bg-rose-700 text-white pl-3 pr-3.5 py-2 rounded-2xl shadow-lg hover:shadow-xl border border-rose-500/50 transition-all hover:scale-105 active:scale-95 cursor-pointer text-xs font-bold"
-            title="নতুন ব্যয় ও পরিশোধ ভাউচার"
+            title="নতুন ব্যয় ও পরিশোধ ভাউচার ও ফর্ম"
           >
             <div className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center">
-              <Minus className="w-3.5 h-3.5 text-white" />
+              <Plus className="w-3.5 h-3.5 text-white" />
             </div>
-            <span>➖ ব্যয় ও পরিশোধ</span>
+            <span>➕ নতুন ব্যয় ও পরিশোধ</span>
           </button>
 
           {/* 3. Juma Collection */}
@@ -100,20 +100,6 @@ export const FloatingFinancialActions: React.FC<FloatingFinancialActionsProps> =
               <QrCode className="w-3.5 h-3.5 text-white" />
             </div>
             <span>▣ QR স্ক্যানার</span>
-          </button>
-
-          {/* 5. Change Calculator */}
-          <button
-            id="float-btn-calculator"
-            type="button"
-            onClick={onOpenCalculator}
-            className="group flex items-center space-x-2 bg-amber-600 hover:bg-amber-700 text-white pl-3 pr-3.5 py-2 rounded-2xl shadow-lg hover:shadow-xl border border-amber-500/50 transition-all hover:scale-105 active:scale-95 cursor-pointer text-xs font-bold"
-            title="ভাংতি টাকা ও ক্যাশ নোট গণনা ক্যালকুলেটর"
-          >
-            <div className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center">
-              <Coins className="w-3.5 h-3.5 text-white" />
-            </div>
-            <span>🪙 ভাংতি টাকা গণনা</span>
           </button>
         </div>
       )}

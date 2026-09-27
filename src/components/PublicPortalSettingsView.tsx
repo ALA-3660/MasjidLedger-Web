@@ -234,7 +234,7 @@ export const PublicPortalSettingsView: React.FC<PublicPortalSettingsViewProps> =
                   পাবলিক পোর্টাল দৃশ্যমানতা নিয়ন্ত্রণ (Public Portal Visibility Control)
                 </h1>
                 <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-                  Phase 1 • Whitelist Guard
+                  Whitelist Guard • সুরক্ষিত
                 </span>
               </div>
               <p className="text-xs text-slate-500">

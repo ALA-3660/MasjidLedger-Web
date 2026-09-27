@@ -49,8 +49,7 @@ import { CommitteeManagementView } from './components/CommitteeManagementView';
 import { ManagementView } from './components/ManagementView';
 import { StaffManagementView } from './components/StaffManagementView';
 import { ReportCenterView } from './components/ReportCenterView';
-import { MosqueManagementView } from './components/MosqueManagementView';
-import { MosqueSettingsView } from './components/MosqueSettingsView';
+import { MosqueProfileSettingsView } from './components/MosqueProfileSettingsView';
 import { AuditLogView } from './components/AuditLogView';
 import { DailyTransactionsView } from './components/DailyTransactionsView';
 import { UserManagementView } from './components/UserManagementView';
@@ -65,6 +64,8 @@ import { MoneyReceiptModal, VoucherModal, PrintFormat } from './components/Print
 import { ChangeCalculatorModal } from './components/ChangeCalculatorModal';
 import { UniversalScannerModal } from './components/UniversalScannerModal';
 import { FloatingFinancialActions } from './components/FloatingFinancialActions';
+import { UnifiedIncomeEntryModal } from './components/UnifiedIncomeEntryModal';
+import { UnifiedExpenseEntryModal } from './components/UnifiedExpenseEntryModal';
 import { JumaCollectionModal } from './components/JumaCollectionModal';
 import { UserManualView } from './components/UserManualView';
 import { AdvisoryCouncilView } from './components/AdvisoryCouncilView';
@@ -122,6 +123,8 @@ export default function App() {
   // Universal Calculator & Scanner Global State
   const [isGlobalCalculatorOpen, setIsGlobalCalculatorOpen] = useState<boolean>(false);
   const [isGlobalJumaModalOpen, setIsGlobalJumaModalOpen] = useState<boolean>(false);
+  const [isGlobalIncomeModalOpen, setIsGlobalIncomeModalOpen] = useState<boolean>(false);
+  const [isGlobalExpenseModalOpen, setIsGlobalExpenseModalOpen] = useState<boolean>(false);
   const [isScannerOpen, setIsScannerOpen] = useState<boolean>(false);
   const [isActionCardHubOpen, setIsActionCardHubOpen] = useState<boolean>(false);
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
@@ -1475,24 +1478,19 @@ export default function App() {
         />
       )}
 
-      {/* 9.5 Mosque Management View (Central Source of Truth for Identity, Profile, Address, Media, Letterhead, & Documents) */}
-      {(currentTab === 'mosqueManagement' || (currentTab as string) === 'mosque') && (
-        <MosqueManagementView
+      {/* 9.5 Unified Mosque Profile & Settings View (🏛️ মসজিদ পরিচিতি ও সেটিংস) */}
+      {(currentTab === 'mosqueManagement' ||
+        (currentTab as string) === 'mosque' ||
+        currentTab === 'admin' ||
+        currentTab === 'settings' ||
+        (currentTab as string) === 'mosqueProfileSettings' ||
+        currentTab === 'publicPortalSettings') && (
+        <MosqueProfileSettingsView
           currentMosque={mosque}
           currentUser={currentUser}
           language={language}
           onSaveMosque={handleSaveMosqueSettings}
           onNavigateTab={(tab) => setCurrentTab(tab as NavTab)}
-        />
-      )}
-
-      {/* 10. Mosque Settings View (Dedicated Configuration Page) */}
-      {(currentTab === 'admin' || currentTab === 'settings' || currentTab === 'publicPortalSettings') && (
-        <MosqueSettingsView
-          currentMosque={mosque}
-          currentUser={currentUser}
-          language={language}
-          onSaveSettings={handleSaveMosqueSettings}
           onOpenLivePortal={() => setCurrentTab('publicPortal')}
         />
       )}
@@ -1912,14 +1910,90 @@ export default function App() {
         autoPrint={activeVoucher.autoPrint ?? false}
       />
 
-      {/* 5 Floating Quick Actions (Income, Expense, Juma, Scanner, Calculator) */}
+      {/* 4 Floating Quick Actions (Income, Expense, Juma, Scanner) */}
       <FloatingFinancialActions
-        onOpenIncome={() => setCurrentTab('income')}
-        onOpenExpense={() => setCurrentTab('expense')}
+        onOpenIncome={() => setIsGlobalIncomeModalOpen(true)}
+        onOpenExpense={() => setIsGlobalExpenseModalOpen(true)}
         onOpenJuma={() => setIsGlobalJumaModalOpen(true)}
         onOpenScanner={() => setIsScannerOpen(true)}
-        onOpenCalculator={() => setIsGlobalCalculatorOpen(true)}
         language={language}
+      />
+
+      {/* Global Direct Unified Income Entry Modal (Quick Action) */}
+      <UnifiedIncomeEntryModal
+        isOpen={isGlobalIncomeModalOpen}
+        onClose={() => setIsGlobalIncomeModalOpen(false)}
+        initialType="DONATION"
+        accounts={accounts}
+        accountHeads={accountHeads}
+        donationBoxes={donationBoxes}
+        properties={properties}
+        currentUser={currentUser}
+        currentMosque={mosque}
+        language={language}
+        onSuccess={() => {
+          loadData(false);
+          setIsGlobalIncomeModalOpen(false);
+        }}
+        onSaveJuma={async (data, opts) => {
+          const res = await handleAddIncome(data, opts);
+          return res;
+        }}
+        onSaveDonation={async (data, opts) => {
+          const res = await handleAddDonation(data);
+          if (opts?.print) {
+            setActiveDonationReceipt({ donation: res, format: 'POS_80', isReprint: false });
+          }
+          return res;
+        }}
+        onSaveBoxCollection={async (data, opts) => {
+          const res = await handleCollectBox(data);
+          return res;
+        }}
+        onSaveWaqfRent={
+          handleCollectPropertyRent
+            ? async (propId, data, opts) => {
+                const res = await handleCollectPropertyRent(propId, data);
+                return res;
+              }
+            : undefined
+        }
+        onSaveOtherIncome={async (data, opts) => {
+          const res = await handleAddIncome(data, opts);
+          return res;
+        }}
+        onPrintReceipt={(don, format = 'POS_80', isReprint = true) =>
+          setActiveDonationReceipt({ donation: don, format, isReprint })
+        }
+        onPrintVoucher={(item, type, format = 'POS_80', isReprint = true) =>
+          setActiveVoucher({ item, type, format, isReprint })
+        }
+      />
+
+      {/* Global Direct Unified Expense Entry Modal (Quick Action) */}
+      <UnifiedExpenseEntryModal
+        isOpen={isGlobalExpenseModalOpen}
+        onClose={() => setIsGlobalExpenseModalOpen(false)}
+        initialType="GENERAL_EXPENSE"
+        accounts={accounts}
+        accountHeads={accountHeads}
+        staff={staff}
+        assets={assets}
+        properties={properties}
+        currentUser={currentUser}
+        currentMosque={mosque}
+        language={language}
+        onSuccess={() => {
+          loadData(false);
+          setIsGlobalExpenseModalOpen(false);
+        }}
+        onSaveExpense={async (data, options) => {
+          const res = await handleAddExpense(data, options);
+          return res;
+        }}
+        onPrintVoucher={(item, type, format = 'POS_80', isReprint = true) =>
+          setActiveVoucher({ item, type, format, isReprint })
+        }
       />
 
       {/* Global Juma Collection Dedicated Workflow Modal */}
