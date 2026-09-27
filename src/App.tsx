@@ -46,7 +46,7 @@ import { AccountHeadsView } from './components/AccountHeadsView';
 import { MusalliDonorManagementView } from './components/MusalliDonorManagementView';
 import { CommitteeView } from './components/CommitteeView';
 import { CommitteeManagementView } from './components/CommitteeManagementView';
-import { ManagementView } from './components/ManagementView';
+import { CemeteryManagementView } from './components/CemeteryManagementView';
 import { StaffManagementView } from './components/StaffManagementView';
 import { ReportCenterView } from './components/ReportCenterView';
 import { MosqueProfileSettingsView } from './components/MosqueProfileSettingsView';
@@ -1387,57 +1387,14 @@ export default function App() {
 
       {/* 7.3 Cemetery Management (🪦 কবরস্থান ব্যবস্থাপনা) */}
       {currentTab === 'cemetery' && (
-        <ManagementView
-          initialTab="cemetery"
-          onNavigateToSalaryBankTransfer={() => setCurrentTab('staff')}
-          staff={staff}
-          staffPayments={staffPayments}
-          assets={assets}
-          properties={properties}
+        <CemeteryManagementView
           cemetery={cemetery}
-          notices={notices}
-          accounts={accounts}
-          accountHeads={accountHeads}
-          committeeTerms={terms}
-          expenseEntries={expenses}
           currentMosque={mosque}
           language={language}
-          scannedActionIntent={scannedActionIntent}
-          onClearScannedAction={() => setScannedActionIntent(null)}
-          onAddStaff={handleAddStaff}
-          onUpdateStaff={handleUpdateStaff}
-          onDeleteStaff={handleDeleteStaff}
-          onPayStaff={handlePayStaff}
-          onReviseStaffSalary={handleReviseStaffSalary}
-          onDisburseFestivalAllowance={handleDisburseFestivalAllowance}
-          onUpdateStaffPayment={handleUpdateStaffPayment}
-          onCancelStaffPayment={handleCancelStaffPayment}
-          onAddStaffAdvance={handleAddStaffAdvance}
-          onAddStaffLeave={handleAddStaffLeave}
-          onUpdateStaffLeaveStatus={handleUpdateStaffLeaveStatus}
-          onLogStaffAttendance={handleLogStaffAttendance}
-          onSettleStaff={handleSettleStaff}
-          onAddAsset={handleAddAsset}
-          onUpdateAsset={handleUpdateAsset}
-          onDeleteAsset={handleDeleteAsset}
-          onArchiveAsset={handleArchiveAsset}
-          onAddAssetService={handleAddAssetService}
-          onClearDemoAssets={handleClearDemoAssets}
-          onAddProperty={handleAddProperty}
-          onUpdateProperty={handleUpdateProperty}
-          onDeleteProperty={handleDeleteProperty}
-          onArchiveProperty={handleArchiveProperty}
-          onAddPropertyTenant={handleAddPropertyTenant}
-          onTerminatePropertyTenant={handleTerminatePropertyTenant}
-          onAddPropertyInspection={handleAddPropertyInspection}
-          onAddPropertyLegalCase={handleAddPropertyLegalCase}
-          onAddPropertyDocument={handleAddPropertyDocument}
-          onDeletePropertyDocument={handleDeletePropertyDocument}
           onAddCemeteryRecord={handleAddCemetery}
           onUpdateCemeteryRecord={handleUpdateCemetery}
           onArchiveCemeteryRecord={handleArchiveCemetery}
           onDeleteCemeteryRecord={handleDeleteCemetery}
-          onAddNotice={handleAddNotice}
         />
       )}
 
