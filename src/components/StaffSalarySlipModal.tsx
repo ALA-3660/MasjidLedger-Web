@@ -163,7 +163,7 @@ export const StaffSalarySlipModal: React.FC<StaffSalarySlipModalProps> = ({
               {staff.nid && (
                 <div>
                   <span className="text-slate-500 font-medium">এনআইডি (NID): </span>
-                  <span className="text-slate-700 font-mono">{staff.nid}</span>
+                  <span className="text-slate-700 font-sans">{staff.nid}</span>
                 </div>
               )}
             </div>
@@ -171,7 +171,7 @@ export const StaffSalarySlipModal: React.FC<StaffSalarySlipModalProps> = ({
             <div className="space-y-1.5 text-right sm:text-left">
               <div>
                 <span className="text-slate-500 font-medium">ভাউচার নম্বর: </span>
-                <strong className="font-mono text-rose-700 font-bold text-sm">{payment.expenseVoucherNumber}</strong>
+                <strong className="font-sans text-rose-700 font-bold text-sm">{payment.expenseVoucherNumber}</strong>
               </div>
               <div>
                 <span className="text-slate-500 font-medium">পরিশোধের তারিখ: </span>
@@ -213,7 +213,7 @@ export const StaffSalarySlipModal: React.FC<StaffSalarySlipModalProps> = ({
                   <td className="py-2.5 px-4 font-medium text-slate-800">
                     মূল মাসিক হাদিয়া / বেতন (Basic Monthly Haadia / Salary)
                   </td>
-                  <td className="py-2.5 px-4 text-right font-bold text-slate-900 font-mono">
+                  <td className="py-2.5 px-4 text-right font-bold text-slate-900 font-sans">
                     ৳ {basic.toLocaleString('en-IN')}
                   </td>
                 </tr>
@@ -223,7 +223,7 @@ export const StaffSalarySlipModal: React.FC<StaffSalarySlipModalProps> = ({
                     <td className="py-2.5 px-4 font-medium text-emerald-800">
                       ঈদ / বিশেষ হাদিয়া ও বোনাস (Special / Festival Bonus)
                     </td>
-                    <td className="py-2.5 px-4 text-right font-bold text-emerald-700 font-mono">
+                    <td className="py-2.5 px-4 text-right font-bold text-emerald-700 font-sans">
                       + ৳ {bonus.toLocaleString('en-IN')}
                     </td>
                   </tr>
@@ -234,7 +234,7 @@ export const StaffSalarySlipModal: React.FC<StaffSalarySlipModalProps> = ({
                     <td className="py-2.5 px-4 font-medium text-slate-700">
                       অন্যান্য ভাতা / চিকিৎসা / যাতায়াত (Allowances)
                     </td>
-                    <td className="py-2.5 px-4 text-right font-bold text-slate-800 font-mono">
+                    <td className="py-2.5 px-4 text-right font-bold text-slate-800 font-sans">
                       + ৳ {other.toLocaleString('en-IN')}
                     </td>
                   </tr>
@@ -245,7 +245,7 @@ export const StaffSalarySlipModal: React.FC<StaffSalarySlipModalProps> = ({
                     <td className="py-2.5 px-4 font-medium text-rose-700">
                       অনুপস্থিতি বা অগ্রিম কর্তন (Advance / Deductions)
                     </td>
-                    <td className="py-2.5 px-4 text-right font-bold text-rose-600 font-mono">
+                    <td className="py-2.5 px-4 text-right font-bold text-rose-600 font-sans">
                       - ৳ {deduction.toLocaleString('en-IN')}
                     </td>
                   </tr>

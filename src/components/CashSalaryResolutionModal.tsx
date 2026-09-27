@@ -497,7 +497,7 @@ export const CashSalaryResolutionModal: React.FC<CashSalaryResolutionModalProps>
                       value={resolutionNo}
                       onChange={(e) => setResolutionNo(e.target.value)}
                       placeholder="যেমন: রেজ-বেতন/২০২৬/০৯-০১"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none font-sans"
                     />
                   </div>
 
@@ -707,58 +707,58 @@ export const CashSalaryResolutionModal: React.FC<CashSalaryResolutionModalProps>
                                 {row.designation} • ID: {row.staffCode}
                               </span>
                             </td>
-                            <td className="p-2.5 text-right font-mono">
+                            <td className="p-2.5 text-right font-sans">
                               <input
                                 type="number"
                                 value={row.basicSalary}
                                 onChange={(e) => handleUpdateCustomField(row.staffId, 'basicSalary', Number(e.target.value) || 0)}
-                                className="w-20 text-right bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-xs font-mono font-bold"
+                                className="w-20 text-right bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-xs font-sans font-bold"
                               />
                             </td>
-                            <td className="p-2.5 text-right font-mono text-emerald-700">
+                            <td className="p-2.5 text-right font-sans text-emerald-700">
                               <input
                                 type="number"
                                 value={row.allowance}
                                 onChange={(e) => handleUpdateCustomField(row.staffId, 'allowance', Number(e.target.value) || 0)}
-                                className="w-16 text-right bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-xs font-mono"
+                                className="w-16 text-right bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-xs font-sans"
                               />
                             </td>
-                            <td className="p-2.5 text-right font-mono text-slate-700">
+                            <td className="p-2.5 text-right font-sans text-slate-700">
                               <input
                                 type="number"
                                 value={row.otherAllowance}
                                 onChange={(e) => handleUpdateCustomField(row.staffId, 'otherAllowance', Number(e.target.value) || 0)}
-                                className="w-16 text-right bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-xs font-mono"
+                                className="w-16 text-right bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-xs font-sans"
                               />
                             </td>
-                            <td className="p-2.5 text-right font-bold text-slate-800 font-mono">
+                            <td className="p-2.5 text-right font-bold text-slate-800 font-sans">
                               {formatCurrency(row.grossSalary, language)}
                             </td>
-                            <td className="p-2.5 text-right font-mono text-rose-700">
+                            <td className="p-2.5 text-right font-sans text-rose-700">
                               <input
                                 type="number"
                                 value={row.deduction}
                                 onChange={(e) => handleUpdateCustomField(row.staffId, 'deduction', Number(e.target.value) || 0)}
-                                className="w-16 text-right bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-xs font-mono text-rose-700"
+                                className="w-16 text-right bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-xs font-sans text-rose-700"
                               />
                             </td>
-                            <td className="p-2.5 text-right font-mono text-amber-700">
+                            <td className="p-2.5 text-right font-sans text-amber-700">
                               <input
                                 type="number"
                                 value={row.advanceAdjustment}
                                 onChange={(e) => handleUpdateCustomField(row.staffId, 'advanceAdjustment', Number(e.target.value) || 0)}
-                                className="w-16 text-right bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-xs font-mono text-amber-700"
+                                className="w-16 text-right bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-xs font-sans text-amber-700"
                               />
                             </td>
-                            <td className="p-2.5 text-right font-bold text-blue-900 font-mono">
+                            <td className="p-2.5 text-right font-bold text-blue-900 font-sans">
                               {formatCurrency(row.netPayable, language)}
                             </td>
-                            <td className="p-2.5 text-right font-mono font-black text-emerald-950 bg-emerald-50/50">
+                            <td className="p-2.5 text-right font-sans font-black text-emerald-950 bg-emerald-50/50">
                               <input
                                 type="number"
                                 value={row.paidAmount}
                                 onChange={(e) => handleUpdateCustomField(row.staffId, 'paidAmount', Number(e.target.value) || 0)}
-                                className="w-20 text-right bg-emerald-100/80 border border-emerald-300 rounded px-1.5 py-0.5 text-xs font-mono font-black text-emerald-950"
+                                className="w-20 text-right bg-emerald-100/80 border border-emerald-300 rounded px-1.5 py-0.5 text-xs font-sans font-black text-emerald-950"
                               />
                             </td>
                             <td className="p-2.5 text-center">
@@ -780,16 +780,16 @@ export const CashSalaryResolutionModal: React.FC<CashSalaryResolutionModalProps>
                           <td colSpan={5} className="p-3 text-right">
                             সর্বমোট বাজেট ও হিসাব:
                           </td>
-                          <td className="p-3 text-right font-bold font-mono text-slate-900">
+                          <td className="p-3 text-right font-bold font-sans text-slate-900">
                             {formatCurrency(totalGross, language)}
                           </td>
-                          <td colSpan={2} className="p-3 text-right text-rose-700 font-mono">
+                          <td colSpan={2} className="p-3 text-right text-rose-700 font-sans">
                             -{formatCurrency(totalDeductions, language)}
                           </td>
-                          <td className="p-3 text-right font-bold font-mono text-blue-950">
+                          <td className="p-3 text-right font-bold font-sans text-blue-950">
                             {formatCurrency(totalNetPayable, language)}
                           </td>
-                          <td className="p-3 text-right font-black font-mono text-emerald-950 text-sm bg-emerald-100/70">
+                          <td className="p-3 text-right font-black font-sans text-emerald-950 text-sm bg-emerald-100/70">
                             {formatCurrency(totalCashPaid, language)}
                           </td>
                           <td className="p-3 text-center text-xs font-semibold text-emerald-800">
@@ -873,7 +873,7 @@ export const CashSalaryResolutionModal: React.FC<CashSalaryResolutionModalProps>
                       type="text"
                       value={voucherNumber}
                       onChange={(e) => setVoucherNumber(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none font-sans"
                     />
                   </div>
                 </div>
@@ -930,7 +930,7 @@ export const CashSalaryResolutionModal: React.FC<CashSalaryResolutionModalProps>
 
                   {/* Minimal Header when Letterhead is OFF */}
                   {!includeLetterhead && (
-                    <div className="flex justify-between items-center text-xs text-slate-600 pb-2 mb-4 border-b border-slate-300 font-mono">
+                    <div className="flex justify-between items-center text-xs text-slate-600 pb-2 mb-4 border-b border-slate-300 font-sans">
                       <div>স্মারক নম্বর: <strong>{resolutionNo}</strong></div>
                       <div>তারিখ: <strong>{formatDate(resolutionDate, language)}</strong></div>
                     </div>
@@ -992,19 +992,19 @@ export const CashSalaryResolutionModal: React.FC<CashSalaryResolutionModalProps>
                               <span className="font-bold text-slate-950 block text-xs">{row.name}</span>
                               <span className="text-[10px] text-slate-600 block">{row.designation} (ID: {row.staffCode})</span>
                             </td>
-                            <td className="border border-slate-400 p-2 text-right font-mono">
+                            <td className="border border-slate-400 p-2 text-right font-sans">
                               {formatCurrency(row.basicSalary, language)}
                             </td>
-                            <td className="border border-slate-400 p-2 text-right font-mono text-emerald-800">
+                            <td className="border border-slate-400 p-2 text-right font-sans text-emerald-800">
                               +{formatCurrency(row.allowance + row.otherAllowance, language)}
                             </td>
-                            <td className="border border-slate-400 p-2 text-right font-mono text-rose-800">
+                            <td className="border border-slate-400 p-2 text-right font-sans text-rose-800">
                               -{formatCurrency(row.deduction + row.advanceAdjustment + row.loanAdjustment, language)}
                             </td>
-                            <td className="border border-slate-400 p-2 text-right font-bold text-slate-900 font-mono">
+                            <td className="border border-slate-400 p-2 text-right font-bold text-slate-900 font-sans">
                               {formatCurrency(row.netPayable, language)}
                             </td>
-                            <td className="border border-slate-400 p-2 text-right font-black text-slate-950 bg-slate-100/80 font-mono">
+                            <td className="border border-slate-400 p-2 text-right font-black text-slate-950 bg-slate-100/80 font-sans">
                               {formatCurrency(row.paidAmount, language)}
                             </td>
                             <td className="border border-slate-400 p-2 text-center align-bottom bg-slate-50/50">
@@ -1019,10 +1019,10 @@ export const CashSalaryResolutionModal: React.FC<CashSalaryResolutionModalProps>
                           <td colSpan={5} className="border border-slate-400 p-2 text-right">
                             সর্বমোট নগদ পরিশোধ:
                           </td>
-                          <td className="border border-slate-400 p-2 text-right font-bold font-mono">
+                          <td className="border border-slate-400 p-2 text-right font-bold font-sans">
                             {formatCurrency(totalNetPayable, language)}
                           </td>
-                          <td className="border border-slate-400 p-2 text-right font-black font-mono text-sm bg-slate-200">
+                          <td className="border border-slate-400 p-2 text-right font-black font-sans text-sm bg-slate-200">
                             {formatCurrency(totalCashPaid, language)}
                           </td>
                           <td className="border border-slate-400 p-2 bg-slate-50" />
@@ -1050,7 +1050,7 @@ export const CashSalaryResolutionModal: React.FC<CashSalaryResolutionModalProps>
                         >
                           <div className="font-bold text-slate-900 border-b border-slate-200 pb-1 flex justify-between">
                             <span>{row.name} ({row.designation})</span>
-                            <span className="font-mono text-slate-800">{formatCurrency(row.paidAmount, language)}</span>
+                            <span className="font-sans text-slate-800">{formatCurrency(row.paidAmount, language)}</span>
                           </div>
                           <p className="text-[11px] text-slate-700 leading-snug">
                             "আমি উপরোক্ত হিসাব অনুযায়ী <strong className="text-slate-950">{bengaliMonthLabel}</strong> মাসের বেতন বাবদ <strong className="text-slate-950">{formatCurrency(row.paidAmount, language)} ({numberToBengaliWords(row.paidAmount)})</strong> নগদ অর্থ বুঝিয়া পাইলাম।"

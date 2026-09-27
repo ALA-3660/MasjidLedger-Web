@@ -484,7 +484,7 @@ function extractGoogleDriveFileId(url: string): string | null {
   return null;
 }
 
-// Helper to fetch image from Google Drive
+// Helper to fetch image from Google Drive with strict 8-second timeout guard (SEC-MSQ-02)
 async function fetchGoogleDriveImage(fileId: string): Promise<{ buffer: Buffer; mimeType: string } | null> {
   const downloadUrls = [
     `https://lh3.googleusercontent.com/d/${fileId}=w1200`,
@@ -492,48 +492,57 @@ async function fetchGoogleDriveImage(fileId: string): Promise<{ buffer: Buffer; 
     `https://drive.usercontent.google.com/download?id=${fileId}&export=download`,
   ];
 
-  for (const url of downloadUrls) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 9000);
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-        },
-        redirect: 'follow',
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
+  const overallController = new AbortController();
+  const overallTimeoutId = setTimeout(() => overallController.abort(), 8000);
 
-      if (!response.ok) continue;
+  try {
+    for (const url of downloadUrls) {
+      if (overallController.signal.aborted) break;
+      try {
+        const response = await fetch(url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+          },
+          redirect: 'follow',
+          signal: overallController.signal,
+        });
 
-      const contentType = response.headers.get('content-type') || '';
-      if (contentType.includes('text/html')) continue;
+        if (!response.ok) continue;
 
-      const arrayBuffer = await response.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('text/html')) continue;
 
-      if (buffer.length < 100) continue;
-      if (buffer.length > 8 * 1024 * 1024) continue;
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
 
-      let mimeType = contentType.split(';')[0].trim();
-      if (!mimeType.startsWith('image/')) {
-        if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
-          mimeType = 'image/png';
-        } else if (buffer[0] === 0xFF && buffer[1] === 0xD8) {
-          mimeType = 'image/jpeg';
-        } else if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46) {
-          mimeType = 'image/webp';
-        } else {
-          continue;
+        if (buffer.length < 100) continue;
+        if (buffer.length > 8 * 1024 * 1024) continue;
+
+        let mimeType = contentType.split(';')[0].trim();
+        if (!mimeType.startsWith('image/')) {
+          if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
+            mimeType = 'image/png';
+          } else if (buffer[0] === 0xFF && buffer[1] === 0xD8) {
+            mimeType = 'image/jpeg';
+          } else if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46) {
+            mimeType = 'image/webp';
+          } else {
+            continue;
+          }
         }
-      }
 
-      return { buffer, mimeType };
-    } catch (e) {
-      console.warn(`[GDrive Fetch] Failed on ${url}:`, e);
+        return { buffer, mimeType };
+      } catch (e: any) {
+        if (overallController.signal.aborted) {
+          console.warn(`[GDrive Fetch] Request aborted due to 8s timeout on ${url}`);
+          break;
+        }
+        console.warn(`[GDrive Fetch] Failed on ${url}:`, e?.message || e);
+      }
     }
+  } finally {
+    clearTimeout(overallTimeoutId);
   }
 
   return null;
@@ -1001,7 +1010,52 @@ app.put('/api/v1/mosques/current', authenticate, requirePermission('MANAGE_SETTI
     );
   }
 
-  Object.assign(m, body, { updatedAt: new Date().toISOString() });
+  // SEC-MSQ-01: Explicit Whitelist of Client-Editable Fields
+  // System-controlled identity fields (id, code, createdAt) MUST NEVER be client-overwritable.
+  const EDITABLE_FIELDS: (keyof Mosque)[] = [
+    'name',
+    'nameBn',
+    'nameEn',
+    'waqfEstateName',
+    'registrationNumber',
+    'descriptionBn',
+    'address',
+    'village',
+    'union',
+    'ward',
+    'upazila',
+    'district',
+    'division',
+    'country',
+    'latitude',
+    'longitude',
+    'phone',
+    'altPhone',
+    'email',
+    'website',
+    'logoUrl',
+    'logoAssetId',
+    'logoMetadata',
+    'photoUrl',
+    'coverPhotoUrl',
+    'presidentSignatureUrl',
+    'secretarySignatureUrl',
+    'establishedDate',
+    'letterheadSettings',
+    'status',
+    'qrSettings',
+    'committeeEvaluationSettings',
+    'jamaatSettings',
+    'prayerSettings',
+    'publicPortalSettings',
+  ];
+
+  for (const field of EDITABLE_FIELDS) {
+    if (body[field] !== undefined) {
+      (m as any)[field] = body[field];
+    }
+  }
+  m.updatedAt = new Date().toISOString();
   db.save();
 
   if (!isChangingPresidentSig && !isChangingSecretarySig && !isChangingLogo) {
@@ -8373,6 +8427,45 @@ app.post('/api/v1/staff', authenticate, requirePermission('MANAGE_STAFF'), (req:
     return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'স্টাফের নাম, পদবী ও মোবাইল নম্বর আবশ্যক।' } });
   }
 
+  // SEC-STF-03: Mosque-scoped duplicate validation for ACTIVE staff
+  const cleanPhone = String(phone || '').replace(/[\s\-\(\)]/g, '').trim();
+  const cleanNid = nid ? String(nid).trim() : '';
+
+  if (cleanPhone) {
+    const duplicatePhoneStaff = db.staffList.find(s => 
+      s.mosqueId === mosqueId && 
+      s.status === 'ACTIVE' && 
+      String(s.phone || '').replace(/[\s\-\(\)]/g, '').trim() === cleanPhone
+    );
+    if (duplicatePhoneStaff) {
+      return res.status(400).json({ 
+        success: false, 
+        error: { 
+          code: 'DUPLICATE_PHONE', 
+          message: `এই মোবাইল নম্বরটি (${phone}) ইতিমধ্যে কর্মরত স্টাফ "${duplicatePhoneStaff.name}" (${duplicatePhoneStaff.designationBn})-এর প্রোফাইলে যুক্ত রয়েছে।` 
+        } 
+      });
+    }
+  }
+
+  if (cleanNid) {
+    const duplicateNidStaff = db.staffList.find(s => 
+      s.mosqueId === mosqueId && 
+      s.status === 'ACTIVE' && 
+      s.nid && 
+      String(s.nid).trim() === cleanNid
+    );
+    if (duplicateNidStaff) {
+      return res.status(400).json({ 
+        success: false, 
+        error: { 
+          code: 'DUPLICATE_NID', 
+          message: `এই জাতীয় পরিচয়পত্র (NID) নম্বরটি ইতিমধ্যে কর্মরত স্টাফ "${duplicateNidStaff.name}" (${duplicateNidStaff.designationBn})-এর প্রোফাইলে যুক্ত রয়েছে।` 
+        } 
+      });
+    }
+  }
+
   const joinDate = joiningDate || new Date().toISOString().split('T')[0];
   const joinYear = joinDate.split('-')[0] || new Date().getFullYear().toString();
   const yearStaffCount = db.staffList.filter(s => s.mosqueId === mosqueId).length + 1;
@@ -9463,6 +9556,27 @@ const handleStaffPay = (req: AuthRequest, res: Response) => {
   const currentYear = Number(year) || new Date().getFullYear();
   const monthName = month || `${currentYear}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
   const payDate = paymentDate || new Date().toISOString().split('T')[0];
+  const effectivePaymentType = paymentType || 'REGULAR_SALARY';
+
+  // SEC-STF-01: Server-side Salary Payment Idempotency Guard (Mosque-scoped)
+  if (effectivePaymentType === 'REGULAR_SALARY') {
+    const existingPayment = db.staffPayments.find(p => 
+      p.mosqueId === mosqueId &&
+      p.staffId === staff.id &&
+      (p.month === monthName || (p as any).paymentMonth === monthName) &&
+      (p.paymentType === 'REGULAR_SALARY' || !p.paymentType) &&
+      p.status === 'PAID'
+    );
+    if (existingPayment) {
+      return res.status(400).json({ 
+        success: false, 
+        error: { 
+          code: 'ALREADY_PAID', 
+          message: `${staff.name} (${staff.designationBn}) এর ${monthName} মাসের নিয়মিত বেতন ইতিমধ্যে পরিশোধ করা হয়েছে (ভাউচার: ${existingPayment.expenseVoucherNumber || existingPayment.id})।` 
+        } 
+      });
+    }
+  }
 
   // Active Committee Term Link
   const activeTerm = db.committeeTerms.find(t => t.mosqueId === mosqueId && t.status === 'ACTIVE');

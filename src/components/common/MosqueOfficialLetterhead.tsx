@@ -113,10 +113,10 @@ export const MosqueOfficialLetterhead: React.FC<MosqueOfficialLetterheadProps> =
         {hasLogo && (
           <div className="shrink-0 text-right hidden sm:block">
             <div className="border border-emerald-700/40 rounded-lg p-2 text-center bg-white/80 shadow-2xs">
-              <span className="text-[9px] uppercase tracking-wider font-mono font-bold text-emerald-800 block">
+              <span className="text-[9px] uppercase tracking-wider font-sans font-bold text-emerald-800 block">
                 অফিসিয়াল নথি
               </span>
-              <span className="text-[11px] font-mono font-bold text-stone-700 block">
+              <span className="text-[11px] font-sans font-bold text-stone-700 block">
                 {mosque?.code || 'ML-PRO'}
               </span>
             </div>

@@ -291,11 +291,11 @@ export const StaffSalaryDisbursementSection: React.FC<StaffSalaryDisbursementSec
               <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
                 <th className="p-3.5">কর্মী ও আইডি</th>
                 <th className="p-3.5">পদবী</th>
-                <th className="p-3.5 font-mono">মূল বেতন</th>
-                <th className="p-3.5 font-mono">ভাতা</th>
-                <th className="p-3.5 font-mono">মোট প্রদেয়</th>
-                <th className="p-3.5 font-mono">কর্তন</th>
-                <th className="p-3.5 font-mono font-bold">নিট প্রদেয়</th>
+                <th className="p-3.5 font-sans">মূল বেতন</th>
+                <th className="p-3.5 font-sans">ভাতা</th>
+                <th className="p-3.5 font-sans">মোট প্রদেয়</th>
+                <th className="p-3.5 font-sans">কর্তন</th>
+                <th className="p-3.5 font-sans font-bold">নিট প্রদেয়</th>
                 <th className="p-3.5">স্ট্যাটাস</th>
                 <th className="p-3.5 text-right">পদক্ষেপ</th>
               </tr>
@@ -305,14 +305,14 @@ export const StaffSalaryDisbursementSection: React.FC<StaffSalaryDisbursementSec
                 <tr key={row.staff.id} className="hover:bg-slate-50/80 transition-colors">
                   <td className="p-3.5">
                     <span className="font-bold text-slate-900 block font-siliguri">{row.staff.fullNameBn || row.staff.name}</span>
-                    <span className="text-[10px] text-slate-400 font-mono">#{row.staff.staffCode || row.staff.id}</span>
+                    <span className="text-[10px] text-slate-400 font-sans">#{row.staff.staffCode || row.staff.id}</span>
                   </td>
                   <td className="p-3.5 text-indigo-900 font-bold font-siliguri">{row.staff.designationBn}</td>
-                  <td className="p-3.5 font-mono text-slate-700">{formatCurrency(row.basic, language)}</td>
-                  <td className="p-3.5 font-mono text-emerald-600">+{formatCurrency(row.allowance, language)}</td>
-                  <td className="p-3.5 font-mono font-bold text-slate-800">{formatCurrency(row.gross, language)}</td>
-                  <td className="p-3.5 font-mono text-rose-600">-{formatCurrency(row.deduction, language)}</td>
-                  <td className="p-3.5 font-mono font-bold text-indigo-900">{formatCurrency(row.netPayable, language)}</td>
+                  <td className="p-3.5 font-sans text-slate-700">{formatCurrency(row.basic, language)}</td>
+                  <td className="p-3.5 font-sans text-emerald-600">+{formatCurrency(row.allowance, language)}</td>
+                  <td className="p-3.5 font-sans font-bold text-slate-800">{formatCurrency(row.gross, language)}</td>
+                  <td className="p-3.5 font-sans text-rose-600">-{formatCurrency(row.deduction, language)}</td>
+                  <td className="p-3.5 font-sans font-bold text-indigo-900">{formatCurrency(row.netPayable, language)}</td>
                   <td className="p-3.5">
                     <span
                       className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${

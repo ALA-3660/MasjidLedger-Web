@@ -746,7 +746,7 @@ export const SalaryBankTransferView: React.FC<SalaryBankTransferViewProps> = ({
                               {st.paymentPreference === 'BANK' ? 'ব্যাংক' : 'ক্যাশ'}
                             </span>
                             {st.accountNumber && (
-                              <div className="text-[10px] text-slate-400 font-mono">
+                              <div className="text-[10px] text-slate-400 font-sans">
                                 {formatAccountNumber(st.accountNumber)}
                               </div>
                             )}
@@ -848,7 +848,7 @@ export const SalaryBankTransferView: React.FC<SalaryBankTransferViewProps> = ({
                     <div key={acc.id} className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between text-xs">
                       <div>
                         <div className="font-semibold text-slate-800">{acc.nameBn}</div>
-                        <div className="text-[10px] text-slate-400 font-mono">
+                        <div className="text-[10px] text-slate-400 font-sans">
                           {acc.accountType === 'BANK' ? `${acc.bankName || 'ব্যাংক'} (${formatAccountNumber(acc.accountNumber)})` : 'ক্যাশ তহবিল'}
                         </div>
                       </div>
@@ -976,7 +976,7 @@ export const SalaryBankTransferView: React.FC<SalaryBankTransferViewProps> = ({
                       return (
                         <tr key={pay.id} className={`hover:bg-slate-50 transition ${isCancelled ? 'opacity-50 bg-rose-50/30' : ''}`}>
                           <td className="p-3">
-                            <div className="font-mono font-bold text-slate-800">{pay.expenseVoucherNumber || '—'}</div>
+                            <div className="font-sans font-bold text-slate-800">{pay.expenseVoucherNumber || '—'}</div>
                             <div className="text-[11px] text-slate-500">{formatDate(pay.paymentDate, language)}</div>
                             {pay.batchNumber && (
                               <span className="inline-block mt-0.5 px-1.5 py-0.5 text-[9px] font-bold bg-teal-50 text-teal-700 rounded border border-teal-200">
@@ -1011,7 +1011,7 @@ export const SalaryBankTransferView: React.FC<SalaryBankTransferViewProps> = ({
                               {pay.paymentMethod === 'BANK' ? <Building className="w-3.5 h-3.5 text-teal-600" /> : <Wallet className="w-3.5 h-3.5 text-blue-600" />}
                               {pay.paymentMethod === 'BANK' ? 'ব্যাংক' : 'ক্যাশ'}
                             </div>
-                            <div className="text-[10px] text-slate-400 font-mono truncate max-w-[140px]" title={pay.accountNameBn || ''}>
+                            <div className="text-[10px] text-slate-400 font-sans truncate max-w-[140px]" title={pay.accountNameBn || ''}>
                               {pay.accountNameBn || (pay.accountNumber ? formatAccountNumber(pay.accountNumber) : '—')}
                             </div>
                           </td>
@@ -1154,7 +1154,7 @@ export const SalaryBankTransferView: React.FC<SalaryBankTransferViewProps> = ({
                           {isPaid ? 'পরিশোধিত (Paid)' : isCancelled ? 'বাতিলকৃত' : 'অনুমোদিত (Approved)'}
                         </span>
                         <h4 className="text-sm font-bold text-slate-800 mt-2">{batch.title}</h4>
-                        <div className="text-[11px] text-slate-400 font-mono mt-0.5">ব্যাচ নং: {batch.batchNumber}</div>
+                        <div className="text-[11px] text-slate-400 font-sans mt-0.5">ব্যাচ নং: {batch.batchNumber}</div>
                       </div>
                       <div className="text-right">
                         <div className="text-xs text-slate-400">মোট অর্থ</div>
@@ -1259,7 +1259,7 @@ export const SalaryBankTransferView: React.FC<SalaryBankTransferViewProps> = ({
                       .map((p) => (
                         <tr key={p.id} className="hover:bg-slate-50">
                           <td className="p-3 font-semibold text-slate-800">{p.staffName}</td>
-                          <td className="p-3 font-mono text-slate-600">
+                          <td className="p-3 font-sans text-slate-600">
                             {p.bankName || 'ব্যাংক'} - {formatAccountNumber(p.accountNumber)}
                           </td>
                           <td className="p-3 text-slate-500">{p.month}</td>
@@ -1310,7 +1310,7 @@ export const SalaryBankTransferView: React.FC<SalaryBankTransferViewProps> = ({
                       .map((p) => (
                         <tr key={p.id} className="hover:bg-slate-50">
                           <td className="p-3 font-semibold text-slate-800">{p.staffName}</td>
-                          <td className="p-3 font-mono text-slate-600">{p.expenseVoucherNumber}</td>
+                          <td className="p-3 font-sans text-slate-600">{p.expenseVoucherNumber}</td>
                           <td className="p-3 text-slate-500">{p.month}</td>
                           <td className="p-3 text-right font-bold text-blue-700">
                             ৳{formatCurrency(p.netPaid, language)}
@@ -1432,7 +1432,7 @@ export const SalaryBankTransferView: React.FC<SalaryBankTransferViewProps> = ({
                     const st = staff.find(s => s.id === p.staffId);
                     return (
                       <tr key={p.id} className="hover:bg-slate-50">
-                        <td className="p-3 font-mono font-bold text-slate-800">{p.expenseVoucherNumber}</td>
+                        <td className="p-3 font-sans font-bold text-slate-800">{p.expenseVoucherNumber}</td>
                         <td className="p-3 font-semibold text-slate-800">{p.staffName}</td>
                         <td className="p-3 text-slate-500">{p.designationBn}</td>
                         <td className="p-3 text-slate-600">{p.month}</td>
@@ -1574,7 +1574,7 @@ export const SalaryBankTransferView: React.FC<SalaryBankTransferViewProps> = ({
                           <td className="p-2.5 text-right">৳{formatCurrency((p.bonus || 0) + (p.otherAllowance || 0), language)}</td>
                           <td className="p-2.5 text-right text-rose-600">৳{formatCurrency(p.deduction || 0, language)}</td>
                           <td className="p-2.5 text-right font-bold text-emerald-700">৳{formatCurrency(p.netPaid, language)}</td>
-                          <td className="p-2.5 font-mono text-slate-600">
+                          <td className="p-2.5 font-sans text-slate-600">
                             {p.paymentMethod === 'BANK' ? `${p.bankName || 'ব্যাংক'} (${formatAccountNumber(p.accountNumber)})` : 'ক্যাশ ভাউচার'}
                           </td>
                           <td className="p-2.5 text-center text-[10px] text-slate-400">
