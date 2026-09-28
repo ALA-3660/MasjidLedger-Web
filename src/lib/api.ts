@@ -55,6 +55,33 @@ import {
   Budget,
   BudgetLine,
   CommitteeActionPlan,
+  LibraryCategory,
+  BookTitle,
+  BookCopy,
+  LibraryMember,
+  BookIssue,
+  BookAcquisition,
+  LibraryRoom,
+  LibraryRack,
+  LibraryShelf,
+  LibraryDashboardStats,
+  EducationProgram,
+  EducationLevel,
+  EducationStudentProfile,
+  EducationGuardianRelationship,
+  EducationEnrollment,
+  EducationDashboardStats,
+  MaktabClass,
+  MaktabAttendance,
+  MaktabTeacherAssignment,
+  MaktabFeeSchedule,
+  MaktabFeeRecord,
+  MaktabStudentProgress,
+  MaktabDashboardStats,
+  HifzLevel,
+  HifzCurriculum,
+  HifzkhanaEnrollment,
+  HifzEnrollmentStatus,
 } from '../types';
 import {
   OfficialDocument,
@@ -2436,6 +2463,845 @@ class ApiService {
   async getActionPlans(): Promise<CommitteeActionPlan[]> {
     const res = await this.request<CommitteeActionPlan[]>('/committee/action-plans');
     if (!res.success || !res.data) return [];
+    return res.data;
+  }
+
+  // ==========================================
+  // CLOUD BACKUP & RESTORE PIPELINE
+  // ==========================================
+  async createEncryptedBackup(backupType: 'MANUAL' | 'AUTOMATIC' = 'MANUAL'): Promise<{
+    backupId: string;
+    mosqueId: string;
+    checksum: string;
+    artifactJson: string;
+  }> {
+    const res = await this.request<{
+      backupId: string;
+      mosqueId: string;
+      checksum: string;
+      artifactJson: string;
+    }>('/cloud/backup/create-encrypted', {
+      method: 'POST',
+      body: JSON.stringify({ backupType }),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'এনক্রিপ্টেড ব্যাকআপ তৈরি করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async restoreEncryptedBackup(artifactJson: string): Promise<{ success: boolean; message: string }> {
+    const res = await this.request<{ success: boolean; message: string }>('/cloud/backup/restore-encrypted', {
+      method: 'POST',
+      body: JSON.stringify({ artifactJson }),
+    });
+    if (!res.success) {
+      throw new Error(res.error?.message || 'ব্যাকআপ রিস্টোর করতে ব্যর্থ হয়েছে');
+    }
+    return { success: true, message: res.message || 'রিস্টোর সফল হয়েছে' };
+  }
+
+  async verifyBackupArtifact(artifactJson: string): Promise<{
+    isValid: boolean;
+    checksum?: string;
+    metadata?: any;
+    recordCount?: number;
+    moduleCount?: number;
+    reason?: string;
+    message?: string;
+  }> {
+    const res = await this.request<{
+      isValid: boolean;
+      checksum?: string;
+      metadata?: any;
+      recordCount?: number;
+      moduleCount?: number;
+      reason?: string;
+      message?: string;
+    }>('/cloud/backup/verify', {
+      method: 'POST',
+      body: JSON.stringify({ artifactJson }),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'ব্যাকআপ ইন্টিগ্রিটি যাচাই করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async getBackupHistory(): Promise<any[]> {
+    const res = await this.request<any[]>('/cloud/backups/history');
+    return res.data || [];
+  }
+
+  async getRestoreHistory(): Promise<any[]> {
+    const res = await this.request<any[]>('/cloud/restores/history');
+    return res.data || [];
+  }
+
+  async getBackupHealth(): Promise<any> {
+    const res = await this.request<any>('/cloud/backups/health');
+    return res.data || null;
+  }
+
+  async getBackupSettings(): Promise<any> {
+    const res = await this.request<any>('/cloud/backup/settings');
+    return res.data || null;
+  }
+
+  async updateBackupSettings(settings: any): Promise<any> {
+    const res = await this.request<any>('/cloud/backup/settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'ব্যাকআপ সেটিংস সংরক্ষণ ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  // ==========================================================================
+  // 📚 LIBRARY & KNOWLEDGE CENTER (পাঠাগার ও জ্ঞানকেন্দ্র) API METHODS
+  // ==========================================================================
+
+  // 1. Dashboard Stats
+  async getLibraryDashboardStats(): Promise<LibraryDashboardStats | null> {
+    const res = await this.request<LibraryDashboardStats>('/library/dashboard-stats');
+    return res.data || null;
+  }
+
+  // 2. Categories
+  async getLibraryCategories(): Promise<LibraryCategory[]> {
+    const res = await this.request<LibraryCategory[]>('/library/categories');
+    return res.data || [];
+  }
+
+  async createLibraryCategory(data: Partial<LibraryCategory>): Promise<LibraryCategory> {
+    const res = await this.request<LibraryCategory>('/library/categories', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'ক্যাটাগরি তৈরি করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async updateLibraryCategory(id: string, data: Partial<LibraryCategory>): Promise<LibraryCategory> {
+    const res = await this.request<LibraryCategory>(`/library/categories/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'ক্যাটাগরি হালনাগাদ করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async deleteLibraryCategory(id: string): Promise<boolean> {
+    const res = await this.request(`/library/categories/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.success) {
+      throw new Error(res.error?.message || 'ক্যাটাগরি মুছে ফেলতে ব্যর্থ হয়েছে');
+    }
+    return true;
+  }
+
+  // 3. Book Titles (Catalog)
+  async getBookTitles(params?: { categoryId?: string; language?: string; search?: string; status?: string }): Promise<BookTitle[]> {
+    const query = new URLSearchParams();
+    if (params?.categoryId && params.categoryId !== 'ALL') query.set('categoryId', params.categoryId);
+    if (params?.language && params.language !== 'ALL') query.set('language', params.language);
+    if (params?.status && params.status !== 'ALL') query.set('status', params.status);
+    if (params?.search) query.set('search', params.search);
+    const qStr = query.toString() ? `?${query.toString()}` : '';
+
+    const res = await this.request<BookTitle[]>(`/library/book-titles${qStr}`);
+    return res.data || [];
+  }
+
+  async getBookTitle(id: string): Promise<BookTitle & { copies?: BookCopy[]; totalCopiesCount?: number; availableCopiesCount?: number; issuedCopiesCount?: number }> {
+    const res = await this.request<BookTitle & { copies?: BookCopy[]; totalCopiesCount?: number; availableCopiesCount?: number; issuedCopiesCount?: number }>(`/library/book-titles/${id}`);
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'বইয়ের তথ্য লোড করা যায়নি');
+    }
+    return res.data;
+  }
+
+  async createBookTitle(data: any): Promise<BookTitle & { copies?: BookCopy[] }> {
+    const res = await this.request<BookTitle & { copies?: BookCopy[] }>('/library/book-titles', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'বই যোগ করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async updateBookTitle(id: string, data: Partial<BookTitle>): Promise<BookTitle> {
+    const res = await this.request<BookTitle>(`/library/book-titles/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'বই হালনাগাদ করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async deleteBookTitle(id: string): Promise<boolean> {
+    const res = await this.request(`/library/book-titles/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.success) {
+      throw new Error(res.error?.message || 'বই মুছে ফেলতে ব্যর্থ হয়েছে');
+    }
+    return true;
+  }
+
+  // 4. Book Copies
+  async getBookCopies(params?: {
+    bookTitleId?: string;
+    status?: string;
+    condition?: string;
+    roomId?: string;
+    rackId?: string;
+    shelfId?: string;
+    search?: string;
+  }): Promise<BookCopy[]> {
+    const query = new URLSearchParams();
+    if (params?.bookTitleId && params.bookTitleId !== 'ALL') query.set('bookTitleId', params.bookTitleId);
+    if (params?.status && params.status !== 'ALL') query.set('status', params.status);
+    if (params?.condition && params.condition !== 'ALL') query.set('condition', params.condition);
+    if (params?.roomId && params.roomId !== 'ALL') query.set('roomId', params.roomId);
+    if (params?.rackId && params.rackId !== 'ALL') query.set('rackId', params.rackId);
+    if (params?.shelfId && params.shelfId !== 'ALL') query.set('shelfId', params.shelfId);
+    if (params?.search) query.set('search', params.search);
+    const qStr = query.toString() ? `?${query.toString()}` : '';
+
+    const res = await this.request<BookCopy[]>(`/library/book-copies${qStr}`);
+    return res.data || [];
+  }
+
+  async getBookCopy(id: string): Promise<BookCopy & { titleDetails?: BookTitle; roomName?: string; rackName?: string; shelfName?: string; issueHistory?: BookIssue[] }> {
+    const res = await this.request<BookCopy & { titleDetails?: BookTitle; roomName?: string; rackName?: string; shelfName?: string; issueHistory?: BookIssue[] }>(`/library/book-copies/${id}`);
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'কপির তথ্য লোড করা যায়নি');
+    }
+    return res.data;
+  }
+
+  async createBookCopy(data: Partial<BookCopy>): Promise<BookCopy> {
+    const res = await this.request<BookCopy>('/library/book-copies', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'কপি তৈরি করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async createBulkBookCopies(data: {
+    bookTitleId: string;
+    count: number;
+    roomId?: string;
+    rackId?: string;
+    shelfId?: string;
+    shelfLocationLabel?: string;
+    condition?: string;
+    purchasePrice?: number;
+    donorPersonId?: string;
+    donorName?: string;
+    notes?: string;
+  }): Promise<BookCopy[]> {
+    const res = await this.request<BookCopy[]>('/library/book-copies/bulk', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'কপিগুলো তৈরি করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async updateBookCopy(id: string, data: Partial<BookCopy>): Promise<BookCopy> {
+    const res = await this.request<BookCopy>(`/library/book-copies/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'কপির তথ্য হালনাগাদ করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async updateBookCopyStatus(id: string, data: { status: string; condition?: string; notes?: string }): Promise<BookCopy> {
+    const res = await this.request<BookCopy>(`/library/book-copies/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'কপির স্ট্যাটাস পরিবর্তন করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  // 5. Universal QR / Barcode Quick Lookup
+  async lookupBookByBarcode(bookId: string): Promise<{
+    copy: BookCopy;
+    title?: BookTitle;
+    activeIssue?: BookIssue;
+    locationHierarchy?: { room?: string; rack?: string; shelf?: string; label?: string };
+  }> {
+    const res = await this.request<{
+      copy: BookCopy;
+      title?: BookTitle;
+      activeIssue?: BookIssue;
+      locationHierarchy?: { room?: string; rack?: string; shelf?: string; label?: string };
+    }>(`/library/lookup-by-book-id/${encodeURIComponent(bookId)}`);
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'বারকোড দিয়ে বই খুঁজে পাওয়া যায়নি');
+    }
+    return res.data;
+  }
+
+  // 6. Library Members
+  async getLibraryMembers(params?: { status?: string; membershipType?: string; search?: string }): Promise<LibraryMember[]> {
+    const query = new URLSearchParams();
+    if (params?.status && params.status !== 'ALL') query.set('status', params.status);
+    if (params?.membershipType && params.membershipType !== 'ALL') query.set('membershipType', params.membershipType);
+    if (params?.search) query.set('search', params.search);
+    const qStr = query.toString() ? `?${query.toString()}` : '';
+
+    const res = await this.request<LibraryMember[]>(`/library/members${qStr}`);
+    return res.data || [];
+  }
+
+  async getLibraryMember(id: string): Promise<LibraryMember & { person?: PersonMaster; activeIssues?: BookIssue[]; issueHistory?: BookIssue[] }> {
+    const res = await this.request<LibraryMember & { person?: PersonMaster; activeIssues?: BookIssue[]; issueHistory?: BookIssue[] }>(`/library/members/${id}`);
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'সদস্যের তথ্য লোড করা যায়নি');
+    }
+    return res.data;
+  }
+
+  async createLibraryMember(data: Partial<LibraryMember>): Promise<LibraryMember> {
+    const res = await this.request<LibraryMember>('/library/members', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'সদস্য নিবন্ধন করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async updateLibraryMember(id: string, data: Partial<LibraryMember>): Promise<LibraryMember> {
+    const res = await this.request<LibraryMember>(`/library/members/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'সদস্য তথ্য হালনাগাদ করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  // 7. Circulation (Issue & Return)
+  async getBookIssues(params?: {
+    status?: string;
+    memberId?: string;
+    personId?: string;
+    bookCopyId?: string;
+    overdueOnly?: boolean;
+    search?: string;
+  }): Promise<BookIssue[]> {
+    const query = new URLSearchParams();
+    if (params?.status && params.status !== 'ALL') query.set('status', params.status);
+    if (params?.memberId && params.memberId !== 'ALL') query.set('memberId', params.memberId);
+    if (params?.personId && params.personId !== 'ALL') query.set('personId', params.personId);
+    if (params?.bookCopyId && params.bookCopyId !== 'ALL') query.set('bookCopyId', params.bookCopyId);
+    if (params?.overdueOnly) query.set('overdueOnly', 'true');
+    if (params?.search) query.set('search', params.search);
+    const qStr = query.toString() ? `?${query.toString()}` : '';
+
+    const res = await this.request<BookIssue[]>(`/library/issues${qStr}`);
+    return res.data || [];
+  }
+
+  async issueBook(data: {
+    bookCopyId: string;
+    memberId: string;
+    issueDate?: string;
+    dueDate?: string;
+    notes?: string;
+    conditionAtIssue?: string;
+  }): Promise<BookIssue> {
+    const res = await this.request<BookIssue>('/library/issues', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'বই ইস্যু করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async returnBook(id: string, data: {
+    returnDate?: string;
+    conditionAtReturn?: string;
+    fineAmount?: number;
+    finePaid?: boolean;
+    fineVoucherNumber?: string;
+    notes?: string;
+  }): Promise<BookIssue> {
+    const res = await this.request<BookIssue>(`/library/issues/${id}/return`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'বই ফেরত গ্রহণ করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async markBookLost(id: string, data: { fineAmount?: number; notes?: string }): Promise<BookIssue> {
+    const res = await this.request<BookIssue>(`/library/issues/${id}/mark-lost`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'বই হারানো হিসেবে রেকর্ড করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  // 8. Acquisitions & Donations
+  async getBookAcquisitions(params?: {
+    sourceType?: string;
+    bookTitleId?: string;
+    donorPersonId?: string;
+  }): Promise<BookAcquisition[]> {
+    const query = new URLSearchParams();
+    if (params?.sourceType && params.sourceType !== 'ALL') query.set('sourceType', params.sourceType);
+    if (params?.bookTitleId && params.bookTitleId !== 'ALL') query.set('bookTitleId', params.bookTitleId);
+    if (params?.donorPersonId && params.donorPersonId !== 'ALL') query.set('donorPersonId', params.donorPersonId);
+    const qStr = query.toString() ? `?${query.toString()}` : '';
+
+    const res = await this.request<BookAcquisition[]>(`/library/acquisitions${qStr}`);
+    return res.data || [];
+  }
+
+  async createBookAcquisition(data: any): Promise<{ data: BookAcquisition; createdCopiesCount: number }> {
+    const res = await this.request<BookAcquisition>('/library/acquisitions', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'বই সংগ্রহ রেকর্ড করতে ব্যর্থ হয়েছে');
+    }
+    return { data: res.data, createdCopiesCount: (res as any).createdCopiesCount || 0 };
+  }
+
+  // 9. Locations Hierarchy
+  async getLibraryLocations(): Promise<{ rooms: LibraryRoom[]; racks: LibraryRack[]; shelves: LibraryShelf[] }> {
+    const res = await this.request<{ rooms: LibraryRoom[]; racks: LibraryRack[]; shelves: LibraryShelf[] }>('/library/locations');
+    if (!res.success || !res.data) {
+      return { rooms: [], racks: [], shelves: [] };
+    }
+    return res.data;
+  }
+
+  async createLibraryRoom(data: Partial<LibraryRoom>): Promise<LibraryRoom> {
+    const res = await this.request<LibraryRoom>('/library/rooms', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'কক্ষ তৈরি করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateLibraryRoom(id: string, data: Partial<LibraryRoom>): Promise<LibraryRoom> {
+    const res = await this.request<LibraryRoom>(`/library/rooms/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'কক্ষ হালনাগাদ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async deleteLibraryRoom(id: string): Promise<boolean> {
+    const res = await this.request(`/library/rooms/${id}`, { method: 'DELETE' });
+    if (!res.success) throw new Error(res.error?.message || 'কক্ষ মুছতে ব্যর্থ হয়েছে');
+    return true;
+  }
+
+  async createLibraryRack(data: Partial<LibraryRack>): Promise<LibraryRack> {
+    const res = await this.request<LibraryRack>('/library/racks', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'র‌্যাক তৈরি করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateLibraryRack(id: string, data: Partial<LibraryRack>): Promise<LibraryRack> {
+    const res = await this.request<LibraryRack>(`/library/racks/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'র‌্যাক হালনাগাদ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async deleteLibraryRack(id: string): Promise<boolean> {
+    const res = await this.request(`/library/racks/${id}`, { method: 'DELETE' });
+    if (!res.success) throw new Error(res.error?.message || 'র‌্যাক মুছতে ব্যর্থ হয়েছে');
+    return true;
+  }
+
+  async createLibraryShelf(data: Partial<LibraryShelf>): Promise<LibraryShelf> {
+    const res = await this.request<LibraryShelf>('/library/shelves', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'তাক তৈরি করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateLibraryShelf(id: string, data: Partial<LibraryShelf>): Promise<LibraryShelf> {
+    const res = await this.request<LibraryShelf>(`/library/shelves/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'তাক হালনাগাদ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async deleteLibraryShelf(id: string): Promise<boolean> {
+    const res = await this.request(`/library/shelves/${id}`, { method: 'DELETE' });
+    if (!res.success) throw new Error(res.error?.message || 'তাক মুছতে ব্যর্থ হয়েছে');
+    return true;
+  }
+
+  // ==========================================
+  // EDUCATION FOUNDATION & MAKTAB SUBSYSTEM (V2.6)
+  // ==========================================
+
+  // Education Student Profiles
+  async getEducationStudents(params?: { status?: string; programType?: string; levelId?: string; search?: string }): Promise<EducationStudentProfile[]> {
+    const query = new URLSearchParams();
+    if (params?.status) query.append('status', params.status);
+    if (params?.programType) query.append('programType', params.programType);
+    if (params?.levelId) query.append('levelId', params.levelId);
+    if (params?.search) query.append('search', params.search);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+
+    const res = await this.request<EducationStudentProfile[]>(`/education/students${qs}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'শিক্ষার্থী তালিকা লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getEducationStudent(id: string): Promise<EducationStudentProfile> {
+    const res = await this.request<EducationStudentProfile>(`/education/students/${id}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'শিক্ষার্থীর তথ্য লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async createEducationStudent(data: any): Promise<EducationStudentProfile> {
+    const res = await this.request<EducationStudentProfile>('/education/students', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'শিক্ষার্থী তৈরি করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateEducationStudent(id: string, data: Partial<EducationStudentProfile>): Promise<EducationStudentProfile> {
+    const res = await this.request<EducationStudentProfile>(`/education/students/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'শিক্ষার্থী তথ্য আপডেট করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async deleteEducationStudent(id: string): Promise<boolean> {
+    const res = await this.request(`/education/students/${id}`, { method: 'DELETE' });
+    if (!res.success) throw new Error(res.error?.message || 'শিক্ষার্থী আর্কাইভ করতে ব্যর্থ হয়েছে');
+    return true;
+  }
+
+  async getEducationPrograms(): Promise<EducationProgram[]> {
+    const res = await this.request<EducationProgram[]>('/education/programs');
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'শিক্ষা কার্যক্রম লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getEducationLevels(params?: { programId?: string; programType?: string }): Promise<EducationLevel[]> {
+    const query = new URLSearchParams();
+    if (params?.programId) query.append('programId', params.programId);
+    if (params?.programType) query.append('programType', params.programType);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+
+    const res = await this.request<EducationLevel[]>(`/education/levels${qs}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'শিক্ষা জামাত লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getEducationEnrollments(params?: { studentProfileId?: string; studentId?: string; programType?: string; status?: string }): Promise<EducationEnrollment[]> {
+    const query = new URLSearchParams();
+    if (params?.studentProfileId) query.append('studentProfileId', params.studentProfileId);
+    if (params?.studentId) query.append('studentId', params.studentId);
+    if (params?.programType) query.append('programType', params.programType);
+    if (params?.status) query.append('status', params.status);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+
+    const res = await this.request<EducationEnrollment[]>(`/education/enrollments${qs}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'ভর্তি রেকর্ড লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async createEducationEnrollment(data: any): Promise<EducationEnrollment> {
+    const res = await this.request<EducationEnrollment>('/education/enrollments', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'ভর্তি সম্পন্ন করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  // Maktab Operations
+  async getMaktabDashboardStats(): Promise<MaktabDashboardStats> {
+    const res = await this.request<MaktabDashboardStats>('/maktab/dashboard-stats');
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'মক্তব ড্যাশবোর্ড পরিসংখ্যান লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getMaktabClasses(): Promise<MaktabClass[]> {
+    const res = await this.request<MaktabClass[]>('/maktab/classes');
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'মক্তব জামাত তালিকা লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async createMaktabClass(data: any): Promise<MaktabClass> {
+    const res = await this.request<MaktabClass>('/maktab/classes', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'মক্তব জামাত তৈরি করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateMaktabClass(id: string, data: any): Promise<MaktabClass> {
+    const res = await this.request<MaktabClass>(`/maktab/classes/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'মক্তব জামাত আপডেট করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getMaktabAttendance(params?: { date?: string; classId?: string; levelId?: string; studentProfileId?: string; studentId?: string; month?: string }): Promise<MaktabAttendance[]> {
+    const query = new URLSearchParams();
+    if (params?.date) query.append('date', params.date);
+    if (params?.classId) query.append('classId', params.classId);
+    if (params?.levelId) query.append('levelId', params.levelId);
+    if (params?.studentProfileId) query.append('studentProfileId', params.studentProfileId);
+    if (params?.studentId) query.append('studentId', params.studentId);
+    if (params?.month) query.append('month', params.month);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+
+    const res = await this.request<MaktabAttendance[]>(`/maktab/attendance${qs}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'হাজিরা রেকর্ড লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async recordMaktabAttendance(data: any): Promise<MaktabAttendance> {
+    const res = await this.request<MaktabAttendance>('/maktab/attendance', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'হাজিরা রেকর্ড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async recordBulkMaktabAttendance(data: { date: string; classId?: string; levelId?: string; records: any[] }): Promise<{ createdCount: number; updatedCount: number }> {
+    const res = await this.request<{ createdCount: number; updatedCount: number }>('/maktab/attendance/bulk', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'বাল্ক হাজিরা সম্পন্ন করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getMaktabTeachers(): Promise<{ assignments: MaktabTeacherAssignment[]; availableStaff: any[] }> {
+    const res = await this.request<{ assignments: MaktabTeacherAssignment[]; availableStaff: any[] }>('/maktab/teachers');
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'মক্তব শিক্ষক তালিকা লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async createMaktabTeacherAssignment(data: any): Promise<MaktabTeacherAssignment> {
+    const res = await this.request<MaktabTeacherAssignment>('/maktab/teachers', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'শিক্ষক দায়িত্ব নির্ধারণ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getMaktabFeeSchedules(): Promise<MaktabFeeSchedule[]> {
+    const res = await this.request<MaktabFeeSchedule[]>('/maktab/fees/schedules');
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'ফি কাঠামো লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async createMaktabFeeSchedule(data: any): Promise<MaktabFeeSchedule> {
+    const res = await this.request<MaktabFeeSchedule>('/maktab/fees/schedules', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'ফি কাঠামো তৈরি করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getMaktabFeeRecords(params?: { studentProfileId?: string; studentId?: string; billingMonth?: string; status?: string }): Promise<MaktabFeeRecord[]> {
+    const query = new URLSearchParams();
+    if (params?.studentProfileId) query.append('studentProfileId', params.studentProfileId);
+    if (params?.studentId) query.append('studentId', params.studentId);
+    if (params?.billingMonth) query.append('billingMonth', params.billingMonth);
+    if (params?.status) query.append('status', params.status);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+
+    const res = await this.request<MaktabFeeRecord[]>(`/maktab/fees/records${qs}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'ফি রেকর্ড লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async generateMonthlyMaktabFees(data: { feeScheduleId: string; billingMonth: string }): Promise<{ generatedCount: number; skippedCount: number }> {
+    const res = await this.request<{ generatedCount: number; skippedCount: number }>('/maktab/fees/generate-monthly', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'মাসিক ফি জেনারেট করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async collectMaktabFee(id: string, data: { paidAmount: number; paymentMethod?: string; accountId?: string; receiptNo?: string; notes?: string }): Promise<{ feeRecord: MaktabFeeRecord; canonicalIncome: IncomeEntry }> {
+    const res = await this.request<{ feeRecord: MaktabFeeRecord; canonicalIncome: IncomeEntry }>(`/maktab/fees/${id}/collect`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'ফি আদায় সম্পন্ন করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getMaktabProgress(params?: { studentProfileId?: string; studentId?: string; levelId?: string; levelCode?: string; status?: string }): Promise<MaktabStudentProgress[]> {
+    const query = new URLSearchParams();
+    if (params?.studentProfileId) query.append('studentProfileId', params.studentProfileId);
+    if (params?.studentId) query.append('studentId', params.studentId);
+    if (params?.levelId) query.append('levelId', params.levelId);
+    if (params?.levelCode) query.append('levelCode', params.levelCode);
+    if (params?.status) query.append('status', params.status);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+
+    const res = await this.request<MaktabStudentProgress[]>(`/maktab/progress${qs}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'পাঠ অগ্রগতি রেকর্ড লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async createMaktabProgress(data: any): Promise<MaktabStudentProgress> {
+    const res = await this.request<MaktabStudentProgress>('/maktab/progress', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'পাঠ অগ্রগতি সংরক্ষণ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getMaktabReportsSummary(): Promise<any> {
+    const res = await this.request<any>('/maktab/reports/summary');
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'মক্তব রিপোর্ট সারাংশ লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  // ==========================================
+  // HIFZKHANA — H1 FOUNDATION API METHODS
+  // ==========================================
+
+  async getHifzLevels(): Promise<HifzLevel[]> {
+    const res = await this.request<HifzLevel[]>('/hifz/levels');
+    return res.data || [];
+  }
+
+  async getHifzCurricula(): Promise<HifzCurriculum[]> {
+    const res = await this.request<HifzCurriculum[]>('/hifz/curricula');
+    return res.data || [];
+  }
+
+  async getHifzEligibleStudents(): Promise<EducationStudentProfile[]> {
+    const res = await this.request<EducationStudentProfile[]>('/hifz/eligible-students');
+    return res.data || [];
+  }
+
+  async getHifzEligibleUstads(): Promise<any[]> {
+    const res = await this.request<any[]>('/hifz/eligible-ustads');
+    return res.data || [];
+  }
+
+  async getHifzEnrollments(params?: {
+    studentProfileId?: string;
+    status?: string;
+    levelId?: string;
+    curriculumId?: string;
+    studyType?: string;
+    search?: string;
+  }): Promise<HifzkhanaEnrollment[]> {
+    const query = new URLSearchParams();
+    if (params?.studentProfileId) query.append('studentProfileId', params.studentProfileId);
+    if (params?.status) query.append('status', params.status);
+    if (params?.levelId) query.append('levelId', params.levelId);
+    if (params?.curriculumId) query.append('curriculumId', params.curriculumId);
+    if (params?.studyType) query.append('studyType', params.studyType);
+    if (params?.search) query.append('search', params.search);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+
+    const res = await this.request<HifzkhanaEnrollment[]>(`/hifz/enrollments${qs}`);
+    return res.data || [];
+  }
+
+  async getHifzEnrollmentById(id: string): Promise<HifzkhanaEnrollment> {
+    const res = await this.request<HifzkhanaEnrollment>(`/hifz/enrollments/${id}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'হিফজ ভর্তি রেকর্ড লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async createHifzEnrollment(data: any): Promise<HifzkhanaEnrollment> {
+    const res = await this.request<HifzkhanaEnrollment>('/hifz/enrollments', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'হিফজ শিক্ষার্থী ভর্তি করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateHifzEnrollment(id: string, data: any): Promise<HifzkhanaEnrollment> {
+    const res = await this.request<HifzkhanaEnrollment>(`/hifz/enrollments/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'হিফজ ভর্তি তথ্য হালনাগাদ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateHifzEnrollmentStatus(id: string, status: HifzEnrollmentStatus, remarks?: string): Promise<HifzkhanaEnrollment> {
+    const res = await this.request<HifzkhanaEnrollment>(`/hifz/enrollments/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, remarks }),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'হিফজ ভর্তি স্ট্যাটাস পরিবর্তন করতে ব্যর্থ হয়েছে');
     return res.data;
   }
 }

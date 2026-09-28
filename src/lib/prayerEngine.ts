@@ -24,10 +24,10 @@
  * - ZERO hardcoded fallbacks like "12:15"
  */
 
-import { MosquePrayerSettings, DailyPrayerSchedule, DailyPrayerItem, MonthlyPrayerDay } from '../types';
+import { MosquePrayerSettings, DailyPrayerSchedule, DailyPrayerItem, MonthlyPrayerDay } from '../types/index';
 
 export type PrayerKey = 'fajr' | 'dhuhr' | 'asr' | 'maghrib' | 'isha';
-export type SpecialPrayerKey = 'tahajjud' | 'sunrise' | 'ishraq' | 'duha' | 'solarNoon' | 'sunset' | 'jumuah';
+export type SpecialPrayerKey = 'tahajjud' | 'sunrise' | 'ishraq' | 'duha' | 'awwabin' | 'solarNoon' | 'sunset' | 'jumuah';
 
 export interface PrayerTimeItem {
   nameBn: string;
@@ -151,6 +151,12 @@ export interface WaqtStatus {
   duhaEndTimeStr12: string;
   duhaStatusBn: string;
   isDuhaActive: boolean;
+  awwabinTimeStr: string;
+  awwabinTimeStr12: string;
+  awwabinEndTimeStr: string;
+  awwabinEndTimeStr12: string;
+  awwabinStatusBn: string;
+  isAwwabinActive: boolean;
   tahajjudStartTimeStr: string;
   tahajjudStartTimeStr12: string;
   tahajjudEndTimeStr: string;
@@ -990,6 +996,18 @@ export const calculateLiveWaqt = (
     duhaStatusBn = 'আজকের চাশতের সময় শেষ হয়েছে';
   }
 
+  // Awwabin Dynamic Status (Starts after Maghrib until Isha):
+  let awwabinStatusBn = '';
+  const isAwwabinActive = currentMinutes >= maghribStartMin && currentMinutes < ishaStartMin;
+  if (currentMinutes < maghribStartMin) {
+    const diffSec = maghribStartMin * 60 - totalCurrentSec;
+    awwabinStatusBn = `আউয়াবিন শুরু হতে: ${formatDurationToBangla(diffSec)} বাকি`;
+  } else if (isAwwabinActive) {
+    awwabinStatusBn = 'এখন আউয়াবিনের নামাজ পড়ার উত্তম সময়';
+  } else {
+    awwabinStatusBn = 'আজকের আউয়াবিনের সময় শেষ হয়েছে';
+  }
+
   // Tahajjud Dynamic Status:
   // Starts after Isha / 00:00 until Fajr start - 10 mins
   const isTahajjudActive = (currentMinutes >= 0 && currentMinutes < calc.tahajjudEndMin) || (currentMinutes >= ishaJamaatMin + 30 && currentMinutes < 1440);
@@ -1379,6 +1397,19 @@ export const calculateLiveWaqt = (
       endTimeMin: calc.duhaEndMin,
     },
     {
+      key: 'awwabin',
+      nameBn: 'আউয়াবিন (সালাতুল আউয়াবিন)',
+      nameEn: 'Awwabin',
+      timeStr: formatMinutesTo12h(maghribStartMin),
+      endTimeStr: formatMinutesTo12h(ishaStartMin),
+      timeStr12: formatMinutesTo12h(maghribStartMin),
+      endTimeStr12: formatMinutesTo12h(ishaStartMin),
+      statusBn: awwabinStatusBn,
+      isActive: isAwwabinActive,
+      timeMin: maghribStartMin,
+      endTimeMin: ishaStartMin,
+    },
+    {
       key: 'solarNoon',
       nameBn: 'ঠিক দুপুর / জাওয়াল',
       nameEn: 'Solar Noon (Zawal)',
@@ -1489,6 +1520,12 @@ export const calculateLiveWaqt = (
     duhaEndTimeStr12: formatMinutesTo12h(calc.duhaEndMin),
     duhaStatusBn,
     isDuhaActive,
+    awwabinTimeStr: formatMinutesTo12h(maghribStartMin),
+    awwabinTimeStr12: formatMinutesTo12h(maghribStartMin),
+    awwabinEndTimeStr: formatMinutesTo12h(ishaStartMin),
+    awwabinEndTimeStr12: formatMinutesTo12h(ishaStartMin),
+    awwabinStatusBn,
+    isAwwabinActive,
     tahajjudStartTimeStr: '12:00 AM',
     tahajjudStartTimeStr12: '12:00 AM',
     tahajjudEndTimeStr: formatMinutesTo12h(calc.tahajjudEndMin),
@@ -1929,6 +1966,20 @@ export const buildDailyPrayerSchedule = (
       isActive: waqtStatus.isIshraqActive,
       statusState: waqtStatus.isIshraqActive ? 'ACTIVE' : 'ENDED',
       statusMessageBn: waqtStatus.ishraqStatusBn,
+      countdownSeconds: 0,
+    },
+    duha: {
+      startTimeStr: waqtStatus.duhaTimeStr,
+      endTimeStr: waqtStatus.duhaEndTimeStr,
+      isActive: waqtStatus.isDuhaActive,
+      statusMessageBn: waqtStatus.duhaStatusBn,
+      countdownSeconds: 0,
+    },
+    awwabin: {
+      startTimeStr: waqtStatus.awwabinTimeStr,
+      endTimeStr: waqtStatus.awwabinEndTimeStr,
+      isActive: waqtStatus.isAwwabinActive,
+      statusMessageBn: waqtStatus.awwabinStatusBn,
       countdownSeconds: 0,
     },
     forbiddenTimes: {

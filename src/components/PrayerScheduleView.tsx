@@ -667,8 +667,8 @@ export const PrayerScheduleView: React.FC<PrayerScheduleViewProps> = ({
             </div>
           )}
 
-          {/* Special Prayers & Astronomical Windows (Tahajjud, Sunrise, Ishraq, Forbidden) */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {/* Special Prayers & Astronomical Windows (Tahajjud, Sunrise & Ishraq, Awwabin, Forbidden) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* 1. Tahajjud Card */}
             <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs flex flex-col justify-between">
               <div className="flex items-center space-x-3 mb-3">
@@ -725,7 +725,35 @@ export const PrayerScheduleView: React.FC<PrayerScheduleViewProps> = ({
               </p>
             </div>
 
-            {/* 3. Forbidden Times (মাকরূহ / নিষিদ্ধ সময়) */}
+            {/* 3. Awwabin Card */}
+            <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs flex flex-col justify-between">
+              <div className="flex items-center space-x-3 mb-3">
+                <div className="w-9 h-9 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-base font-bold text-slate-900">আউয়াবিন সালাত</h4>
+                  <span className="text-xs text-slate-500">মাগরিব পরবর্তী নফল সালাত</span>
+                </div>
+              </div>
+
+              <div className="space-y-2 text-sm bg-slate-50 p-3 rounded-xl">
+                <div className="flex justify-between">
+                  <span className="text-slate-600">আউয়াবিন শুরু:</span>
+                  <span className="font-mono font-bold text-teal-700">{toBanglaDigits(dailySchedule.awwabin?.startTimeStr || '')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-600">আউয়াবিন শেষ (এশা শুরু):</span>
+                  <span className="font-mono font-bold text-slate-800">{toBanglaDigits(dailySchedule.awwabin?.endTimeStr || '')}</span>
+                </div>
+              </div>
+
+              <p className={`text-xs mt-3 font-medium ${dailySchedule.awwabin?.isActive ? 'text-teal-700' : 'text-slate-600'}`}>
+                {dailySchedule.awwabin?.statusMessageBn || 'মাগরিবের পর থেকে এশার ওয়াক্ত শুরু পর্যন্ত'}
+              </p>
+            </div>
+
+            {/* 4. Forbidden Times (মাকরূহ / নিষিদ্ধ সময়) */}
             <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs flex flex-col justify-between">
               <div className="flex items-center space-x-3 mb-3">
                 <div className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">

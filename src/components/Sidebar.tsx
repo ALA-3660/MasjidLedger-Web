@@ -34,6 +34,7 @@ import {
   BarChart3,
   Printer,
   TrendingUp,
+  GraduationCap,
 } from 'lucide-react';
 import { Language, translations } from '../lib/i18n';
 
@@ -68,6 +69,8 @@ export type NavTab =
   | 'documents'
   | 'cemetery'
   | 'notices'
+  | 'maktab'
+  | 'hifz'
   | 'prayerTimes'
   | 'reports'
   | 'users'
@@ -160,6 +163,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
           icon: Users,
           badge: language === 'bn' ? '৭টি বিভাগ' : '7 Sections',
           color: 'text-emerald-700',
+        },
+      ],
+    },
+    {
+      title: language === 'bn' ? 'শিক্ষা ও দ্বীনিয়াত' : 'Education & Deeniyat',
+      items: [
+        {
+          id: 'maktab' as NavTab,
+          label: language === 'bn' ? '🕌 মক্তব শিক্ষা কার্যক্রম' : 'Maktab Subsystem',
+          icon: GraduationCap,
+          badge: language === 'bn' ? '১০টি বিভাগ' : '10 Sections',
+          color: 'text-emerald-700',
+        },
+        {
+          id: 'hifz' as NavTab,
+          label: language === 'bn' ? '📖 হিফজখানা (এইচ-১ ভিত্তি)' : 'Hifz Foundation (H1)',
+          icon: BookOpen,
+          badge: language === 'bn' ? 'ভিত্তি' : 'H1',
+          color: 'text-teal-700',
         },
       ],
     },

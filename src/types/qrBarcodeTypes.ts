@@ -13,6 +13,8 @@ export type UniversalPrefix =
   | 'SUB' // Sub-Committee (উপ-কমিটি)
   | 'MEM' // Committee Member (কমিটি সদস্য)
   | 'MTG' // Meeting / Resolution (মিটিং / রেজুলেশন)
+  | 'BOK' // Book Copy (পাঠাগারের বই)
+  | 'STU' // Education Student (মক্তব/শিক্ষা শিক্ষার্থী)
   | 'ACT'; // Module Quick Action (মডিউল অ্যাকশন)
 
 export type QrEntityType =
@@ -29,7 +31,9 @@ export type QrEntityType =
   | 'ACTION_PLAN'
   | 'SUB_COMMITTEE'
   | 'COMMITTEE_MEMBER'
-  | 'MEETING';
+  | 'MEETING'
+  | 'BOOK_COPY'
+  | 'STUDENT';
 
 export type QrActionKey =
   | 'ACT-INC-NEW'       // নতুন আয় এন্ট্রি
@@ -49,7 +53,10 @@ export type QrActionKey =
   | 'ACT-MTG-NEW'       // নতুন Meeting
   | 'ACT-MTG-RESOL'     // নতুন Resolution
   | 'ACT-CAP-NEW'       // নতুন Action Plan
-  | 'ACT-SUB-NEW';      // Sub-Committee
+  | 'ACT-SUB-NEW'       // Sub-Committee
+  | 'ACT-LIB-ISSUE'     // বই ইস্যু
+  | 'ACT-LIB-RETURN'    // বই ফেরত
+  | 'ACT-LIB-NEW-BOOK'; // নতুন বই সংযোজন
 
 export interface QrScanResult {
   raw: string;
@@ -118,7 +125,11 @@ export interface RecordSpecificAction {
     | 'BOX_HISTORY'
     | 'PRINT_LABEL'
     | 'PRINT_RECEIPT'
-    | 'DUPLICATE_ENTRY';
+    | 'DUPLICATE_ENTRY'
+    | 'BOOK_ISSUE'
+    | 'BOOK_RETURN'
+    | 'BOOK_DETAILS'
+    | 'BOOK_HISTORY';
   isPrimary?: boolean;
 }
 

@@ -552,7 +552,7 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
       </div>
 
       {/* 4. Special Solar & Nafl Milestones Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3.5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-3.5">
         {/* Tahajjud */}
         <div className={`p-4 rounded-xl border transition-all ${
           waqtStatus.isTahajjudActive ? 'bg-indigo-50 border-indigo-300 shadow-xs' : 'bg-white border-slate-200'
@@ -640,6 +640,22 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = ({
           </div>
           <p className="text-[11px] text-slate-500 mt-1">
             মাগরিব ওয়াক্ত শুরু
+          </p>
+        </div>
+
+        {/* Awwabin */}
+        <div className={`p-4 rounded-xl border transition-all ${
+          waqtStatus.isAwwabinActive ? 'bg-teal-50 border-teal-300 shadow-xs' : 'bg-white border-slate-200'
+        }`}>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-700">আউয়াবিন</span>
+            <Sparkles className="w-4 h-4 text-teal-600" />
+          </div>
+          <div className="text-base font-bold text-slate-900 font-mono mt-2">
+            {waqtStatus.awwabinTimeStr12} - {waqtStatus.awwabinEndTimeStr12}
+          </div>
+          <p className="text-[11px] text-slate-500 mt-1 truncate" title={waqtStatus.awwabinStatusBn}>
+            {waqtStatus.awwabinStatusBn}
           </p>
         </div>
 

@@ -528,6 +528,13 @@ export const MosqueDisplayScreen: React.FC<MosqueDisplayScreenProps> = ({
                     <p className="text-[11px] text-slate-400">মাগরিব ওয়াক্ত শুরু</p>
                   </div>
 
+                  {/* Awwabin */}
+                  <div className={`rounded-2xl p-4 border space-y-1 ${themeStyles.card}`}>
+                    <span className="text-xs text-teal-300 block font-bold">আউয়াবিন সালাত</span>
+                    <div className="text-xl sm:text-2xl font-mono font-black text-teal-200">{waqtStatus.awwabinTimeStr12 || waqtStatus.sunsetTimeStr12}</div>
+                    <p className="text-[11px] text-slate-400">মাগরিবের পর (এশার পূর্ব পর্যন্ত)</p>
+                  </div>
+
                   {/* Jumuah Box */}
                   <div className={`rounded-2xl p-4 border space-y-1 ${themeStyles.card}`}>
                     <span className="text-xs text-amber-400 block font-bold">জুমার নামাজ (শুক্রবার)</span>

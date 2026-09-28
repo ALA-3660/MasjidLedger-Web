@@ -44,6 +44,8 @@ import { BankBookView } from './components/BankBookView';
 import { OpeningBalanceView } from './components/OpeningBalanceView';
 import { AccountHeadsView } from './components/AccountHeadsView';
 import { MusalliDonorManagementView } from './components/MusalliDonorManagementView';
+import { MaktabManagementView } from './components/MaktabManagementView';
+import { HifzFoundationView } from './components/HifzFoundationView';
 import { CommitteeView } from './components/CommitteeView';
 import { CommitteeManagementView } from './components/CommitteeManagementView';
 import { CemeteryManagementView } from './components/CemeteryManagementView';
@@ -1275,6 +1277,27 @@ export default function App() {
       {/* 5.5 Musalli & Donor Central Database View with Left Secondary Sidebar */}
       {(currentTab === 'musalliDatabase' || (currentTab as string) === 'musalli-database') && (
         <MusalliDonorManagementView
+          currentMosque={mosque}
+          currentUser={currentUser}
+          language={language}
+          onNavigateTab={(tab) => setCurrentTab(tab as NavTab)}
+        />
+      )}
+
+      {/* 5.6 Maktab Operational Subsystem View */}
+      {currentTab === 'maktab' && (
+        <MaktabManagementView
+          currentMosque={mosque}
+          currentUser={currentUser}
+          accounts={accounts}
+          language={language}
+          onNavigateTab={(tab) => setCurrentTab(tab as NavTab)}
+        />
+      )}
+
+      {/* 5.7 Hifzkhana — H1 Foundation View */}
+      {currentTab === 'hifz' && (
+        <HifzFoundationView
           currentMosque={mosque}
           currentUser={currentUser}
           language={language}

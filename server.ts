@@ -4,7 +4,7 @@ import path from 'path';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { GoogleGenAI } from '@google/genai';
-import { db } from './src/server/db';
+import { db, getStarterLibraryCategories, getStarterEducationPrograms, getStarterEducationLevels, getStarterMaktabClasses, getStarterMaktabFeeSchedules } from './src/server/db';
 import { realtime } from './src/server/ws';
 import { buildDailyPrayerSchedule, buildMonthlyPrayerCalendar } from './src/lib/prayerEngine';
 import { DEFAULT_DOCUMENT_TEMPLATES } from './src/lib/officialDocumentTemplates';
@@ -75,6 +75,33 @@ import {
   CollectionWorker,
   DonationCollection,
   CollectionStatus,
+  LibraryCategory,
+  BookTitle,
+  BookCopy,
+  BookCopyStatus,
+  BookCondition,
+  LibraryMember,
+  BookIssue,
+  BookAcquisition,
+  LibraryRoom,
+  LibraryRack,
+  LibraryShelf,
+  EducationProgram,
+  EducationLevel,
+  EducationStudentProfile,
+  EducationGuardianRelationship,
+  EducationEnrollment,
+  EducationDashboardStats,
+  MaktabClass,
+  MaktabAttendance,
+  MaktabTeacherAssignment,
+  MaktabFeeSchedule,
+  MaktabFeeRecord,
+  MaktabStudentProgress,
+  MaktabDashboardStats,
+  HifzLevel,
+  HifzCurriculum,
+  HifzkhanaEnrollment,
 } from './src/types';
 
 const app = express();
@@ -182,7 +209,13 @@ const ALL_VALID_PERMISSIONS: Set<string> = new Set([
   'EDIT_DONATION_COLLECTION', 'UPDATE_DONATION_COLLECTION_STATUS', 'ASSIGN_COLLECTION_WORKER',
   'MANAGE_DONATION_COLLECTION', 'VIEW_ASSIGNED_COLLECTION', 'VIEW_BUDGET', 'CREATE_BUDGET',
   'EDIT_BUDGET', 'SUBMIT_BUDGET', 'APPROVE_BUDGET', 'REVISE_BUDGET', 'CLOSE_BUDGET',
-  'VIEW_BUDGET_ANALYSIS', 'EXPORT_BUDGET_REPORT'
+  'VIEW_BUDGET_ANALYSIS', 'EXPORT_BUDGET_REPORT',
+  'VIEW_LIBRARY', 'MANAGE_LIBRARY_BOOK', 'MANAGE_LIBRARY_COPY', 'MANAGE_LIBRARY_MEMBER',
+  'LIBRARY_ISSUE', 'LIBRARY_RETURN', 'LIBRARY_ACQUISITION', 'VIEW_LIBRARY_REPORT',
+  'EXPORT_LIBRARY_REPORT', 'MANAGE_LIBRARY_LOCATION',
+  'VIEW_EDUCATION', 'MANAGE_EDUCATION_STUDENT', 'MANAGE_EDUCATION_ENROLLMENT', 'MANAGE_EDUCATION_SETTINGS',
+  'VIEW_MAKTAB', 'MANAGE_MAKTAB_ATTENDANCE', 'MANAGE_MAKTAB_PROGRESS', 'MANAGE_MAKTAB_FEES',
+  'VIEW_HIFZ', 'MANAGE_HIFZ_STUDENTS'
 ]);
 
 const getAuthoritativeRolePermissions = (targetRole: UserRole): Permission[] => {
@@ -195,20 +228,30 @@ const getAuthoritativeRolePermissions = (targetRole: UserRole): Permission[] => 
       return [
         'VIEW_DASHBOARD', 'CREATE_INCOME', 'EDIT_INCOME', 'CREATE_EXPENSE', 'EDIT_EXPENSE',
         'APPROVE_INCOME', 'APPROVE_EXPENSE', 'VIEW_REPORT', 'EXPORT_REPORT', 'MANAGE_ACCOUNTS',
-        'VIEW_BUDGET', 'CREATE_BUDGET', 'EDIT_BUDGET', 'SUBMIT_BUDGET', 'VIEW_BUDGET_ANALYSIS', 'EXPORT_BUDGET_REPORT'
+        'VIEW_BUDGET', 'CREATE_BUDGET', 'EDIT_BUDGET', 'SUBMIT_BUDGET', 'VIEW_BUDGET_ANALYSIS', 'EXPORT_BUDGET_REPORT',
+        'VIEW_LIBRARY', 'VIEW_LIBRARY_REPORT', 'EXPORT_LIBRARY_REPORT',
+        'VIEW_EDUCATION', 'VIEW_MAKTAB', 'MANAGE_MAKTAB_FEES', 'VIEW_HIFZ'
       ] as Permission[];
     case 'COMMITTEE_ADMIN':
       return [
         'VIEW_DASHBOARD', 'MANAGE_COMMITTEE', 'VIEW_REPORT', 'EXPORT_REPORT',
-        'VIEW_MEMBER_PERFORMANCE', 'CREATE_EVALUATION', 'EDIT_EVALUATION', 'ADD_MEMBER_ACTIVITY', 'UPDATE_RESPONSIBILITY_STATUS', 'PRINT_PERFORMANCE_REPORT'
+        'VIEW_MEMBER_PERFORMANCE', 'CREATE_EVALUATION', 'EDIT_EVALUATION', 'ADD_MEMBER_ACTIVITY', 'UPDATE_RESPONSIBILITY_STATUS', 'PRINT_PERFORMANCE_REPORT',
+        'VIEW_LIBRARY', 'VIEW_LIBRARY_REPORT',
+        'VIEW_EDUCATION', 'VIEW_MAKTAB', 'VIEW_HIFZ'
       ] as Permission[];
     case 'DATA_ENTRY_OPERATOR':
-      return ['VIEW_DASHBOARD', 'CREATE_INCOME', 'CREATE_EXPENSE', 'VIEW_MUSALLI', 'CREATE_MUSALLI'] as Permission[];
+      return [
+        'VIEW_DASHBOARD', 'CREATE_INCOME', 'CREATE_EXPENSE', 'VIEW_MUSALLI', 'CREATE_MUSALLI',
+        'VIEW_LIBRARY', 'MANAGE_LIBRARY_BOOK', 'MANAGE_LIBRARY_COPY', 'MANAGE_LIBRARY_MEMBER', 'LIBRARY_ISSUE', 'LIBRARY_RETURN',
+        'VIEW_EDUCATION', 'MANAGE_EDUCATION_STUDENT', 'MANAGE_EDUCATION_ENROLLMENT',
+        'VIEW_MAKTAB', 'MANAGE_MAKTAB_ATTENDANCE', 'MANAGE_MAKTAB_PROGRESS', 'MANAGE_MAKTAB_FEES',
+        'VIEW_HIFZ', 'MANAGE_HIFZ_STUDENTS'
+      ] as Permission[];
     case 'AUDITOR':
-      return ['VIEW_DASHBOARD', 'VIEW_REPORT', 'EXPORT_REPORT', 'VIEW_AUDIT_LOG', 'VIEW_BUDGET_ANALYSIS', 'EXPORT_BUDGET_REPORT'] as Permission[];
+      return ['VIEW_DASHBOARD', 'VIEW_REPORT', 'EXPORT_REPORT', 'VIEW_AUDIT_LOG', 'VIEW_BUDGET_ANALYSIS', 'EXPORT_BUDGET_REPORT', 'VIEW_LIBRARY', 'VIEW_LIBRARY_REPORT', 'EXPORT_LIBRARY_REPORT', 'VIEW_EDUCATION', 'VIEW_MAKTAB', 'VIEW_HIFZ'] as Permission[];
     case 'VIEWER':
     default:
-      return ['VIEW_DASHBOARD', 'VIEW_REPORT'] as Permission[];
+      return ['VIEW_DASHBOARD', 'VIEW_REPORT', 'VIEW_LIBRARY', 'VIEW_EDUCATION', 'VIEW_MAKTAB', 'VIEW_HIFZ'] as Permission[];
   }
 };
 
@@ -2253,6 +2296,15 @@ app.post('/api/v1/cloud/backup/create-encrypted', authenticate, (req: AuthReques
       transfers: db.transfers.filter(t => t.mosqueId === mosque.id),
       uploadedFiles: db.uploadedFiles.filter(uf => uf.mosqueId === mosque.id),
       centralDocuments: db.centralDocuments.filter(cd => cd.mosqueId === mosque.id),
+      libraryCategories: db.libraryCategories.filter(lc => lc.mosqueId === mosque.id),
+      bookTitles: db.bookTitles.filter(bt => bt.mosqueId === mosque.id),
+      bookCopies: db.bookCopies.filter(bc => bc.mosqueId === mosque.id),
+      libraryMembers: db.libraryMembers.filter(lm => lm.mosqueId === mosque.id),
+      bookIssues: db.bookIssues.filter(bi => bi.mosqueId === mosque.id),
+      bookAcquisitions: db.bookAcquisitions.filter(ba => ba.mosqueId === mosque.id),
+      libraryRooms: db.libraryRooms.filter(lr => lr.mosqueId === mosque.id),
+      libraryRacks: db.libraryRacks.filter(lr => lr.mosqueId === mosque.id),
+      libraryShelves: db.libraryShelves.filter(ls => ls.mosqueId === mosque.id),
       exportDate: new Date().toISOString(),
       version: '3.5.0',
       appName: 'MasjidLedger'
@@ -2517,6 +2569,33 @@ app.post('/api/v1/cloud/backup/restore-encrypted', authenticate, async (req: Aut
     }
     if (payload.centralDocuments) {
       db.centralDocuments = db.centralDocuments.filter(cd => cd.mosqueId !== currentMosque.id).concat(payload.centralDocuments);
+    }
+    if (payload.libraryCategories) {
+      db.libraryCategories = db.libraryCategories.filter(lc => lc.mosqueId !== currentMosque.id).concat(payload.libraryCategories);
+    }
+    if (payload.bookTitles) {
+      db.bookTitles = db.bookTitles.filter(bt => bt.mosqueId !== currentMosque.id).concat(payload.bookTitles);
+    }
+    if (payload.bookCopies) {
+      db.bookCopies = db.bookCopies.filter(bc => bc.mosqueId !== currentMosque.id).concat(payload.bookCopies);
+    }
+    if (payload.libraryMembers) {
+      db.libraryMembers = db.libraryMembers.filter(lm => lm.mosqueId !== currentMosque.id).concat(payload.libraryMembers);
+    }
+    if (payload.bookIssues) {
+      db.bookIssues = db.bookIssues.filter(bi => bi.mosqueId !== currentMosque.id).concat(payload.bookIssues);
+    }
+    if (payload.bookAcquisitions) {
+      db.bookAcquisitions = db.bookAcquisitions.filter(ba => ba.mosqueId !== currentMosque.id).concat(payload.bookAcquisitions);
+    }
+    if (payload.libraryRooms) {
+      db.libraryRooms = db.libraryRooms.filter(lr => lr.mosqueId !== currentMosque.id).concat(payload.libraryRooms);
+    }
+    if (payload.libraryRacks) {
+      db.libraryRacks = db.libraryRacks.filter(lr => lr.mosqueId !== currentMosque.id).concat(payload.libraryRacks);
+    }
+    if (payload.libraryShelves) {
+      db.libraryShelves = db.libraryShelves.filter(ls => ls.mosqueId !== currentMosque.id).concat(payload.libraryShelves);
     }
 
     db.save();
@@ -16375,6 +16454,3994 @@ app.get('/api/v1/musalli/stats', authenticate, (req: AuthRequest, res: Response)
       monthlyDonationTarget,
       yearlyDonationTarget,
     }
+  });
+});
+
+// ============================================================================
+// 📚 LIBRARY & KNOWLEDGE CENTER (পাঠাগার ও জ্ঞানকেন্দ্র) REST API
+// ============================================================================
+
+// 1. Library Dashboard & Statistics
+app.get('/api/v1/library/dashboard-stats', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const stats = db.getLibraryDashboardStats(mosqueId);
+  res.json({ success: true, data: stats });
+});
+
+// 2. Library Categories
+app.get('/api/v1/library/categories', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  let categories = db.libraryCategories.filter(c => c.mosqueId === mosqueId && c.status !== 'ARCHIVED');
+  if (categories.length === 0) {
+    categories = getStarterLibraryCategories(mosqueId);
+    db.libraryCategories.push(...categories);
+    db.save();
+  }
+  categories.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+  res.json({ success: true, data: categories });
+});
+
+app.post('/api/v1/library/categories', authenticate, requirePermission('MANAGE_LIBRARY_BOOK'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { name, code, description, parentCategoryId, sortOrder } = req.body;
+
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'ক্যাটাগরির নাম আবশ্যক।' } });
+  }
+
+  const cleanName = name.trim();
+  const existingCount = db.libraryCategories.filter(c => c.mosqueId === mosqueId).length;
+  const catCode = code ? String(code).trim().toUpperCase() : `CAT-${String(existingCount + 1).padStart(2, '0')}`;
+
+  const newCat: LibraryCategory = {
+    id: `cat-${mosqueId}-${Date.now()}`,
+    mosqueId,
+    name: cleanName,
+    code: catCode,
+    description: description?.trim() || undefined,
+    parentCategoryId: parentCategoryId || undefined,
+    sortOrder: typeof sortOrder === 'number' ? sortOrder : existingCount + 1,
+    status: 'ACTIVE',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    createdBy: req.user!.id,
+  };
+
+  db.libraryCategories.push(newCat);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'SYSTEM_INITIALIZE',
+    'LIBRARY',
+    `পাঠাগার ক্যাটাগরি তৈরি: ${newCat.name} (${newCat.code})`,
+    newCat.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'LIBRARY_CATEGORY_CREATED', newCat, { senderId: req.user!.id });
+  res.status(201).json({ success: true, data: newCat, message: 'ক্যাটাগরি সফলভাবে তৈরি করা হয়েছে।' });
+});
+
+app.put('/api/v1/library/categories/:id', authenticate, requirePermission('MANAGE_LIBRARY_BOOK'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const catIdx = db.libraryCategories.findIndex(c => c.id === req.params.id && c.mosqueId === mosqueId);
+  if (catIdx === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ক্যাটাগরি পাওয়া যায়নি।' } });
+  }
+
+  const current = db.libraryCategories[catIdx];
+  const { name, code, description, parentCategoryId, sortOrder, status } = req.body;
+
+  const updated: LibraryCategory = {
+    ...current,
+    name: name !== undefined ? String(name).trim() : current.name,
+    code: code !== undefined ? String(code).trim().toUpperCase() : current.code,
+    description: description !== undefined ? String(description).trim() : current.description,
+    parentCategoryId: parentCategoryId !== undefined ? parentCategoryId : current.parentCategoryId,
+    sortOrder: typeof sortOrder === 'number' ? sortOrder : current.sortOrder,
+    status: status === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE',
+    updatedAt: new Date().toISOString(),
+    updatedBy: req.user!.id,
+  };
+
+  db.libraryCategories[catIdx] = updated;
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'SYSTEM_INITIALIZE',
+    'LIBRARY',
+    `পাঠাগার ক্যাটাগরি হালনাগাদ: ${updated.name}`,
+    updated.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'LIBRARY_CATEGORY_UPDATED', updated, { senderId: req.user!.id });
+  res.json({ success: true, data: updated, message: 'ক্যাটাগরি সফলভাবে হালনাগাদ করা হয়েছে।' });
+});
+
+app.delete('/api/v1/library/categories/:id', authenticate, requirePermission('MANAGE_LIBRARY_BOOK'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const cat = db.libraryCategories.find(c => c.id === req.params.id && c.mosqueId === mosqueId);
+  if (!cat) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ক্যাটাগরি পাওয়া যায়নি।' } });
+  }
+
+  // Check if any active books linked
+  const linkedBooks = db.bookTitles.filter(t => t.categoryId === cat.id && t.mosqueId === mosqueId && t.status !== 'ARCHIVED');
+  if (linkedBooks.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'CATEGORY_IN_USE', message: `এই ক্যাটাগরিতে ${linkedBooks.length}টি বই নিবন্ধিত রয়েছে। ক্যাটাগরি মোছা যাবে না।` }
+    });
+  }
+
+  cat.status = 'ARCHIVED';
+  cat.updatedAt = new Date().toISOString();
+  cat.updatedBy = req.user!.id;
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'SYSTEM_INITIALIZE',
+    'LIBRARY',
+    `পাঠাগার ক্যাটাগরি আর্কাইভ: ${cat.name}`,
+    cat.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  res.json({ success: true, message: 'ক্যাটাগরি সফলভাবে সরানো হয়েছে।' });
+});
+
+// 3. Book Titles (ক্যাটালগ ও বইয়ের তালিকা)
+app.get('/api/v1/library/book-titles', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { categoryId, language, search, status } = req.query;
+
+  let titles = db.bookTitles.filter(t => t.mosqueId === mosqueId);
+  if (status && typeof status === 'string' && status !== 'ALL') {
+    titles = titles.filter(t => t.status === status);
+  } else {
+    titles = titles.filter(t => t.status !== 'ARCHIVED');
+  }
+
+  if (categoryId && typeof categoryId === 'string' && categoryId !== 'ALL') {
+    titles = titles.filter(t => t.categoryId === categoryId);
+  }
+
+  if (language && typeof language === 'string' && language !== 'ALL') {
+    titles = titles.filter(t => t.language === language);
+  }
+
+  if (search && typeof search === 'string' && search.trim()) {
+    const q = search.trim().toLowerCase();
+    titles = titles.filter(t =>
+      t.title.toLowerCase().includes(q) ||
+      (t.author && t.author.toLowerCase().includes(q)) ||
+      (t.isbn && t.isbn.toLowerCase().includes(q)) ||
+      (t.publisher && t.publisher.toLowerCase().includes(q)) ||
+      (t.subject && t.subject.toLowerCase().includes(q))
+    );
+  }
+
+  // Enrich titles with counts and category names
+  const copies = db.bookCopies.filter(c => c.mosqueId === mosqueId && c.status !== 'ARCHIVED');
+  const enriched = titles.map(t => {
+    const titleCopies = copies.filter(c => c.bookTitleId === t.id);
+    const category = db.libraryCategories.find(c => c.id === t.categoryId);
+    return {
+      ...t,
+      categoryName: category?.name || t.categoryName || 'সাধারণ',
+      totalCopiesCount: titleCopies.length,
+      availableCopiesCount: titleCopies.filter(c => c.status === 'AVAILABLE').length,
+      issuedCopiesCount: titleCopies.filter(c => c.status === 'ISSUED' || c.status === 'OVERDUE').length,
+    };
+  });
+
+  res.json({ success: true, data: enriched });
+});
+
+app.get('/api/v1/library/book-titles/:id', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const title = db.bookTitles.find(t => t.id === req.params.id && t.mosqueId === mosqueId);
+  if (!title) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'বই পাওয়া যায়নি।' } });
+  }
+
+  const category = db.libraryCategories.find(c => c.id === title.categoryId);
+  const copies = db.bookCopies.filter(c => c.bookTitleId === title.id && c.mosqueId === mosqueId && c.status !== 'ARCHIVED');
+
+  res.json({
+    success: true,
+    data: {
+      ...title,
+      categoryName: category?.name || title.categoryName || 'সাধারণ',
+      copies,
+      totalCopiesCount: copies.length,
+      availableCopiesCount: copies.filter(c => c.status === 'AVAILABLE').length,
+      issuedCopiesCount: copies.filter(c => c.status === 'ISSUED' || c.status === 'OVERDUE').length,
+    }
+  });
+});
+
+app.post('/api/v1/library/book-titles', authenticate, requirePermission('MANAGE_LIBRARY_BOOK'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const {
+    title,
+    subtitle,
+    author,
+    translator,
+    editor,
+    publisher,
+    publicationYear,
+    edition,
+    language,
+    isbn,
+    categoryId,
+    subject,
+    description,
+    coverImageUrl,
+    centralDocumentId,
+    initialCopiesCount,
+    initialRoomId,
+    initialRackId,
+    initialShelfId,
+    initialShelfLabel,
+    initialPurchasePrice,
+    initialDonorPersonId,
+  } = req.body;
+
+  if (!title || typeof title !== 'string' || !title.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'বইয়ের নাম আবশ্যক।' } });
+  }
+  if (!author || typeof author !== 'string' || !author.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'লেখকের নাম আবশ্যক।' } });
+  }
+  if (!categoryId) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'ক্যাটাগরি নির্বাচন আবশ্যক।' } });
+  }
+
+  const category = db.libraryCategories.find(c => c.id === categoryId && c.mosqueId === mosqueId);
+  const newTitle: BookTitle = {
+    id: `bt-${mosqueId}-${Date.now()}`,
+    mosqueId,
+    title: title.trim(),
+    subtitle: subtitle?.trim() || undefined,
+    author: author.trim(),
+    translator: translator?.trim() || undefined,
+    editor: editor?.trim() || undefined,
+    publisher: publisher?.trim() || undefined,
+    publicationYear: typeof publicationYear === 'number' ? publicationYear : (publicationYear ? parseInt(publicationYear, 10) : undefined),
+    edition: edition?.trim() || undefined,
+    language: language || 'BENGALI',
+    isbn: isbn?.trim() || undefined,
+    categoryId,
+    categoryName: category?.name,
+    subject: subject?.trim() || undefined,
+    description: description?.trim() || undefined,
+    coverImageUrl: coverImageUrl?.trim() || undefined,
+    centralDocumentId: centralDocumentId || undefined,
+    status: 'ACTIVE',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    createdBy: req.user!.id,
+  };
+
+  db.bookTitles.push(newTitle);
+
+  // Auto-generate initial copies if requested
+  const copyCountNum = parseInt(initialCopiesCount, 10) || 0;
+  const createdCopies: BookCopy[] = [];
+  if (copyCountNum > 0) {
+    for (let i = 1; i <= copyCountNum; i++) {
+      const bookId = db.generateNextBookId(mosqueId);
+      const copy: BookCopy = {
+        id: `copy-${mosqueId}-${Date.now()}-${i}`,
+        mosqueId,
+        bookTitleId: newTitle.id,
+        bookTitleName: newTitle.title,
+        bookId,
+        copyNumber: i,
+        roomId: initialRoomId || undefined,
+        rackId: initialRackId || undefined,
+        shelfId: initialShelfId || undefined,
+        shelfLocationLabel: initialShelfLabel?.trim() || undefined,
+        condition: 'GOOD',
+        status: 'AVAILABLE',
+        purchasePrice: typeof initialPurchasePrice === 'number' ? initialPurchasePrice : undefined,
+        donorPersonId: initialDonorPersonId || undefined,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        createdBy: req.user!.id,
+      };
+      db.bookCopies.push(copy);
+      createdCopies.push(copy);
+    }
+  }
+
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'SYSTEM_INITIALIZE',
+    'LIBRARY',
+    `পাঠাগারে নতুন বই অন্তর্ভুক্ত: ${newTitle.title} (লেখক: ${newTitle.author})${createdCopies.length > 0 ? ` [${createdCopies.length} কপি তৈরি]` : ''}`,
+    newTitle.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'BOOK_TITLE_CREATED', newTitle, { senderId: req.user!.id });
+  realtime.broadcastToMosque(mosqueId, 'LIBRARY_STATS_UPDATED', db.getLibraryDashboardStats(mosqueId));
+
+  res.status(201).json({
+    success: true,
+    data: {
+      ...newTitle,
+      copies: createdCopies,
+      totalCopiesCount: createdCopies.length,
+      availableCopiesCount: createdCopies.length,
+      issuedCopiesCount: 0,
+    },
+    message: 'বই ও ক্যাটালগ সফলভাবে সংরক্ষিত হয়েছে।'
+  });
+});
+
+app.put('/api/v1/library/book-titles/:id', authenticate, requirePermission('MANAGE_LIBRARY_BOOK'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const titleIdx = db.bookTitles.findIndex(t => t.id === req.params.id && t.mosqueId === mosqueId);
+  if (titleIdx === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'বই পাওয়া যায়নি।' } });
+  }
+
+  const current = db.bookTitles[titleIdx];
+  const {
+    title,
+    subtitle,
+    author,
+    translator,
+    editor,
+    publisher,
+    publicationYear,
+    edition,
+    language,
+    isbn,
+    categoryId,
+    subject,
+    description,
+    coverImageUrl,
+    centralDocumentId,
+    status
+  } = req.body;
+
+  const category = categoryId ? db.libraryCategories.find(c => c.id === categoryId && c.mosqueId === mosqueId) : undefined;
+
+  const updated: BookTitle = {
+    ...current,
+    title: title !== undefined ? String(title).trim() : current.title,
+    subtitle: subtitle !== undefined ? String(subtitle).trim() : current.subtitle,
+    author: author !== undefined ? String(author).trim() : current.author,
+    translator: translator !== undefined ? String(translator).trim() : current.translator,
+    editor: editor !== undefined ? String(editor).trim() : current.editor,
+    publisher: publisher !== undefined ? String(publisher).trim() : current.publisher,
+    publicationYear: publicationYear !== undefined ? Number(publicationYear) : current.publicationYear,
+    edition: edition !== undefined ? String(edition).trim() : current.edition,
+    language: language !== undefined ? language : current.language,
+    isbn: isbn !== undefined ? String(isbn).trim() : current.isbn,
+    categoryId: categoryId !== undefined ? categoryId : current.categoryId,
+    categoryName: category?.name || current.categoryName,
+    subject: subject !== undefined ? String(subject).trim() : current.subject,
+    description: description !== undefined ? String(description).trim() : current.description,
+    coverImageUrl: coverImageUrl !== undefined ? String(coverImageUrl).trim() : current.coverImageUrl,
+    centralDocumentId: centralDocumentId !== undefined ? centralDocumentId : current.centralDocumentId,
+    status: status === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE',
+    updatedAt: new Date().toISOString(),
+    updatedBy: req.user!.id,
+  };
+
+  db.bookTitles[titleIdx] = updated;
+
+  // If title name changed, sync title name on active copies
+  if (updated.title !== current.title) {
+    db.bookCopies.forEach(c => {
+      if (c.bookTitleId === updated.id) {
+        c.bookTitleName = updated.title;
+      }
+    });
+  }
+
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'SYSTEM_INITIALIZE',
+    'LIBRARY',
+    `পাঠাগার বই হালনাগাদ: ${updated.title}`,
+    updated.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'BOOK_TITLE_UPDATED', updated, { senderId: req.user!.id });
+  res.json({ success: true, data: updated, message: 'বইয়ের তথ্য সফলভাবে হালনাগাদ করা হয়েছে।' });
+});
+
+app.delete('/api/v1/library/book-titles/:id', authenticate, requirePermission('MANAGE_LIBRARY_BOOK'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const title = db.bookTitles.find(t => t.id === req.params.id && t.mosqueId === mosqueId);
+  if (!title) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'বই পাওয়া যায়নি।' } });
+  }
+
+  // Check if any copy is currently issued
+  const activeIssues = db.bookCopies.some(
+    c => c.bookTitleId === title.id && c.mosqueId === mosqueId && (c.status === 'ISSUED' || c.status === 'OVERDUE')
+  );
+  if (activeIssues) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'BOOK_ISSUED', message: 'এই বইটির কপি বর্তমানে পাঠকদের নিকট ইস্যু করা রয়েছে। আর্কাইভ করা যাবে না।' }
+    });
+  }
+
+  title.status = 'ARCHIVED';
+  title.updatedAt = new Date().toISOString();
+  title.updatedBy = req.user!.id;
+
+  // Archive copies as well
+  db.bookCopies.forEach(c => {
+    if (c.bookTitleId === title.id && c.mosqueId === mosqueId) {
+      c.status = 'ARCHIVED';
+      c.updatedAt = new Date().toISOString();
+    }
+  });
+
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'SYSTEM_INITIALIZE',
+    'LIBRARY',
+    `পাঠাগার বই আর্কাইভ: ${title.title}`,
+    title.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'LIBRARY_STATS_UPDATED', db.getLibraryDashboardStats(mosqueId));
+  res.json({ success: true, message: 'বই ও সকল কপি সফলভাবে আর্কাইভ করা হয়েছে।' });
+});
+
+// 4. Book Copies (কপি ও শেলফ ট্র্যাকিং)
+app.get('/api/v1/library/book-copies', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { bookTitleId, status, condition, roomId, rackId, shelfId, search } = req.query;
+
+  let copies = db.bookCopies.filter(c => c.mosqueId === mosqueId);
+  if (status && typeof status === 'string' && status !== 'ALL') {
+    copies = copies.filter(c => c.status === status);
+  } else {
+    copies = copies.filter(c => c.status !== 'ARCHIVED');
+  }
+
+  if (bookTitleId && typeof bookTitleId === 'string' && bookTitleId !== 'ALL') {
+    copies = copies.filter(c => c.bookTitleId === bookTitleId);
+  }
+
+  if (condition && typeof condition === 'string' && condition !== 'ALL') {
+    copies = copies.filter(c => c.condition === condition);
+  }
+
+  if (roomId && typeof roomId === 'string' && roomId !== 'ALL') {
+    copies = copies.filter(c => c.roomId === roomId);
+  }
+  if (rackId && typeof rackId === 'string' && rackId !== 'ALL') {
+    copies = copies.filter(c => c.rackId === rackId);
+  }
+  if (shelfId && typeof shelfId === 'string' && shelfId !== 'ALL') {
+    copies = copies.filter(c => c.shelfId === shelfId);
+  }
+
+  if (search && typeof search === 'string' && search.trim()) {
+    const q = search.trim().toLowerCase();
+    copies = copies.filter(c =>
+      c.bookId.toLowerCase().includes(q) ||
+      (c.bookTitleName && c.bookTitleName.toLowerCase().includes(q)) ||
+      (c.accessionNumber && c.accessionNumber.toLowerCase().includes(q)) ||
+      (c.shelfLocationLabel && c.shelfLocationLabel.toLowerCase().includes(q)) ||
+      (c.currentHolderName && c.currentHolderName.toLowerCase().includes(q))
+    );
+  }
+
+  res.json({ success: true, data: copies });
+});
+
+app.get('/api/v1/library/book-copies/:id', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const copy = db.bookCopies.find(c => c.id === req.params.id && c.mosqueId === mosqueId);
+  if (!copy) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'বইয়ের কপি পাওয়া যায়নি।' } });
+  }
+
+  const title = db.bookTitles.find(t => t.id === copy.bookTitleId);
+  const room = copy.roomId ? db.libraryRooms.find(r => r.id === copy.roomId) : undefined;
+  const rack = copy.rackId ? db.libraryRacks.find(r => r.id === copy.rackId) : undefined;
+  const shelf = copy.shelfId ? db.libraryShelves.find(s => s.id === copy.shelfId) : undefined;
+  const issues = db.bookIssues.filter(i => i.bookCopyId === copy.id && i.mosqueId === mosqueId);
+
+  res.json({
+    success: true,
+    data: {
+      ...copy,
+      titleDetails: title,
+      roomName: room?.roomName,
+      rackName: rack?.rackName,
+      shelfName: shelf?.shelfName,
+      issueHistory: issues,
+    }
+  });
+});
+
+app.post('/api/v1/library/book-copies', authenticate, requirePermission('MANAGE_LIBRARY_COPY'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const {
+    bookTitleId,
+    accessionNumber,
+    roomId,
+    rackId,
+    shelfId,
+    shelfLocationLabel,
+    condition,
+    purchasePrice,
+    donorPersonId,
+    donorName,
+    notes,
+  } = req.body;
+
+  if (!bookTitleId) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'বই নির্বাচন আবশ্যক।' } });
+  }
+
+  const title = db.bookTitles.find(t => t.id === bookTitleId && t.mosqueId === mosqueId);
+  if (!title) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'নির্বাচিত বই পাওয়া যায়নি।' } });
+  }
+
+  const existingCopies = db.bookCopies.filter(c => c.bookTitleId === title.id && c.mosqueId === mosqueId);
+  const nextCopyNum = existingCopies.length + 1;
+  const bookId = db.generateNextBookId(mosqueId);
+
+  let verifiedDonorName = donorName;
+  if (donorPersonId) {
+    const person = db.persons.find(p => p.id === donorPersonId && p.mosqueId === mosqueId);
+    if (person) verifiedDonorName = person.fullName;
+  }
+
+  const newCopy: BookCopy = {
+    id: `copy-${mosqueId}-${Date.now()}`,
+    mosqueId,
+    bookTitleId: title.id,
+    bookTitleName: title.title,
+    bookId,
+    accessionNumber: accessionNumber?.trim() || undefined,
+    copyNumber: nextCopyNum,
+    roomId: roomId || undefined,
+    rackId: rackId || undefined,
+    shelfId: shelfId || undefined,
+    shelfLocationLabel: shelfLocationLabel?.trim() || undefined,
+    condition: condition || 'GOOD',
+    status: 'AVAILABLE',
+    purchasePrice: typeof purchasePrice === 'number' ? purchasePrice : undefined,
+    donorPersonId: donorPersonId || undefined,
+    donorName: verifiedDonorName?.trim() || undefined,
+    notes: notes?.trim() || undefined,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    createdBy: req.user!.id,
+  };
+
+  db.bookCopies.push(newCopy);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'SYSTEM_INITIALIZE',
+    'LIBRARY',
+    `বইয়ের নতুন কপি যোগ: ${title.title} (আইডি: ${newCopy.bookId}, কপি #${newCopy.copyNumber})`,
+    newCopy.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'BOOK_COPY_CREATED', newCopy, { senderId: req.user!.id });
+  realtime.broadcastToMosque(mosqueId, 'LIBRARY_STATS_UPDATED', db.getLibraryDashboardStats(mosqueId));
+
+  res.status(201).json({ success: true, data: newCopy, message: 'বইয়ের কপি সফলভাবে যোগ করা হয়েছে।' });
+});
+
+// Bulk copies generator
+app.post('/api/v1/library/book-copies/bulk', authenticate, requirePermission('MANAGE_LIBRARY_COPY'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const {
+    bookTitleId,
+    count,
+    roomId,
+    rackId,
+    shelfId,
+    shelfLocationLabel,
+    condition,
+    purchasePrice,
+    donorPersonId,
+    donorName,
+    notes,
+  } = req.body;
+
+  const numCount = parseInt(count, 10);
+  if (isNaN(numCount) || numCount <= 0 || numCount > 100) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_COUNT', message: 'সঠিক কপি সংখ্যা প্রদান করুন (১ থেকে ১০০)।' } });
+  }
+
+  const title = db.bookTitles.find(t => t.id === bookTitleId && t.mosqueId === mosqueId);
+  if (!title) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'নির্বাচিত বই পাওয়া যায়নি।' } });
+  }
+
+  const existingCopies = db.bookCopies.filter(c => c.bookTitleId === title.id && c.mosqueId === mosqueId);
+  let currentCopyNum = existingCopies.length;
+
+  let verifiedDonorName = donorName;
+  if (donorPersonId) {
+    const person = db.persons.find(p => p.id === donorPersonId && p.mosqueId === mosqueId);
+    if (person) verifiedDonorName = person.fullName;
+  }
+
+  const addedList: BookCopy[] = [];
+  for (let i = 1; i <= numCount; i++) {
+    currentCopyNum++;
+    const bookId = db.generateNextBookId(mosqueId);
+    const newCopy: BookCopy = {
+      id: `copy-${mosqueId}-${Date.now()}-${i}`,
+      mosqueId,
+      bookTitleId: title.id,
+      bookTitleName: title.title,
+      bookId,
+      copyNumber: currentCopyNum,
+      roomId: roomId || undefined,
+      rackId: rackId || undefined,
+      shelfId: shelfId || undefined,
+      shelfLocationLabel: shelfLocationLabel?.trim() || undefined,
+      condition: condition || 'GOOD',
+      status: 'AVAILABLE',
+      purchasePrice: typeof purchasePrice === 'number' ? purchasePrice : undefined,
+      donorPersonId: donorPersonId || undefined,
+      donorName: verifiedDonorName?.trim() || undefined,
+      notes: notes?.trim() || undefined,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      createdBy: req.user!.id,
+    };
+    db.bookCopies.push(newCopy);
+    addedList.push(newCopy);
+  }
+
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'SYSTEM_INITIALIZE',
+    'LIBRARY',
+    `একত্রে ${numCount}টি কপি তৈরি: ${title.title}`,
+    title.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'LIBRARY_STATS_UPDATED', db.getLibraryDashboardStats(mosqueId));
+  res.status(201).json({ success: true, data: addedList, message: `${numCount}টি কপি সফলভাবে তৈরি করা হয়েছে।` });
+});
+
+app.put('/api/v1/library/book-copies/:id', authenticate, requirePermission('MANAGE_LIBRARY_COPY'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const copyIdx = db.bookCopies.findIndex(c => c.id === req.params.id && c.mosqueId === mosqueId);
+  if (copyIdx === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'কপি পাওয়া যায়নি।' } });
+  }
+
+  const current = db.bookCopies[copyIdx];
+  const {
+    accessionNumber,
+    roomId,
+    rackId,
+    shelfId,
+    shelfLocationLabel,
+    condition,
+    purchasePrice,
+    donorPersonId,
+    donorName,
+    notes,
+  } = req.body;
+
+  const updated: BookCopy = {
+    ...current,
+    accessionNumber: accessionNumber !== undefined ? String(accessionNumber).trim() : current.accessionNumber,
+    roomId: roomId !== undefined ? roomId : current.roomId,
+    rackId: rackId !== undefined ? rackId : current.rackId,
+    shelfId: shelfId !== undefined ? shelfId : current.shelfId,
+    shelfLocationLabel: shelfLocationLabel !== undefined ? String(shelfLocationLabel).trim() : current.shelfLocationLabel,
+    condition: condition !== undefined ? condition : current.condition,
+    purchasePrice: purchasePrice !== undefined ? Number(purchasePrice) : current.purchasePrice,
+    donorPersonId: donorPersonId !== undefined ? donorPersonId : current.donorPersonId,
+    donorName: donorName !== undefined ? String(donorName).trim() : current.donorName,
+    notes: notes !== undefined ? String(notes).trim() : current.notes,
+    updatedAt: new Date().toISOString(),
+    updatedBy: req.user!.id,
+  };
+
+  db.bookCopies[copyIdx] = updated;
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'SYSTEM_INITIALIZE',
+    'LIBRARY',
+    `কপি তথ্য হালনাগাদ: ${updated.bookTitleName} (${updated.bookId})`,
+    updated.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'BOOK_COPY_UPDATED', updated, { senderId: req.user!.id });
+  res.json({ success: true, data: updated, message: 'কপির তথ্য সফলভাবে সংরক্ষিত হয়েছে।' });
+});
+
+app.patch('/api/v1/library/book-copies/:id/status', authenticate, requirePermission('MANAGE_LIBRARY_COPY'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const copy = db.bookCopies.find(c => c.id === req.params.id && c.mosqueId === mosqueId);
+  if (!copy) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'কপি পাওয়া যায়নি।' } });
+  }
+
+  const { status, condition, notes } = req.body;
+  if (!status) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'স্ট্যাটাস আবশ্যক।' } });
+  }
+
+  // If currently issued, cannot directly change status without closing issue
+  if (copy.status === 'ISSUED' && status === 'AVAILABLE') {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'COPY_CURRENTLY_ISSUED', message: 'বইটি বর্তমানে ইস্যু রয়েছে। বই ফেরত (Return) এর মাধ্যমে স্ট্যাটাস পরিবর্তন করুন।' }
+    });
+  }
+
+  copy.status = status;
+  if (condition) copy.condition = condition;
+  if (notes) copy.notes = notes.trim();
+  copy.updatedAt = new Date().toISOString();
+  copy.updatedBy = req.user!.id;
+
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'SYSTEM_INITIALIZE',
+    'LIBRARY',
+    `কপি স্ট্যাটাস পরিবর্তন: ${copy.bookId} -> ${status}`,
+    copy.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'BOOK_COPY_UPDATED', copy, { senderId: req.user!.id });
+  realtime.broadcastToMosque(mosqueId, 'LIBRARY_STATS_UPDATED', db.getLibraryDashboardStats(mosqueId));
+
+  res.json({ success: true, data: copy, message: 'স্ট্যাটাস সফলভাবে পরিবর্তন করা হয়েছে।' });
+});
+
+// 5. Universal QR / Barcode Quick Lookup
+app.get('/api/v1/library/lookup-by-book-id/:bookId', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const rawId = req.params.bookId.trim().toUpperCase();
+
+  const copy = db.bookCopies.find(
+    c => c.mosqueId === mosqueId && (c.bookId.toUpperCase() === rawId || (c.accessionNumber && c.accessionNumber.toUpperCase() === rawId))
+  );
+
+  if (!copy) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'বারকোড বা বই আইডি দিয়ে কোনো কপি পাওয়া যায়নি।' } });
+  }
+
+  const title = db.bookTitles.find(t => t.id === copy.bookTitleId);
+  const activeIssue = copy.currentIssueId ? db.bookIssues.find(i => i.id === copy.currentIssueId) : undefined;
+  const room = copy.roomId ? db.libraryRooms.find(r => r.id === copy.roomId) : undefined;
+  const rack = copy.rackId ? db.libraryRacks.find(r => r.id === copy.rackId) : undefined;
+  const shelf = copy.shelfId ? db.libraryShelves.find(s => s.id === copy.shelfId) : undefined;
+
+  res.json({
+    success: true,
+    data: {
+      copy,
+      title,
+      activeIssue,
+      locationHierarchy: {
+        room: room?.roomName,
+        rack: rack?.rackName,
+        shelf: shelf?.shelfName,
+        label: copy.shelfLocationLabel,
+      }
+    }
+  });
+});
+
+// 6. Library Members (পাঠক ও সদস্য)
+app.get('/api/v1/library/members', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { status, membershipType, search } = req.query;
+
+  let members = db.libraryMembers.filter(m => m.mosqueId === mosqueId);
+  if (status && typeof status === 'string' && status !== 'ALL') {
+    members = members.filter(m => m.status === status);
+  }
+
+  if (membershipType && typeof membershipType === 'string' && membershipType !== 'ALL') {
+    members = members.filter(m => m.membershipType === membershipType);
+  }
+
+  // Enrich members with authoritative PersonMaster data and issue counts
+  const persons = db.persons.filter(p => p.mosqueId === mosqueId);
+  const issues = db.bookIssues.filter(i => i.mosqueId === mosqueId);
+
+  const enriched = members.map(m => {
+    const person = persons.find(p => p.id === m.personId);
+    const memberIssues = issues.filter(i => i.memberId === m.id);
+    return {
+      ...m,
+      personName: person?.fullName || m.personName || 'অজ্ঞাত সদস্য',
+      personPhone: person?.mobile || m.personPhone || '',
+      personAddress: person?.address || '',
+      personPhotoUrl: person?.photoUrl || '',
+      activeIssuesCount: memberIssues.filter(i => i.status === 'ACTIVE' || i.status === 'OVERDUE').length,
+      totalHistoryIssuesCount: memberIssues.length,
+    };
+  });
+
+  if (search && typeof search === 'string' && search.trim()) {
+    const q = search.trim().toLowerCase();
+    const filtered = enriched.filter(m =>
+      m.memberCode.toLowerCase().includes(q) ||
+      m.personName.toLowerCase().includes(q) ||
+      m.personPhone.includes(q)
+    );
+    return res.json({ success: true, data: filtered });
+  }
+
+  res.json({ success: true, data: enriched });
+});
+
+app.get('/api/v1/library/members/:id', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const member = db.libraryMembers.find(m => m.id === req.params.id && m.mosqueId === mosqueId);
+  if (!member) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'পাঠক সদস্য পাওয়া যায়নি।' } });
+  }
+
+  const person = db.persons.find(p => p.id === member.personId && p.mosqueId === mosqueId);
+  const issues = db.bookIssues.filter(i => i.memberId === member.id && i.mosqueId === mosqueId);
+
+  res.json({
+    success: true,
+    data: {
+      ...member,
+      person,
+      activeIssues: issues.filter(i => i.status === 'ACTIVE' || i.status === 'OVERDUE'),
+      issueHistory: issues,
+    }
+  });
+});
+
+app.post('/api/v1/library/members', authenticate, requirePermission('MANAGE_LIBRARY_MEMBER'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const {
+    personId,
+    membershipType,
+    membershipDate,
+    expiryDate,
+    maxAllowedBooks,
+    maxIssueDays,
+    notes,
+  } = req.body;
+
+  if (!personId) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'সদস্যের জন্য মুসল্লি / ব্যক্তি নির্বাচন আবশ্যক।' } });
+  }
+
+  const person = db.persons.find(p => p.id === personId && p.mosqueId === mosqueId);
+  if (!person) {
+    return res.status(404).json({ success: false, error: { code: 'INVALID_PERSON', message: 'নির্বাচিত ব্যক্তি পাওয়া যায়নি।' } });
+  }
+
+  // Check if person already registered as member
+  const existing = db.libraryMembers.find(m => m.personId === personId && m.mosqueId === mosqueId && m.status !== 'CANCELLED');
+  if (existing) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'ALREADY_MEMBER', message: `এই ব্যক্তি ইতিমধ্যে পাঠাগারের সদস্য হিসেবে নিবন্ধিত (${existing.memberCode})।` }
+    });
+  }
+
+  const memberCode = db.generateNextMemberCode(mosqueId);
+  const newMember: LibraryMember = {
+    id: `lib-mem-${mosqueId}-${Date.now()}`,
+    mosqueId,
+    personId: person.id,
+    personName: person.fullName,
+    personPhone: person.mobile,
+    memberCode,
+    membershipType: membershipType || 'GENERAL',
+    membershipDate: membershipDate || new Date().toISOString().split('T')[0],
+    expiryDate: expiryDate || undefined,
+    maxAllowedBooks: typeof maxAllowedBooks === 'number' ? maxAllowedBooks : 2,
+    maxIssueDays: typeof maxIssueDays === 'number' ? maxIssueDays : 14,
+    status: 'ACTIVE',
+    notes: notes?.trim() || undefined,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    createdBy: req.user!.id,
+  };
+
+  db.libraryMembers.push(newMember);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'SYSTEM_INITIALIZE',
+    'LIBRARY',
+    `পাঠাগার নতুন সদস্য নিবন্ধন: ${person.fullName} (কোড: ${memberCode})`,
+    newMember.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'LIBRARY_MEMBER_CREATED', newMember, { senderId: req.user!.id });
+  realtime.broadcastToMosque(mosqueId, 'LIBRARY_STATS_UPDATED', db.getLibraryDashboardStats(mosqueId));
+
+  res.status(201).json({ success: true, data: newMember, message: 'পাঠক সদস্য সফলভাবে নিবন্ধিত হয়েছে।' });
+});
+
+app.put('/api/v1/library/members/:id', authenticate, requirePermission('MANAGE_LIBRARY_MEMBER'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const memIdx = db.libraryMembers.findIndex(m => m.id === req.params.id && m.mosqueId === mosqueId);
+  if (memIdx === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সদস্য পাওয়া যায়নি।' } });
+  }
+
+  const current = db.libraryMembers[memIdx];
+  const {
+    membershipType,
+    membershipDate,
+    expiryDate,
+    maxAllowedBooks,
+    maxIssueDays,
+    status,
+    notes,
+  } = req.body;
+
+  const updated: LibraryMember = {
+    ...current,
+    membershipType: membershipType || current.membershipType,
+    membershipDate: membershipDate || current.membershipDate,
+    expiryDate: expiryDate !== undefined ? expiryDate : current.expiryDate,
+    maxAllowedBooks: typeof maxAllowedBooks === 'number' ? maxAllowedBooks : current.maxAllowedBooks,
+    maxIssueDays: typeof maxIssueDays === 'number' ? maxIssueDays : current.maxIssueDays,
+    status: status || current.status,
+    notes: notes !== undefined ? String(notes).trim() : current.notes,
+    updatedAt: new Date().toISOString(),
+    updatedBy: req.user!.id,
+  };
+
+  db.libraryMembers[memIdx] = updated;
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'SYSTEM_INITIALIZE',
+    'LIBRARY',
+    `পাঠাগার সদস্য তথ্য হালনাগাদ: ${updated.personName || updated.memberCode}`,
+    updated.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'LIBRARY_MEMBER_UPDATED', updated, { senderId: req.user!.id });
+  res.json({ success: true, data: updated, message: 'সদস্যের তথ্য সফলভাবে হালনাগাদ করা হয়েছে।' });
+});
+
+// 7. Book Circulation (ইস্যু, ফেরত ও ক্ষতিপূরণ)
+app.get('/api/v1/library/issues', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { status, memberId, bookCopyId, personId, overdueOnly, search } = req.query;
+
+  let issues = db.bookIssues.filter(i => i.mosqueId === mosqueId);
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  // Auto-mark overdue
+  issues.forEach(i => {
+    if (i.status === 'ACTIVE' && i.dueDate < todayStr) {
+      i.status = 'OVERDUE';
+    }
+  });
+
+  if (status && typeof status === 'string' && status !== 'ALL') {
+    issues = issues.filter(i => i.status === status);
+  }
+
+  if (overdueOnly === 'true') {
+    issues = issues.filter(i => i.status === 'OVERDUE' || (i.status === 'ACTIVE' && i.dueDate < todayStr));
+  }
+
+  if (memberId && typeof memberId === 'string' && memberId !== 'ALL') {
+    issues = issues.filter(i => i.memberId === memberId);
+  }
+
+  if (personId && typeof personId === 'string' && personId !== 'ALL') {
+    issues = issues.filter(i => i.personId === personId);
+  }
+
+  if (bookCopyId && typeof bookCopyId === 'string' && bookCopyId !== 'ALL') {
+    issues = issues.filter(i => i.bookCopyId === bookCopyId);
+  }
+
+  if (search && typeof search === 'string' && search.trim()) {
+    const q = search.trim().toLowerCase();
+    issues = issues.filter(i =>
+      i.issueNumber.toLowerCase().includes(q) ||
+      i.bookId.toLowerCase().includes(q) ||
+      i.bookTitle.toLowerCase().includes(q) ||
+      i.borrowerName.toLowerCase().includes(q) ||
+      (i.borrowerPhone && i.borrowerPhone.includes(q))
+    );
+  }
+
+  issues.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  res.json({ success: true, data: issues });
+});
+
+app.post('/api/v1/library/issues', authenticate, requirePermission('LIBRARY_ISSUE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const {
+    bookCopyId,
+    memberId,
+    issueDate,
+    dueDate,
+    notes,
+    conditionAtIssue,
+  } = req.body;
+
+  if (!bookCopyId) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'বইয়ের কপি নির্বাচন আবশ্যক।' } });
+  }
+  if (!memberId) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'পাঠক সদস্য নির্বাচন আবশ্যক।' } });
+  }
+
+  const copy = db.bookCopies.find(c => c.id === bookCopyId && c.mosqueId === mosqueId);
+  if (!copy) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'বইয়ের কপি পাওয়া যায়নি।' } });
+  }
+
+  if (copy.status !== 'AVAILABLE') {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'COPY_NOT_AVAILABLE', message: `এই কপিটি বর্তমানে বিতরণের জন্য অনুপলব্ধ (অবস্থা: ${copy.status})।` }
+    });
+  }
+
+  const member = db.libraryMembers.find(m => m.id === memberId && m.mosqueId === mosqueId);
+  if (!member) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'পাঠক সদস্য পাওয়া যায়নি।' } });
+  }
+
+  if (member.status !== 'ACTIVE') {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'MEMBER_NOT_ACTIVE', message: `সদস্যের অ্যাকাউন্ট সক্রিয় নয় (অবস্থা: ${member.status})।` }
+    });
+  }
+
+  // Check member quota
+  const activeIssues = db.bookIssues.filter(
+    i => i.memberId === member.id && i.mosqueId === mosqueId && (i.status === 'ACTIVE' || i.status === 'OVERDUE')
+  );
+  if (activeIssues.length >= member.maxAllowedBooks) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: 'QUOTA_EXCEEDED',
+        message: `এই সদস্যের সর্বোচ্চ অনুমোদন সীমা (${member.maxAllowedBooks}টি বই) ইতিমধ্যে পূর্ণ হয়েছে।`
+      }
+    });
+  }
+
+  const person = db.persons.find(p => p.id === member.personId && p.mosqueId === mosqueId);
+  const nowStr = new Date().toISOString();
+  const todayDateStr = nowStr.split('T')[0];
+  const calculatedIssueDate = issueDate || todayDateStr;
+
+  let calculatedDueDate = dueDate;
+  if (!calculatedDueDate) {
+    const days = member.maxIssueDays || 14;
+    const d = new Date(calculatedIssueDate);
+    d.setDate(d.getDate() + days);
+    calculatedDueDate = d.toISOString().split('T')[0];
+  }
+
+  const issueNumber = db.generateNextIssueNumber(mosqueId);
+  const newIssue: BookIssue = {
+    id: `iss-${mosqueId}-${Date.now()}`,
+    mosqueId,
+    issueNumber,
+    bookCopyId: copy.id,
+    bookId: copy.bookId,
+    bookTitle: copy.bookTitleName || 'বই',
+    memberId: member.id,
+    personId: member.personId,
+    borrowerName: person?.fullName || member.personName || 'সম্মানিত পাঠক',
+    borrowerPhone: person?.mobile || member.personPhone,
+    issueDate: calculatedIssueDate,
+    dueDate: calculatedDueDate,
+    status: 'ACTIVE',
+    conditionAtIssue: conditionAtIssue || copy.condition || 'GOOD',
+    issuedByUserId: req.user!.id,
+    issuedByUserName: req.user!.name,
+    notes: notes?.trim() || undefined,
+    createdAt: nowStr,
+    updatedAt: nowStr,
+  };
+
+  db.bookIssues.unshift(newIssue);
+
+  // Update Book Copy status
+  copy.status = 'ISSUED';
+  copy.currentIssueId = newIssue.id;
+  copy.currentHolderPersonId = member.personId;
+  copy.currentHolderName = newIssue.borrowerName;
+  copy.currentHolderPhone = newIssue.borrowerPhone;
+  copy.updatedAt = nowStr;
+  copy.updatedBy = req.user!.id;
+
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'SYSTEM_INITIALIZE',
+    'LIBRARY',
+    `বই ইস্যু সম্পাদন (${issueNumber}): ${newIssue.bookTitle} (${newIssue.bookId}) -> ${newIssue.borrowerName} (ফেরতের মেয়াদ: ${newIssue.dueDate})`,
+    newIssue.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'BOOK_ISSUE_CREATED', newIssue, { senderId: req.user!.id });
+  realtime.broadcastToMosque(mosqueId, 'BOOK_COPY_UPDATED', copy, { senderId: req.user!.id });
+  realtime.broadcastToMosque(mosqueId, 'LIBRARY_STATS_UPDATED', db.getLibraryDashboardStats(mosqueId));
+
+  res.status(201).json({ success: true, data: newIssue, message: 'বই সফলভাবে ইস্যু করা হয়েছে।' });
+});
+
+app.post('/api/v1/library/issues/:id/return', authenticate, requirePermission('LIBRARY_RETURN'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const issue = db.bookIssues.find(i => i.id === req.params.id && i.mosqueId === mosqueId);
+  if (!issue) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ইস্যু রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  if (issue.status === 'RETURNED') {
+    return res.status(400).json({ success: false, error: { code: 'ALREADY_RETURNED', message: 'এই বইটি ইতিমধ্যে ফেরত গৃহীত হয়েছে।' } });
+  }
+
+  const {
+    returnDate,
+    conditionAtReturn,
+    fineAmount,
+    finePaid,
+    fineVoucherNumber,
+    notes,
+  } = req.body;
+
+  const nowStr = new Date().toISOString();
+  const actualReturnDate = returnDate || nowStr.split('T')[0];
+
+  issue.status = 'RETURNED';
+  issue.returnDate = actualReturnDate;
+  issue.conditionAtReturn = conditionAtReturn || issue.conditionAtIssue;
+  issue.fineAmount = typeof fineAmount === 'number' ? fineAmount : (fineAmount ? Number(fineAmount) : undefined);
+  issue.finePaid = Boolean(finePaid);
+  issue.fineVoucherNumber = fineVoucherNumber?.trim() || undefined;
+  issue.returnedByUserId = req.user!.id;
+  issue.returnedByUserName = req.user!.name;
+  if (notes) issue.notes = notes.trim();
+  issue.updatedAt = nowStr;
+
+  // Restore Book Copy status
+  const copy = db.bookCopies.find(c => c.id === issue.bookCopyId && c.mosqueId === mosqueId);
+  if (copy) {
+    copy.currentIssueId = undefined;
+    copy.currentHolderPersonId = undefined;
+    copy.currentHolderName = undefined;
+    copy.currentHolderPhone = undefined;
+    if (conditionAtReturn) {
+      copy.condition = conditionAtReturn;
+      if (conditionAtReturn === 'DAMAGED' || conditionAtReturn === 'CRITICAL') {
+        copy.status = 'DAMAGED';
+      } else {
+        copy.status = 'AVAILABLE';
+      }
+    } else {
+      copy.status = 'AVAILABLE';
+    }
+    copy.updatedAt = nowStr;
+    copy.updatedBy = req.user!.id;
+  }
+
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'SYSTEM_INITIALIZE',
+    'LIBRARY',
+    `বই ফেরত গ্রহণ (${issue.issueNumber}): ${issue.bookTitle} (${issue.bookId}) - ${issue.borrowerName}`,
+    issue.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'BOOK_ISSUE_UPDATED', issue, { senderId: req.user!.id });
+  if (copy) {
+    realtime.broadcastToMosque(mosqueId, 'BOOK_COPY_UPDATED', copy, { senderId: req.user!.id });
+  }
+  realtime.broadcastToMosque(mosqueId, 'LIBRARY_STATS_UPDATED', db.getLibraryDashboardStats(mosqueId));
+
+  res.json({ success: true, data: issue, message: 'বই সফলভাবে ফেরত গ্রহণ করা হয়েছে।' });
+});
+
+app.post('/api/v1/library/issues/:id/mark-lost', authenticate, requirePermission('LIBRARY_RETURN'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const issue = db.bookIssues.find(i => i.id === req.params.id && i.mosqueId === mosqueId);
+  if (!issue) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ইস্যু রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  const { fineAmount, notes } = req.body;
+  const nowStr = new Date().toISOString();
+
+  issue.status = 'LOST';
+  issue.fineAmount = typeof fineAmount === 'number' ? fineAmount : (fineAmount ? Number(fineAmount) : undefined);
+  if (notes) issue.notes = notes.trim();
+  issue.updatedAt = nowStr;
+
+  const copy = db.bookCopies.find(c => c.id === issue.bookCopyId && c.mosqueId === mosqueId);
+  if (copy) {
+    copy.status = 'LOST';
+    copy.currentIssueId = undefined;
+    copy.currentHolderPersonId = undefined;
+    copy.currentHolderName = undefined;
+    copy.currentHolderPhone = undefined;
+    copy.updatedAt = nowStr;
+    copy.updatedBy = req.user!.id;
+  }
+
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'SYSTEM_INITIALIZE',
+    'LIBRARY',
+    `বই হারানো চিহ্নিতকরণ (${issue.issueNumber}): ${issue.bookTitle} (${issue.bookId}) - পাঠক: ${issue.borrowerName}`,
+    issue.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'BOOK_ISSUE_UPDATED', issue, { senderId: req.user!.id });
+  if (copy) {
+    realtime.broadcastToMosque(mosqueId, 'BOOK_COPY_UPDATED', copy, { senderId: req.user!.id });
+  }
+  realtime.broadcastToMosque(mosqueId, 'LIBRARY_STATS_UPDATED', db.getLibraryDashboardStats(mosqueId));
+
+  res.json({ success: true, data: issue, message: 'বইটি হারানো হিসেবে রেকর্ড করা হয়েছে।' });
+});
+
+// 8. Book Acquisitions (বই সংগ্রহ ও দান)
+app.get('/api/v1/library/acquisitions', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { sourceType, bookTitleId, donorPersonId } = req.query;
+
+  let list = db.bookAcquisitions.filter(a => a.mosqueId === mosqueId);
+  if (sourceType && typeof sourceType === 'string' && sourceType !== 'ALL') {
+    list = list.filter(a => a.sourceType === sourceType);
+  }
+  if (bookTitleId && typeof bookTitleId === 'string' && bookTitleId !== 'ALL') {
+    list = list.filter(a => a.bookTitleId === bookTitleId);
+  }
+  if (donorPersonId && typeof donorPersonId === 'string' && donorPersonId !== 'ALL') {
+    list = list.filter(a => a.donorPersonId === donorPersonId);
+  }
+
+  list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  res.json({ success: true, data: list });
+});
+
+app.post('/api/v1/library/acquisitions', authenticate, requirePermission('LIBRARY_ACQUISITION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const {
+    bookTitleId,
+    acquisitionDate,
+    sourceType,
+    quantity,
+    unitPrice,
+    totalCost,
+    supplierName,
+    donorPersonId,
+    donorName,
+    expenseVoucherNumber,
+    expenseEntryId,
+    centralDocumentId,
+    notes,
+    autoCreateCopies,
+    roomId,
+    rackId,
+    shelfId,
+    shelfLocationLabel,
+  } = req.body;
+
+  if (!bookTitleId) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'বই নির্বাচন আবশ্যক।' } });
+  }
+
+  const title = db.bookTitles.find(t => t.id === bookTitleId && t.mosqueId === mosqueId);
+  if (!title) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'নির্বাচিত বই পাওয়া যায়নি।' } });
+  }
+
+  const numQty = parseInt(quantity, 10);
+  if (isNaN(numQty) || numQty <= 0) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_QUANTITY', message: 'সঠিক সংখ্যা প্রদান করুন।' } });
+  }
+
+  let verifiedDonorName = donorName;
+  if (donorPersonId) {
+    const person = db.persons.find(p => p.id === donorPersonId && p.mosqueId === mosqueId);
+    if (person) verifiedDonorName = person.fullName;
+  }
+
+  const acqNumber = db.generateNextAcquisitionNumber(mosqueId);
+  const newAcq: BookAcquisition = {
+    id: `acq-${mosqueId}-${Date.now()}`,
+    mosqueId,
+    acquisitionNumber: acqNumber,
+    bookTitleId: title.id,
+    bookTitleName: title.title,
+    acquisitionDate: acquisitionDate || new Date().toISOString().split('T')[0],
+    sourceType: sourceType || 'PURCHASED',
+    quantity: numQty,
+    unitPrice: typeof unitPrice === 'number' ? unitPrice : (unitPrice ? Number(unitPrice) : undefined),
+    totalCost: typeof totalCost === 'number' ? totalCost : (totalCost ? Number(totalCost) : undefined),
+    supplierName: supplierName?.trim() || undefined,
+    donorPersonId: donorPersonId || undefined,
+    donorName: verifiedDonorName?.trim() || undefined,
+    expenseVoucherNumber: expenseVoucherNumber?.trim() || undefined,
+    expenseEntryId: expenseEntryId || undefined,
+    centralDocumentId: centralDocumentId || undefined,
+    notes: notes?.trim() || undefined,
+    createdAt: new Date().toISOString(),
+    createdBy: req.user!.id,
+  };
+
+  // Canonical Finance Integration: If purchased with cost, automatically post canonical ExpenseEntry
+  const { postToFinance, accountId, paymentMethod } = req.body;
+  const expenseAmount = Number(newAcq.totalCost) || (Number(newAcq.unitPrice || 0) * numQty);
+  if (newAcq.sourceType === 'PURCHASED' && expenseAmount > 0 && (postToFinance || accountId)) {
+    let targetAccount = accountId ? db.accounts.find(a => a.id === accountId && a.mosqueId === mosqueId) : undefined;
+    if (!targetAccount) {
+      targetAccount = db.accounts.find(a => a.mosqueId === mosqueId);
+    }
+    if (targetAccount) {
+      const year = new Date().getFullYear();
+      const expCount = db.expenseEntries.filter(e => e.mosqueId === mosqueId).length + 1;
+      const voucherNum = `EXP-${year}-${String(expCount).padStart(6, '0')}`;
+
+      const head = db.accountHeads.find(h => (h.nameBn?.includes('লাইব্রেরি') || h.nameBn?.includes('শিক্ষা') || h.type === 'EXPENSE') && h.mosqueId === mosqueId) 
+        || db.accountHeads.find(h => h.type === 'EXPENSE' && h.mosqueId === mosqueId)
+        || { id: 'head-exp-lib', nameBn: 'পাঠাগার ও কিতাব ক্রয়' };
+
+      const generatedExpenseEntry: any = {
+        id: `exp-acq-${Date.now()}`,
+        mosqueId,
+        voucherNumber: voucherNum,
+        date: newAcq.acquisitionDate,
+        mainHeadId: head.id,
+        mainHeadNameBn: head.nameBn || 'পাঠাগার ও কিতাব ক্রয়',
+        amount: expenseAmount,
+        paymentMethod: paymentMethod || 'CASH',
+        accountId: targetAccount.id,
+        accountName: targetAccount.nameBn,
+        paidTo: supplierName?.trim() || 'বই সরবরাহকারী / প্রকাশনা',
+        description: notes?.trim() || `পাঠাগার বই ক্রয় (${title.title}, ${numQty} কপি, অধিগ্রহণ #${acqNumber})`,
+        reference: `Acquisition: ${acqNumber}`,
+        createdBy: req.user!.id,
+        createdByName: req.user!.name,
+        status: 'APPROVED' as const,
+        approvedBy: req.user!.id,
+        approvedByName: req.user!.name,
+        approvedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      targetAccount.currentBalance -= expenseAmount;
+      db.expenseEntries.unshift(generatedExpenseEntry);
+
+      newAcq.expenseEntryId = generatedExpenseEntry.id;
+      newAcq.expenseVoucherNumber = generatedExpenseEntry.voucherNumber;
+
+      db.logAudit(
+        mosqueId,
+        req.user!.id,
+        req.user!.name,
+        req.user!.role,
+        'CREATE',
+        'EXPENSE',
+        `পাঠাগার বই ক্রয়ের আর্থিক ভাউচার প্রস্তুত (${voucherNum}): ৳ ${expenseAmount} - ${title.title} (${numQty} কপি)`
+      );
+
+      realtime.broadcastToMosque(mosqueId, 'EXPENSE_CREATED', generatedExpenseEntry, { senderId: req.user!.id });
+    }
+  }
+
+  db.bookAcquisitions.unshift(newAcq);
+
+  // If requested, auto-spawn copies
+  const createdCopies: BookCopy[] = [];
+  if (autoCreateCopies) {
+    const existingCopies = db.bookCopies.filter(c => c.bookTitleId === title.id && c.mosqueId === mosqueId);
+    let currentCopyNum = existingCopies.length;
+
+    for (let i = 1; i <= numQty; i++) {
+      currentCopyNum++;
+      const bookId = db.generateNextBookId(mosqueId);
+      const copy: BookCopy = {
+        id: `copy-${mosqueId}-${Date.now()}-${i}`,
+        mosqueId,
+        bookTitleId: title.id,
+        bookTitleName: title.title,
+        bookId,
+        copyNumber: currentCopyNum,
+        roomId: roomId || undefined,
+        rackId: rackId || undefined,
+        shelfId: shelfId || undefined,
+        shelfLocationLabel: shelfLocationLabel?.trim() || undefined,
+        acquisitionId: newAcq.id,
+        condition: 'NEW',
+        status: 'AVAILABLE',
+        purchasePrice: newAcq.unitPrice,
+        donorPersonId: newAcq.donorPersonId,
+        donorName: newAcq.donorName,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        createdBy: req.user!.id,
+      };
+      db.bookCopies.push(copy);
+      createdCopies.push(copy);
+    }
+  }
+
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'SYSTEM_INITIALIZE',
+    'LIBRARY',
+    `পাঠাগার বই সংগ্রহ নথিভুক্তকরণ (${acqNumber}): ${title.title} (${numQty} কপি, উৎস: ${newAcq.sourceType})${newAcq.expenseVoucherNumber ? ` [ভাউচার: ${newAcq.expenseVoucherNumber}]` : ''}`,
+    newAcq.id,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'ACQUISITION_CREATED', newAcq, { senderId: req.user!.id });
+  realtime.broadcastToMosque(mosqueId, 'LIBRARY_STATS_UPDATED', db.getLibraryDashboardStats(mosqueId));
+
+  res.status(201).json({
+    success: true,
+    data: newAcq,
+    createdCopiesCount: createdCopies.length,
+    message: 'বই সংগ্রহ রেকর্ড সফলভাবে সম্পন্ন হয়েছে।'
+  });
+});
+
+// 9. Location Management (কক্ষ, আলমারি/র‌্যাক ও তাক/শেলফ)
+app.get('/api/v1/library/locations', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const rooms = db.libraryRooms.filter(r => r.mosqueId === mosqueId);
+  const racks = db.libraryRacks.filter(r => r.mosqueId === mosqueId);
+  const shelves = db.libraryShelves.filter(s => s.mosqueId === mosqueId);
+
+  res.json({
+    success: true,
+    data: {
+      rooms,
+      racks,
+      shelves,
+    }
+  });
+});
+
+app.post('/api/v1/library/rooms', authenticate, requirePermission('MANAGE_LIBRARY_LOCATION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { roomName, roomCode, description } = req.body;
+
+  if (!roomName || !roomName.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'কক্ষের নাম আবশ্যক।' } });
+  }
+
+  const newRoom: LibraryRoom = {
+    id: `room-${mosqueId}-${Date.now()}`,
+    mosqueId,
+    roomName: roomName.trim(),
+    roomCode: roomCode?.trim() || `RM-${db.libraryRooms.filter(r => r.mosqueId === mosqueId).length + 1}`,
+    description: description?.trim() || undefined,
+    createdAt: new Date().toISOString(),
+  };
+
+  db.libraryRooms.push(newRoom);
+  db.save();
+
+  res.status(201).json({ success: true, data: newRoom, message: 'পাঠাগার কক্ষ যোগ করা হয়েছে।' });
+});
+
+app.put('/api/v1/library/rooms/:id', authenticate, requirePermission('MANAGE_LIBRARY_LOCATION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const room = db.libraryRooms.find(r => r.id === req.params.id && r.mosqueId === mosqueId);
+  if (!room) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'কক্ষ পাওয়া যায়নি।' } });
+
+  const { roomName, roomCode, description } = req.body;
+  if (roomName) room.roomName = roomName.trim();
+  if (roomCode) room.roomCode = roomCode.trim();
+  if (description !== undefined) room.description = description.trim();
+
+  db.save();
+  res.json({ success: true, data: room, message: 'কক্ষ হালনাগাদ করা হয়েছে।' });
+});
+
+app.delete('/api/v1/library/rooms/:id', authenticate, requirePermission('MANAGE_LIBRARY_LOCATION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  db.libraryRooms = db.libraryRooms.filter(r => !(r.id === req.params.id && r.mosqueId === mosqueId));
+  db.save();
+  res.json({ success: true, message: 'কক্ষ মুছে ফেলা হয়েছে।' });
+});
+
+app.post('/api/v1/library/racks', authenticate, requirePermission('MANAGE_LIBRARY_LOCATION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { roomId, rackName, rackCode, description } = req.body;
+
+  if (!roomId || !rackName || !rackName.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'কক্ষ ও আলমারির নাম আবশ্যক।' } });
+  }
+
+  const newRack: LibraryRack = {
+    id: `rack-${mosqueId}-${Date.now()}`,
+    mosqueId,
+    roomId,
+    rackName: rackName.trim(),
+    rackCode: rackCode?.trim() || `RCK-${db.libraryRacks.filter(r => r.mosqueId === mosqueId).length + 1}`,
+    description: description?.trim() || undefined,
+    createdAt: new Date().toISOString(),
+  };
+
+  db.libraryRacks.push(newRack);
+  db.save();
+
+  res.status(201).json({ success: true, data: newRack, message: 'আলমারি/র‌্যাক যোগ করা হয়েছে।' });
+});
+
+app.put('/api/v1/library/racks/:id', authenticate, requirePermission('MANAGE_LIBRARY_LOCATION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const rack = db.libraryRacks.find(r => r.id === req.params.id && r.mosqueId === mosqueId);
+  if (!rack) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'র‌্যাক পাওয়া যায়নি।' } });
+
+  const { roomId, rackName, rackCode, description } = req.body;
+  if (roomId) rack.roomId = roomId;
+  if (rackName) rack.rackName = rackName.trim();
+  if (rackCode) rack.rackCode = rackCode.trim();
+  if (description !== undefined) rack.description = description.trim();
+
+  db.save();
+  res.json({ success: true, data: rack, message: 'র‌্যাক হালনাগাদ করা হয়েছে।' });
+});
+
+app.delete('/api/v1/library/racks/:id', authenticate, requirePermission('MANAGE_LIBRARY_LOCATION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  db.libraryRacks = db.libraryRacks.filter(r => !(r.id === req.params.id && r.mosqueId === mosqueId));
+  db.save();
+  res.json({ success: true, message: 'র‌্যাক মুছে ফেলা হয়েছে।' });
+});
+
+app.post('/api/v1/library/shelves', authenticate, requirePermission('MANAGE_LIBRARY_LOCATION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { rackId, shelfName, shelfCode, capacity, description } = req.body;
+
+  if (!rackId || !shelfName || !shelfName.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'র‌্যাক ও তাকের নাম আবশ্যক।' } });
+  }
+
+  const newShelf: LibraryShelf = {
+    id: `shelf-${mosqueId}-${Date.now()}`,
+    mosqueId,
+    rackId,
+    shelfName: shelfName.trim(),
+    shelfCode: shelfCode?.trim() || `SH-${db.libraryShelves.filter(s => s.mosqueId === mosqueId).length + 1}`,
+    capacity: typeof capacity === 'number' ? capacity : (capacity ? parseInt(capacity, 10) : undefined),
+    description: description?.trim() || undefined,
+    createdAt: new Date().toISOString(),
+  };
+
+  db.libraryShelves.push(newShelf);
+  db.save();
+
+  res.status(201).json({ success: true, data: newShelf, message: 'তাক/শেলফ যোগ করা হয়েছে।' });
+});
+
+app.put('/api/v1/library/shelves/:id', authenticate, requirePermission('MANAGE_LIBRARY_LOCATION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const shelf = db.libraryShelves.find(s => s.id === req.params.id && s.mosqueId === mosqueId);
+  if (!shelf) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'তাক পাওয়া যায়নি।' } });
+
+  const { rackId, shelfName, shelfCode, capacity, description } = req.body;
+  if (rackId) shelf.rackId = rackId;
+  if (shelfName) shelf.shelfName = shelfName.trim();
+  if (shelfCode) shelf.shelfCode = shelfCode.trim();
+  if (capacity !== undefined) shelf.capacity = Number(capacity);
+  if (description !== undefined) shelf.description = description.trim();
+
+  db.save();
+  res.json({ success: true, data: shelf, message: 'তাক হালনাগাদ করা হয়েছে।' });
+});
+
+app.delete('/api/v1/library/shelves/:id', authenticate, requirePermission('MANAGE_LIBRARY_LOCATION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  db.libraryShelves = db.libraryShelves.filter(s => !(s.id === req.params.id && s.mosqueId === mosqueId));
+  db.save();
+  res.json({ success: true, message: 'তাক মুছে ফেলা হয়েছে।' });
+});
+
+// 10. Canonical Library Reports Aggregator
+app.get('/api/v1/library/reports/:reportType', authenticate, requirePermission('VIEW_LIBRARY_REPORT'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const reportType = req.params.reportType.toUpperCase();
+  const { startDate, endDate, categoryId, memberId } = req.query;
+
+  const titles = db.bookTitles.filter(t => t.mosqueId === mosqueId && t.status !== 'ARCHIVED');
+  const copies = db.bookCopies.filter(c => c.mosqueId === mosqueId && c.status !== 'ARCHIVED');
+  const issues = db.bookIssues.filter(i => i.mosqueId === mosqueId);
+  const members = db.libraryMembers.filter(m => m.mosqueId === mosqueId);
+  const acquisitions = db.bookAcquisitions.filter(a => a.mosqueId === mosqueId);
+  const categories = db.libraryCategories.filter(c => c.mosqueId === mosqueId);
+
+  let reportData: any = null;
+
+  switch (reportType) {
+    case 'BOOK_CATALOGUE':
+      reportData = titles.map(t => {
+        const cat = categories.find(c => c.id === t.categoryId);
+        const tCopies = copies.filter(c => c.bookTitleId === t.id);
+        return {
+          id: t.id,
+          title: t.title,
+          author: t.author,
+          categoryName: cat?.name || t.categoryName || 'সাধারণ',
+          language: t.language,
+          isbn: t.isbn || '-',
+          publisher: t.publisher || '-',
+          totalCopies: tCopies.length,
+          availableCopies: tCopies.filter(c => c.status === 'AVAILABLE').length,
+          issuedCopies: tCopies.filter(c => c.status === 'ISSUED' || c.status === 'OVERDUE').length,
+        };
+      });
+      break;
+
+    case 'BOOK_COPY_REGISTER':
+      reportData = copies.map(c => {
+        const t = titles.find(title => title.id === c.bookTitleId);
+        return {
+          bookId: c.bookId,
+          title: t?.title || c.bookTitleName,
+          author: t?.author || '-',
+          copyNumber: c.copyNumber,
+          shelfLocation: c.shelfLocationLabel || 'তাক',
+          condition: c.condition,
+          status: c.status,
+          currentHolder: c.currentHolderName || '-',
+        };
+      });
+      break;
+
+    case 'AVAILABLE_BOOKS':
+      reportData = copies.filter(c => c.status === 'AVAILABLE').map(c => {
+        const t = titles.find(title => title.id === c.bookTitleId);
+        return {
+          bookId: c.bookId,
+          title: t?.title || c.bookTitleName,
+          author: t?.author,
+          shelfLocation: c.shelfLocationLabel,
+          condition: c.condition,
+        };
+      });
+      break;
+
+    case 'ISSUED_BOOKS':
+    case 'OVERDUE_BOOKS':
+      const targetStatus = reportType === 'OVERDUE_BOOKS' ? ['OVERDUE'] : ['ISSUED', 'OVERDUE'];
+      reportData = issues.filter(i => targetStatus.includes(i.status)).map(i => ({
+        issueNumber: i.issueNumber,
+        bookId: i.bookId,
+        bookTitle: i.bookTitle,
+        borrowerName: i.borrowerName,
+        borrowerPhone: i.borrowerPhone,
+        issueDate: i.issueDate,
+        dueDate: i.dueDate,
+        status: i.status,
+      }));
+      break;
+
+    case 'LOST_BOOKS':
+    case 'DAMAGED_BOOKS':
+      const copyStatus = reportType === 'LOST_BOOKS' ? 'LOST' : 'DAMAGED';
+      reportData = copies.filter(c => c.status === copyStatus).map(c => {
+        const t = titles.find(title => title.id === c.bookTitleId);
+        return {
+          bookId: c.bookId,
+          title: t?.title || c.bookTitleName,
+          author: t?.author,
+          condition: c.condition,
+          status: c.status,
+          notes: c.notes || '-',
+        };
+      });
+      break;
+
+    case 'BOOK_ACQUISITION':
+    case 'DONATED_BOOKS':
+    case 'PURCHASED_BOOKS':
+      let acqList = acquisitions;
+      if (reportType === 'DONATED_BOOKS') acqList = acqList.filter(a => a.sourceType === 'DONATED' || a.sourceType === 'WAQF_CONTRIBUTION');
+      if (reportType === 'PURCHASED_BOOKS') acqList = acqList.filter(a => a.sourceType === 'PURCHASED');
+      reportData = acqList.map(a => ({
+        acquisitionNumber: a.acquisitionNumber,
+        bookTitle: a.bookTitleName,
+        acquisitionDate: a.acquisitionDate,
+        sourceType: a.sourceType,
+        quantity: a.quantity,
+        totalCost: a.totalCost || 0,
+        supplierOrDonor: a.donorName || a.supplierName || '-',
+        expenseVoucher: a.expenseVoucherNumber || '-',
+      }));
+      break;
+
+    case 'LIBRARY_MEMBERS':
+      reportData = members.map(m => {
+        const person = db.persons.find(p => p.id === m.personId && p.mosqueId === mosqueId);
+        const mIssues = issues.filter(i => i.memberId === m.id);
+        return {
+          memberCode: m.memberCode,
+          name: person?.fullName || m.personName,
+          phone: person?.mobile || m.personPhone,
+          membershipType: m.membershipType,
+          status: m.status,
+          activeIssues: mIssues.filter(i => i.status === 'ACTIVE' || i.status === 'OVERDUE').length,
+          totalHistory: mIssues.length,
+        };
+      });
+      break;
+
+    case 'ISSUE_REGISTER':
+    case 'RETURN_REGISTER':
+      const isReturn = reportType === 'RETURN_REGISTER';
+      const regIssues = isReturn ? issues.filter(i => i.status === 'RETURNED') : issues;
+      reportData = regIssues.map(i => ({
+        issueNumber: i.issueNumber,
+        bookId: i.bookId,
+        bookTitle: i.bookTitle,
+        borrowerName: i.borrowerName,
+        issueDate: i.issueDate,
+        dueDate: i.dueDate,
+        returnDate: i.returnDate || '-',
+        status: i.status,
+        fineAmount: i.fineAmount || 0,
+      }));
+      break;
+
+    default:
+      reportData = {
+        summary: db.getLibraryDashboardStats(mosqueId),
+        timestamp: new Date().toISOString(),
+      };
+      break;
+  }
+
+  res.json({
+    success: true,
+    reportType,
+    recordCount: Array.isArray(reportData) ? reportData.length : 1,
+    data: reportData,
+    generatedAt: new Date().toISOString(),
+  });
+});
+
+// 11. Backwards-compatible Route Aliases
+app.get('/api/v1/library/books', authenticate, (req: AuthRequest, res: Response) => {
+  res.redirect(307, '/api/v1/library/book-titles' + (req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : ''));
+});
+
+app.get('/api/v1/library/book-copies/resolve/:bookId', authenticate, (req: AuthRequest, res: Response) => {
+  res.redirect(307, `/api/v1/library/lookup-by-book-id/${encodeURIComponent(req.params.bookId)}`);
+});
+
+app.post('/api/v1/library/issues/:id/lost', authenticate, requirePermission('LIBRARY_RETURN'), (req: AuthRequest, res: Response) => {
+  res.redirect(307, `/api/v1/library/issues/${req.params.id}/mark-lost`);
+});
+
+// ==========================================
+// EDUCATION FOUNDATION (MAKTAB & HIFZKHANA)
+// ==========================================
+
+// 1. Dashboard & Statistics
+app.get('/api/v1/education/dashboard-stats', authenticate, requirePermission('VIEW_EDUCATION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const stats = db.getEducationDashboardStats(mosqueId);
+  res.json({ success: true, data: stats });
+});
+
+// 2. Education Programs (মক্তব ও হিফজখানা বিভাগ)
+app.get('/api/v1/education/programs', authenticate, requirePermission('VIEW_EDUCATION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  let programs = db.educationPrograms.filter(p => p.mosqueId === mosqueId && p.status !== 'ARCHIVED');
+  if (programs.length === 0) {
+    const starters = getStarterEducationPrograms(mosqueId);
+    db.educationPrograms.push(...starters);
+    db.save();
+    programs = starters;
+  }
+  res.json({ success: true, data: programs });
+});
+
+app.post('/api/v1/education/programs', authenticate, requirePermission('MANAGE_EDUCATION_SETTINGS'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { type, nameBn, nameEn, code, description } = req.body;
+
+  if (!type || (type !== 'MAKTAB' && type !== 'HIFZKHANA')) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'সঠিক শিক্ষা প্রোগ্রাম টাইপ (MAKTAB অথবা HIFZKHANA) নির্বাচন করুন।' } });
+  }
+  if (!nameBn?.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'প্রোগ্রামের নাম (বাংলা) আবশ্যক।' } });
+  }
+
+  const existingCode = db.educationPrograms.find(p => p.mosqueId === mosqueId && p.code?.toUpperCase() === (code || '').trim().toUpperCase() && p.status !== 'ARCHIVED');
+  if (code && existingCode) {
+    return res.status(400).json({ success: false, error: { code: 'DUPLICATE_CODE', message: 'এই কোডের একটি প্রোগ্রাম ইতিমধ্যে বিদ্যমান।' } });
+  }
+
+  const now = new Date().toISOString();
+  const program: EducationProgram = {
+    id: `prog-${mosqueId}-${Date.now()}`,
+    mosqueId,
+    type,
+    nameBn: nameBn.trim(),
+    nameEn: nameEn?.trim() || nameBn.trim(),
+    code: (code || type).trim().toUpperCase(),
+    description: description?.trim() || undefined,
+    status: 'ACTIVE',
+    createdAt: now,
+    updatedAt: now,
+    createdBy: req.user!.id,
+  };
+
+  db.educationPrograms.push(program);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'EDUCATION',
+    `নতুন শিক্ষা কার্যক্রম যুক্ত করা হয়েছে: ${program.nameBn} (${program.type})`,
+    program.id
+  );
+
+  res.status(201).json({ success: true, data: program, message: 'শিক্ষা কার্যক্রম সফলভাবে তৈরি হয়েছে।' });
+});
+
+app.put('/api/v1/education/programs/:id', authenticate, requirePermission('MANAGE_EDUCATION_SETTINGS'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const program = db.educationPrograms.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (!program) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'শিক্ষা কার্যক্রম পাওয়া যায়নি।' } });
+  }
+
+  const { nameBn, nameEn, code, description, status } = req.body;
+  if (nameBn) program.nameBn = nameBn.trim();
+  if (nameEn) program.nameEn = nameEn.trim();
+  if (code) program.code = code.trim().toUpperCase();
+  if (description !== undefined) program.description = description?.trim() || undefined;
+  if (status && ['ACTIVE', 'INACTIVE', 'ARCHIVED'].includes(status)) {
+    program.status = status;
+  }
+  program.updatedAt = new Date().toISOString();
+
+  db.save();
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'EDUCATION',
+    `শিক্ষা কার্যক্রম আপডেট করা হয়েছে: ${program.nameBn}`,
+    program.id
+  );
+
+  res.json({ success: true, data: program, message: 'শিক্ষা কার্যক্রম সফলভাবে আপডেট হয়েছে।' });
+});
+
+// 3. Education Levels / Classes (জামাত ও স্তর)
+app.get('/api/v1/education/levels', authenticate, requirePermission('VIEW_EDUCATION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { programId, programType } = req.query;
+
+  let levels = db.educationLevels.filter(l => l.mosqueId === mosqueId && l.status !== 'ARCHIVED');
+  if (levels.length === 0) {
+    const starters = getStarterEducationLevels(mosqueId);
+    db.educationLevels.push(...starters);
+    db.save();
+    levels = starters;
+  }
+
+  if (programId && typeof programId === 'string') {
+    levels = levels.filter(l => l.programId === programId);
+  }
+  if (programType && (programType === 'MAKTAB' || programType === 'HIFZKHANA')) {
+    levels = levels.filter(l => l.programType === programType);
+  }
+
+  levels.sort((a, b) => a.sortOrder - b.sortOrder);
+  res.json({ success: true, data: levels });
+});
+
+app.post('/api/v1/education/levels', authenticate, requirePermission('MANAGE_EDUCATION_SETTINGS'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { programId, programType, nameBn, nameEn, code, sortOrder, description } = req.body;
+
+  if (!programId) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'শিক্ষা কার্যক্রম (Program) নির্বাচন আবশ্যক।' } });
+  }
+
+  const program = db.educationPrograms.find(p => p.id === programId && p.mosqueId === mosqueId);
+  if (!program) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'নির্বাচিত শিক্ষা কার্যক্রম পাওয়া যায়নি।' } });
+  }
+
+  if (!nameBn?.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'জামাত বা স্তরের নাম (বাংলা) আবশ্যক।' } });
+  }
+
+  const now = new Date().toISOString();
+  const existingLevelsCount = db.educationLevels.filter(l => l.programId === programId && l.mosqueId === mosqueId).length;
+
+  const level: EducationLevel = {
+    id: `lvl-${mosqueId}-${Date.now()}`,
+    mosqueId,
+    programId: program.id,
+    programType: program.type || programType || 'MAKTAB',
+    nameBn: nameBn.trim(),
+    nameEn: nameEn?.trim() || nameBn.trim(),
+    code: (code || `LVL-${existingLevelsCount + 1}`).trim().toUpperCase(),
+    sortOrder: typeof sortOrder === 'number' ? sortOrder : existingLevelsCount + 1,
+    description: description?.trim() || undefined,
+    status: 'ACTIVE',
+    createdAt: now,
+    updatedAt: now,
+    createdBy: req.user!.id,
+  };
+
+  db.educationLevels.push(level);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'EDUCATION',
+    `নতুন জামাত/স্তর তৈরি করা হয়েছে: ${level.nameBn} (${program.nameBn})`,
+    level.id
+  );
+
+  res.status(201).json({ success: true, data: level, message: 'জামাত/স্তর সফলভাবে তৈরি হয়েছে।' });
+});
+
+app.put('/api/v1/education/levels/:id', authenticate, requirePermission('MANAGE_EDUCATION_SETTINGS'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const level = db.educationLevels.find(l => l.id === req.params.id && l.mosqueId === mosqueId);
+  if (!level) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'জামাত/স্তর পাওয়া যায়নি।' } });
+  }
+
+  const { nameBn, nameEn, code, sortOrder, description, status } = req.body;
+  if (nameBn) level.nameBn = nameBn.trim();
+  if (nameEn) level.nameEn = nameEn.trim();
+  if (code) level.code = code.trim().toUpperCase();
+  if (typeof sortOrder === 'number') level.sortOrder = sortOrder;
+  if (description !== undefined) level.description = description?.trim() || undefined;
+  if (status && ['ACTIVE', 'INACTIVE', 'ARCHIVED'].includes(status)) {
+    level.status = status;
+  }
+  level.updatedAt = new Date().toISOString();
+
+  db.save();
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'EDUCATION',
+    `জামাত/স্তর আপডেট করা হয়েছে: ${level.nameBn}`,
+    level.id
+  );
+
+  res.json({ success: true, data: level, message: 'জামাত/স্তর সফলভাবে আপডেট হয়েছে।' });
+});
+
+// 4. Student Profiles (শিক্ষার্থী প্রোফাইল - PersonMaster Integrated)
+app.get('/api/v1/education/students', authenticate, requirePermission('VIEW_EDUCATION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { status, programType, levelId, search } = req.query;
+
+  let students = db.educationStudentProfiles.filter(s => s.mosqueId === mosqueId);
+  if (status && typeof status === 'string' && status !== 'ALL') {
+    students = students.filter(s => s.status === status);
+  } else {
+    students = students.filter(s => s.status !== 'ARCHIVED');
+  }
+
+  // Populate person & active enrollments
+  let populated = students.map(s => {
+    const person = db.persons.find(p => p.id === s.personId && p.mosqueId === mosqueId);
+    const activeEnrollments = db.educationEnrollments.filter(e => e.studentProfileId === s.id && e.mosqueId === mosqueId && e.status === 'ACTIVE');
+    const guardians = db.educationGuardianRelationships.filter(g => g.studentProfileId === s.id && g.mosqueId === mosqueId).map(g => {
+      const gPerson = db.persons.find(p => p.id === g.guardianPersonId && p.mosqueId === mosqueId);
+      return {
+        ...g,
+        guardianName: gPerson?.fullName,
+        guardianMobile: gPerson?.mobile,
+      };
+    });
+
+    return {
+      ...s,
+      personName: person?.fullName || s.personName || 'অজ্ঞাত শিক্ষার্থী',
+      personMobile: person?.mobile || s.personMobile,
+      personAddress: person?.address || '',
+      guardians,
+      activeEnrollments,
+    };
+  });
+
+  if (programType && typeof programType === 'string' && programType !== 'ALL') {
+    populated = populated.filter(s => s.activeEnrollments?.some(e => e.programType === programType));
+  }
+  if (levelId && typeof levelId === 'string' && levelId !== 'ALL') {
+    populated = populated.filter(s => s.activeEnrollments?.some(e => e.levelId === levelId));
+  }
+  if (search && typeof search === 'string') {
+    const query = search.trim().toLowerCase();
+    populated = populated.filter(s => 
+      s.studentId.toLowerCase().includes(query) ||
+      (s.personName && s.personName.toLowerCase().includes(query)) ||
+      (s.personMobile && s.personMobile.includes(query))
+    );
+  }
+
+  populated.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  res.json({ success: true, data: populated });
+});
+
+app.get('/api/v1/education/students/:id', authenticate, requirePermission('VIEW_EDUCATION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const student = db.educationStudentProfiles.find(s => (s.id === req.params.id || s.studentId === req.params.id) && s.mosqueId === mosqueId);
+  if (!student) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'শিক্ষার্থী পাওয়া যায়নি।' } });
+  }
+
+  const person = db.persons.find(p => p.id === student.personId && p.mosqueId === mosqueId);
+  const enrollments = db.educationEnrollments.filter(e => e.studentProfileId === student.id && e.mosqueId === mosqueId).map(e => {
+    const prog = db.educationPrograms.find(p => p.id === e.programId);
+    const lvl = db.educationLevels.find(l => l.id === e.levelId);
+    const teacher = e.teacherStaffId ? db.staffList.find(st => st.id === e.teacherStaffId) : undefined;
+    return {
+      ...e,
+      programNameBn: prog?.nameBn,
+      levelNameBn: lvl?.nameBn,
+      teacherName: teacher?.name,
+    };
+  });
+
+  const guardians = db.educationGuardianRelationships.filter(g => g.studentProfileId === student.id && g.mosqueId === mosqueId).map(g => {
+    const gPerson = db.persons.find(p => p.id === g.guardianPersonId && p.mosqueId === mosqueId);
+    return {
+      ...g,
+      guardianName: gPerson?.fullName,
+      guardianMobile: gPerson?.mobile,
+      guardianNid: gPerson?.nidNumber,
+    };
+  });
+
+  res.json({
+    success: true,
+    data: {
+      ...student,
+      personName: person?.fullName || student.personName,
+      personMobile: person?.mobile,
+      personAddress: person?.address,
+      personDetails: person,
+      enrollments,
+      guardians,
+    }
+  });
+});
+
+app.post('/api/v1/education/students', authenticate, requirePermission('MANAGE_EDUCATION_STUDENT'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const {
+    personId,
+    admissionDate,
+    dateOfBirth,
+    gender,
+    bloodGroup,
+    emergencyContactName,
+    emergencyContactPhone,
+    priorEducation,
+    photoDocumentId,
+    notes,
+    guardianPersonId,
+    relationshipType,
+    relationshipTitleBn,
+    initialEnrollment,
+  } = req.body;
+
+  if (!personId) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'মুসল্লি/ব্যক্তি নির্বাচন আবশ্যক।' } });
+  }
+
+  const person = db.persons.find(p => p.id === personId && p.mosqueId === mosqueId);
+  if (!person) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'নির্বাচিত ব্যক্তি এই মসজিদে পাওয়া যায়নি।' } });
+  }
+
+  // Duplicate active student check for same person in same mosque
+  const existingActiveStudent = db.educationStudentProfiles.find(
+    s => s.personId === personId && s.mosqueId === mosqueId && s.status !== 'ARCHIVED' && s.status !== 'COMPLETED'
+  );
+  if (existingActiveStudent) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: 'DUPLICATE_STUDENT',
+        message: `এই ব্যক্তির একটি সক্রিয় শিক্ষার্থী প্রোফাইল ইতিমধ্যে রয়েছে (আইডি: ${existingActiveStudent.studentId})।`
+      }
+    });
+  }
+
+  const now = new Date().toISOString();
+  const studentId = db.generateNextStudentId(mosqueId);
+  const studentProfile: EducationStudentProfile = {
+    id: `stu-${mosqueId}-${Date.now()}`,
+    mosqueId,
+    personId: person.id,
+    studentId,
+    admissionDate: admissionDate || now.split('T')[0],
+    dateOfBirth: dateOfBirth || person.dateOfBirth,
+    gender: gender || (person.gender === 'FEMALE' ? 'FEMALE' : 'MALE'),
+    bloodGroup: bloodGroup || person.bloodGroup,
+    emergencyContactName: emergencyContactName?.trim() || undefined,
+    emergencyContactPhone: emergencyContactPhone?.trim() || undefined,
+    priorEducation: priorEducation?.trim() || undefined,
+    photoDocumentId: photoDocumentId?.trim() || undefined,
+    status: 'ACTIVE',
+    notes: notes?.trim() || undefined,
+    personName: person.fullName,
+    personMobile: person.mobile,
+    createdAt: now,
+    updatedAt: now,
+    createdBy: req.user!.id,
+  };
+
+  db.educationStudentProfiles.unshift(studentProfile);
+
+  // Optional: Initial Guardian Binding
+  if (guardianPersonId) {
+    const guardianPerson = db.persons.find(p => p.id === guardianPersonId && p.mosqueId === mosqueId);
+    if (guardianPerson) {
+      const guardianRel: EducationGuardianRelationship = {
+        id: `rel-${mosqueId}-${Date.now()}`,
+        mosqueId,
+        studentProfileId: studentProfile.id,
+        studentId: studentProfile.studentId,
+        guardianPersonId: guardianPerson.id,
+        relationshipType: relationshipType || 'FATHER',
+        relationshipTitleBn: relationshipTitleBn?.trim() || undefined,
+        isPrimary: true,
+        isEmergencyContact: true,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: req.user!.id,
+      };
+      db.educationGuardianRelationships.push(guardianRel);
+    }
+  }
+
+  // Optional: Initial Enrollment
+  if (initialEnrollment && initialEnrollment.programId && initialEnrollment.levelId) {
+    const prog = db.educationPrograms.find(p => p.id === initialEnrollment.programId && p.mosqueId === mosqueId);
+    const lvl = db.educationLevels.find(l => l.id === initialEnrollment.levelId && l.mosqueId === mosqueId);
+    if (prog && lvl) {
+      const enr: EducationEnrollment = {
+        id: `enr-${mosqueId}-${Date.now()}`,
+        mosqueId,
+        enrollmentNumber: db.generateNextEnrollmentNumber(mosqueId),
+        studentProfileId: studentProfile.id,
+        studentId: studentProfile.studentId,
+        programId: prog.id,
+        programType: prog.type,
+        levelId: lvl.id,
+        admissionDate: studentProfile.admissionDate,
+        startDate: initialEnrollment.startDate || studentProfile.admissionDate,
+        teacherStaffId: initialEnrollment.teacherStaffId || undefined,
+        status: 'ACTIVE',
+        shift: initialEnrollment.shift || 'MORNING',
+        notes: initialEnrollment.notes?.trim() || undefined,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: req.user!.id,
+      };
+      db.educationEnrollments.push(enr);
+    }
+  }
+
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'EDUCATION',
+    `নতুন শিক্ষার্থী নথিভুক্ত করা হয়েছে (${studentProfile.studentId}): ${person.fullName}`,
+    studentProfile.id
+  );
+
+  res.status(201).json({ success: true, data: studentProfile, message: 'শিক্ষার্থী প্রোফাইল সফলভাবে তৈরি হয়েছে।' });
+});
+
+app.put('/api/v1/education/students/:id', authenticate, requirePermission('MANAGE_EDUCATION_STUDENT'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const student = db.educationStudentProfiles.find(s => (s.id === req.params.id || s.studentId === req.params.id) && s.mosqueId === mosqueId);
+  if (!student) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'শিক্ষার্থী পাওয়া যায়নি।' } });
+  }
+
+  const {
+    dateOfBirth,
+    gender,
+    bloodGroup,
+    emergencyContactName,
+    emergencyContactPhone,
+    priorEducation,
+    photoDocumentId,
+    status,
+    notes,
+  } = req.body;
+
+  if (dateOfBirth !== undefined) student.dateOfBirth = dateOfBirth;
+  if (gender !== undefined) student.gender = gender;
+  if (bloodGroup !== undefined) student.bloodGroup = bloodGroup;
+  if (emergencyContactName !== undefined) student.emergencyContactName = emergencyContactName?.trim() || undefined;
+  if (emergencyContactPhone !== undefined) student.emergencyContactPhone = emergencyContactPhone?.trim() || undefined;
+  if (priorEducation !== undefined) student.priorEducation = priorEducation?.trim() || undefined;
+  if (photoDocumentId !== undefined) student.photoDocumentId = photoDocumentId?.trim() || undefined;
+  if (status && ['ACTIVE', 'INACTIVE', 'TRANSFERRED', 'COMPLETED', 'ARCHIVED'].includes(status)) {
+    student.status = status;
+  }
+  if (notes !== undefined) student.notes = notes?.trim() || undefined;
+  student.updatedAt = new Date().toISOString();
+  student.updatedBy = req.user!.id;
+
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'EDUCATION',
+    `শিক্ষার্থী প্রোফাইল আপডেট করা হয়েছে (${student.studentId}): অবস্থা: ${student.status}`,
+    student.id
+  );
+
+  res.json({ success: true, data: student, message: 'শিক্ষার্থী প্রোফাইল সফলভাবে আপডেট হয়েছে।' });
+});
+
+app.delete('/api/v1/education/students/:id', authenticate, requirePermission('MANAGE_EDUCATION_STUDENT'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const student = db.educationStudentProfiles.find(s => (s.id === req.params.id || s.studentId === req.params.id) && s.mosqueId === mosqueId);
+  if (!student) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'শিক্ষার্থী পাওয়া যায়নি।' } });
+  }
+
+  student.status = 'ARCHIVED';
+  student.updatedAt = new Date().toISOString();
+  student.updatedBy = req.user!.id;
+
+  // Deactivate active enrollments
+  const activeEnrollments = db.educationEnrollments.filter(e => e.studentProfileId === student.id && e.mosqueId === mosqueId && e.status === 'ACTIVE');
+  activeEnrollments.forEach(e => {
+    e.status = 'DROPPED';
+    e.updatedAt = new Date().toISOString();
+    e.updatedBy = req.user!.id;
+  });
+
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'DELETE',
+    'EDUCATION',
+    `শিক্ষার্থী আর্কাইভ করা হয়েছে (${student.studentId})`,
+    student.id
+  );
+
+  res.json({ success: true, message: 'শিক্ষার্থী প্রোফাইল সফলভাবে আর্কাইভ করা হয়েছে।' });
+});
+
+// 5. Guardian Relationships (অভিভাবক সম্পর্ক)
+app.get('/api/v1/education/students/:studentId/guardians', authenticate, requirePermission('VIEW_EDUCATION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const student = db.educationStudentProfiles.find(s => (s.id === req.params.studentId || s.studentId === req.params.studentId) && s.mosqueId === mosqueId);
+  if (!student) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'শিক্ষার্থী পাওয়া যায়নি।' } });
+  }
+
+  const relationships = db.educationGuardianRelationships.filter(g => g.studentProfileId === student.id && g.mosqueId === mosqueId).map(g => {
+    const person = db.persons.find(p => p.id === g.guardianPersonId && p.mosqueId === mosqueId);
+    return {
+      ...g,
+      guardianName: person?.fullName,
+      guardianMobile: person?.mobile,
+      guardianNid: person?.nidNumber,
+      guardianAddress: person?.address,
+    };
+  });
+
+  res.json({ success: true, data: relationships });
+});
+
+app.post('/api/v1/education/students/:studentId/guardians', authenticate, requirePermission('MANAGE_EDUCATION_STUDENT'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const student = db.educationStudentProfiles.find(s => (s.id === req.params.studentId || s.studentId === req.params.studentId) && s.mosqueId === mosqueId);
+  if (!student) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'শিক্ষার্থী পাওয়া যায়নি।' } });
+  }
+
+  const { guardianPersonId, relationshipType, relationshipTitleBn, isPrimary, isEmergencyContact, notes } = req.body;
+  if (!guardianPersonId) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'অভিভাবক নির্বাচন আবশ্যক।' } });
+  }
+
+  const guardianPerson = db.persons.find(p => p.id === guardianPersonId && p.mosqueId === mosqueId);
+  if (!guardianPerson) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'নির্বাচিত অভিভাবক পাওয়া যায়নি।' } });
+  }
+
+  const existingRel = db.educationGuardianRelationships.find(
+    g => g.studentProfileId === student.id && g.guardianPersonId === guardianPersonId && g.mosqueId === mosqueId
+  );
+  if (existingRel) {
+    return res.status(400).json({ success: false, error: { code: 'DUPLICATE_GUARDIAN', message: 'এই অভিভাবক ইতিমধ্যে এই শিক্ষার্থীর সাথে যুক্ত আছেন।' } });
+  }
+
+  // If new guardian is primary, unmark existing primary
+  if (isPrimary) {
+    db.educationGuardianRelationships
+      .filter(g => g.studentProfileId === student.id && g.mosqueId === mosqueId)
+      .forEach(g => { g.isPrimary = false; });
+  }
+
+  const now = new Date().toISOString();
+  const rel: EducationGuardianRelationship = {
+    id: `rel-${mosqueId}-${Date.now()}`,
+    mosqueId,
+    studentProfileId: student.id,
+    studentId: student.studentId,
+    guardianPersonId: guardianPerson.id,
+    relationshipType: relationshipType || 'FATHER',
+    relationshipTitleBn: relationshipTitleBn?.trim() || undefined,
+    isPrimary: Boolean(isPrimary),
+    isEmergencyContact: Boolean(isEmergencyContact),
+    notes: notes?.trim() || undefined,
+    createdAt: now,
+    updatedAt: now,
+    createdBy: req.user!.id,
+  };
+
+  db.educationGuardianRelationships.push(rel);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'EDUCATION',
+    `শিক্ষার্থীর অভিভাবক যুক্ত করা হয়েছে (${student.studentId}): ${guardianPerson.fullName} (${rel.relationshipType})`,
+    rel.id
+  );
+
+  res.status(201).json({ success: true, data: rel, message: 'অভিভাবক সফলভাবে সংযুক্ত হয়েছে।' });
+});
+
+app.delete('/api/v1/education/students/:studentId/guardians/:guardianPersonId', authenticate, requirePermission('MANAGE_EDUCATION_STUDENT'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const student = db.educationStudentProfiles.find(s => (s.id === req.params.studentId || s.studentId === req.params.studentId) && s.mosqueId === mosqueId);
+  if (!student) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'শিক্ষার্থী পাওয়া যায়নি।' } });
+  }
+
+  const index = db.educationGuardianRelationships.findIndex(
+    g => g.studentProfileId === student.id && (g.guardianPersonId === req.params.guardianPersonId || g.id === req.params.guardianPersonId) && g.mosqueId === mosqueId
+  );
+  if (index === -1) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'অভিভাবক সম্পর্ক রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  db.educationGuardianRelationships.splice(index, 1);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'DELETE',
+    'EDUCATION',
+    `শিক্ষার্থীর অভিভাবক সম্পর্ক অপসারণ করা হয়েছে (${student.studentId})`
+  );
+
+  res.json({ success: true, message: 'অভিভাবক সম্পর্ক অপসারণ করা হয়েছে।' });
+});
+
+// 6. Education Enrollments (ভর্তি ও জামাত নির্ধারণ)
+app.get('/api/v1/education/enrollments', authenticate, requirePermission('VIEW_EDUCATION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { studentProfileId, studentId, programType, levelId, status, teacherStaffId } = req.query;
+
+  let enrollments = db.educationEnrollments.filter(e => e.mosqueId === mosqueId);
+  if (studentProfileId && typeof studentProfileId === 'string') {
+    enrollments = enrollments.filter(e => e.studentProfileId === studentProfileId);
+  }
+  if (studentId && typeof studentId === 'string') {
+    enrollments = enrollments.filter(e => e.studentId === studentId);
+  }
+  if (programType && (programType === 'MAKTAB' || programType === 'HIFZKHANA')) {
+    enrollments = enrollments.filter(e => e.programType === programType);
+  }
+  if (levelId && typeof levelId === 'string') {
+    enrollments = enrollments.filter(e => e.levelId === levelId);
+  }
+  if (status && typeof status === 'string' && status !== 'ALL') {
+    enrollments = enrollments.filter(e => e.status === status);
+  }
+  if (teacherStaffId && typeof teacherStaffId === 'string') {
+    enrollments = enrollments.filter(e => e.teacherStaffId === teacherStaffId);
+  }
+
+  const populated = enrollments.map(e => {
+    const student = db.educationStudentProfiles.find(s => s.id === e.studentProfileId);
+    const prog = db.educationPrograms.find(p => p.id === e.programId);
+    const lvl = db.educationLevels.find(l => l.id === e.levelId);
+    const teacher = e.teacherStaffId ? db.staffList.find(st => st.id === e.teacherStaffId) : undefined;
+
+    return {
+      ...e,
+      studentName: student?.personName,
+      programNameBn: prog?.nameBn,
+      levelNameBn: lvl?.nameBn,
+      teacherName: teacher?.name,
+    };
+  });
+
+  populated.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  res.json({ success: true, data: populated });
+});
+
+app.get('/api/v1/education/enrollments/:id', authenticate, requirePermission('VIEW_EDUCATION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const enrollment = db.educationEnrollments.find(e => (e.id === req.params.id || e.enrollmentNumber === req.params.id) && e.mosqueId === mosqueId);
+  if (!enrollment) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ভর্তি রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  const student = db.educationStudentProfiles.find(s => s.id === enrollment.studentProfileId);
+  const prog = db.educationPrograms.find(p => p.id === enrollment.programId);
+  const lvl = db.educationLevels.find(l => l.id === enrollment.levelId);
+  const teacher = enrollment.teacherStaffId ? db.staffList.find(st => st.id === enrollment.teacherStaffId) : undefined;
+
+  res.json({
+    success: true,
+    data: {
+      ...enrollment,
+      studentName: student?.personName,
+      programNameBn: prog?.nameBn,
+      levelNameBn: lvl?.nameBn,
+      teacherName: teacher?.name,
+    }
+  });
+});
+
+app.post('/api/v1/education/enrollments', authenticate, requirePermission('MANAGE_EDUCATION_ENROLLMENT'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { studentProfileId, programId, levelId, admissionDate, startDate, teacherStaffId, shift, notes } = req.body;
+
+  if (!studentProfileId || !programId || !levelId) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'শিক্ষার্থী, শিক্ষা কার্যক্রম এবং জামাত/স্তর নির্বাচন আবশ্যক।' } });
+  }
+
+  const student = db.educationStudentProfiles.find(s => (s.id === studentProfileId || s.studentId === studentProfileId) && s.mosqueId === mosqueId);
+  if (!student || student.status === 'ARCHIVED') {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সক্রিয় শিক্ষার্থী প্রোফাইল পাওয়া যায়নি।' } });
+  }
+
+  const program = db.educationPrograms.find(p => p.id === programId && p.mosqueId === mosqueId);
+  if (!program || program.status === 'ARCHIVED') {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'শিক্ষা কার্যক্রম পাওয়া যায়নি।' } });
+  }
+
+  const level = db.educationLevels.find(l => l.id === levelId && l.mosqueId === mosqueId);
+  if (!level || level.status === 'ARCHIVED') {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'জামাত/স্তর পাওয়া যায়নি।' } });
+  }
+
+  if (level.programId !== program.id && level.programType !== program.type) {
+    return res.status(400).json({ success: false, error: { code: 'LEVEL_MISMATCH', message: 'নির্বাচিত জামাতটি সংশ্লিষ্ট শিক্ষা কার্যক্রমের অন্তর্ভুক্ত নয়।' } });
+  }
+
+  // Teacher verification from Staff & Payroll
+  if (teacherStaffId) {
+    const staff = db.staffList.find(s => s.id === teacherStaffId && s.mosqueId === mosqueId);
+    if (!staff) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'নির্ধারিত শিক্ষক স্টাফ ডাটাবেজে পাওয়া যায়নি।' } });
+    }
+  }
+
+  // Concurrency & Duplicate Active Enrollment Protection for the same program:
+  const conflictingActive = db.educationEnrollments.find(
+    e => e.studentProfileId === student.id && e.programType === program.type && e.mosqueId === mosqueId && e.status === 'ACTIVE'
+  );
+  if (conflictingActive) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: 'CONFLICTING_ENROLLMENT',
+        message: `শিক্ষার্থী ইতিমধ্যে এই প্রোগ্রামে সক্রিয়ভাবে ভর্তি আছেন (ভর্তি #${conflictingActive.enrollmentNumber})। নতুন জামাতে নিতে পূর্বেরটি সম্পন্ন বা প্রমোট করুন।`
+      }
+    });
+  }
+
+  const now = new Date().toISOString();
+  const enrollmentNumber = db.generateNextEnrollmentNumber(mosqueId);
+  const enrollment: EducationEnrollment = {
+    id: `enr-${mosqueId}-${Date.now()}`,
+    mosqueId,
+    enrollmentNumber,
+    studentProfileId: student.id,
+    studentId: student.studentId,
+    programId: program.id,
+    programType: program.type,
+    levelId: level.id,
+    admissionDate: admissionDate || student.admissionDate,
+    startDate: startDate || now.split('T')[0],
+    teacherStaffId: teacherStaffId || undefined,
+    status: 'ACTIVE',
+    shift: shift || 'MORNING',
+    notes: notes?.trim() || undefined,
+    createdAt: now,
+    updatedAt: now,
+    createdBy: req.user!.id,
+  };
+
+  db.educationEnrollments.unshift(enrollment);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'EDUCATION',
+    `শিক্ষার্থীর নতুন ভর্তি সম্পন্ন (${enrollmentNumber}): ${student.personName} -> ${program.nameBn} (${level.nameBn})`,
+    enrollment.id
+  );
+
+  res.status(201).json({ success: true, data: enrollment, message: 'ভর্তি সফলভাবে সম্পন্ন হয়েছে।' });
+});
+
+app.put('/api/v1/education/enrollments/:id', authenticate, requirePermission('MANAGE_EDUCATION_ENROLLMENT'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const enrollment = db.educationEnrollments.find(e => (e.id === req.params.id || e.enrollmentNumber === req.params.id) && e.mosqueId === mosqueId);
+  if (!enrollment) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ভর্তি রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  const { status, levelId, teacherStaffId, shift, endDate, notes } = req.body;
+
+  if (status && ['ACTIVE', 'COMPLETED', 'PROMOTED', 'TRANSFERRED', 'DROPPED', 'SUSPENDED'].includes(status)) {
+    enrollment.status = status;
+    if (status !== 'ACTIVE' && !endDate && !enrollment.endDate) {
+      enrollment.endDate = new Date().toISOString().split('T')[0];
+    }
+  }
+
+  if (levelId && levelId !== enrollment.levelId) {
+    const lvl = db.educationLevels.find(l => l.id === levelId && l.mosqueId === mosqueId);
+    if (lvl) {
+      enrollment.levelId = lvl.id;
+    }
+  }
+
+  if (teacherStaffId !== undefined) {
+    if (teacherStaffId) {
+      const staff = db.staffList.find(s => s.id === teacherStaffId && s.mosqueId === mosqueId);
+      if (staff) enrollment.teacherStaffId = staff.id;
+    } else {
+      enrollment.teacherStaffId = undefined;
+    }
+  }
+
+  if (shift) enrollment.shift = shift;
+  if (endDate !== undefined) enrollment.endDate = endDate;
+  if (notes !== undefined) enrollment.notes = notes?.trim() || undefined;
+  enrollment.updatedAt = new Date().toISOString();
+  enrollment.updatedBy = req.user!.id;
+
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'EDUCATION',
+    `ভর্তি রেকর্ড আপডেট করা হয়েছে (${enrollment.enrollmentNumber}): অবস্থা: ${enrollment.status}`,
+    enrollment.id
+  );
+
+  res.json({ success: true, data: enrollment, message: 'ভর্তি রেকর্ড সফলভাবে আপডেট হয়েছে।' });
+});
+
+// ==========================================
+// MAKTAB OPERATIONAL SUBSYSTEM (V2.6)
+// ==========================================
+
+// 1. Maktab Dashboard & Statistics
+app.get('/api/v1/maktab/dashboard-stats', authenticate, requirePermission('VIEW_MAKTAB'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const stats = db.getMaktabDashboardStats(mosqueId);
+  res.json({ success: true, data: stats });
+});
+
+// 2. Maktab Classes & Batches
+app.get('/api/v1/maktab/classes', authenticate, requirePermission('VIEW_MAKTAB'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  let classes = db.maktabClasses.filter(c => c.mosqueId === mosqueId);
+  if (classes.length === 0) {
+    const starters = getStarterMaktabClasses(mosqueId);
+    db.maktabClasses.push(...starters);
+    db.save();
+    classes = starters;
+  }
+
+  const populated = classes.map(c => {
+    const lvl = db.educationLevels.find(l => l.id === c.levelId && l.mosqueId === mosqueId);
+    const teacher = c.teacherStaffId ? db.staffList.find(s => s.id === c.teacherStaffId && s.mosqueId === mosqueId) : undefined;
+    const studentCount = db.educationEnrollments.filter(
+      e => e.mosqueId === mosqueId && e.levelId === c.levelId && e.status === 'ACTIVE'
+    ).length;
+
+    return {
+      ...c,
+      levelNameBn: lvl?.nameBn,
+      teacherName: teacher?.name,
+      teacherMobile: teacher?.phone,
+      activeStudentCount: studentCount,
+    };
+  });
+
+  res.json({ success: true, data: populated });
+});
+
+app.post('/api/v1/maktab/classes', authenticate, requirePermission('MANAGE_EDUCATION_SETTINGS'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { levelId, nameBn, nameEn, shift, teacherStaffId, room, maxCapacity } = req.body;
+
+  if (!levelId || !nameBn?.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'জামাত/স্তর ও ক্লাসের নাম আবশ্যক।' } });
+  }
+
+  const level = db.educationLevels.find(l => l.id === levelId && l.mosqueId === mosqueId);
+  if (!level) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সংশ্লিষ্ট শিক্ষা জামাত পাওয়া যায়নি।' } });
+  }
+
+  if (teacherStaffId) {
+    const staff = db.staffList.find(s => s.id === teacherStaffId && s.mosqueId === mosqueId);
+    if (!staff) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'নির্বাচিত শিক্ষক স্টাফ তালিকায় পাওয়া যায়নি।' } });
+    }
+  }
+
+  const now = new Date().toISOString();
+  const newClass: MaktabClass = {
+    id: `cls-${mosqueId}-${Date.now()}`,
+    mosqueId,
+    levelId: level.id,
+    levelCode: level.code,
+    nameBn: nameBn.trim(),
+    nameEn: nameEn?.trim() || nameBn.trim(),
+    shift: shift || 'MORNING',
+    teacherStaffId: teacherStaffId || undefined,
+    room: room?.trim() || undefined,
+    maxCapacity: typeof maxCapacity === 'number' ? maxCapacity : 30,
+    status: 'ACTIVE',
+    createdAt: now,
+    updatedAt: now,
+    createdBy: req.user!.id,
+  };
+
+  db.maktabClasses.push(newClass);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'MAKTAB',
+    `নতুন মক্তব জামাত/ব্যাচ তৈরি করা হয়েছে: ${newClass.nameBn} (${level.nameBn})`,
+    newClass.id
+  );
+
+  res.status(201).json({ success: true, data: newClass, message: 'মক্তব জামাত/ব্যাচ সফলভাবে তৈরি হয়েছে।' });
+});
+
+app.put('/api/v1/maktab/classes/:id', authenticate, requirePermission('MANAGE_EDUCATION_SETTINGS'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const cls = db.maktabClasses.find(c => c.id === req.params.id && c.mosqueId === mosqueId);
+  if (!cls) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'মক্তব জামাত পাওয়া যায়নি।' } });
+  }
+
+  const { nameBn, nameEn, shift, teacherStaffId, room, maxCapacity, status } = req.body;
+  if (nameBn) cls.nameBn = nameBn.trim();
+  if (nameEn) cls.nameEn = nameEn.trim();
+  if (shift) cls.shift = shift;
+  if (teacherStaffId !== undefined) {
+    if (teacherStaffId) {
+      const staff = db.staffList.find(s => s.id === teacherStaffId && s.mosqueId === mosqueId);
+      if (staff) cls.teacherStaffId = staff.id;
+    } else {
+      cls.teacherStaffId = undefined;
+    }
+  }
+  if (room !== undefined) cls.room = room?.trim() || undefined;
+  if (typeof maxCapacity === 'number') cls.maxCapacity = maxCapacity;
+  if (status && (status === 'ACTIVE' || status === 'INACTIVE')) cls.status = status;
+  cls.updatedAt = new Date().toISOString();
+
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'MAKTAB',
+    `মক্তব জামাত আপডেট করা হয়েছে: ${cls.nameBn}`,
+    cls.id
+  );
+
+  res.json({ success: true, data: cls, message: 'মক্তব জামাত সফলভাবে আপডেট হয়েছে।' });
+});
+
+// 3. Maktab Attendance (শিক্ষার্থী হাজিরা)
+app.get('/api/v1/maktab/attendance', authenticate, requirePermission('VIEW_MAKTAB'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { date, classId, levelId, studentProfileId, studentId, month } = req.query;
+
+  let attendances = db.maktabAttendances.filter(a => a.mosqueId === mosqueId);
+  if (date && typeof date === 'string') {
+    attendances = attendances.filter(a => a.date === date);
+  }
+  if (month && typeof month === 'string') {
+    attendances = attendances.filter(a => a.date.startsWith(month));
+  }
+  if (classId && typeof classId === 'string') {
+    attendances = attendances.filter(a => a.classId === classId);
+  }
+  if (levelId && typeof levelId === 'string') {
+    attendances = attendances.filter(a => a.levelId === levelId);
+  }
+  if (studentProfileId && typeof studentProfileId === 'string') {
+    attendances = attendances.filter(a => a.studentProfileId === studentProfileId);
+  }
+  if (studentId && typeof studentId === 'string') {
+    attendances = attendances.filter(a => a.studentId === studentId);
+  }
+
+  const populated = attendances.map(a => {
+    const student = db.educationStudentProfiles.find(s => s.id === a.studentProfileId);
+    const cls = a.classId ? db.maktabClasses.find(c => c.id === a.classId) : undefined;
+    const lvl = a.levelId ? db.educationLevels.find(l => l.id === a.levelId) : undefined;
+
+    return {
+      ...a,
+      studentName: student?.personName,
+      classNameBn: cls?.nameBn,
+      levelNameBn: lvl?.nameBn,
+    };
+  });
+
+  populated.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  res.json({ success: true, data: populated });
+});
+
+// Single student attendance with duplicate prevention
+app.post('/api/v1/maktab/attendance', authenticate, requirePermission('MANAGE_MAKTAB_ATTENDANCE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { studentProfileId, date, status, classId, levelId, notes } = req.body;
+
+  if (!studentProfileId || !date || !status) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'শিক্ষার্থী, তারিখ ও হাজিরার অবস্থা আবশ্যক।' } });
+  }
+
+  const student = db.educationStudentProfiles.find(s => (s.id === studentProfileId || s.studentId === studentProfileId) && s.mosqueId === mosqueId);
+  if (!student) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'শিক্ষার্থী প্রোফাইল পাওয়া যায়নি।' } });
+  }
+
+  // Duplicate attendance guard: Same student + same date
+  const existing = db.maktabAttendances.find(
+    a => a.mosqueId === mosqueId && a.studentProfileId === student.id && a.date === date
+  );
+
+  const now = new Date().toISOString();
+  if (existing) {
+    // Attendance correction
+    existing.status = status;
+    if (classId) existing.classId = classId;
+    if (levelId) existing.levelId = levelId;
+    if (notes !== undefined) existing.notes = notes?.trim() || undefined;
+    existing.updatedAt = now;
+    existing.recordedBy = req.user!.id;
+    existing.recordedByName = req.user!.name;
+
+    db.save();
+    db.logAudit(
+      mosqueId,
+      req.user!.id,
+      req.user!.name,
+      req.user!.role,
+      'UPDATE',
+      'MAKTAB',
+      `শিক্ষার্থীর হাজিরা সংশোধন (${student.studentId} - ${date}): ${status}`,
+      existing.id
+    );
+
+    return res.json({ success: true, data: existing, message: 'হাজিরা সফলভাবে সংশোধন করা হয়েছে।' });
+  }
+
+  const record: MaktabAttendance = {
+    id: `att-${mosqueId}-${Date.now()}`,
+    mosqueId,
+    studentProfileId: student.id,
+    studentId: student.studentId,
+    classId: classId || undefined,
+    levelId: levelId || undefined,
+    date,
+    status,
+    notes: notes?.trim() || undefined,
+    recordedBy: req.user!.id,
+    recordedByName: req.user!.name,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  db.maktabAttendances.push(record);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'MAKTAB',
+    `শিক্ষার্থীর হাজিরা লিপিবদ্ধ (${student.studentId} - ${date}): ${status}`,
+    record.id
+  );
+
+  res.status(201).json({ success: true, data: record, message: 'হাজিরা সফলভাবে লিপিবদ্ধ হয়েছে।' });
+});
+
+// Bulk attendance submission for a class/date
+app.post('/api/v1/maktab/attendance/bulk', authenticate, requirePermission('MANAGE_MAKTAB_ATTENDANCE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { date, classId, levelId, records } = req.body;
+
+  if (!date || !Array.isArray(records) || records.length === 0) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'তারিখ ও হাজিরার তালিকা আবশ্যক।' } });
+  }
+
+  const now = new Date().toISOString();
+  let createdCount = 0;
+  let updatedCount = 0;
+
+  for (const item of records) {
+    if (!item.studentProfileId || !item.status) continue;
+    const student = db.educationStudentProfiles.find(s => (s.id === item.studentProfileId || s.studentId === item.studentProfileId) && s.mosqueId === mosqueId);
+    if (!student) continue;
+
+    const existing = db.maktabAttendances.find(
+      a => a.mosqueId === mosqueId && a.studentProfileId === student.id && a.date === date
+    );
+
+    if (existing) {
+      existing.status = item.status;
+      if (classId) existing.classId = classId;
+      if (levelId) existing.levelId = levelId;
+      if (item.notes !== undefined) existing.notes = item.notes?.trim() || undefined;
+      existing.updatedAt = now;
+      existing.recordedBy = req.user!.id;
+      existing.recordedByName = req.user!.name;
+      updatedCount++;
+    } else {
+      const newAtt: MaktabAttendance = {
+        id: `att-${mosqueId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        mosqueId,
+        studentProfileId: student.id,
+        studentId: student.studentId,
+        classId: classId || undefined,
+        levelId: levelId || undefined,
+        date,
+        status: item.status,
+        notes: item.notes?.trim() || undefined,
+        recordedBy: req.user!.id,
+        recordedByName: req.user!.name,
+        createdAt: now,
+        updatedAt: now,
+      };
+      db.maktabAttendances.push(newAtt);
+      createdCount++;
+    }
+  }
+
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'MAKTAB',
+    `মক্তব বাল্ক হাজিরা সম্পন্ন (${date}): নতুন ${createdCount}, আপডেট ${updatedCount}`
+  );
+
+  res.json({
+    success: true,
+    data: { createdCount, updatedCount, totalProcessed: createdCount + updatedCount },
+    message: `হাজিরা সফলভাবে সংরক্ষণ হয়েছে (নতুন: ${createdCount}, সংশোধিত: ${updatedCount})।`
+  });
+});
+
+// 4. Teacher Responsibilities (শিক্ষক ও দায়িত্ব)
+app.get('/api/v1/maktab/teachers', authenticate, requirePermission('VIEW_MAKTAB'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const assignments = db.maktabTeacherAssignments.filter(t => t.mosqueId === mosqueId);
+
+  const populated = assignments.map(t => {
+    const staff = db.staffList.find(s => s.id === t.staffId && s.mosqueId === mosqueId);
+    const cls = t.classId ? db.maktabClasses.find(c => c.id === t.classId) : undefined;
+    const lvl = t.levelId ? db.educationLevels.find(l => l.id === t.levelId) : undefined;
+
+    return {
+      ...t,
+      staffName: staff?.name,
+      staffDesignation: staff?.designation,
+      staffMobile: staff?.phone,
+      classNameBn: cls?.nameBn,
+      levelNameBn: lvl?.nameBn,
+    };
+  });
+
+  // Also include available staff for assignments
+  const availableStaff = db.staffList.filter(s => s.mosqueId === mosqueId && s.status === 'ACTIVE').map(s => ({
+    id: s.id,
+    name: s.name,
+    designation: s.designation,
+    mobile: s.phone,
+  }));
+
+  res.json({ success: true, data: { assignments: populated, availableStaff } });
+});
+
+app.post('/api/v1/maktab/teachers', authenticate, requirePermission('MANAGE_EDUCATION_SETTINGS'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { staffId, classId, levelId, role, effectiveFrom, notes } = req.body;
+
+  if (!staffId) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'শিক্ষক (স্টাফ) নির্বাচন আবশ্যক।' } });
+  }
+
+  const staff = db.staffList.find(s => s.id === staffId && s.mosqueId === mosqueId);
+  if (!staff) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'নির্বাচিত শিক্ষক স্টাফ ডাটাবেজে পাওয়া যায়নি।' } });
+  }
+
+  const now = new Date().toISOString();
+  const assignment: MaktabTeacherAssignment = {
+    id: `tch-${mosqueId}-${Date.now()}`,
+    mosqueId,
+    staffId: staff.id,
+    classId: classId || undefined,
+    levelId: levelId || undefined,
+    role: role || 'HEAD_TEACHER',
+    effectiveFrom: effectiveFrom || now.split('T')[0],
+    status: 'ACTIVE',
+    notes: notes?.trim() || undefined,
+    createdAt: now,
+    updatedAt: now,
+    createdBy: req.user!.id,
+  };
+
+  db.maktabTeacherAssignments.push(assignment);
+
+  // If assigned to a class, update class's teacherStaffId
+  if (classId) {
+    const cls = db.maktabClasses.find(c => c.id === classId && c.mosqueId === mosqueId);
+    if (cls) cls.teacherStaffId = staff.id;
+  }
+
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'MAKTAB',
+    `মক্তব শিক্ষক দায়িত্ব নির্ধারণ: ${staff.name} (${assignment.role})`,
+    assignment.id
+  );
+
+  res.status(201).json({ success: true, data: assignment, message: 'শিক্ষক দায়িত্ব সফলভাবে যুক্ত হয়েছে।' });
+});
+
+// 5. Maktab Student Fees & Canonical Finance Posting (Zero Shadow Ledger)
+app.get('/api/v1/maktab/fees/schedules', authenticate, requirePermission('VIEW_MAKTAB'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  let schedules = db.maktabFeeSchedules.filter(s => s.mosqueId === mosqueId && s.status !== 'INACTIVE');
+  if (schedules.length === 0) {
+    const starters = getStarterMaktabFeeSchedules(mosqueId);
+    db.maktabFeeSchedules.push(...starters);
+    db.save();
+    schedules = starters;
+  }
+  res.json({ success: true, data: schedules });
+});
+
+app.post('/api/v1/maktab/fees/schedules', authenticate, requirePermission('MANAGE_MAKTAB_FEES'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { titleBn, titleEn, defaultAmount, frequency, levelId } = req.body;
+
+  if (!titleBn?.trim() || typeof defaultAmount !== 'number' || defaultAmount <= 0) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'ফি বিবরণ ও টাকার পরিমাণ আবশ্যক।' } });
+  }
+
+  const now = new Date().toISOString();
+  const schedule: MaktabFeeSchedule = {
+    id: `fee-sch-${mosqueId}-${Date.now()}`,
+    mosqueId,
+    titleBn: titleBn.trim(),
+    titleEn: titleEn?.trim() || titleBn.trim(),
+    defaultAmount,
+    frequency: frequency || 'MONTHLY',
+    levelId: levelId || undefined,
+    status: 'ACTIVE',
+    createdAt: now,
+    updatedAt: now,
+    createdBy: req.user!.id,
+  };
+
+  db.maktabFeeSchedules.push(schedule);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'MAKTAB',
+    `নতুন ফি কাঠামো তৈরি: ${schedule.titleBn} (৳ ${schedule.defaultAmount})`,
+    schedule.id
+  );
+
+  res.status(201).json({ success: true, data: schedule, message: 'ফি কাঠামো সফলভাবে তৈরি হয়েছে।' });
+});
+
+app.get('/api/v1/maktab/fees/records', authenticate, requirePermission('VIEW_MAKTAB'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { studentProfileId, studentId, billingMonth, status } = req.query;
+
+  let records = db.maktabFeeRecords.filter(f => f.mosqueId === mosqueId);
+  if (studentProfileId && typeof studentProfileId === 'string') {
+    records = records.filter(f => f.studentProfileId === studentProfileId);
+  }
+  if (studentId && typeof studentId === 'string') {
+    records = records.filter(f => f.studentId === studentId);
+  }
+  if (billingMonth && typeof billingMonth === 'string') {
+    records = records.filter(f => f.billingMonth === billingMonth);
+  }
+  if (status && typeof status === 'string' && status !== 'ALL') {
+    records = records.filter(f => f.status === status);
+  }
+
+  const populated = records.map(f => {
+    const student = db.educationStudentProfiles.find(s => s.id === f.studentProfileId);
+    return {
+      ...f,
+      studentName: student?.personName || f.studentName,
+    };
+  });
+
+  populated.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  res.json({ success: true, data: populated });
+});
+
+// Generate monthly fee records for active students
+app.post('/api/v1/maktab/fees/generate-monthly', authenticate, requirePermission('MANAGE_MAKTAB_FEES'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { feeScheduleId, billingMonth } = req.body;
+
+  if (!feeScheduleId || !billingMonth) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'ফি কাঠামো ও বিলিং মাস (YYYY-MM) আবশ্যক।' } });
+  }
+
+  const schedule = db.maktabFeeSchedules.find(s => s.id === feeScheduleId && s.mosqueId === mosqueId);
+  if (!schedule) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ফি কাঠামো পাওয়া যায়নি।' } });
+  }
+
+  // Active Maktab students
+  const activeEnrollments = db.educationEnrollments.filter(e => e.mosqueId === mosqueId && e.programType === 'MAKTAB' && e.status === 'ACTIVE');
+  const activeStudents = db.educationStudentProfiles.filter(
+    s => s.mosqueId === mosqueId && s.status === 'ACTIVE' && activeEnrollments.some(e => e.studentProfileId === s.id)
+  );
+
+  const now = new Date().toISOString();
+  let generatedCount = 0;
+  let skippedCount = 0;
+
+  for (const student of activeStudents) {
+    const existing = db.maktabFeeRecords.find(
+      f => f.mosqueId === mosqueId && f.studentProfileId === student.id && f.feeScheduleId === schedule.id && f.billingMonth === billingMonth
+    );
+    if (existing) {
+      skippedCount++;
+      continue;
+    }
+
+    const feeRecord: MaktabFeeRecord = {
+      id: `fee-${mosqueId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      mosqueId,
+      studentProfileId: student.id,
+      studentId: student.studentId,
+      studentName: student.personName,
+      feeScheduleId: schedule.id,
+      feeTitle: schedule.titleBn,
+      billingMonth,
+      amount: schedule.defaultAmount,
+      discount: 0,
+      netPayable: schedule.defaultAmount,
+      paidAmount: 0,
+      dueAmount: schedule.defaultAmount,
+      status: 'UNPAID',
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    db.maktabFeeRecords.push(feeRecord);
+    generatedCount++;
+  }
+
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'MAKTAB',
+    `মাসিক ফি বিলিং সম্পন্ন (${schedule.titleBn} - ${billingMonth}): তৈরি ${generatedCount}, স্কিপ ${skippedCount}`
+  );
+
+  res.json({
+    success: true,
+    data: { generatedCount, skippedCount, totalStudents: activeStudents.length },
+    message: `${generatedCount} জন শিক্ষার্থীর জন্য মাসিক ফি রেকর্ড সফলভাবে তৈরি হয়েছে।`
+  });
+});
+
+// Canonical Fee Payment Collection -> Posts directly to E1-E6 IncomeEntry
+app.post('/api/v1/maktab/fees/:id/collect', authenticate, requirePermission('MANAGE_MAKTAB_FEES'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const feeRecord = db.maktabFeeRecords.find(f => f.id === req.params.id && f.mosqueId === mosqueId);
+  if (!feeRecord) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ফি রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  if (feeRecord.status === 'PAID') {
+    return res.status(400).json({ success: false, error: { code: 'ALREADY_PAID', message: 'এই ফি রেকর্ড ইতিমধ্যে সম্পূর্ণ পরিশোধিত।' } });
+  }
+
+  const { paidAmount, paymentMethod, accountId, receiptNo, notes } = req.body;
+  const numPaid = Number(paidAmount);
+  if (!numPaid || numPaid <= 0) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_AMOUNT', message: 'আদায়কৃত টাকার পরিমাণ শূন্যের চেয়ে বেশি হতে হবে।' } });
+  }
+
+  if (numPaid > feeRecord.dueAmount) {
+    return res.status(400).json({ success: false, error: { code: 'EXCESS_AMOUNT', message: `বকেয়া টাকার চেয়ে বেশি আদায় সম্ভব নয় (বকেয়া: ৳ ${feeRecord.dueAmount})।` } });
+  }
+
+  // Canonical account resolution
+  const account = (accountId ? db.accounts.find(a => a.id === accountId && a.mosqueId === mosqueId) : undefined) ||
+    db.accounts.find(a => a.mosqueId === mosqueId && a.isDefault) ||
+    db.accounts.find(a => a.mosqueId === mosqueId);
+
+  const student = db.educationStudentProfiles.find(s => s.id === feeRecord.studentProfileId);
+  const now = new Date().toISOString();
+  const year = new Date().getFullYear();
+  const incCount = db.incomeEntries.filter(i => i.mosqueId === mosqueId).length + 1;
+  const voucherNumber = `INC-${year}-${String(incCount).padStart(6, '0')}`;
+
+  // 1. POST TO CANONICAL FINANCE ENGINE (E1-E6)
+  const canonicalIncome = {
+    id: `inc-maktab-${Date.now()}`,
+    mosqueId,
+    voucherNumber,
+    date: now.split('T')[0],
+    mainHeadId: 'head-maktab-fee',
+    mainHeadNameBn: 'মক্তব ও শিক্ষা ফি',
+    amount: numPaid,
+    paymentMethod: paymentMethod || 'CASH',
+    accountId: account?.id || 'acc-cash-01',
+    accountName: account?.nameBn || 'প্রধান ক্যাশ',
+    donorName: student?.personName || feeRecord.studentName || 'মক্তব শিক্ষার্থী',
+    reference: feeRecord.studentId, // STU-000001
+    description: `মক্তব ফি আদায়: ${feeRecord.feeTitle} (${feeRecord.billingMonth || 'সাধারণ'}) - শিক্ষার্থী: ${student?.personName || feeRecord.studentName} (${feeRecord.studentId})`,
+    createdBy: req.user!.id,
+    createdByName: req.user!.name,
+    status: 'APPROVED' as const,
+    approvedBy: req.user!.id,
+    approvedByName: req.user!.name,
+    approvedAt: now,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  // Update canonical financial balance
+  if (account) {
+    account.currentBalance += numPaid;
+  }
+  db.incomeEntries.unshift(canonicalIncome);
+
+  // 2. UPDATE MAKTAB FEE RECORD
+  feeRecord.paidAmount += numPaid;
+  feeRecord.dueAmount = Math.max(0, feeRecord.netPayable - feeRecord.paidAmount);
+  feeRecord.status = feeRecord.dueAmount === 0 ? 'PAID' : 'PARTIAL';
+  feeRecord.canonicalIncomeEntryId = canonicalIncome.id;
+  feeRecord.canonicalVoucherNumber = canonicalIncome.voucherNumber;
+  feeRecord.paidAt = now;
+  feeRecord.paymentMethod = paymentMethod || 'CASH';
+  feeRecord.accountId = account?.id;
+  feeRecord.accountName = account?.nameBn;
+  feeRecord.receiptNo = receiptNo || voucherNumber;
+  feeRecord.notes = notes?.trim() || feeRecord.notes;
+  feeRecord.collectedBy = req.user!.id;
+  feeRecord.collectedByName = req.user!.name;
+  feeRecord.updatedAt = now;
+
+  db.save();
+
+  // Audit in canonical finance and maktab
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'INCOME',
+    `মক্তব ফি আদায় ভাউচার (${voucherNumber}): ৳ ${numPaid} [${feeRecord.studentId}]`,
+    canonicalIncome.id
+  );
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'MAKTAB',
+    `মক্তব ফি আদায় সম্পন্ন (${feeRecord.studentId}): ৳ ${numPaid}, ভাউচার #${voucherNumber}`,
+    feeRecord.id
+  );
+
+  // Broadcast canonical finance update
+  realtime.broadcastToMosque(mosqueId, 'INCOME_CREATED', canonicalIncome, { senderId: req.user!.id });
+  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+  res.json({
+    success: true,
+    data: { feeRecord, canonicalIncome },
+    message: `ফি আদায় সফল হয়েছে এবং মূল হিসাবের ${account?.nameBn || 'ক্যাশ'} তহবিলে ৳ ${numPaid} জমা হয়েছে (ভাউচার: ${voucherNumber})।`
+  });
+});
+
+// 6. Maktab Student Progress (পাঠ অগ্রগতি ও মূল্যায়ন)
+app.get('/api/v1/maktab/progress', authenticate, requirePermission('VIEW_MAKTAB'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { studentProfileId, studentId, levelId, levelCode, status } = req.query;
+
+  let progressList = db.maktabProgressRecords.filter(p => p.mosqueId === mosqueId);
+  if (studentProfileId && typeof studentProfileId === 'string') {
+    progressList = progressList.filter(p => p.studentProfileId === studentProfileId);
+  }
+  if (studentId && typeof studentId === 'string') {
+    progressList = progressList.filter(p => p.studentId === studentId);
+  }
+  if (levelId && typeof levelId === 'string') {
+    progressList = progressList.filter(p => p.levelId === levelId);
+  }
+  if (levelCode && typeof levelCode === 'string') {
+    progressList = progressList.filter(p => p.levelCode === levelCode);
+  }
+  if (status && typeof status === 'string' && status !== 'ALL') {
+    progressList = progressList.filter(p => p.status === status);
+  }
+
+  const populated = progressList.map(p => {
+    const student = db.educationStudentProfiles.find(s => s.id === p.studentProfileId);
+    const lvl = db.educationLevels.find(l => l.id === p.levelId);
+    const teacher = p.teacherStaffId ? db.staffList.find(s => s.id === p.teacherStaffId) : undefined;
+
+    return {
+      ...p,
+      studentName: student?.personName || p.studentName,
+      levelNameBn: lvl?.nameBn,
+      teacherName: teacher?.name || p.teacherName,
+    };
+  });
+
+  populated.sort((a, b) => new Date(b.assessmentDate).getTime() - new Date(a.assessmentDate).getTime());
+  res.json({ success: true, data: populated });
+});
+
+app.post('/api/v1/maktab/progress', authenticate, requirePermission('MANAGE_MAKTAB_PROGRESS'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const {
+    studentProfileId,
+    levelId,
+    levelCode,
+    assessmentDate,
+    qaidaLesson,
+    amparaSurah,
+    nazeraPara,
+    nazeraPage,
+    deeniyatTopic,
+    status,
+    overallGrade,
+    teacherStaffId,
+    teacherRemarks,
+    nextTarget,
+  } = req.body;
+
+  if (!studentProfileId || !levelId || !assessmentDate) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'শিক্ষার্থী, স্তর ও মূল্যায়নের তারিখ আবশ্যক।' } });
+  }
+
+  const student = db.educationStudentProfiles.find(s => (s.id === studentProfileId || s.studentId === studentProfileId) && s.mosqueId === mosqueId);
+  if (!student) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'শিক্ষার্থী প্রোফাইল পাওয়া যায়নি।' } });
+  }
+
+  const level = db.educationLevels.find(l => l.id === levelId && l.mosqueId === mosqueId);
+  if (!level) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'শিক্ষা জামাত পাওয়া যায়নি।' } });
+  }
+
+  let teacherName: string | undefined;
+  if (teacherStaffId) {
+    const staff = db.staffList.find(s => s.id === teacherStaffId && s.mosqueId === mosqueId);
+    if (staff) teacherName = staff.name;
+  }
+
+  const now = new Date().toISOString();
+  const progressRecord: MaktabStudentProgress = {
+    id: `prg-${mosqueId}-${Date.now()}`,
+    mosqueId,
+    studentProfileId: student.id,
+    studentId: student.studentId,
+    studentName: student.personName,
+    levelId: level.id,
+    levelCode: levelCode || level.code,
+    assessmentDate,
+    qaidaLesson: qaidaLesson?.trim() || undefined,
+    amparaSurah: amparaSurah?.trim() || undefined,
+    nazeraPara: typeof nazeraPara === 'number' ? nazeraPara : undefined,
+    nazeraPage: typeof nazeraPage === 'number' ? nazeraPage : undefined,
+    deeniyatTopic: deeniyatTopic?.trim() || undefined,
+    status: status || 'IN_PROGRESS',
+    overallGrade: overallGrade || 'A',
+    teacherStaffId: teacherStaffId || undefined,
+    teacherName,
+    teacherRemarks: teacherRemarks?.trim() || undefined,
+    nextTarget: nextTarget?.trim() || undefined,
+    evaluatedBy: req.user!.id,
+    evaluatedByName: req.user!.name,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  db.maktabProgressRecords.unshift(progressRecord);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'MAKTAB',
+    `মক্তব পাঠ অগ্রগতি লিপিবদ্ধ (${student.studentId}): ${level.nameBn} - গ্রেড: ${progressRecord.overallGrade}`,
+    progressRecord.id
+  );
+
+  res.status(201).json({ success: true, data: progressRecord, message: 'পাঠ অগ্রগতি রেকর্ড সফলভাবে সংরক্ষিত হয়েছে।' });
+});
+
+// 7. Maktab Comprehensive Reports Summary Data
+app.get('/api/v1/maktab/reports/summary', authenticate, requirePermission('VIEW_MAKTAB'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { fromDate, toDate, levelId, shift } = req.query;
+
+  // Active students
+  let students = db.educationStudentProfiles.filter(s => s.mosqueId === mosqueId && s.status !== 'ARCHIVED');
+  const enrollments = db.educationEnrollments.filter(e => e.mosqueId === mosqueId && e.programType === 'MAKTAB');
+  const classes = db.maktabClasses.filter(c => c.mosqueId === mosqueId);
+  const attendances = db.maktabAttendances.filter(a => a.mosqueId === mosqueId);
+  const feeRecords = db.maktabFeeRecords.filter(f => f.mosqueId === mosqueId);
+  const progressRecords = db.maktabProgressRecords.filter(p => p.mosqueId === mosqueId);
+  const levels = db.educationLevels.filter(l => l.mosqueId === mosqueId && l.programType === 'MAKTAB');
+
+  res.json({
+    success: true,
+    data: {
+      studentsCount: students.length,
+      activeEnrollmentsCount: enrollments.filter(e => e.status === 'ACTIVE').length,
+      classesCount: classes.length,
+      totalAttendanceRecords: attendances.length,
+      totalFeesBilled: feeRecords.reduce((s, f) => s + (f.netPayable || 0), 0),
+      totalFeesCollected: feeRecords.reduce((s, f) => s + (f.paidAmount || 0), 0),
+      totalFeesDue: feeRecords.reduce((s, f) => s + (f.dueAmount || 0), 0),
+      progressAssessmentsCount: progressRecords.length,
+      levels,
+    }
+  });
+});
+
+// ==========================================
+// 6. HIFZKHANA — H1 FOUNDATION API ENDPOINTS
+// ==========================================
+
+// 6.1 Get Hifz Levels (Stages: BEGINNER, INTERMEDIATE, ADVANCED, COMPLETION)
+app.get('/api/v1/hifz/levels', authenticate, requirePermission('VIEW_HIFZ'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const levels = db.getHifzLevels(mosqueId);
+  res.json({ success: true, data: levels });
+});
+
+// 6.2 Get Hifz Curricula (FULL_QURAN_HIFZ, SELECTED_SURAHS, JUZ_BASED_HIFZ)
+app.get('/api/v1/hifz/curricula', authenticate, requirePermission('VIEW_HIFZ'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const curricula = db.getHifzCurricula(mosqueId);
+  res.json({ success: true, data: curricula });
+});
+
+// 6.3 Get Eligible Students for Hifz (From EducationStudentProfile)
+app.get('/api/v1/hifz/eligible-students', authenticate, requirePermission('VIEW_HIFZ'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const students = db.educationStudentProfiles.filter(s => s.mosqueId === mosqueId && s.status !== 'ARCHIVED');
+  res.json({ success: true, data: students });
+});
+
+// 6.4 Get Eligible Ustads for Hifz (From Staff & Payroll)
+app.get('/api/v1/hifz/eligible-ustads', authenticate, requirePermission('VIEW_HIFZ'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const ustads = db.staffList.filter(s => s.mosqueId === mosqueId && s.status === 'ACTIVE');
+  res.json({ success: true, data: ustads });
+});
+
+// 6.5 Get Hifz Enrollments (Listing with Populated Data)
+app.get('/api/v1/hifz/enrollments', authenticate, requirePermission('VIEW_HIFZ'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { studentProfileId, status, levelId, curriculumId, studyType, search } = req.query;
+
+  let enrollments = db.hifzEnrollments.filter(e => e.mosqueId === mosqueId);
+
+  if (studentProfileId && typeof studentProfileId === 'string') {
+    enrollments = enrollments.filter(e => e.studentProfileId === studentProfileId || e.studentId === studentProfileId);
+  }
+  if (status && typeof status === 'string' && status !== 'ALL') {
+    enrollments = enrollments.filter(e => e.status === status);
+  }
+  if (levelId && typeof levelId === 'string' && levelId !== 'ALL') {
+    enrollments = enrollments.filter(e => e.currentLevelId === levelId || e.startLevelId === levelId);
+  }
+  if (curriculumId && typeof curriculumId === 'string' && curriculumId !== 'ALL') {
+    enrollments = enrollments.filter(e => e.curriculumId === curriculumId);
+  }
+  if (studyType && typeof studyType === 'string' && studyType !== 'ALL') {
+    enrollments = enrollments.filter(e => e.studyType === studyType);
+  }
+
+  const levels = db.getHifzLevels(mosqueId);
+  const curricula = db.getHifzCurricula(mosqueId);
+
+  const populated = enrollments.map(e => {
+    const student = db.educationStudentProfiles.find(s => s.id === e.studentProfileId && s.mosqueId === mosqueId);
+    const level = levels.find(l => l.id === e.currentLevelId);
+    const curriculum = curricula.find(c => c.id === e.curriculumId);
+    const ustad = e.primaryUstadId ? db.staffList.find(s => s.id === e.primaryUstadId && s.mosqueId === mosqueId) : undefined;
+
+    return {
+      ...e,
+      studentName: student?.personName || e.studentName,
+      studentId: student?.studentId || e.studentId,
+      levelNameBn: level?.nameBn || e.levelNameBn,
+      curriculumNameBn: curriculum?.nameBn || e.curriculumNameBn,
+      primaryUstadName: ustad?.name || e.primaryUstadName,
+    };
+  });
+
+  if (search && typeof search === 'string') {
+    const q = search.toLowerCase();
+    const filtered = populated.filter(e =>
+      e.enrollmentId.toLowerCase().includes(q) ||
+      (e.studentId && e.studentId.toLowerCase().includes(q)) ||
+      (e.studentName && e.studentName.toLowerCase().includes(q)) ||
+      (e.remarks && e.remarks.toLowerCase().includes(q))
+    );
+    return res.json({ success: true, data: filtered });
+  }
+
+  populated.sort((a, b) => new Date(b.admissionDate).getTime() - new Date(a.admissionDate).getTime());
+  res.json({ success: true, data: populated });
+});
+
+// 6.6 Get Single Hifz Enrollment Detail
+app.get('/api/v1/hifz/enrollments/:id', authenticate, requirePermission('VIEW_HIFZ'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const enrollment = db.hifzEnrollments.find(e => (e.id === req.params.id || e.enrollmentId === req.params.id) && e.mosqueId === mosqueId);
+  if (!enrollment) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'হিফজ ভর্তি রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  const student = db.educationStudentProfiles.find(s => s.id === enrollment.studentProfileId && s.mosqueId === mosqueId);
+  const levels = db.getHifzLevels(mosqueId);
+  const curricula = db.getHifzCurricula(mosqueId);
+  const level = levels.find(l => l.id === enrollment.currentLevelId);
+  const curriculum = curricula.find(c => c.id === enrollment.curriculumId);
+  const ustad = enrollment.primaryUstadId ? db.staffList.find(s => s.id === enrollment.primaryUstadId && s.mosqueId === mosqueId) : undefined;
+
+  const populated = {
+    ...enrollment,
+    studentName: student?.personName || enrollment.studentName,
+    studentId: student?.studentId || enrollment.studentId,
+    levelNameBn: level?.nameBn || enrollment.levelNameBn,
+    curriculumNameBn: curriculum?.nameBn || enrollment.curriculumNameBn,
+    primaryUstadName: ustad?.name || enrollment.primaryUstadName,
+    studentProfile: student,
+  };
+
+  res.json({ success: true, data: populated });
+});
+
+// 6.7 Create Hifz Enrollment (H1 Foundation)
+app.post('/api/v1/hifz/enrollments', authenticate, requirePermission('MANAGE_HIFZ_STUDENTS'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const {
+    studentProfileId,
+    admissionDate,
+    startLevelId,
+    currentLevelId,
+    curriculumId,
+    primaryUstadId,
+    studyType,
+    startJuz,
+    target,
+    completionDate,
+    remarks,
+  } = req.body;
+
+  if (!studentProfileId || !currentLevelId || !curriculumId || !admissionDate) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: 'শিক্ষার্থী, স্তর, পাঠ্যক্রম ও ভর্তির তারিখ আবশ্যক।' }
+    });
+  }
+
+  // 1. Authoritative Student Lookup
+  const student = db.educationStudentProfiles.find(
+    s => (s.id === studentProfileId || s.studentId === studentProfileId) && s.mosqueId === mosqueId
+  );
+  if (!student) {
+    return res.status(404).json({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'শিক্ষার্থী প্রোফাইল পাওয়া যায়নি বা বর্তমান মসজিদের অন্তর্ভুক্ত নয়।' }
+    });
+  }
+
+  if (student.status === 'ARCHIVED') {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'STUDENT_ARCHIVED', message: 'আর্কাইভকৃত শিক্ষার্থীকে হিফজখানায় ভর্তি করা সম্ভব নয়।' }
+    });
+  }
+
+  // 2. Duplicate Active Enrollment Guard
+  const conflictingActive = db.hifzEnrollments.find(
+    e => e.mosqueId === mosqueId && e.studentProfileId === student.id && e.status === 'ACTIVE'
+  );
+  if (conflictingActive) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: 'DUPLICATE_ACTIVE_ENROLLMENT',
+        message: `শিক্ষার্থী ইতিমধ্যে হিফজখানায় সক্রিয়ভাবে ভর্তি আছেন (ভর্তি #${conflictingActive.enrollmentId})।`
+      }
+    });
+  }
+
+  // 3. Level Validation
+  const levels = db.getHifzLevels(mosqueId);
+  const targetLevel = levels.find(l => l.id === currentLevelId || l.stage === currentLevelId);
+  if (!targetLevel) {
+    return res.status(404).json({
+      success: false,
+      error: { code: 'LEVEL_NOT_FOUND', message: 'নির্ধারিত হিফজ স্তর পাওয়া যায়নি।' }
+    });
+  }
+
+  // 4. Curriculum Validation
+  const curricula = db.getHifzCurricula(mosqueId);
+  const targetCurriculum = curricula.find(c => c.id === curriculumId || c.type === curriculumId);
+  if (!targetCurriculum) {
+    return res.status(404).json({
+      success: false,
+      error: { code: 'CURRICULUM_NOT_FOUND', message: 'নির্ধারিত হিফজ পাঠ্যক্রম পাওয়া যায়নি।' }
+    });
+  }
+
+  // 5. Ustad Validation (from Staff & Payroll)
+  let ustadName: string | undefined;
+  if (primaryUstadId) {
+    const staff = db.staffList.find(s => s.id === primaryUstadId && s.mosqueId === mosqueId);
+    if (!staff) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_USTAD', message: 'নির্ধারিত উস্তাদ মসজিদের বৈধ স্টাফ তালিকায় পাওয়া যায়নি।' }
+      });
+    }
+    ustadName = staff.name;
+  }
+
+  // 6. Start Juz Validation (1-30 Reference Only, No Quran Dataset in H1)
+  if (startJuz !== undefined && startJuz !== null && startJuz !== '') {
+    const juzNum = Number(startJuz);
+    if (isNaN(juzNum) || juzNum < 1 || juzNum > 30) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_JUZ', message: 'আরম্ভিক পারা ১ থেকে ৩০-এর মধ্যে হতে হবে।' }
+      });
+    }
+  }
+
+  // 7. Study Type
+  const validStudyType = (studyType === 'RESIDENTIAL' || studyType === 'NON_RESIDENTIAL') ? studyType : 'NON_RESIDENTIAL';
+
+  // 8. Generate Server-Side Sequential Enrollment ID
+  const enrollmentId = db.generateNextHifzEnrollmentId(mosqueId);
+  const now = new Date().toISOString();
+
+  const newEnrollment: HifzkhanaEnrollment = {
+    id: `henr-${mosqueId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    enrollmentId,
+    mosqueId,
+    studentProfileId: student.id,
+    studentId: student.studentId,
+    studentName: student.personName,
+    programType: 'HIFZKHANA',
+    admissionDate,
+    startLevelId: startLevelId || targetLevel.id,
+    currentLevelId: targetLevel.id,
+    levelNameBn: targetLevel.nameBn,
+    curriculumId: targetCurriculum.id,
+    curriculumNameBn: targetCurriculum.nameBn,
+    primaryUstadId: primaryUstadId || undefined,
+    primaryUstadName: ustadName,
+    studyType: validStudyType,
+    status: 'ACTIVE',
+    startJuz: startJuz ? Number(startJuz) : undefined,
+    target: target?.trim() || undefined,
+    completionDate: completionDate || undefined,
+    remarks: remarks?.trim() || undefined,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  db.hifzEnrollments.push(newEnrollment);
+  db.save();
+
+  // Audit Log
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'HIFZ',
+    `হিফজ শিক্ষার্থী ভর্তি সম্পন্ন (${enrollmentId}): ${student.personName} (${student.studentId}) -> ${targetLevel.nameBn}, ${targetCurriculum.nameBn}`,
+    newEnrollment.id
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'HIFZ_ENROLLMENT_CREATED', newEnrollment, { senderId: req.user!.id });
+
+  res.status(201).json({
+    success: true,
+    data: newEnrollment,
+    message: `শিক্ষার্থী ${student.personName} হিফজখানায় সফলভাবে ভর্তি হয়েছেন (ভর্তি #${enrollmentId})।`
+  });
+});
+
+// 6.8 Update Hifz Enrollment Details
+app.put('/api/v1/hifz/enrollments/:id', authenticate, requirePermission('MANAGE_HIFZ_STUDENTS'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const enrollment = db.hifzEnrollments.find(e => (e.id === req.params.id || e.enrollmentId === req.params.id) && e.mosqueId === mosqueId);
+  if (!enrollment) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'হিফজ ভর্তি রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  const {
+    currentLevelId,
+    curriculumId,
+    primaryUstadId,
+    studyType,
+    startJuz,
+    target,
+    completionDate,
+    remarks,
+  } = req.body;
+
+  if (currentLevelId) {
+    const levels = db.getHifzLevels(mosqueId);
+    const lvl = levels.find(l => l.id === currentLevelId || l.stage === currentLevelId);
+    if (lvl) {
+      enrollment.currentLevelId = lvl.id;
+      enrollment.levelNameBn = lvl.nameBn;
+    }
+  }
+
+  if (curriculumId) {
+    const curricula = db.getHifzCurricula(mosqueId);
+    const cur = curricula.find(c => c.id === curriculumId || c.type === curriculumId);
+    if (cur) {
+      enrollment.curriculumId = cur.id;
+      enrollment.curriculumNameBn = cur.nameBn;
+    }
+  }
+
+  if (primaryUstadId !== undefined) {
+    if (primaryUstadId) {
+      const staff = db.staffList.find(s => s.id === primaryUstadId && s.mosqueId === mosqueId);
+      if (staff) {
+        enrollment.primaryUstadId = staff.id;
+        enrollment.primaryUstadName = staff.name;
+      }
+    } else {
+      enrollment.primaryUstadId = undefined;
+      enrollment.primaryUstadName = undefined;
+    }
+  }
+
+  if (studyType && (studyType === 'RESIDENTIAL' || studyType === 'NON_RESIDENTIAL')) {
+    enrollment.studyType = studyType;
+  }
+
+  if (startJuz !== undefined) {
+    const juzNum = Number(startJuz);
+    if (!isNaN(juzNum) && juzNum >= 1 && juzNum <= 30) {
+      enrollment.startJuz = juzNum;
+    }
+  }
+
+  if (target !== undefined) enrollment.target = target?.trim() || undefined;
+  if (completionDate !== undefined) enrollment.completionDate = completionDate || undefined;
+  if (remarks !== undefined) enrollment.remarks = remarks?.trim() || undefined;
+
+  enrollment.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'HIFZ',
+    `হিফজ ভর্তি তথ্য হালনাগাদ (${enrollment.enrollmentId}): ${enrollment.studentName || enrollment.studentId}`,
+    enrollment.id
+  );
+
+  res.json({ success: true, data: enrollment, message: 'হিফজ ভর্তি তথ্য সফলভাবে হালনাগাদ করা হয়েছে।' });
+});
+
+// 6.9 Update Hifz Enrollment Lifecycle Status
+app.patch('/api/v1/hifz/enrollments/:id/status', authenticate, requirePermission('MANAGE_HIFZ_STUDENTS'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const enrollment = db.hifzEnrollments.find(e => (e.id === req.params.id || e.enrollmentId === req.params.id) && e.mosqueId === mosqueId);
+  if (!enrollment) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'হিফজ ভর্তি রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  const { status, remarks } = req.body;
+  const validStatuses = ['ACTIVE', 'COMPLETED', 'TRANSFERRED', 'DROPPED', 'SUSPENDED', 'ARCHIVED'];
+  if (!status || !validStatuses.includes(status)) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_STATUS', message: 'অবৈধ স্ট্যাটাস প্রদান করা হয়েছে।' } });
+  }
+
+  // Duplicate active guard if activating
+  if (status === 'ACTIVE' && enrollment.status !== 'ACTIVE') {
+    const existingActive = db.hifzEnrollments.find(
+      e => e.mosqueId === mosqueId && e.studentProfileId === enrollment.studentProfileId && e.status === 'ACTIVE' && e.id !== enrollment.id
+    );
+    if (existingActive) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'DUPLICATE_ACTIVE_ENROLLMENT', message: `শিক্ষার্থী ইতিমধ্যে অন্য একটি সক্রিয় ভর্তিতে যুক্ত আছেন (#${existingActive.enrollmentId})।` }
+      });
+    }
+  }
+
+  const prevStatus = enrollment.status;
+  enrollment.status = status;
+  if (remarks) enrollment.remarks = remarks.trim();
+  if (status === 'COMPLETED' && !enrollment.completionDate) {
+    enrollment.completionDate = new Date().toISOString().split('T')[0];
+  }
+  enrollment.updatedAt = new Date().toISOString();
+
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'HIFZ',
+    `হিফজ ভর্তি স্ট্যাটাস পরিবর্তন (${enrollment.enrollmentId}): ${prevStatus} -> ${status}`,
+    enrollment.id
+  );
+
+  res.json({
+    success: true,
+    data: enrollment,
+    message: `হিফজ ভর্তি স্ট্যাটাস সফলভাবে ${status} করা হয়েছে।`
   });
 });
 

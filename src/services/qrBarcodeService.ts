@@ -923,6 +923,36 @@ export function parseQrCode(rawPayload: string): QrScanResult {
     };
   }
 
+  if (upperCode.startsWith('BOK-') || upperCode.startsWith('BOOK-')) {
+    return {
+      raw: rawPayload,
+      type: 'RECORD',
+      prefix: 'BOK',
+      code: code,
+      entityType: 'BOOK_COPY',
+      targetTab: 'library',
+      recordIdOrNumber: code,
+      actionTitleBn: 'পাঠাগার বই ও কপি বিবরণ',
+      actionTitleEn: 'Library Book Copy',
+      requiredPermission: 'VIEW_LIBRARY',
+    };
+  }
+
+  if (upperCode.startsWith('STU-') || upperCode.startsWith('STUDENT-')) {
+    return {
+      raw: rawPayload,
+      type: 'RECORD',
+      prefix: 'STU',
+      code: code,
+      entityType: 'STUDENT',
+      targetTab: 'maktab',
+      recordIdOrNumber: code,
+      actionTitleBn: 'মক্তব শিক্ষার্থী ও প্রোফাইল',
+      actionTitleEn: 'Maktab Student Profile',
+      requiredPermission: 'VIEW_MAKTAB',
+    };
+  }
+
   // 3. Fallback for unrecognized format
   return {
     raw: rawPayload,
@@ -1040,6 +1070,16 @@ export function getEntityCanonicalCode(entityType: QrEntityType, record: any): s
         ? record.memoNo
         : `MTG-${record.memoNo || record.id}`;
 
+    case 'BOOK_COPY':
+      return record.bookId?.startsWith('BOK-')
+        ? record.bookId
+        : `BOK-${record.bookId || record.id}`;
+
+    case 'STUDENT':
+      return record.studentId?.startsWith('STU-')
+        ? record.studentId
+        : `STU-${record.studentId || record.id}`;
+
     default:
       return `${record.id || 'ITEM'}`;
   }
@@ -1064,6 +1104,8 @@ export function resolveRecordFromSystem(
     subCommittees?: any[];
     resolutions?: any[];
     meetings?: any[];
+    bookCopies?: any[];
+    bookTitles?: any[];
   }
 ): ResolvedRecordItem | null {
   const cleanCode = extractCodeFromPayload(code).toUpperCase();
@@ -1483,6 +1525,147 @@ export function resolveRecordFromSystem(
         ],
         rawRecord: found,
         targetTab: 'cemetery',
+      };
+    }
+  }
+
+  // 13. Check Library Books (BOK)
+  if (cleanCode.startsWith('BOK-') || cleanCode.startsWith('BOOK-')) {
+    const idOrBook = cleanCode.replace(/^BOK-/, '').replace(/^BOOK-/, '');
+    const foundCopy = stateCollections.bookCopies?.find(
+      (c) =>
+        c.bookId?.toUpperCase() === cleanCode ||
+        c.bookId?.toUpperCase() === idOrBook ||
+        c.accessionNumber?.toUpperCase() === cleanCode ||
+        c.accessionNumber?.toUpperCase() === idOrBook ||
+        c.id === idOrBook ||
+        c.id === cleanCode
+    );
+    if (foundCopy) {
+      const canonical = getEntityCanonicalCode('BOOK_COPY', foundCopy);
+      const title = stateCollections.bookTitles?.find((t) => t.id === foundCopy.bookTitleId);
+      const statusLabels: Record<string, { label: string; variant: 'emerald' | 'amber' | 'rose' | 'slate' | 'gray' }> = {
+        AVAILABLE: { label: 'বিতরণের জন্য উপলব্ধ', variant: 'emerald' },
+        ISSUED: { label: 'ইস্যুকৃত / বিতরণকৃত', variant: 'amber' },
+        OVERDUE: { label: 'বিলম্বিত (ওভারডিউ)', variant: 'rose' },
+        DAMAGED: { label: 'ক্ষতিগ্রস্ত', variant: 'rose' },
+        LOST: { label: 'হারানো বই', variant: 'rose' },
+        UNDER_REPAIR: { label: 'মেরামত চলছে', variant: 'slate' },
+        ARCHIVED: { label: 'আর্কাইভকৃত', variant: 'slate' },
+      };
+      const statusInfo = statusLabels[foundCopy.status] || { label: foundCopy.status, variant: 'emerald' };
+
+      return {
+        canonicalCode: canonical,
+        entityType: 'BOOK_COPY',
+        titleBn: title?.title || foundCopy.bookTitleName || `পাঠাগার বই #${foundCopy.bookId}`,
+        titleEn: `Library Book #${foundCopy.bookId}`,
+        subtitleBn: `লেখক: ${title?.author || 'N/A'} • কপি #${foundCopy.copyNumber || 1} • শেলফ: ${foundCopy.shelfLocationLabel || 'প্রধান তাক'}`,
+        categoryBn: 'পাঠাগার ও জ্ঞানকেন্দ্র',
+        statusBadge: {
+          labelBn: statusInfo.label,
+          variant: statusInfo.variant,
+        },
+        keyDetails: [
+          { labelBn: 'বই আইডি (QR)', value: foundCopy.bookId, isHighlight: true },
+          { labelBn: 'গ্রন্থের নাম', value: title?.title || foundCopy.bookTitleName || 'N/A' },
+          { labelBn: 'লেখক', value: title?.author || 'N/A' },
+          { labelBn: 'অবস্থা ও অবস্থান', value: `${statusInfo.label} (${foundCopy.shelfLocationLabel || 'তাক'})` },
+          ...(foundCopy.currentHolderName ? [{ labelBn: 'বর্তমান পাঠক', value: `${foundCopy.currentHolderName} (${foundCopy.currentHolderPhone || 'N/A'})` }] : []),
+        ],
+        actions: [
+          {
+            id: 'details',
+            labelBn: 'বইয়ের বিবরণ ও কপি তালিকা',
+            labelEn: 'View Book Details',
+            iconName: 'BookOpen',
+            color: 'blue' as const,
+            actionType: 'BOOK_DETAILS',
+            isPrimary: true,
+          },
+          ...(foundCopy.status === 'AVAILABLE'
+            ? [
+                {
+                  id: 'issue_book',
+                  labelBn: 'বই ইস্যু করুন',
+                  labelEn: 'Issue Book',
+                  iconName: 'Send',
+                  color: 'emerald' as const,
+                  actionType: 'BOOK_ISSUE' as const,
+                },
+              ]
+            : []),
+          ...(foundCopy.status === 'ISSUED' || foundCopy.status === 'OVERDUE'
+            ? [
+                {
+                  id: 'return_book',
+                  labelBn: 'বই ফেরত নিন',
+                  labelEn: 'Return Book',
+                  iconName: 'RotateCcw',
+                  color: 'amber' as const,
+                  actionType: 'BOOK_RETURN' as const,
+                },
+              ]
+            : []),
+        ],
+        rawRecord: { ...foundCopy, titleDetails: title },
+        targetTab: 'library',
+      };
+    }
+  }
+
+  // 14. Check Education / Maktab Students (STU)
+  if (cleanCode.startsWith('STU-') || cleanCode.startsWith('STUDENT-')) {
+    const idOrStu = cleanCode.replace(/^STUDENT-/, '');
+    const foundStudent = (stateCollections as any).students?.find(
+      (s: any) =>
+        s.studentId?.toUpperCase() === cleanCode ||
+        s.studentId?.toUpperCase() === idOrStu ||
+        s.id === idOrStu ||
+        s.id === cleanCode
+    );
+    if (foundStudent) {
+      const canonical = getEntityCanonicalCode('STUDENT', foundStudent);
+      const statusLabels: Record<string, { label: string; variant: 'emerald' | 'amber' | 'rose' | 'slate' | 'gray' }> = {
+        ACTIVE: { label: 'সক্রিয় শিক্ষার্থী', variant: 'emerald' },
+        INACTIVE: { label: 'নিষ্ক্রিয়', variant: 'amber' },
+        TRANSFERRED: { label: 'স্থানান্তরিত', variant: 'slate' },
+        COMPLETED: { label: 'সমাপ্ত', variant: 'emerald' },
+        ARCHIVED: { label: 'আর্কাইভকৃত', variant: 'slate' },
+      };
+      const statusInfo = statusLabels[foundStudent.status] || { label: foundStudent.status, variant: 'emerald' };
+
+      return {
+        canonicalCode: canonical,
+        entityType: 'STUDENT',
+        titleBn: foundStudent.personName || `শিক্ষার্থী #${foundStudent.studentId}`,
+        titleEn: `Student #${foundStudent.studentId}`,
+        subtitleBn: `আইডি: ${foundStudent.studentId} • মোবাইল: ${foundStudent.personMobile || 'N/A'}`,
+        categoryBn: 'মক্তব ও শিক্ষা কার্যক্রম',
+        statusBadge: {
+          labelBn: statusInfo.label,
+          variant: statusInfo.variant,
+        },
+        keyDetails: [
+          { labelBn: 'শিক্ষার্থী আইডি (QR)', value: foundStudent.studentId, isHighlight: true },
+          { labelBn: 'নাম', value: foundStudent.personName || 'N/A' },
+          { labelBn: 'মোবাইল', value: foundStudent.personMobile || 'N/A' },
+          { labelBn: 'ভর্তি তারিখ', value: foundStudent.admissionDate || 'N/A' },
+          { labelBn: 'অবস্থা', value: statusInfo.label },
+        ],
+        actions: [
+          {
+            id: 'view_profile',
+            labelBn: 'মক্তব প্রোফাইল দেখুন',
+            labelEn: 'View Student Profile',
+            iconName: 'User',
+            color: 'blue' as const,
+            actionType: 'VIEW_DETAILS',
+            isPrimary: true,
+          },
+        ],
+        rawRecord: foundStudent,
+        targetTab: 'maktab',
       };
     }
   }

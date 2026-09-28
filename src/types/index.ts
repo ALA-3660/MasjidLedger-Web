@@ -69,7 +69,27 @@ export type Permission =
   | 'REVISE_BUDGET'
   | 'CLOSE_BUDGET'
   | 'VIEW_BUDGET_ANALYSIS'
-  | 'EXPORT_BUDGET_REPORT';
+  | 'EXPORT_BUDGET_REPORT'
+  | 'VIEW_LIBRARY'
+  | 'MANAGE_LIBRARY_BOOK'
+  | 'MANAGE_LIBRARY_COPY'
+  | 'MANAGE_LIBRARY_MEMBER'
+  | 'LIBRARY_ISSUE'
+  | 'LIBRARY_RETURN'
+  | 'LIBRARY_ACQUISITION'
+  | 'VIEW_LIBRARY_REPORT'
+  | 'EXPORT_LIBRARY_REPORT'
+  | 'MANAGE_LIBRARY_LOCATION'
+  | 'VIEW_EDUCATION'
+  | 'MANAGE_EDUCATION_STUDENT'
+  | 'MANAGE_EDUCATION_ENROLLMENT'
+  | 'MANAGE_EDUCATION_SETTINGS'
+  | 'VIEW_MAKTAB'
+  | 'MANAGE_MAKTAB_ATTENDANCE'
+  | 'MANAGE_MAKTAB_PROGRESS'
+  | 'MANAGE_MAKTAB_FEES'
+  | 'VIEW_HIFZ'
+  | 'MANAGE_HIFZ_STUDENTS';
 
 export interface User {
   id: string;
@@ -281,6 +301,20 @@ export interface DailyPrayerSchedule {
     endTimeStr: string;
     isActive: boolean;
     statusState: 'BEFORE_SUNRISE' | 'SUNRISE_TO_ISHRAQ' | 'ACTIVE' | 'ENDED';
+    statusMessageBn: string;
+    countdownSeconds: number;
+  };
+  duha?: {
+    startTimeStr: string;
+    endTimeStr: string;
+    isActive: boolean;
+    statusMessageBn: string;
+    countdownSeconds: number;
+  };
+  awwabin?: {
+    startTimeStr: string;
+    endTimeStr: string;
+    isActive: boolean;
     statusMessageBn: string;
     countdownSeconds: number;
   };
@@ -2816,6 +2850,7 @@ export interface AuditLog {
     | 'SECRETARY_SIGNATURE_REMOVED'
     | string;
   module: string;
+  category?: string;
   recordId?: string;
   voucherNumber?: string;
   details: string;
@@ -3261,6 +3296,632 @@ export interface BudgetControlDataset {
   projectBudgets: BudgetProjectItem[];
   overBudgetItems: BudgetControlLineItem[];
   warningItems: BudgetControlLineItem[];
+}
+
+// ============================================================================
+// LIBRARY & KNOWLEDGE CENTER MODELS (পাঠাগার ও জ্ঞানকেন্দ্র)
+// ============================================================================
+
+export interface LibraryCategory {
+  id: string;
+  mosqueId: string;
+  name: string;
+  code: string;
+  description?: string;
+  parentCategoryId?: string;
+  sortOrder: number;
+  status: 'ACTIVE' | 'ARCHIVED';
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+  updatedBy?: string;
+}
+
+export type BookLanguage = 'BENGALI' | 'ARABIC' | 'URDU' | 'ENGLISH' | 'OTHER';
+
+export interface BookTitle {
+  id: string;
+  mosqueId: string;
+  title: string;
+  subtitle?: string;
+  author: string;
+  translator?: string;
+  editor?: string;
+  publisher?: string;
+  publicationYear?: number;
+  edition?: string;
+  language: BookLanguage;
+  isbn?: string;
+  categoryId: string;
+  categoryName?: string;
+  subject?: string;
+  description?: string;
+  centralDocumentId?: string;
+  coverImageUrl?: string;
+  status: 'ACTIVE' | 'ARCHIVED';
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+  updatedBy?: string;
+}
+
+export type BookCopyStatus =
+  | 'AVAILABLE'
+  | 'ISSUED'
+  | 'OVERDUE'
+  | 'UNDER_REPAIR'
+  | 'DAMAGED'
+  | 'LOST'
+  | 'ARCHIVED';
+
+export type BookCondition =
+  | 'NEW'
+  | 'EXCELLENT'
+  | 'GOOD'
+  | 'FAIR'
+  | 'DAMAGED'
+  | 'CRITICAL';
+
+export interface BookCopy {
+  id: string;
+  mosqueId: string;
+  bookTitleId: string;
+  bookTitleName?: string;
+  bookId: string; // e.g. "BOK-000001"
+  accessionNumber?: string;
+  copyNumber: number;
+  roomId?: string;
+  rackId?: string;
+  shelfId?: string;
+  shelfLocationLabel?: string;
+  acquisitionId?: string;
+  condition: BookCondition;
+  status: BookCopyStatus;
+  currentIssueId?: string;
+  currentHolderPersonId?: string;
+  currentHolderName?: string;
+  currentHolderPhone?: string;
+  purchasePrice?: number;
+  donorPersonId?: string;
+  donorName?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+  updatedBy?: string;
+}
+
+export type LibraryMembershipType =
+  | 'GENERAL'
+  | 'STUDENT'
+  | 'TEACHER'
+  | 'COMMITTEE'
+  | 'LIFETIME';
+
+export type LibraryMemberStatus =
+  | 'ACTIVE'
+  | 'SUSPENDED'
+  | 'EXPIRED'
+  | 'CANCELLED';
+
+export interface LibraryMember {
+  id: string;
+  mosqueId: string;
+  personId: string; // Authoritative reference to PersonMaster.id
+  personName?: string;
+  personPhone?: string;
+  memberCode: string; // e.g. "LIB-MEM-001"
+  membershipType: LibraryMembershipType;
+  membershipDate: string; // YYYY-MM-DD
+  expiryDate?: string; // YYYY-MM-DD
+  maxAllowedBooks: number;
+  maxIssueDays: number;
+  status: LibraryMemberStatus;
+  activeIssuesCount?: number;
+  totalHistoryIssuesCount?: number;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+  updatedBy?: string;
+}
+
+export type BookIssueStatus =
+  | 'ACTIVE'
+  | 'RETURNED'
+  | 'OVERDUE'
+  | 'LOST'
+  | 'CANCELLED';
+
+export interface BookIssue {
+  id: string;
+  mosqueId: string;
+  issueNumber: string; // e.g. "ISS-2026-000001"
+  bookCopyId: string;
+  bookId: string; // "BOK-000001"
+  bookTitle: string;
+  memberId: string;
+  personId: string;
+  borrowerName: string;
+  borrowerPhone?: string;
+  issueDate: string; // YYYY-MM-DD
+  dueDate: string; // YYYY-MM-DD
+  returnDate?: string; // YYYY-MM-DD
+  status: BookIssueStatus;
+  conditionAtIssue: BookCondition;
+  conditionAtReturn?: BookCondition;
+  fineAmount?: number;
+  finePaid?: boolean;
+  fineVoucherNumber?: string;
+  issuedByUserId: string;
+  issuedByUserName?: string;
+  returnedByUserId?: string;
+  returnedByUserName?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type AcquisitionSource =
+  | 'PURCHASED'
+  | 'DONATED'
+  | 'WAQF_CONTRIBUTION'
+  | 'TRANSFERRED'
+  | 'OTHER';
+
+export interface BookAcquisition {
+  id: string;
+  mosqueId: string;
+  acquisitionNumber: string; // e.g. "ACQ-2026-000001"
+  bookTitleId: string;
+  bookTitleName?: string;
+  acquisitionDate: string; // YYYY-MM-DD
+  sourceType: AcquisitionSource;
+  quantity: number;
+  unitPrice?: number;
+  totalCost?: number;
+  supplierName?: string;
+  donorPersonId?: string;
+  donorName?: string;
+  expenseVoucherNumber?: string;
+  expenseEntryId?: string;
+  centralDocumentId?: string;
+  notes?: string;
+  createdAt: string;
+  createdBy: string;
+}
+
+export interface LibraryRoom {
+  id: string;
+  mosqueId: string;
+  roomName: string;
+  roomCode: string;
+  description?: string;
+  createdAt: string;
+}
+
+export interface LibraryRack {
+  id: string;
+  mosqueId: string;
+  roomId: string;
+  rackName: string;
+  rackCode: string;
+  description?: string;
+  createdAt: string;
+}
+
+export interface LibraryShelf {
+  id: string;
+  mosqueId: string;
+  rackId: string;
+  shelfName: string;
+  shelfCode: string;
+  capacity?: number;
+  description?: string;
+  createdAt: string;
+}
+
+export interface LibraryDashboardStats {
+  totalTitles: number;
+  totalCopies: number;
+  availableCopies: number;
+  issuedCopies: number;
+  overdueCopies: number;
+  lostCopies: number;
+  damagedCopies: number;
+  underRepairCopies: number;
+  totalMembers: number;
+  activeMembers: number;
+  todayIssuesCount: number;
+  todayReturnsCount: number;
+  recentIssues: BookIssue[];
+  popularBooks: Array<{ bookTitleId: string; title: string; author: string; issueCount: number }>;
+}
+
+// ==========================================
+// EDUCATION FOUNDATION (MAKTAB & HIFZKHANA)
+// ==========================================
+export type EducationProgramType = 'MAKTAB' | 'HIFZKHANA';
+
+export interface EducationProgram {
+  id: string;
+  mosqueId: string;
+  type: EducationProgramType;
+  nameBn: string;
+  nameEn: string;
+  code: string;
+  description?: string;
+  status: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: string;
+}
+
+export interface EducationLevel {
+  id: string;
+  mosqueId: string;
+  programId: string;
+  programType: EducationProgramType;
+  nameBn: string;
+  nameEn: string;
+  code: string;
+  sortOrder: number;
+  description?: string;
+  status: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: string;
+}
+
+export type StudentStatus = 'ACTIVE' | 'INACTIVE' | 'TRANSFERRED' | 'COMPLETED' | 'ARCHIVED';
+
+export interface EducationStudentProfile {
+  id: string;
+  mosqueId: string;
+  personId: string; // Authoritative reference to PersonMaster
+  studentId: string; // Sequential server-generated format: STU-000001
+  admissionDate: string; // YYYY-MM-DD
+  dateOfBirth?: string;
+  gender?: 'MALE' | 'FEMALE';
+  bloodGroup?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+  priorEducation?: string;
+  photoDocumentId?: string; // Reference to Central Document & Archive
+  status: StudentStatus;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+  updatedBy?: string;
+
+  // Populated helper fields (non-persisted / optional)
+  personName?: string;
+  personMobile?: string;
+  personAddress?: string;
+  guardians?: EducationGuardianRelationship[];
+  activeEnrollments?: EducationEnrollment[];
+}
+
+export type GuardianRelationshipType = 
+  | 'FATHER' 
+  | 'MOTHER' 
+  | 'BROTHER' 
+  | 'UNCLE' 
+  | 'GRANDFATHER' 
+  | 'LEGAL_GUARDIAN' 
+  | 'OTHER';
+
+export interface EducationGuardianRelationship {
+  id: string;
+  mosqueId: string;
+  studentProfileId: string; // References EducationStudentProfile.id
+  studentId: string; // References EducationStudentProfile.studentId
+  guardianPersonId: string; // Authoritative reference to PersonMaster
+  relationshipType: GuardianRelationshipType;
+  relationshipTitleBn?: string;
+  isPrimary: boolean;
+  isEmergencyContact: boolean;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+
+  // Populated helper fields (non-persisted / optional)
+  guardianName?: string;
+  guardianMobile?: string;
+  guardianNid?: string;
+}
+
+export type EnrollmentStatus = 
+  | 'ACTIVE' 
+  | 'COMPLETED' 
+  | 'PROMOTED' 
+  | 'TRANSFERRED' 
+  | 'DROPPED' 
+  | 'SUSPENDED';
+
+export type EducationShift = 'MORNING' | 'AFTERNOON' | 'EVENING' | 'RESIDENTIAL';
+
+export interface EducationEnrollment {
+  id: string;
+  mosqueId: string;
+  enrollmentNumber: string; // ENR-2026-000001
+  studentProfileId: string; // References EducationStudentProfile.id
+  studentId: string; // References EducationStudentProfile.studentId
+  programId: string; // References EducationProgram.id
+  programType: EducationProgramType;
+  levelId: string; // References EducationLevel.id
+  admissionDate: string;
+  startDate: string;
+  endDate?: string;
+  teacherStaffId?: string; // Authoritative reference to Staff & Payroll
+  status: EnrollmentStatus;
+  shift?: EducationShift;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+  updatedBy?: string;
+
+  // Populated helper fields (non-persisted / optional)
+  studentName?: string;
+  programNameBn?: string;
+  levelNameBn?: string;
+  teacherName?: string;
+}
+
+export interface EducationDashboardStats {
+  totalStudents: number;
+  activeStudents: number;
+  totalMaktabEnrollments: number;
+  totalHifzEnrollments: number;
+  totalPrograms: number;
+  totalLevels: number;
+  totalTeachersAssigned: number;
+  recentEnrollments: EducationEnrollment[];
+}
+
+// ==========================================
+// MAKTAB OPERATIONAL SUBSYSTEM (V2.6)
+// ==========================================
+
+export type MaktabShift = 'MORNING' | 'AFTERNOON' | 'EVENING';
+
+export interface MaktabClass {
+  id: string;
+  mosqueId: string;
+  levelId: string; // References EducationLevel.id (QAIDA, AMPARA, NAZERA, DEENIYAT)
+  levelCode: string; // QAIDA, AMPARA, NAZERA, DEENIYAT
+  nameBn: string;
+  nameEn: string;
+  shift: MaktabShift;
+  teacherStaffId?: string; // Authoritative reference to Staff & Payroll
+  room?: string;
+  maxCapacity?: number;
+  status: 'ACTIVE' | 'INACTIVE';
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+
+  // Populated fields
+  levelNameBn?: string;
+  teacherName?: string;
+  teacherMobile?: string;
+  activeStudentCount?: number;
+}
+
+export type MaktabAttendanceStatus = 'PRESENT' | 'ABSENT' | 'LEAVE' | 'LATE';
+
+export interface MaktabAttendance {
+  id: string;
+  mosqueId: string;
+  studentProfileId: string; // References EducationStudentProfile.id
+  studentId: string; // STU-000001
+  classId?: string; // References MaktabClass.id
+  levelId?: string; // References EducationLevel.id
+  date: string; // YYYY-MM-DD
+  status: MaktabAttendanceStatus;
+  notes?: string;
+  recordedBy: string;
+  recordedByName?: string;
+  createdAt: string;
+  updatedAt: string;
+
+  // Populated fields
+  studentName?: string;
+  classNameBn?: string;
+  levelNameBn?: string;
+}
+
+export type MaktabTeacherRole = 'HEAD_TEACHER' | 'ASSISTANT_TEACHER' | 'SUBJECT_TEACHER';
+
+export interface MaktabTeacherAssignment {
+  id: string;
+  mosqueId: string;
+  staffId: string; // Authoritative reference to Staff & Payroll
+  classId?: string; // References MaktabClass.id
+  levelId?: string; // References EducationLevel.id
+  role: MaktabTeacherRole;
+  effectiveFrom: string; // YYYY-MM-DD
+  status: 'ACTIVE' | 'INACTIVE';
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+
+  // Populated fields
+  staffName?: string;
+  staffDesignation?: string;
+  staffMobile?: string;
+  classNameBn?: string;
+  levelNameBn?: string;
+}
+
+export type MaktabFeeFrequency = 'MONTHLY' | 'ONE_TIME' | 'YEARLY';
+
+export interface MaktabFeeSchedule {
+  id: string;
+  mosqueId: string;
+  titleBn: string;
+  titleEn: string;
+  defaultAmount: number;
+  frequency: MaktabFeeFrequency;
+  levelId?: string; // Optional: specific level or all
+  status: 'ACTIVE' | 'INACTIVE';
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+}
+
+export type MaktabFeePaymentStatus = 'PAID' | 'PARTIAL' | 'UNPAID';
+
+export interface MaktabFeeRecord {
+  id: string;
+  mosqueId: string;
+  studentProfileId: string; // References EducationStudentProfile.id
+  studentId: string; // STU-000001
+  studentName?: string;
+  feeScheduleId: string; // References MaktabFeeSchedule.id
+  feeTitle: string;
+  billingMonth?: string; // YYYY-MM
+  amount: number;
+  discount?: number;
+  netPayable: number;
+  paidAmount: number;
+  dueAmount: number;
+  status: MaktabFeePaymentStatus;
+
+  // Canonical Finance Integration References
+  canonicalIncomeEntryId?: string; // Authoritative link to E1-E6 IncomeEntry
+  canonicalVoucherNumber?: string; // INC-YYYY-000001
+  paidAt?: string;
+  paymentMethod?: 'CASH' | 'BANK' | 'BKASH' | 'NAGAD' | 'OTHER';
+  accountId?: string; // FinancialAccount reference
+  accountName?: string;
+  receiptNo?: string;
+  notes?: string;
+  collectedBy?: string;
+  collectedByName?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type MaktabProgressGrade = 'A+' | 'A' | 'B' | 'C' | 'SATISFACTORY' | 'NEEDS_IMPROVEMENT';
+
+export interface MaktabStudentProgress {
+  id: string;
+  mosqueId: string;
+  studentProfileId: string; // References EducationStudentProfile.id
+  studentId: string; // STU-000001
+  studentName?: string;
+  levelId: string; // References EducationLevel.id
+  levelCode: string; // QAIDA, AMPARA, NAZERA, DEENIYAT
+  assessmentDate: string; // YYYY-MM-DD
+
+  // Level-specific progress details
+  qaidaLesson?: string; // হরফ, মাখরাজ, হরকত, তানভীন, জজম, তাশদীদ, মাদ
+  amparaSurah?: string; // ৩০তম পারার সুরা নাম
+  nazeraPara?: number; // ১-৩০ পারা নম্বর
+  nazeraPage?: number; // পৃষ্ঠা নম্বর
+  deeniyatTopic?: string; // সালাত, ওজু, দুআ, হাদিস, আকাইদ
+
+  status: 'IN_PROGRESS' | 'COMPLETED' | 'NEEDS_REVISION';
+  overallGrade: MaktabProgressGrade;
+  teacherStaffId?: string; // Authoritative reference to Staff & Payroll
+  teacherName?: string;
+  teacherRemarks?: string;
+  nextTarget?: string;
+  evaluatedBy: string;
+  evaluatedByName?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MaktabDashboardStats {
+  totalActiveStudents: number;
+  todayAttendanceTotal: number;
+  presentToday: number;
+  absentToday: number;
+  leaveToday: number;
+  lateToday: number;
+  attendanceRateToday: number;
+  totalClasses: number;
+  activeTeachersCount: number;
+  totalFeeDue: number;
+  currentMonthFeeCollected: number;
+  recentProgressRecords: MaktabStudentProgress[];
+  alerts: string[];
+}
+
+// ==========================================
+// HIFZ FOUNDATION (H1) TYPES
+// ==========================================
+
+export type HifzLevelStage = 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED' | 'COMPLETION';
+
+export interface HifzLevel {
+  id: string;
+  mosqueId: string;
+  stage: HifzLevelStage;
+  nameBn: string;
+  nameEn: string;
+  description?: string;
+  sortOrder: number;
+  status: 'ACTIVE' | 'ARCHIVED';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type HifzCurriculumType = 'FULL_QURAN_HIFZ' | 'SELECTED_SURAHS' | 'JUZ_BASED_HIFZ';
+
+export interface HifzCurriculum {
+  id: string;
+  mosqueId: string;
+  type: HifzCurriculumType;
+  nameBn: string;
+  nameEn: string;
+  description?: string;
+  targetMonths?: number;
+  status: 'ACTIVE' | 'ARCHIVED';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type HifzStudyType = 'RESIDENTIAL' | 'NON_RESIDENTIAL';
+
+export type HifzEnrollmentStatus =
+  | 'ACTIVE'
+  | 'COMPLETED'
+  | 'TRANSFERRED'
+  | 'DROPPED'
+  | 'SUSPENDED'
+  | 'ARCHIVED';
+
+export interface HifzkhanaEnrollment {
+  id: string;
+  enrollmentId: string; // Server-generated: HENR-YYYY-000001
+  mosqueId: string;
+  studentProfileId: string; // Authoritative reference to EducationStudentProfile.id
+  studentId: string; // STU-000001
+  studentName?: string;
+  programType: 'HIFZKHANA';
+  admissionDate: string; // YYYY-MM-DD
+  startLevelId?: string; // References HifzLevel.id
+  currentLevelId: string; // References HifzLevel.id
+  levelNameBn?: string;
+  curriculumId: string; // References HifzCurriculum.id
+  curriculumNameBn?: string;
+  primaryUstadId?: string; // Authoritative reference to Staff & Payroll (db.staffList.id)
+  primaryUstadName?: string;
+  studyType: HifzStudyType; // RESIDENTIAL | NON_RESIDENTIAL
+  status: HifzEnrollmentStatus;
+  startJuz?: number; // 1-30 reference number only (no Quran dataset in H1)
+  target?: string; // Completion target e.g. "৩০ পারা সমাপ্তি" or target date
+  completionDate?: string; // YYYY-MM-DD
+  remarks?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export * from './qrBarcodeTypes';

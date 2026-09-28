@@ -61,6 +61,32 @@ import {
   DonationCollection,
   Budget,
   BudgetLine,
+  LibraryCategory,
+  BookTitle,
+  BookCopy,
+  LibraryMember,
+  BookIssue,
+  BookAcquisition,
+  LibraryRoom,
+  LibraryRack,
+  LibraryShelf,
+  LibraryDashboardStats,
+  EducationProgram,
+  EducationLevel,
+  EducationStudentProfile,
+  EducationGuardianRelationship,
+  EducationEnrollment,
+  EducationDashboardStats,
+  MaktabClass,
+  MaktabAttendance,
+  MaktabTeacherAssignment,
+  MaktabFeeSchedule,
+  MaktabFeeRecord,
+  MaktabStudentProgress,
+  MaktabDashboardStats,
+  HifzLevel,
+  HifzCurriculum,
+  HifzkhanaEnrollment,
 } from '../types';
 import {
   OfficialDocument,
@@ -71,6 +97,350 @@ import { DEFAULT_DOCUMENT_TEMPLATES } from '../lib/officialDocumentTemplates';
 import { getStarterOfficialDocuments } from '../lib/starterOfficialDocuments';
 
 const DB_FILE_PATH = path.join(process.cwd(), 'data', 'masjidledger_db.json');
+
+export const getStarterEducationPrograms = (mosqueId: string): EducationProgram[] => {
+  const now = new Date().toISOString();
+  return [
+    {
+      id: `prog-${mosqueId}-maktab`,
+      mosqueId,
+      type: 'MAKTAB',
+      nameBn: 'মক্তব ও প্রাথমিক দ্বীনি শিক্ষা',
+      nameEn: 'Maktab & Primary Islamic Education',
+      code: 'MAKTAB',
+      description: 'সহীহ কুরআন তিলাওয়াত, মাসনূন দুআ ও বুনিয়াদি দ্বীনি শিক্ষা কার্যক্রম',
+      status: 'ACTIVE',
+      createdAt: now,
+      updatedAt: now,
+      createdBy: 'SYSTEM',
+    },
+    {
+      id: `prog-${mosqueId}-hifz`,
+      mosqueId,
+      type: 'HIFZKHANA',
+      nameBn: 'হিফজুল কুরআন বিভাগ',
+      nameEn: 'Tahfeezul Quran Division',
+      code: 'HIFZKHANA',
+      description: 'হিফজুল কুরআন, সবক, দৌর ও তাজভীদ শিক্ষা কার্যক্রম',
+      status: 'ACTIVE',
+      createdAt: now,
+      updatedAt: now,
+      createdBy: 'SYSTEM',
+    },
+  ];
+};
+
+export const getStarterEducationLevels = (mosqueId: string): EducationLevel[] => {
+  const now = new Date().toISOString();
+  return [
+    {
+      id: `lvl-${mosqueId}-qaida`,
+      mosqueId,
+      programId: `prog-${mosqueId}-maktab`,
+      programType: 'MAKTAB',
+      nameBn: 'নূরানী কায়দা জামাত',
+      nameEn: 'Noorani Qaida',
+      code: 'QAIDA',
+      sortOrder: 1,
+      description: 'হুরুফ ও হরকত পরিচিতি, মাখরাজ শিক্ষা',
+      status: 'ACTIVE',
+      createdAt: now,
+      updatedAt: now,
+      createdBy: 'SYSTEM',
+    },
+    {
+      id: `lvl-${mosqueId}-ampara`,
+      mosqueId,
+      programId: `prog-${mosqueId}-maktab`,
+      programType: 'MAKTAB',
+      nameBn: 'আমপারা জামাত',
+      nameEn: 'Ampara / Juz Amma',
+      code: 'AMPARA',
+      sortOrder: 2,
+      description: '৩০তম পারার প্রাথমিক মাশক ও তিলাওয়াত',
+      status: 'ACTIVE',
+      createdAt: now,
+      updatedAt: now,
+      createdBy: 'SYSTEM',
+    },
+    {
+      id: `lvl-${mosqueId}-nazera`,
+      mosqueId,
+      programId: `prog-${mosqueId}-maktab`,
+      programType: 'MAKTAB',
+      nameBn: 'কুরআন নাজেরা জামাত',
+      nameEn: 'Quran Nazera',
+      code: 'NAZERA',
+      sortOrder: 3,
+      description: 'পূর্ণাঙ্গ আল-কুরআন দেখে সহীহ তিলাওয়াত অনুশীলন',
+      status: 'ACTIVE',
+      createdAt: now,
+      updatedAt: now,
+      createdBy: 'SYSTEM',
+    },
+    {
+      id: `lvl-${mosqueId}-deeniyat`,
+      mosqueId,
+      programId: `prog-${mosqueId}-maktab`,
+      programType: 'MAKTAB',
+      nameBn: 'বুনিয়াদি দ্বীনিয়াত ও মাসনূন দুআ',
+      nameEn: 'Basic Deeniyat & Masnoon Dua',
+      code: 'DEENIYAT',
+      sortOrder: 4,
+      description: 'নামাজের নিয়ম, প্রয়োজনীয় সুরা, জরুরি মাসআলা ও সুন্নাত',
+      status: 'ACTIVE',
+      createdAt: now,
+      updatedAt: now,
+      createdBy: 'SYSTEM',
+    },
+    {
+      id: `lvl-${mosqueId}-hifz-prep`,
+      mosqueId,
+      programId: `prog-${mosqueId}-hifz`,
+      programType: 'HIFZKHANA',
+      nameBn: 'হিফজ প্রস্তুতিমূলক জামাত',
+      nameEn: 'Hifz Preparatory',
+      code: 'HIFZ_PREP',
+      sortOrder: 1,
+      description: 'হিফজ আরম্ভের পূর্ববর্তী তাজভীদ ও মাশক স্তর',
+      status: 'ACTIVE',
+      createdAt: now,
+      updatedAt: now,
+      createdBy: 'SYSTEM',
+    },
+    {
+      id: `lvl-${mosqueId}-hifz-active`,
+      mosqueId,
+      programId: `prog-${mosqueId}-hifz`,
+      programType: 'HIFZKHANA',
+      nameBn: 'হিফজুল কুরআন (চলমান সবক)',
+      nameEn: 'Tahfeez (Active Sabak)',
+      code: 'HIFZ_ACTIVE',
+      sortOrder: 2,
+      description: 'দৈনিক সবক, সবকী ও আমপারা হিফজ স্তর',
+      status: 'ACTIVE',
+      createdAt: now,
+      updatedAt: now,
+      createdBy: 'SYSTEM',
+    },
+    {
+      id: `lvl-${mosqueId}-hifz-daur`,
+      mosqueId,
+      programId: `prog-${mosqueId}-hifz`,
+      programType: 'HIFZKHANA',
+      nameBn: 'দৌর ও পুনরাবৃত্তি স্তর',
+      nameEn: 'Daur & Revision',
+      code: 'HIFZ_DAUR',
+      sortOrder: 3,
+      description: 'হিফজ সমাপ্তকারী ও ইয়াদকারী শিক্ষার্থীদের পুনরাবৃত্তি স্তর',
+      status: 'ACTIVE',
+      createdAt: now,
+      updatedAt: now,
+      createdBy: 'SYSTEM',
+    },
+  ];
+};
+
+export const getStarterMaktabClasses = (mosqueId: string): MaktabClass[] => {
+  const now = new Date().toISOString();
+  return [
+    {
+      id: `cls-${mosqueId}-qaida-morn`,
+      mosqueId,
+      levelId: `lvl-${mosqueId}-qaida`,
+      levelCode: 'QAIDA',
+      nameBn: 'নূরানী কায়দা সকাল ব্যাচ',
+      nameEn: 'Noorani Qaida Morning Batch',
+      shift: 'MORNING',
+      room: 'মক্তব কক্ষ-১',
+      maxCapacity: 30,
+      status: 'ACTIVE',
+      createdAt: now,
+      updatedAt: now,
+      createdBy: 'SYSTEM',
+    },
+    {
+      id: `cls-${mosqueId}-ampara-morn`,
+      mosqueId,
+      levelId: `lvl-${mosqueId}-ampara`,
+      levelCode: 'AMPARA',
+      nameBn: 'আমপারা জামাত সকাল ব্যাচ',
+      nameEn: 'Ampara Morning Batch',
+      shift: 'MORNING',
+      room: 'মক্তব কক্ষ-২',
+      maxCapacity: 25,
+      status: 'ACTIVE',
+      createdAt: now,
+      updatedAt: now,
+      createdBy: 'SYSTEM',
+    },
+    {
+      id: `cls-${mosqueId}-nazera-morn`,
+      mosqueId,
+      levelId: `lvl-${mosqueId}-nazera`,
+      levelCode: 'NAZERA',
+      nameBn: 'নাজেরা কুরআন সকাল ব্যাচ',
+      nameEn: 'Nazera Morning Batch',
+      shift: 'MORNING',
+      room: 'মক্তব কক্ষ-৩',
+      maxCapacity: 25,
+      status: 'ACTIVE',
+      createdAt: now,
+      updatedAt: now,
+      createdBy: 'SYSTEM',
+    },
+    {
+      id: `cls-${mosqueId}-deeniyat-eve`,
+      mosqueId,
+      levelId: `lvl-${mosqueId}-deeniyat`,
+      levelCode: 'DEENIYAT',
+      nameBn: 'বুনিয়াদি দ্বীনিয়াত সান্ধ্যকালীন ব্যাচ',
+      nameEn: 'Deeniyat Evening Batch',
+      shift: 'EVENING',
+      room: 'মসজিদ বারান্দা',
+      maxCapacity: 35,
+      status: 'ACTIVE',
+      createdAt: now,
+      updatedAt: now,
+      createdBy: 'SYSTEM',
+    },
+  ];
+};
+
+export const getStarterMaktabFeeSchedules = (mosqueId: string): MaktabFeeSchedule[] => {
+  const now = new Date().toISOString();
+  return [
+    {
+      id: `fee-sch-${mosqueId}-monthly`,
+      mosqueId,
+      titleBn: 'মাসিক মক্তব শিক্ষা ফি',
+      titleEn: 'Monthly Maktab Education Fee',
+      defaultAmount: 500,
+      frequency: 'MONTHLY',
+      status: 'ACTIVE',
+      createdAt: now,
+      updatedAt: now,
+      createdBy: 'SYSTEM',
+    },
+    {
+      id: `fee-sch-${mosqueId}-admission`,
+      mosqueId,
+      titleBn: 'মক্তব নতুন ভর্তি ফি',
+      titleEn: 'Maktab New Admission Fee',
+      defaultAmount: 500,
+      frequency: 'ONE_TIME',
+      status: 'ACTIVE',
+      createdAt: now,
+      updatedAt: now,
+      createdBy: 'SYSTEM',
+    },
+  ];
+};
+
+export const getStarterHifzLevels = (mosqueId: string): HifzLevel[] => {
+  const now = new Date().toISOString();
+  return [
+    {
+      id: `hlvl-${mosqueId}-beginner`,
+      mosqueId,
+      stage: 'BEGINNER',
+      nameBn: 'প্রারম্ভিক হিফজ স্তর (হিফজ আরম্ভ)',
+      nameEn: 'Hifz Beginner Stage',
+      description: 'হিফজ আরম্ভ ও প্রাথমিক মুখস্থ স্তর',
+      sortOrder: 1,
+      status: 'ACTIVE',
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: `hlvl-${mosqueId}-intermediate`,
+      mosqueId,
+      stage: 'INTERMEDIATE',
+      nameBn: 'মধ্যবর্তী হিফজ স্তর (চলমান হিফজ)',
+      nameEn: 'Hifz Intermediate Stage',
+      description: 'নিয়মিত হিফজ ও মুখস্থ অগ্রগতির স্তর',
+      sortOrder: 2,
+      status: 'ACTIVE',
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: `hlvl-${mosqueId}-advanced`,
+      mosqueId,
+      stage: 'ADVANCED',
+      nameBn: 'উচ্চতর হিফজ স্তর (অগ্রবর্তী পারা)',
+      nameEn: 'Hifz Advanced Stage',
+      description: 'উচ্চতর পারা হিফজ ও মজবুতকরণ স্তর',
+      sortOrder: 3,
+      status: 'ACTIVE',
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: `hlvl-${mosqueId}-completion`,
+      mosqueId,
+      stage: 'COMPLETION',
+      nameBn: 'তাকমীল হিফজ স্তর (সমাপ্তি ও ইয়াদ)',
+      nameEn: 'Hifz Completion Stage',
+      description: 'হিফজ সমাপ্তি ও পূর্ণ কুরআন ইয়াদকরণ স্তর',
+      sortOrder: 4,
+      status: 'ACTIVE',
+      createdAt: now,
+      updatedAt: now,
+    },
+  ];
+};
+
+export const getStarterHifzCurricula = (mosqueId: string): HifzCurriculum[] => {
+  const now = new Date().toISOString();
+  return [
+    {
+      id: `hcur-${mosqueId}-full`,
+      mosqueId,
+      type: 'FULL_QURAN_HIFZ',
+      nameBn: 'পূর্ণ ৩০ পারা হিফজুল কুরআন',
+      nameEn: 'Full Quran Hifz',
+      description: 'পূর্ণ আল-কুরআনুল কারীম হিফজ কার্যক্রম (১ম থেকে ৩০তম পারা)',
+      targetMonths: 36,
+      status: 'ACTIVE',
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: `hcur-${mosqueId}-surahs`,
+      mosqueId,
+      type: 'SELECTED_SURAHS',
+      nameBn: 'নির্বাচিত সুরা ও আমপারা হিফজ',
+      nameEn: 'Selected Surahs & Ampara Hifz',
+      description: 'দৈনন্দিন সালাতে প্রয়োজনীয় গুরুত্বপূর্ণ সুরা ও ৩০তম পারা মুখস্থকরণ',
+      targetMonths: 12,
+      status: 'ACTIVE',
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: `hcur-${mosqueId}-juz`,
+      mosqueId,
+      type: 'JUZ_BASED_HIFZ',
+      nameBn: 'পারাভিত্তিক নির্ধারিত হিফজ',
+      nameEn: 'Juz-Based Hifz',
+      description: 'নির্দিষ্ট পারা বা পর্যায়ক্রমিক পারা হিফজ কার্যক্রম',
+      targetMonths: 18,
+      status: 'ACTIVE',
+      createdAt: now,
+      updatedAt: now,
+    },
+  ];
+};
+
+export const getStarterLibraryCategories = (mosqueId: string): LibraryCategory[] => [
+  { id: `cat-${mosqueId}-01`, mosqueId, name: 'কুরআন ও তাফসীর', code: 'TAF', description: 'পবিত্র কুরআন মাজিদ, অনুবাদ ও নির্ভরযোগ্য তাফসীর গ্রন্থসমূহ', sortOrder: 1, status: 'ACTIVE', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), createdBy: 'SYSTEM' },
+  { id: `cat-${mosqueId}-02`, mosqueId, name: 'হাদিস শাস্ত্র', code: 'HAD', description: 'সিহাহ সিত্তাহ ও অন্যান্য বিশুদ্ধ হাদিস সংকলন', sortOrder: 2, status: 'ACTIVE', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), createdBy: 'SYSTEM' },
+  { id: `cat-${mosqueId}-03`, mosqueId, name: 'ইসলামী ফিকহ ও ফতোয়া', code: 'FIQ', description: 'দৈনন্দিন মাসআলা-মাসায়েল ও ফিকহ শাস্ত্রীয় কিতাব', sortOrder: 3, status: 'ACTIVE', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), createdBy: 'SYSTEM' },
+  { id: `cat-${mosqueId}-04`, mosqueId, name: 'সীরাত ও ইসলামী ইতিহাস', code: 'SIR', description: 'রাসূলুল্লাহ (সা.)-এর পবিত্র জীবনী, সাহাবায়ে কেরামের জীবনচরিত ও ইতিহাস', sortOrder: 4, status: 'ACTIVE', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), createdBy: 'SYSTEM' },
+  { id: `cat-${mosqueId}-05`, mosqueId, name: 'আখলাক ও আত্মশুদ্ধি', code: 'AKH', description: 'তাজকিয়া, দোয়া, মোনাজাত ও চরিত্র গঠনমূলক বই', sortOrder: 5, status: 'ACTIVE', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), createdBy: 'SYSTEM' },
+  { id: `cat-${mosqueId}-06`, mosqueId, name: 'সাধারণ ইসলামী সাহিত্য ও শিশু-কিশোর', code: 'GEN', description: 'সহজ ভাষায় দ্বীনি শিক্ষা, আদর্শ ও শিশুতোষ ইসলামী বই', sortOrder: 6, status: 'ACTIVE', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), createdBy: 'SYSTEM' },
+];
 
 export class DatabaseStore {
   mosques: Mosque[] = [];
@@ -126,6 +496,29 @@ export class DatabaseStore {
   donationCollections: DonationCollection[] = [];
   budgets: Budget[] = [];
   budgetLines: BudgetLine[] = [];
+  libraryCategories: LibraryCategory[] = [];
+  bookTitles: BookTitle[] = [];
+  bookCopies: BookCopy[] = [];
+  libraryMembers: LibraryMember[] = [];
+  bookIssues: BookIssue[] = [];
+  bookAcquisitions: BookAcquisition[] = [];
+  libraryRooms: LibraryRoom[] = [];
+  libraryRacks: LibraryRack[] = [];
+  libraryShelves: LibraryShelf[] = [];
+  educationStudentProfiles: EducationStudentProfile[] = [];
+  educationPrograms: EducationProgram[] = [];
+  educationLevels: EducationLevel[] = [];
+  educationEnrollments: EducationEnrollment[] = [];
+  educationGuardianRelationships: EducationGuardianRelationship[] = [];
+  maktabClasses: MaktabClass[] = [];
+  maktabAttendances: MaktabAttendance[] = [];
+  maktabTeacherAssignments: MaktabTeacherAssignment[] = [];
+  maktabFeeSchedules: MaktabFeeSchedule[] = [];
+  maktabFeeRecords: MaktabFeeRecord[] = [];
+  maktabProgressRecords: MaktabStudentProgress[] = [];
+  hifzEnrollments: HifzkhanaEnrollment[] = [];
+  hifzLevels: HifzLevel[] = [];
+  hifzCurricula: HifzCurriculum[] = [];
 
   constructor() {
     this.init();
@@ -340,6 +733,35 @@ export class DatabaseStore {
         this.budgets = parsed.budgets || [];
         this.budgetLines = parsed.budgetLines || [];
 
+        // Library & Knowledge Center collections
+        this.libraryCategories = parsed.libraryCategories || [];
+        if (this.libraryCategories.length === 0 && this.mosques.length > 0) {
+          const m = this.mosques[0];
+          this.libraryCategories = getStarterLibraryCategories(m.id);
+        }
+        this.bookTitles = parsed.bookTitles || [];
+        this.bookCopies = parsed.bookCopies || [];
+        this.libraryMembers = parsed.libraryMembers || [];
+        this.bookIssues = parsed.bookIssues || [];
+        this.bookAcquisitions = parsed.bookAcquisitions || [];
+        this.libraryRooms = parsed.libraryRooms || [];
+        this.libraryRacks = parsed.libraryRacks || [];
+        this.libraryShelves = parsed.libraryShelves || [];
+        this.educationStudentProfiles = parsed.educationStudentProfiles || [];
+        this.educationPrograms = parsed.educationPrograms || [];
+        this.educationLevels = parsed.educationLevels || [];
+        this.educationEnrollments = parsed.educationEnrollments || [];
+        this.educationGuardianRelationships = parsed.educationGuardianRelationships || [];
+        this.maktabClasses = parsed.maktabClasses || [];
+        this.maktabAttendances = parsed.maktabAttendances || [];
+        this.maktabTeacherAssignments = parsed.maktabTeacherAssignments || [];
+        this.maktabFeeSchedules = parsed.maktabFeeSchedules || [];
+        this.maktabFeeRecords = parsed.maktabFeeRecords || [];
+        this.maktabProgressRecords = parsed.maktabProgressRecords || [];
+        this.hifzEnrollments = parsed.hifzEnrollments || [];
+        this.hifzLevels = parsed.hifzLevels || [];
+        this.hifzCurricula = parsed.hifzCurricula || [];
+
         return;
       }
     } catch (e) {
@@ -412,6 +834,29 @@ export class DatabaseStore {
         donationCollections: this.donationCollections,
         budgets: this.budgets,
         budgetLines: this.budgetLines,
+        libraryCategories: this.libraryCategories,
+        bookTitles: this.bookTitles,
+        bookCopies: this.bookCopies,
+        libraryMembers: this.libraryMembers,
+        bookIssues: this.bookIssues,
+        bookAcquisitions: this.bookAcquisitions,
+        libraryRooms: this.libraryRooms,
+        libraryRacks: this.libraryRacks,
+        libraryShelves: this.libraryShelves,
+        educationStudentProfiles: this.educationStudentProfiles,
+        educationPrograms: this.educationPrograms,
+        educationLevels: this.educationLevels,
+        educationEnrollments: this.educationEnrollments,
+        educationGuardianRelationships: this.educationGuardianRelationships,
+        maktabClasses: this.maktabClasses,
+        maktabAttendances: this.maktabAttendances,
+        maktabTeacherAssignments: this.maktabTeacherAssignments,
+        maktabFeeSchedules: this.maktabFeeSchedules,
+        maktabFeeRecords: this.maktabFeeRecords,
+        maktabProgressRecords: this.maktabProgressRecords,
+        hifzEnrollments: this.hifzEnrollments,
+        hifzLevels: this.hifzLevels,
+        hifzCurricula: this.hifzCurricula,
       };
       const tempPath = `${DB_FILE_PATH}.tmp.${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), 'utf-8');
@@ -908,6 +1353,7 @@ export class DatabaseStore {
       userRole,
       action,
       module,
+      category: module,
       recordId,
       voucherNumber: extra?.voucherNumber,
       details,
@@ -2302,6 +2748,274 @@ export class DatabaseStore {
     );
 
     return true;
+  }
+
+  // ==========================================
+  // LIBRARY & KNOWLEDGE CENTER HELPERS
+  // ==========================================
+  generateNextBookId(mosqueId: string): string {
+    const mosqueCopies = this.bookCopies.filter(c => c.mosqueId === mosqueId);
+    let maxNum = 0;
+    mosqueCopies.forEach(c => {
+      const match = c.bookId.match(/^BOK-(\d+)$/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    return `BOK-${String(maxNum + 1).padStart(6, '0')}`;
+  }
+
+  generateNextIssueNumber(mosqueId: string): string {
+    const year = new Date().getFullYear();
+    const count = this.bookIssues.filter(i => i.mosqueId === mosqueId).length + 1;
+    return `ISS-${year}-${String(count).padStart(6, '0')}`;
+  }
+
+  generateNextAcquisitionNumber(mosqueId: string): string {
+    const year = new Date().getFullYear();
+    const count = this.bookAcquisitions.filter(a => a.mosqueId === mosqueId).length + 1;
+    return `ACQ-${year}-${String(count).padStart(6, '0')}`;
+  }
+
+  generateNextMemberCode(mosqueId: string): string {
+    const count = this.libraryMembers.filter(m => m.mosqueId === mosqueId).length + 1;
+    return `LIB-MEM-${String(count).padStart(4, '0')}`;
+  }
+
+  getLibraryDashboardStats(mosqueId: string): LibraryDashboardStats {
+    const mosqueTitles = this.bookTitles.filter(t => t.mosqueId === mosqueId && t.status !== 'ARCHIVED');
+    const mosqueCopies = this.bookCopies.filter(c => c.mosqueId === mosqueId && c.status !== 'ARCHIVED');
+    const mosqueMembers = this.libraryMembers.filter(m => m.mosqueId === mosqueId);
+    const mosqueIssues = this.bookIssues.filter(i => i.mosqueId === mosqueId);
+
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    const totalTitles = mosqueTitles.length;
+    const totalCopies = mosqueCopies.length;
+    const availableCopies = mosqueCopies.filter(c => c.status === 'AVAILABLE').length;
+    const issuedCopies = mosqueCopies.filter(c => c.status === 'ISSUED').length;
+    const overdueCopies = mosqueCopies.filter(c => c.status === 'OVERDUE').length;
+    const lostCopies = mosqueCopies.filter(c => c.status === 'LOST').length;
+    const damagedCopies = mosqueCopies.filter(c => c.status === 'DAMAGED').length;
+    const underRepairCopies = mosqueCopies.filter(c => c.status === 'UNDER_REPAIR').length;
+
+    const totalMembers = mosqueMembers.length;
+    const activeMembers = mosqueMembers.filter(m => m.status === 'ACTIVE').length;
+
+    const todayIssuesCount = mosqueIssues.filter(i => i.issueDate === todayStr).length;
+    const todayReturnsCount = mosqueIssues.filter(i => i.returnDate === todayStr).length;
+
+    const recentIssues = mosqueIssues
+      .sort((a, b) => new Date(b.issueDate || b.createdAt).getTime() - new Date(a.issueDate || a.createdAt).getTime())
+      .slice(0, 10);
+
+    // Calculate popular books
+    const issueCountByTitle: Record<string, number> = {};
+    mosqueIssues.forEach(i => {
+      const copy = mosqueCopies.find(c => c.id === i.bookCopyId);
+      if (copy) {
+        issueCountByTitle[copy.bookTitleId] = (issueCountByTitle[copy.bookTitleId] || 0) + 1;
+      }
+    });
+
+    const popularBooks = Object.entries(issueCountByTitle)
+      .map(([bookTitleId, issueCount]) => {
+        const titleObj = mosqueTitles.find(t => t.id === bookTitleId);
+        return {
+          bookTitleId,
+          title: titleObj?.title || 'অজ্ঞাত বই',
+          author: titleObj?.author || 'অজ্ঞাত লেখক',
+          issueCount,
+        };
+      })
+      .sort((a, b) => b.issueCount - a.issueCount)
+      .slice(0, 5);
+
+    return {
+      totalTitles,
+      totalCopies,
+      availableCopies,
+      issuedCopies,
+      overdueCopies,
+      lostCopies,
+      damagedCopies,
+      underRepairCopies,
+      totalMembers,
+      activeMembers,
+      todayIssuesCount,
+      todayReturnsCount,
+      recentIssues,
+      popularBooks,
+    };
+  }
+
+  // ==========================================
+  // EDUCATION FOUNDATION HELPERS
+  // ==========================================
+  generateNextStudentId(mosqueId: string): string {
+    const mosqueStudents = this.educationStudentProfiles.filter(s => s.mosqueId === mosqueId);
+    let maxNum = 0;
+    mosqueStudents.forEach(s => {
+      const match = s.studentId?.match(/^STU-(\d+)$/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    return `STU-${String(maxNum + 1).padStart(6, '0')}`;
+  }
+
+  generateNextEnrollmentNumber(mosqueId: string): string {
+    const year = new Date().getFullYear();
+    const count = this.educationEnrollments.filter(e => e.mosqueId === mosqueId).length + 1;
+    return `ENR-${year}-${String(count).padStart(6, '0')}`;
+  }
+
+  getEducationDashboardStats(mosqueId: string): EducationDashboardStats {
+    const students = this.educationStudentProfiles.filter(s => s.mosqueId === mosqueId && s.status !== 'ARCHIVED');
+    const enrollments = this.educationEnrollments.filter(e => e.mosqueId === mosqueId);
+    const activeEnrollments = enrollments.filter(e => e.status === 'ACTIVE');
+    const maktabEnrollments = activeEnrollments.filter(e => e.programType === 'MAKTAB');
+    const hifzEnrollments = activeEnrollments.filter(e => e.programType === 'HIFZKHANA');
+    const programs = this.educationPrograms.filter(p => p.mosqueId === mosqueId && p.status !== 'ARCHIVED');
+    const levels = this.educationLevels.filter(l => l.mosqueId === mosqueId && l.status !== 'ARCHIVED');
+
+    const teacherSet = new Set<string>();
+    activeEnrollments.forEach(e => {
+      if (e.teacherStaffId) teacherSet.add(e.teacherStaffId);
+    });
+
+    const recentEnrollments = enrollments
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 10);
+
+    return {
+      totalStudents: students.length,
+      activeStudents: students.filter(s => s.status === 'ACTIVE').length,
+      totalMaktabEnrollments: maktabEnrollments.length,
+      totalHifzEnrollments: hifzEnrollments.length,
+      totalPrograms: programs.length,
+      totalLevels: levels.length,
+      totalTeachersAssigned: teacherSet.size,
+      recentEnrollments,
+    };
+  }
+
+  // ==========================================
+  // MAKTAB OPERATIONAL SUBSYSTEM HELPERS
+  // ==========================================
+  getMaktabDashboardStats(mosqueId: string): MaktabDashboardStats {
+    const today = new Date().toISOString().split('T')[0];
+    const currentMonth = today.slice(0, 7); // YYYY-MM
+
+    // Active students in mosque
+    const activeMaktabEnrollments = this.educationEnrollments.filter(
+      e => e.mosqueId === mosqueId && e.programType === 'MAKTAB' && e.status === 'ACTIVE'
+    );
+    const activeStudentIdSet = new Set(activeMaktabEnrollments.map(e => e.studentProfileId));
+    const activeStudents = this.educationStudentProfiles.filter(
+      s => s.mosqueId === mosqueId && s.status === 'ACTIVE' && (activeStudentIdSet.has(s.id) || activeStudentIdSet.size === 0)
+    );
+
+    // Today's attendance
+    const todayAttendances = this.maktabAttendances.filter(a => a.mosqueId === mosqueId && a.date === today);
+    const presentToday = todayAttendances.filter(a => a.status === 'PRESENT').length;
+    const absentToday = todayAttendances.filter(a => a.status === 'ABSENT').length;
+    const leaveToday = todayAttendances.filter(a => a.status === 'LEAVE').length;
+    const lateToday = todayAttendances.filter(a => a.status === 'LATE').length;
+    const totalTodayRecorded = todayAttendances.length;
+    const attendanceRateToday = totalTodayRecorded > 0 ? Math.round(((presentToday + lateToday) / totalTodayRecorded) * 100) : 0;
+
+    // Active classes
+    const activeClasses = this.maktabClasses.filter(c => c.mosqueId === mosqueId && c.status === 'ACTIVE');
+
+    // Active teachers assigned
+    const activeTeacherAssignments = this.maktabTeacherAssignments.filter(t => t.mosqueId === mosqueId && t.status === 'ACTIVE');
+    const teacherIdSet = new Set<string>();
+    activeTeacherAssignments.forEach(t => teacherIdSet.add(t.staffId));
+    activeClasses.forEach(c => {
+      if (c.teacherStaffId) teacherIdSet.add(c.teacherStaffId);
+    });
+
+    // Fee totals
+    const feeRecords = this.maktabFeeRecords.filter(f => f.mosqueId === mosqueId);
+    const totalFeeDue = feeRecords.reduce((sum, f) => sum + (f.dueAmount || 0), 0);
+    const currentMonthFeeCollected = feeRecords
+      .filter(f => f.billingMonth === currentMonth)
+      .reduce((sum, f) => sum + (f.paidAmount || 0), 0);
+
+    // Recent progress records
+    const recentProgressRecords = this.maktabProgressRecords
+      .filter(p => p.mosqueId === mosqueId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 10);
+
+    // Alerts
+    const alerts: string[] = [];
+    if (absentToday > 0) {
+      alerts.push(`আজকে ${absentToday} জন শিক্ষার্থী অনুপস্থিত রয়েছে।`);
+    }
+    const unpaidCount = feeRecords.filter(f => f.status === 'UNPAID' || f.status === 'PARTIAL').length;
+    if (unpaidCount > 0) {
+      alerts.push(`সর্বমোট ${unpaidCount}টি ফি রেকর্ডে বকেয়া রয়েছে (৳ ${totalFeeDue.toLocaleString('bn-BD')})।`);
+    }
+    const unassignedClasses = activeClasses.filter(c => !c.teacherStaffId);
+    if (unassignedClasses.length > 0) {
+      alerts.push(`${unassignedClasses.length}টি সক্রিয় জামাতে কোনো উস্তাদ নির্ধারিত নেই।`);
+    }
+
+    return {
+      totalActiveStudents: activeStudents.length,
+      todayAttendanceTotal: totalTodayRecorded,
+      presentToday,
+      absentToday,
+      leaveToday,
+      lateToday,
+      attendanceRateToday,
+      totalClasses: activeClasses.length,
+      activeTeachersCount: teacherIdSet.size,
+      totalFeeDue,
+      currentMonthFeeCollected,
+      recentProgressRecords,
+      alerts,
+    };
+  }
+
+  getHifzLevels(mosqueId: string): HifzLevel[] {
+    let levels = this.hifzLevels.filter(l => l.mosqueId === mosqueId && l.status !== 'ARCHIVED');
+    if (levels.length === 0) {
+      const starters = getStarterHifzLevels(mosqueId);
+      this.hifzLevels.push(...starters);
+      this.save();
+      levels = starters;
+    }
+    return levels.sort((a, b) => a.sortOrder - b.sortOrder);
+  }
+
+  getHifzCurricula(mosqueId: string): HifzCurriculum[] {
+    let curricula = this.hifzCurricula.filter(c => c.mosqueId === mosqueId && c.status !== 'ARCHIVED');
+    if (curricula.length === 0) {
+      const starters = getStarterHifzCurricula(mosqueId);
+      this.hifzCurricula.push(...starters);
+      this.save();
+      curricula = starters;
+    }
+    return curricula;
+  }
+
+  generateNextHifzEnrollmentId(mosqueId: string): string {
+    const year = new Date().getFullYear();
+    const mosqueEnrollments = this.hifzEnrollments.filter(e => e.mosqueId === mosqueId);
+    let maxNum = 0;
+    mosqueEnrollments.forEach(e => {
+      const match = e.enrollmentId?.match(/^HENR-\d{4}-(\d+)$/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    return `HENR-${year}-${String(maxNum + 1).padStart(6, '0')}`;
   }
 }
 
