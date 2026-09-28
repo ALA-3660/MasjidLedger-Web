@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import http from 'http';
 import path from 'path';
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 import { GoogleGenAI } from '@google/genai';
 import { db } from './src/server/db';
 import { realtime } from './src/server/ws';
@@ -9,6 +10,7 @@ import { buildDailyPrayerSchedule, buildMonthlyPrayerCalendar } from './src/lib/
 import { DEFAULT_DOCUMENT_TEMPLATES } from './src/lib/officialDocumentTemplates';
 import {
   User,
+  UserRole,
   Mosque,
   Permission,
   DonationBox,
@@ -153,23 +155,109 @@ const requirePermission = (permission: Permission) => {
 };
 
 // ==========================================
+// 1. AUTH & USER HELPERS & CONSTANTS
+// ==========================================
+const ALLOWED_ROLES: UserRole[] = [
+  'SUPER_ADMIN',
+  'MOSQUE_ADMIN',
+  'ACCOUNTANT',
+  'COMMITTEE_ADMIN',
+  'TREASURER',
+  'DATA_ENTRY_OPERATOR',
+  'AUDITOR',
+  'VIEWER'
+];
+
+const ALL_VALID_PERMISSIONS: Set<string> = new Set([
+  'VIEW_DASHBOARD', 'CREATE_INCOME', 'EDIT_INCOME', 'DELETE_INCOME', 'APPROVE_INCOME',
+  'CREATE_EXPENSE', 'EDIT_EXPENSE', 'DELETE_EXPENSE', 'APPROVE_EXPENSE', 'VIEW_REPORT',
+  'EXPORT_REPORT', 'MANAGE_COMMITTEE', 'MANAGE_USERS', 'MANAGE_ACCOUNTS', 'MANAGE_SETTINGS',
+  'MANAGE_PUBLIC_PORTAL', 'VIEW_AUDIT_LOG', 'MANAGE_STAFF', 'MANAGE_ASSETS', 'MANAGE_PROPERTY',
+  'MANAGE_CEMETERY', 'VIEW_MEMBER_PERFORMANCE', 'CREATE_EVALUATION', 'EDIT_EVALUATION',
+  'ADD_MEMBER_ACTIVITY', 'UPDATE_RESPONSIBILITY_STATUS', 'PRINT_PERFORMANCE_REPORT',
+  'VIEW_MUSALLI', 'CREATE_MUSALLI', 'EDIT_MUSALLI', 'DELETE_MUSALLI', 'VIEW_DONATION_PLAN',
+  'CREATE_DONATION_PLAN', 'EDIT_DONATION_PLAN', 'DELETE_DONATION_PLAN', 'VIEW_DONATION_HISTORY',
+  'MANAGE_DONATION_PLAN', 'MANAGE_COLLECTION_WORKER', 'EXPORT_DONATION_PLAN', 'EXPORT_MUSALLI_DATA',
+  'VIEW_PERSONAL_DOCUMENTS', 'VIEW_DONATION_COLLECTION', 'CREATE_DONATION_COLLECTION',
+  'EDIT_DONATION_COLLECTION', 'UPDATE_DONATION_COLLECTION_STATUS', 'ASSIGN_COLLECTION_WORKER',
+  'MANAGE_DONATION_COLLECTION', 'VIEW_ASSIGNED_COLLECTION', 'VIEW_BUDGET', 'CREATE_BUDGET',
+  'EDIT_BUDGET', 'SUBMIT_BUDGET', 'APPROVE_BUDGET', 'REVISE_BUDGET', 'CLOSE_BUDGET',
+  'VIEW_BUDGET_ANALYSIS', 'EXPORT_BUDGET_REPORT'
+]);
+
+const getAuthoritativeRolePermissions = (targetRole: UserRole): Permission[] => {
+  switch (targetRole) {
+    case 'SUPER_ADMIN':
+    case 'MOSQUE_ADMIN':
+      return Array.from(ALL_VALID_PERMISSIONS) as Permission[];
+    case 'ACCOUNTANT':
+    case 'TREASURER':
+      return [
+        'VIEW_DASHBOARD', 'CREATE_INCOME', 'EDIT_INCOME', 'CREATE_EXPENSE', 'EDIT_EXPENSE',
+        'APPROVE_INCOME', 'APPROVE_EXPENSE', 'VIEW_REPORT', 'EXPORT_REPORT', 'MANAGE_ACCOUNTS',
+        'VIEW_BUDGET', 'CREATE_BUDGET', 'EDIT_BUDGET', 'SUBMIT_BUDGET', 'VIEW_BUDGET_ANALYSIS', 'EXPORT_BUDGET_REPORT'
+      ] as Permission[];
+    case 'COMMITTEE_ADMIN':
+      return [
+        'VIEW_DASHBOARD', 'MANAGE_COMMITTEE', 'VIEW_REPORT', 'EXPORT_REPORT',
+        'VIEW_MEMBER_PERFORMANCE', 'CREATE_EVALUATION', 'EDIT_EVALUATION', 'ADD_MEMBER_ACTIVITY', 'UPDATE_RESPONSIBILITY_STATUS', 'PRINT_PERFORMANCE_REPORT'
+      ] as Permission[];
+    case 'DATA_ENTRY_OPERATOR':
+      return ['VIEW_DASHBOARD', 'CREATE_INCOME', 'CREATE_EXPENSE', 'VIEW_MUSALLI', 'CREATE_MUSALLI'] as Permission[];
+    case 'AUDITOR':
+      return ['VIEW_DASHBOARD', 'VIEW_REPORT', 'EXPORT_REPORT', 'VIEW_AUDIT_LOG', 'VIEW_BUDGET_ANALYSIS', 'EXPORT_BUDGET_REPORT'] as Permission[];
+    case 'VIEWER':
+    default:
+      return ['VIEW_DASHBOARD', 'VIEW_REPORT'] as Permission[];
+  }
+};
+
+const hashPassword = (plain: string): string => {
+  return bcrypt.hashSync(plain, 10);
+};
+
+const verifyPassword = (plain: string, hash: string): boolean => {
+  if (!plain || !hash) return false;
+  if (hash.startsWith('$2a$') || hash.startsWith('$2b$')) {
+    try {
+      return bcrypt.compareSync(plain, hash);
+    } catch {
+      return false;
+    }
+  }
+  return false;
+};
+
+// ==========================================
 // 1. AUTH & USER ENDPOINTS
 // ==========================================
 app.post('/api/v1/auth/login', (req: Request, res: Response) => {
-  const { phoneOrEmail, identifier, phone, password, mosqueId } = req.body;
+  const { phoneOrEmail, identifier, phone, password } = req.body;
   const loginId = identifier || phoneOrEmail || phone || '';
-  const user = db.users.find(
-    u => (u.phone === loginId || u.email === loginId) && (u.passwordHash === password || password === 'admin123')
-  );
+  if (!loginId || !password) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'MISSING_CREDENTIALS', message: 'মোবাইল/ইমেইল এবং পাসওয়ার্ড প্রদান আবশ্যক।' }
+    });
+  }
 
-  if (!user) {
+  const user = db.users.find(u => u.phone === loginId || u.email === loginId);
+
+  if (!user || !verifyPassword(password, user.passwordHash)) {
     return res.status(401).json({
       success: false,
       error: { code: 'INVALID_CREDENTIALS', message: 'মোবাইল/ইমেইল অথবা পাসওয়ার্ড সঠিক নয়।' }
     });
   }
 
-  if (user.status === 'INACTIVE' || user.status === 'SUSPENDED') {
+  // Automatic secure password migration to bcrypt if somehow not already hashed
+  if (user.passwordHash && !user.passwordHash.startsWith('$2a$') && !user.passwordHash.startsWith('$2b$')) {
+    user.passwordHash = hashPassword(password);
+    user.updatedAt = new Date().toISOString();
+    db.save();
+  }
+
+  if (user.status === 'INACTIVE' || user.status === 'SUSPENDED' || user.status === 'BLOCKED') {
     return res.status(403).json({
       success: false,
       error: { code: 'ACCOUNT_DISABLED', message: 'আপনার অ্যাকাউন্টটি বর্তমানে নিষ্ক্রিয় বা স্থগিত রয়েছে।' }
@@ -312,37 +400,52 @@ app.post('/api/v1/users', authenticate, requirePermission('MANAGE_USERS'), (req:
     return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'নাম, মোবাইল নম্বর এবং পদবী/রোল আবশ্যক।' } });
   }
 
+  // Validate Role against Allowed Roles Whitelist
+  if (!ALLOWED_ROLES.includes(role)) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_ROLE', message: 'অবৈধ ব্যবহারকারী ভূমিকা/রোল।' } });
+  }
+
+  // Privilege Escalation Guard: Non-SuperAdmin cannot create or assign SUPER_ADMIN role
+  if (role === 'SUPER_ADMIN' && req.user?.role !== 'SUPER_ADMIN') {
+    return res.status(403).json({
+      success: false,
+      error: { code: 'UNAUTHORIZED_ROLE_ASSIGNMENT', message: 'শুধুমাত্র সিস্টেম সুপার অ্যাডমিন SUPER_ADMIN রোল প্রদান করতে পারেন।' }
+    });
+  }
+
   const existing = db.users.find(u => u.phone === phone && u.mosqueId === mosqueId);
   if (existing) {
     return res.status(400).json({ success: false, error: { code: 'DUPLICATE_PHONE', message: 'এই মোবাইল নম্বরে ইতিমধ্যে একজন ব্যবহারকারী নিবন্ধিত আছে।' } });
   }
 
-  // Default permissions according to role if not provided
-  let userPerms = permissions;
-  if (!userPerms || !userPerms.length) {
-    if (role === 'MOSQUE_ADMIN') {
-      userPerms = ['CREATE_INCOME', 'CREATE_EXPENSE', 'APPROVE_INCOME', 'APPROVE_EXPENSE', 'MANAGE_ACCOUNTS', 'MANAGE_COMMITTEE', 'MANAGE_STAFF', 'MANAGE_ASSETS', 'MANAGE_PROPERTY', 'MANAGE_CEMETERY', 'MANAGE_USERS', 'VIEW_AUDIT_LOGS', 'MANAGE_SETTINGS', 'EXPORT_REPORTS'];
-    } else if (role === 'ACCOUNTANT' || role === 'TREASURER') {
-      userPerms = ['CREATE_INCOME', 'CREATE_EXPENSE', 'APPROVE_INCOME', 'APPROVE_EXPENSE', 'MANAGE_ACCOUNTS', 'EXPORT_REPORTS'];
-    } else if (role === 'DATA_ENTRY_OPERATOR') {
-      userPerms = ['CREATE_INCOME', 'CREATE_EXPENSE'];
-    } else if (role === 'AUDITOR') {
-      userPerms = ['VIEW_AUDIT_LOGS', 'EXPORT_REPORTS'];
-    } else {
-      userPerms = ['EXPORT_REPORTS'];
+  // Authoritative permission validation against role presets
+  let userPerms: Permission[];
+  if (Array.isArray(permissions) && permissions.length > 0) {
+    const allowedForRole = new Set(getAuthoritativeRolePermissions(role));
+    userPerms = permissions.filter((p: string) => ALL_VALID_PERMISSIONS.has(p) && (req.user?.role === 'SUPER_ADMIN' || allowedForRole.has(p as Permission))) as Permission[];
+    if (userPerms.length === 0) {
+      userPerms = getAuthoritativeRolePermissions(role);
     }
+  } else {
+    userPerms = getAuthoritativeRolePermissions(role);
   }
+
+  // Production-grade Password Hashing (Min 6 chars check)
+  const rawPassword = password && typeof password === 'string' && password.trim().length >= 6
+    ? password.trim()
+    : 'Masjid@2026';
+  const passwordHash = hashPassword(rawPassword);
 
   const newUser = {
     id: `usr-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
     mosqueId,
-    name,
-    phone,
-    email: email || '',
-    passwordHash: password || 'admin123',
-    role: role || 'DATA_ENTRY_OPERATOR',
+    name: String(name).trim(),
+    phone: String(phone).trim(),
+    email: email ? String(email).trim() : '',
+    passwordHash,
+    role,
     permissions: userPerms,
-    status: status || 'ACTIVE',
+    status: status && ['ACTIVE', 'INACTIVE', 'SUSPENDED', 'BLOCKED'].includes(status) ? status : 'ACTIVE',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
@@ -350,10 +453,10 @@ app.post('/api/v1/users', authenticate, requirePermission('MANAGE_USERS'), (req:
   db.users.push(newUser as any);
   db.save();
 
-  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'AUTH', `নতুন ব্যবহারকারী তৈরি: ${name} (${role})`);
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'AUTH', `নতুন ব্যবহারকারী তৈরি: ${newUser.name} (${newUser.role})`);
   realtime.broadcastToMosque(mosqueId, 'USER_CREATED', { id: newUser.id, name: newUser.name, role: newUser.role }, { senderId: req.user!.id });
 
-  res.json({
+  res.status(201).json({
     success: true,
     data: {
       id: newUser.id,
@@ -363,7 +466,9 @@ app.post('/api/v1/users', authenticate, requirePermission('MANAGE_USERS'), (req:
       role: newUser.role,
       permissions: newUser.permissions,
       status: newUser.status,
-      mosqueId: newUser.mosqueId
+      mosqueId: newUser.mosqueId,
+      createdAt: newUser.createdAt,
+      updatedAt: newUser.updatedAt
     },
     message: 'নতুন ব্যবহারকারী সফলভাবে যুক্ত হয়েছে।'
   });
@@ -375,31 +480,105 @@ app.put('/api/v1/users/:id', authenticate, requirePermission('MANAGE_USERS'), (r
     return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ব্যবহারকারী পাওয়া যায়নি।' } });
   }
 
-  const { name, phone, email, role, permissions, status } = req.body;
-  if (name) user.name = name;
-  if (phone) user.phone = phone;
-  if (email !== undefined) user.email = email;
-  if (role) user.role = role;
-  if (permissions) user.permissions = permissions;
-  if (status) user.status = status;
-  user.updatedAt = new Date().toISOString();
+  // Protected SuperAdmin user guard: Non-SuperAdmin cannot modify SUPER_ADMIN user
+  if (user.role === 'SUPER_ADMIN' && req.user?.role !== 'SUPER_ADMIN') {
+    return res.status(403).json({
+      success: false,
+      error: { code: 'FORBIDDEN', message: 'সুপার অ্যাডমিন অ্যাকাউন্ট শুধুমাত্র সিস্টেম সুপার অ্যাডমিন পরিবর্তন করতে পারেন।' }
+    });
+  }
 
+  const { name, phone, email, role, permissions, status } = req.body;
+
+  // Role validation & privilege escalation protection
+  if (role !== undefined) {
+    if (!ALLOWED_ROLES.includes(role)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_ROLE', message: 'অবৈধ ব্যবহারকারী ভূমিকা/রোল।' } });
+    }
+    if (role === 'SUPER_ADMIN' && req.user?.role !== 'SUPER_ADMIN') {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'UNAUTHORIZED_ROLE_ASSIGNMENT', message: 'শুধুমাত্র সিস্টেম সুপার অ্যাডমিন SUPER_ADMIN রোল প্রদান করতে পারেন।' }
+      });
+    }
+    if (user.id === req.user!.id && role !== user.role && req.user!.role !== 'SUPER_ADMIN') {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'SELF_ROLE_CHANGE_FORBIDDEN', message: 'নিজের ব্যবহারকারী রোল নিজে পরিবর্তন করার অনুমতি নেই।' }
+      });
+    }
+    user.role = role;
+  }
+
+  if (name !== undefined) user.name = String(name).trim();
+  if (phone !== undefined) user.phone = String(phone).trim();
+  if (email !== undefined) user.email = String(email).trim();
+
+  // Permissions validation against authoritative role presets
+  if (permissions !== undefined && Array.isArray(permissions)) {
+    const targetRole = user.role;
+    const allowedForRole = new Set(getAuthoritativeRolePermissions(targetRole));
+    const sanitized = permissions.filter((p: string) => ALL_VALID_PERMISSIONS.has(p) && (req.user?.role === 'SUPER_ADMIN' || allowedForRole.has(p as Permission))) as Permission[];
+    user.permissions = sanitized.length > 0 ? sanitized : getAuthoritativeRolePermissions(targetRole);
+  }
+
+  // Self-status manipulation protection
+  if (status !== undefined) {
+    if (!['ACTIVE', 'INACTIVE', 'SUSPENDED', 'BLOCKED'].includes(status)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_STATUS', message: 'অবস্থা সঠিক নয়।' } });
+    }
+    if (user.id === req.user!.id && status !== 'ACTIVE') {
+      return res.status(400).json({ success: false, error: { code: 'SELF_STATUS_CHANGE_FORBIDDEN', message: 'নিজের অ্যাকাউন্ট নিষ্ক্রিয় করা যাবে না।' } });
+    }
+    user.status = status;
+  }
+
+  user.updatedAt = new Date().toISOString();
   db.save();
+
   db.logAudit(req.currentMosque!.id, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'AUTH', `ব্যবহারকারী তথ্য আপডেট: ${user.name}`);
   realtime.broadcastToMosque(req.currentMosque!.id, 'USER_UPDATED', { id: user.id, name: user.name, role: user.role, status: user.status }, { senderId: req.user!.id });
 
-  res.json({ success: true, data: user, message: 'ব্যবহারকারীর তথ্য সফলভাবে আপডেট হয়েছে।' });
+  res.json({
+    success: true,
+    data: {
+      id: user.id,
+      name: user.name,
+      phone: user.phone,
+      email: user.email,
+      role: user.role,
+      permissions: user.permissions,
+      status: user.status,
+      mosqueId: user.mosqueId,
+      photoUrl: user.photoUrl,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt
+    },
+    message: 'ব্যবহারকারীর তথ্য সফলভাবে আপডেট হয়েছে।'
+  });
 });
 
-app.put('/api/v1/users/:id/status', authenticate, requirePermission('MANAGE_USERS'), (req: AuthRequest, res: Response) => {
+const handleUserStatusUpdate = (req: AuthRequest, res: Response) => {
   const user = db.users.find(u => u.id === req.params.id);
   if (!user || (req.user?.role !== 'SUPER_ADMIN' && user.mosqueId !== req.currentMosque!.id)) {
     return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ব্যবহারকারী পাওয়া যায়নি।' } });
   }
 
+  if (user.role === 'SUPER_ADMIN' && req.user?.role !== 'SUPER_ADMIN') {
+    return res.status(403).json({
+      success: false,
+      error: { code: 'FORBIDDEN', message: 'সুপার অ্যাডমিন অ্যাকাউন্ট নিষ্ক্রিয় বা স্থগিত করা নিষিদ্ধ।' }
+    });
+  }
+
   const { status } = req.body;
-  if (!status || !['ACTIVE', 'INACTIVE', 'SUSPENDED'].includes(status)) {
+  if (!status || !['ACTIVE', 'INACTIVE', 'SUSPENDED', 'BLOCKED'].includes(status)) {
     return res.status(400).json({ success: false, error: { code: 'INVALID_STATUS', message: 'অবস্থা সঠিক নয়।' } });
+  }
+
+  // Self status deactivation block
+  if (user.id === req.user!.id && status !== 'ACTIVE') {
+    return res.status(400).json({ success: false, error: { code: 'SELF_STATUS_CHANGE_FORBIDDEN', message: 'নিজের অ্যাকাউন্ট নিষ্ক্রিয় করা যাবে না।' } });
   }
 
   user.status = status;
@@ -407,8 +586,24 @@ app.put('/api/v1/users/:id/status', authenticate, requirePermission('MANAGE_USER
   db.save();
 
   db.logAudit(req.currentMosque!.id, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'AUTH', `ব্যবহারকারীর অবস্থা পরিবর্তন: ${user.name} -> ${status}`);
-  res.json({ success: true, data: user, message: `ব্যবহারকারীর অবস্থা "${status === 'ACTIVE' ? 'সক্রিয়' : 'নিষ্ক্রিয়'}" করা হয়েছে।` });
-});
+  res.json({
+    success: true,
+    data: {
+      id: user.id,
+      name: user.name,
+      phone: user.phone,
+      email: user.email,
+      role: user.role,
+      permissions: user.permissions,
+      status: user.status,
+      mosqueId: user.mosqueId
+    },
+    message: `ব্যবহারকারীর অবস্থা "${status === 'ACTIVE' ? 'সক্রিয়' : 'নিষ্ক্রিয়'}" করা হয়েছে।`
+  });
+};
+
+app.put('/api/v1/users/:id/status', authenticate, requirePermission('MANAGE_USERS'), handleUserStatusUpdate);
+app.patch('/api/v1/users/:id/status', authenticate, requirePermission('MANAGE_USERS'), handleUserStatusUpdate);
 
 app.post('/api/v1/users/:id/reset-password', authenticate, requirePermission('MANAGE_USERS'), (req: AuthRequest, res: Response) => {
   const user = db.users.find(u => u.id === req.params.id);
@@ -416,8 +611,22 @@ app.post('/api/v1/users/:id/reset-password', authenticate, requirePermission('MA
     return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ব্যবহারকারী পাওয়া যায়নি।' } });
   }
 
-  const { newPassword } = req.body;
-  user.passwordHash = newPassword || 'admin123';
+  if (user.role === 'SUPER_ADMIN' && req.user?.role !== 'SUPER_ADMIN') {
+    return res.status(403).json({
+      success: false,
+      error: { code: 'FORBIDDEN', message: 'সুপার অ্যাডমিন অ্যাকাউন্টের পাসওয়ার্ড শুধুমাত্র সুপার অ্যাডমিন রিসেট করতে পারেন।' }
+    });
+  }
+
+  const rawNewPass = req.body.newPassword || req.body.password;
+  if (!rawNewPass || typeof rawNewPass !== 'string' || rawNewPass.trim().length < 6) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_PASSWORD', message: 'পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।' }
+    });
+  }
+
+  user.passwordHash = hashPassword(rawNewPass.trim());
   user.updatedAt = new Date().toISOString();
   db.save();
 
@@ -432,6 +641,13 @@ app.delete('/api/v1/users/:id', authenticate, requirePermission('MANAGE_USERS'),
   const user = db.users[idx];
   if (req.user?.role !== 'SUPER_ADMIN' && user.mosqueId !== req.currentMosque!.id) {
     return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'অনুমতি নেই।' } });
+  }
+
+  if (user.role === 'SUPER_ADMIN' && req.user?.role !== 'SUPER_ADMIN') {
+    return res.status(403).json({
+      success: false,
+      error: { code: 'FORBIDDEN', message: 'সুপার অ্যাডমিন অ্যাকাউন্ট মুছে ফেলা নিষিদ্ধ।' }
+    });
   }
 
   if (user.id === req.user!.id) {
@@ -450,9 +666,9 @@ app.put('/api/v1/auth/profile', authenticate, (req: AuthRequest, res: Response) 
   const user = db.users.find(u => u.id === req.user!.id);
   if (!user) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ব্যবহারকারী পাওয়া যায়নি।' } });
 
-  if (name) user.name = name;
-  if (phone) user.phone = phone;
-  if (email) user.email = email;
+  if (name) user.name = String(name).trim();
+  if (phone) user.phone = String(phone).trim();
+  if (email) user.email = String(email).trim();
   if (address) user.address = address;
   if (photoUrl) user.photoUrl = photoUrl;
   user.updatedAt = new Date().toISOString();
@@ -460,7 +676,22 @@ app.put('/api/v1/auth/profile', authenticate, (req: AuthRequest, res: Response) 
   db.save();
   db.logAudit(req.currentMosque!.id, user.id, user.name, user.role, 'UPDATE', 'AUTH', 'প্রোফাইল তথ্য আপডেট করা হয়েছে');
 
-  res.json({ success: true, data: user, message: 'প্রোফাইল সফলভাবে আপডেট করা হয়েছে।' });
+  res.json({
+    success: true,
+    data: {
+      id: user.id,
+      name: user.name,
+      phone: user.phone,
+      email: user.email,
+      role: user.role,
+      permissions: user.permissions,
+      status: user.status,
+      mosqueId: user.mosqueId,
+      photoUrl: user.photoUrl,
+      address: user.address
+    },
+    message: 'প্রোফাইল সফলভাবে আপডেট করা হয়েছে।'
+  });
 });
 
 // Helper to extract Google Drive File ID from various link formats

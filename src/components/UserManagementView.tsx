@@ -85,7 +85,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('admin123');
+  const [password, setPassword] = useState('Masjid@2026');
   const [role, setRole] = useState<UserRole>('DATA_ENTRY_OPERATOR');
   const [selectedPermissions, setSelectedPermissions] = useState<Permission[]>([]);
   const [newPassword, setNewPassword] = useState('');
@@ -143,7 +143,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
     setName('');
     setPhone('');
     setEmail('');
-    setPassword('admin123');
+    setPassword('Masjid@2026');
     setRole('DATA_ENTRY_OPERATOR');
     setSelectedPermissions(getPresetPermissionsForRole('DATA_ENTRY_OPERATOR'));
     setFormError('');

@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import bcrypt from 'bcryptjs';
 import { buildDailyPrayerSchedule, toBanglaDigits } from '../lib/prayerEngine';
 import {
   User,
@@ -147,16 +148,22 @@ export class DatabaseStore {
             : { ...DEFAULT_PUBLIC_PORTAL_SETTINGS }
         }));
         this.users = (parsed.users || []).map((u: any) => {
-          if (u.role === 'ACCOUNTANT' || u.role === 'TREASURER') {
-            const existingPerms = new Set(u.permissions || []);
+          let passwordHash = u.passwordHash;
+          if (!passwordHash || (!passwordHash.startsWith('$2a$') && !passwordHash.startsWith('$2b$'))) {
+            const raw = passwordHash || 'admin123';
+            passwordHash = bcrypt.hashSync(raw, 10);
+          }
+          const userObj = { ...u, passwordHash };
+          if (userObj.role === 'ACCOUNTANT' || userObj.role === 'TREASURER') {
+            const existingPerms = new Set(userObj.permissions || []);
             ['VIEW_BUDGET', 'CREATE_BUDGET', 'EDIT_BUDGET', 'SUBMIT_BUDGET', 'VIEW_BUDGET_ANALYSIS', 'EXPORT_BUDGET_REPORT'].forEach(p => existingPerms.add(p));
             // Ensure accountant never has approval/revision/closing permissions
             existingPerms.delete('APPROVE_BUDGET');
             existingPerms.delete('REVISE_BUDGET');
             existingPerms.delete('CLOSE_BUDGET');
-            return { ...u, permissions: Array.from(existingPerms) };
+            userObj.permissions = Array.from(existingPerms);
           }
-          return u;
+          return userObj;
         });
         this.accountHeads = parsed.accountHeads || [];
         this.accounts = parsed.accounts || [];
@@ -406,7 +413,9 @@ export class DatabaseStore {
         budgets: this.budgets,
         budgetLines: this.budgetLines,
       };
-      fs.writeFileSync(DB_FILE_PATH, JSON.stringify(data, null, 2), 'utf-8');
+      const tempPath = `${DB_FILE_PATH}.tmp.${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), 'utf-8');
+      fs.renameSync(tempPath, DB_FILE_PATH);
     } catch (e) {
       console.error('[DB] Failed to save DB to disk:', e);
     }
@@ -537,7 +546,7 @@ export class DatabaseStore {
           'EXPORT_REPORT', 'MANAGE_COMMITTEE', 'MANAGE_USERS', 'MANAGE_ACCOUNTS', 'MANAGE_SETTINGS',
           'VIEW_AUDIT_LOG', 'MANAGE_STAFF', 'MANAGE_ASSETS', 'MANAGE_PROPERTY', 'MANAGE_CEMETERY'
         ],
-        passwordHash: 'admin123', // In production hashed
+        passwordHash: bcrypt.hashSync('admin123', 10),
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt: '2026-01-01T00:00:00.000Z'
       },
@@ -554,7 +563,7 @@ export class DatabaseStore {
           'VIEW_REPORT', 'EXPORT_REPORT', 'MANAGE_ACCOUNTS', 'MANAGE_STAFF',
           'VIEW_BUDGET', 'CREATE_BUDGET', 'EDIT_BUDGET', 'SUBMIT_BUDGET', 'VIEW_BUDGET_ANALYSIS', 'EXPORT_BUDGET_REPORT'
         ],
-        passwordHash: 'pass123',
+        passwordHash: bcrypt.hashSync('pass123', 10),
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt: '2026-01-01T00:00:00.000Z'
       },
@@ -572,7 +581,7 @@ export class DatabaseStore {
           'EXPORT_REPORT', 'MANAGE_COMMITTEE', 'MANAGE_USERS', 'MANAGE_ACCOUNTS', 'MANAGE_SETTINGS',
           'VIEW_AUDIT_LOG', 'MANAGE_STAFF', 'MANAGE_ASSETS', 'MANAGE_PROPERTY', 'MANAGE_CEMETERY'
         ],
-        passwordHash: 'super123',
+        passwordHash: bcrypt.hashSync('super123', 10),
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt: '2026-01-01T00:00:00.000Z'
       }
