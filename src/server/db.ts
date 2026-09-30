@@ -87,6 +87,8 @@ import {
   HifzLevel,
   HifzCurriculum,
   HifzkhanaEnrollment,
+  HifzSabak,
+  HifzSabaki,
 } from '../types';
 import {
   OfficialDocument,
@@ -519,6 +521,8 @@ export class DatabaseStore {
   hifzEnrollments: HifzkhanaEnrollment[] = [];
   hifzLevels: HifzLevel[] = [];
   hifzCurricula: HifzCurriculum[] = [];
+  hifzSabaks: HifzSabak[] = [];
+  hifzSabakis: HifzSabaki[] = [];
 
   constructor() {
     this.init();
@@ -761,6 +765,8 @@ export class DatabaseStore {
         this.hifzEnrollments = parsed.hifzEnrollments || [];
         this.hifzLevels = parsed.hifzLevels || [];
         this.hifzCurricula = parsed.hifzCurricula || [];
+        this.hifzSabaks = parsed.hifzSabaks || [];
+        this.hifzSabakis = parsed.hifzSabakis || [];
 
         return;
       }
@@ -857,6 +863,8 @@ export class DatabaseStore {
         hifzEnrollments: this.hifzEnrollments,
         hifzLevels: this.hifzLevels,
         hifzCurricula: this.hifzCurricula,
+        hifzSabaks: this.hifzSabaks,
+        hifzSabakis: this.hifzSabakis,
       };
       const tempPath = `${DB_FILE_PATH}.tmp.${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), 'utf-8');
@@ -3016,6 +3024,34 @@ export class DatabaseStore {
       }
     });
     return `HENR-${year}-${String(maxNum + 1).padStart(6, '0')}`;
+  }
+
+  generateNextHifzSabakId(mosqueId: string): string {
+    const year = new Date().getFullYear();
+    const mosqueSabaks = this.hifzSabaks.filter(s => s.mosqueId === mosqueId);
+    let maxNum = 0;
+    mosqueSabaks.forEach(s => {
+      const match = s.sabakId?.match(/^SBK-\d{4}-(\d+)$/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    return `SBK-${year}-${String(maxNum + 1).padStart(6, '0')}`;
+  }
+
+  generateNextHifzSabakiId(mosqueId: string): string {
+    const year = new Date().getFullYear();
+    const mosqueSabakis = this.hifzSabakis.filter(s => s.mosqueId === mosqueId);
+    let maxNum = 0;
+    mosqueSabakis.forEach(s => {
+      const match = s.sabakiId?.match(/^SBKI-\d{4}-(\d+)$/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    return `SBKI-${year}-${String(maxNum + 1).padStart(6, '0')}`;
   }
 }
 

@@ -82,6 +82,12 @@ import {
   HifzCurriculum,
   HifzkhanaEnrollment,
   HifzEnrollmentStatus,
+  HifzSabak,
+  HifzSabakStatus,
+  HifzSabakPerformance,
+  HifzSabaki,
+  HifzSabakiStatus,
+  HifzSabakiPerformance,
 } from '../types';
 import {
   OfficialDocument,
@@ -89,6 +95,13 @@ import {
   OfficialDocumentType,
   OfficialDocumentStatus,
 } from '../types/officialDocumentTypes';
+import {
+  QuranSurah,
+  QuranJuz,
+  QuranAyah,
+  QuranReferenceStatus,
+  QuranRangeResult,
+} from '../types/quran';
 
 class ApiService {
   private token: string | null = null;
@@ -3302,6 +3315,269 @@ class ApiService {
       body: JSON.stringify({ status, remarks }),
     });
     if (!res.success || !res.data) throw new Error(res.error?.message || 'হিফজ ভর্তি স্ট্যাটাস পরিবর্তন করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  // ==========================================
+  // HIFZ H3-A — SABAK FOUNDATION
+  // ==========================================
+
+  async getHifzSabakStats(): Promise<{
+    todayTotal: number;
+    todayAssigned: number;
+    todayPresented: number;
+    todayEvaluated: number;
+    todayCompleted: number;
+    todayNeedsImprovement: number;
+    totalAllTime: number;
+    totalCompletedAllTime: number;
+  }> {
+    const res = await this.request<any>('/hifz/sabak/stats');
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'সবক পরিসংখ্যান লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getHifzSabaks(params?: {
+    date?: string;
+    enrollmentId?: string;
+    studentId?: string;
+    ustadId?: string;
+    status?: string;
+    performance?: string;
+    search?: string;
+  }): Promise<HifzSabak[]> {
+    const query = new URLSearchParams();
+    if (params?.date) query.append('date', params.date);
+    if (params?.enrollmentId) query.append('enrollmentId', params.enrollmentId);
+    if (params?.studentId) query.append('studentId', params.studentId);
+    if (params?.ustadId) query.append('ustadId', params.ustadId);
+    if (params?.status) query.append('status', params.status);
+    if (params?.performance) query.append('performance', params.performance);
+    if (params?.search) query.append('search', params.search);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+
+    const res = await this.request<HifzSabak[]>(`/hifz/sabak${qs}`);
+    return res.data || [];
+  }
+
+  async getHifzSabakById(id: string): Promise<HifzSabak> {
+    const res = await this.request<HifzSabak>(`/hifz/sabak/${id}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'সবক রেকর্ড লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async createHifzSabak(data: any): Promise<HifzSabak> {
+    const res = await this.request<HifzSabak>('/hifz/sabak', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'সবক সংরক্ষণ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateHifzSabak(id: string, data: any): Promise<HifzSabak> {
+    const res = await this.request<HifzSabak>(`/hifz/sabak/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'সবক তথ্য আপডেট করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateHifzSabakStatus(
+    id: string,
+    status: HifzSabakStatus,
+    performance?: HifzSabakPerformance,
+    mistakeCount?: number,
+    remarks?: string
+  ): Promise<HifzSabak> {
+    const res = await this.request<HifzSabak>(`/hifz/sabak/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, performance, mistakeCount, remarks }),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'সবক স্ট্যাটাস আপডেট করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  // ==========================================
+  // HIFZ H3-B — SABAKI FOUNDATION (সবকী)
+  // ==========================================
+
+  async getHifzSabakiStats(params?: {
+    enrollmentId?: string;
+    studentProfileId?: string;
+    ustadId?: string;
+    date?: string;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<{
+    totalSabakis: number;
+    todaySabakisCount: number;
+    statusCounts: Record<HifzSabakiStatus, number>;
+    performanceCounts: Record<HifzSabakiPerformance, number>;
+    totalAyahsReviewed: number;
+    studentCount: number;
+    ustadActivity: Array<{
+      ustadId: string;
+      ustadName: string;
+      totalSabakis: number;
+      todaySabakis: number;
+      completedSabakis: number;
+    }>;
+  }> {
+    const query = new URLSearchParams();
+    if (params?.enrollmentId) query.append('enrollmentId', params.enrollmentId);
+    if (params?.studentProfileId) query.append('studentProfileId', params.studentProfileId);
+    if (params?.ustadId) query.append('ustadId', params.ustadId);
+    if (params?.date) query.append('date', params.date);
+    if (params?.startDate) query.append('startDate', params.startDate);
+    if (params?.endDate) query.append('endDate', params.endDate);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+
+    const res = await this.request<any>(`/hifz/sabaki/stats${qs}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'সবকী পরিসংখ্যান লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getHifzSabakis(params?: {
+    date?: string;
+    startDate?: string;
+    endDate?: string;
+    enrollmentId?: string;
+    studentProfileId?: string;
+    studentId?: string;
+    ustadId?: string;
+    sourceSabakId?: string;
+    status?: string;
+    performance?: string;
+    search?: string;
+  }): Promise<HifzSabaki[]> {
+    const query = new URLSearchParams();
+    if (params?.date) query.append('date', params.date);
+    if (params?.startDate) query.append('startDate', params.startDate);
+    if (params?.endDate) query.append('endDate', params.endDate);
+    if (params?.enrollmentId) query.append('enrollmentId', params.enrollmentId);
+    if (params?.studentProfileId) query.append('studentProfileId', params.studentProfileId);
+    if (params?.studentId) query.append('studentId', params.studentId);
+    if (params?.ustadId) query.append('ustadId', params.ustadId);
+    if (params?.sourceSabakId) query.append('sourceSabakId', params.sourceSabakId);
+    if (params?.status) query.append('status', params.status);
+    if (params?.performance) query.append('performance', params.performance);
+    if (params?.search) query.append('search', params.search);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+
+    const res = await this.request<HifzSabaki[]>(`/hifz/sabaki${qs}`);
+    return res.data || [];
+  }
+
+  async getHifzSabakiById(id: string): Promise<HifzSabaki> {
+    const res = await this.request<HifzSabaki>(`/hifz/sabaki/${id}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'সবকী রেকর্ড লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async createHifzSabaki(data: any): Promise<HifzSabaki> {
+    const res = await this.request<HifzSabaki>('/hifz/sabaki', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'সবকী সংরক্ষণ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateHifzSabaki(id: string, data: any): Promise<HifzSabaki> {
+    const res = await this.request<HifzSabaki>(`/hifz/sabaki/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'সবকী তথ্য আপডেট করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateHifzSabakiStatus(
+    id: string,
+    status: HifzSabakiStatus,
+    performance?: HifzSabakiPerformance,
+    mistakeCount?: number,
+    remarks?: string
+  ): Promise<HifzSabaki> {
+    const res = await this.request<HifzSabaki>(`/hifz/sabaki/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, performance, mistakeCount, remarks }),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'সবকী স্ট্যাটাস আপডেট করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  // ==========================================
+  // HIFZ H2 — QURAN REFERENCE FOUNDATION (READ-ONLY)
+  // ==========================================
+
+  async getQuranStatus(): Promise<QuranReferenceStatus> {
+    const res = await this.request<QuranReferenceStatus>('/quran/status');
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'কুরআন রেফারেন্স স্ট্যাটাস লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getQuranSurahs(): Promise<QuranSurah[]> {
+    const res = await this.request<QuranSurah[]>('/quran/surahs');
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'সূরা তালিকা লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getQuranSurah(surahNumber: number): Promise<{ surah: QuranSurah; ayahs: QuranAyah[] }> {
+    const res = await this.request<{ surah: QuranSurah; ayahs: QuranAyah[] }>(`/quran/surahs/${surahNumber}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'সূরা লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getQuranAyah(verseKey: string): Promise<QuranAyah> {
+    const res = await this.request<QuranAyah>(`/quran/ayahs/${encodeURIComponent(verseKey)}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || `আয়াত '${verseKey}' লোড করতে ব্যর্থ হয়েছে`);
+    return res.data;
+  }
+
+  async getQuranRange(startVerseKey: string, endVerseKey: string): Promise<QuranRangeResult> {
+    const res = await this.request<QuranRangeResult>(
+      `/quran/range?start=${encodeURIComponent(startVerseKey)}&end=${encodeURIComponent(endVerseKey)}`
+    );
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'আয়াত রেঞ্জ লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getQuranJuzs(): Promise<QuranJuz[]> {
+    const res = await this.request<QuranJuz[]>('/quran/juz');
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'পারা তালিকা লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getQuranJuz(juzNumber: number): Promise<{ juz: QuranJuz; ayahs: QuranAyah[] }> {
+    const res = await this.request<{ juz: QuranJuz; ayahs: QuranAyah[] }>(`/quran/juz/${juzNumber}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'পারা লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getQuranPage(pageNumber: number): Promise<{ pageNumber: number; ayahs: QuranAyah[] }> {
+    const res = await this.request<{ pageNumber: number; ayahs: QuranAyah[] }>(`/quran/pages/${pageNumber}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'পৃষ্ঠা লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getQuranHizb(hizbNumber: number): Promise<{ hizbNumber: number; ayahs: QuranAyah[] }> {
+    const res = await this.request<{ hizbNumber: number; ayahs: QuranAyah[] }>(`/quran/hizb/${hizbNumber}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'হিযব লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getQuranRub(rubNumber: number): Promise<{ rubHizbNumber: number; hizbNumber: number; ayahs: QuranAyah[] }> {
+    const res = await this.request<{ rubHizbNumber: number; hizbNumber: number; ayahs: QuranAyah[] }>(`/quran/rub/${rubNumber}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'রুবুল হিযব লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getQuranManzil(manzilNumber: number): Promise<{ manzilNumber: number; ayahs: QuranAyah[] }> {
+    const res = await this.request<{ manzilNumber: number; ayahs: QuranAyah[] }>(`/quran/manzil/${manzilNumber}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'মঞ্জিল লোড করতে ব্যর্থ হয়েছে');
     return res.data;
   }
 }

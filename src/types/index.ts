@@ -89,7 +89,15 @@ export type Permission =
   | 'MANAGE_MAKTAB_PROGRESS'
   | 'MANAGE_MAKTAB_FEES'
   | 'VIEW_HIFZ'
-  | 'MANAGE_HIFZ_STUDENTS';
+  | 'MANAGE_HIFZ_STUDENTS'
+  | 'VIEW_HIFZ_SABAK'
+  | 'CREATE_HIFZ_SABAK'
+  | 'EDIT_HIFZ_SABAK'
+  | 'EVALUATE_HIFZ_SABAK'
+  | 'VIEW_HIFZ_SABAKI'
+  | 'CREATE_HIFZ_SABAKI'
+  | 'EDIT_HIFZ_SABAKI'
+  | 'EVALUATE_HIFZ_SABAKI';
 
 export interface User {
   id: string;
@@ -3924,4 +3932,95 @@ export interface HifzkhanaEnrollment {
   updatedAt: string;
 }
 
+// ==========================================
+// HIFZ H3-A — SABAK FOUNDATION TYPES
+// ==========================================
+
+export type HifzSabakStatus =
+  | 'ASSIGNED'
+  | 'PRESENTED'
+  | 'EVALUATED'
+  | 'COMPLETED'
+  | 'CANCELLED';
+
+export type HifzSabakPerformance =
+  | 'EXCELLENT'
+  | 'GOOD'
+  | 'ACCEPTABLE'
+  | 'NEEDS_IMPROVEMENT'
+  | 'NOT_PASSED';
+
+export interface HifzSabak {
+  id: string;
+  sabakId: string; // Server-generated: SBK-YYYY-000001
+  mosqueId: string;
+  enrollmentId: string; // References HifzkhanaEnrollment.id
+  studentProfileId: string; // References EducationStudentProfile.id
+  studentId: string; // STU-000001
+  studentName?: string;
+  date: string; // YYYY-MM-DD
+  ustadId: string; // References Staff.id
+  ustadName?: string;
+  startVerseKey: string; // e.g. "2:255"
+  endVerseKey: string; // e.g. "2:257"
+  totalAyahs: number; // resolved from H2
+  startSurahNumber: number;
+  startSurahNameBn?: string;
+  endSurahNumber: number;
+  endSurahNameBn?: string;
+  status: HifzSabakStatus;
+  performance?: HifzSabakPerformance;
+  mistakeCount?: number;
+  remarks?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ==========================================
+// HIFZ H3-B — SABAKI FOUNDATION TYPES
+// ==========================================
+
+export type HifzSabakiStatus =
+  | 'ASSIGNED'
+  | 'REVIEWED'
+  | 'EVALUATED'
+  | 'COMPLETED'
+  | 'CANCELLED';
+
+export type HifzSabakiPerformance =
+  | 'EXCELLENT'
+  | 'GOOD'
+  | 'ACCEPTABLE'
+  | 'NEEDS_IMPROVEMENT'
+  | 'NOT_PASSED';
+
+export interface HifzSabaki {
+  id: string;
+  sabakiId: string; // Server-generated: SBKI-YYYY-000001
+  mosqueId: string;
+  enrollmentId: string; // References HifzkhanaEnrollment.id
+  studentProfileId: string; // References EducationStudentProfile.id
+  studentId: string; // STU-000001
+  studentName?: string;
+  date: string; // YYYY-MM-DD
+  ustadId: string; // References Staff.id
+  ustadName?: string;
+  sourceSabakId?: string; // Optional reference to HifzSabak.id
+  sourceSabakDisplayId?: string; // e.g. "SBK-2026-000001"
+  startVerseKey: string; // e.g. "2:255"
+  endVerseKey: string; // e.g. "2:257"
+  totalAyahs: number; // resolved from H2
+  startSurahNumber: number;
+  startSurahNameBn?: string;
+  endSurahNumber: number;
+  endSurahNameBn?: string;
+  status: HifzSabakiStatus;
+  performance?: HifzSabakiPerformance;
+  mistakeCount?: number;
+  remarks?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export * from './qrBarcodeTypes';
+export * from './quran';

@@ -6,6 +6,7 @@ import bcrypt from 'bcryptjs';
 import { GoogleGenAI } from '@google/genai';
 import { db, getStarterLibraryCategories, getStarterEducationPrograms, getStarterEducationLevels, getStarterMaktabClasses, getStarterMaktabFeeSchedules } from './src/server/db';
 import { realtime } from './src/server/ws';
+import { quranReferenceService } from './src/server/quranReferenceService';
 import { buildDailyPrayerSchedule, buildMonthlyPrayerCalendar } from './src/lib/prayerEngine';
 import { DEFAULT_DOCUMENT_TEMPLATES } from './src/lib/officialDocumentTemplates';
 import {
@@ -102,6 +103,12 @@ import {
   HifzLevel,
   HifzCurriculum,
   HifzkhanaEnrollment,
+  HifzSabak,
+  HifzSabakStatus,
+  HifzSabakPerformance,
+  HifzSabaki,
+  HifzSabakiStatus,
+  HifzSabakiPerformance,
 } from './src/types';
 
 const app = express();
@@ -181,6 +188,24 @@ const requirePermission = (permission: Permission) => {
   };
 };
 
+const requireAnyPermission = (permissions: Permission[]) => {
+  return (req: AuthRequest, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'অনুগ্রহ করে লগইন করুন।' } });
+    }
+    if (req.user.role === 'SUPER_ADMIN' || req.user.role === 'MOSQUE_ADMIN') {
+      return next();
+    }
+    if (req.user.permissions && permissions.some(p => req.user.permissions.includes(p))) {
+      return next();
+    }
+    return res.status(403).json({
+      success: false,
+      error: { code: 'FORBIDDEN', message: 'এই কাজটি সম্পন্ন করার পর্যাপ্ত অনুমতি আপনার নেই।' }
+    });
+  };
+};
+
 // ==========================================
 // 1. AUTH & USER HELPERS & CONSTANTS
 // ==========================================
@@ -215,7 +240,9 @@ const ALL_VALID_PERMISSIONS: Set<string> = new Set([
   'EXPORT_LIBRARY_REPORT', 'MANAGE_LIBRARY_LOCATION',
   'VIEW_EDUCATION', 'MANAGE_EDUCATION_STUDENT', 'MANAGE_EDUCATION_ENROLLMENT', 'MANAGE_EDUCATION_SETTINGS',
   'VIEW_MAKTAB', 'MANAGE_MAKTAB_ATTENDANCE', 'MANAGE_MAKTAB_PROGRESS', 'MANAGE_MAKTAB_FEES',
-  'VIEW_HIFZ', 'MANAGE_HIFZ_STUDENTS'
+  'VIEW_HIFZ', 'MANAGE_HIFZ_STUDENTS',
+  'VIEW_HIFZ_SABAK', 'CREATE_HIFZ_SABAK', 'EDIT_HIFZ_SABAK', 'EVALUATE_HIFZ_SABAK',
+  'VIEW_HIFZ_SABAKI', 'CREATE_HIFZ_SABAKI', 'EDIT_HIFZ_SABAKI', 'EVALUATE_HIFZ_SABAKI'
 ]);
 
 const getAuthoritativeRolePermissions = (targetRole: UserRole): Permission[] => {
@@ -230,14 +257,14 @@ const getAuthoritativeRolePermissions = (targetRole: UserRole): Permission[] => 
         'APPROVE_INCOME', 'APPROVE_EXPENSE', 'VIEW_REPORT', 'EXPORT_REPORT', 'MANAGE_ACCOUNTS',
         'VIEW_BUDGET', 'CREATE_BUDGET', 'EDIT_BUDGET', 'SUBMIT_BUDGET', 'VIEW_BUDGET_ANALYSIS', 'EXPORT_BUDGET_REPORT',
         'VIEW_LIBRARY', 'VIEW_LIBRARY_REPORT', 'EXPORT_LIBRARY_REPORT',
-        'VIEW_EDUCATION', 'VIEW_MAKTAB', 'MANAGE_MAKTAB_FEES', 'VIEW_HIFZ'
+        'VIEW_EDUCATION', 'VIEW_MAKTAB', 'MANAGE_MAKTAB_FEES', 'VIEW_HIFZ', 'VIEW_HIFZ_SABAK', 'VIEW_HIFZ_SABAKI'
       ] as Permission[];
     case 'COMMITTEE_ADMIN':
       return [
         'VIEW_DASHBOARD', 'MANAGE_COMMITTEE', 'VIEW_REPORT', 'EXPORT_REPORT',
         'VIEW_MEMBER_PERFORMANCE', 'CREATE_EVALUATION', 'EDIT_EVALUATION', 'ADD_MEMBER_ACTIVITY', 'UPDATE_RESPONSIBILITY_STATUS', 'PRINT_PERFORMANCE_REPORT',
         'VIEW_LIBRARY', 'VIEW_LIBRARY_REPORT',
-        'VIEW_EDUCATION', 'VIEW_MAKTAB', 'VIEW_HIFZ'
+        'VIEW_EDUCATION', 'VIEW_MAKTAB', 'VIEW_HIFZ', 'VIEW_HIFZ_SABAK', 'VIEW_HIFZ_SABAKI'
       ] as Permission[];
     case 'DATA_ENTRY_OPERATOR':
       return [
@@ -245,13 +272,14 @@ const getAuthoritativeRolePermissions = (targetRole: UserRole): Permission[] => 
         'VIEW_LIBRARY', 'MANAGE_LIBRARY_BOOK', 'MANAGE_LIBRARY_COPY', 'MANAGE_LIBRARY_MEMBER', 'LIBRARY_ISSUE', 'LIBRARY_RETURN',
         'VIEW_EDUCATION', 'MANAGE_EDUCATION_STUDENT', 'MANAGE_EDUCATION_ENROLLMENT',
         'VIEW_MAKTAB', 'MANAGE_MAKTAB_ATTENDANCE', 'MANAGE_MAKTAB_PROGRESS', 'MANAGE_MAKTAB_FEES',
-        'VIEW_HIFZ', 'MANAGE_HIFZ_STUDENTS'
+        'VIEW_HIFZ', 'MANAGE_HIFZ_STUDENTS', 'VIEW_HIFZ_SABAK', 'CREATE_HIFZ_SABAK', 'EDIT_HIFZ_SABAK', 'EVALUATE_HIFZ_SABAK',
+        'VIEW_HIFZ_SABAKI', 'CREATE_HIFZ_SABAKI', 'EDIT_HIFZ_SABAKI', 'EVALUATE_HIFZ_SABAKI'
       ] as Permission[];
     case 'AUDITOR':
-      return ['VIEW_DASHBOARD', 'VIEW_REPORT', 'EXPORT_REPORT', 'VIEW_AUDIT_LOG', 'VIEW_BUDGET_ANALYSIS', 'EXPORT_BUDGET_REPORT', 'VIEW_LIBRARY', 'VIEW_LIBRARY_REPORT', 'EXPORT_LIBRARY_REPORT', 'VIEW_EDUCATION', 'VIEW_MAKTAB', 'VIEW_HIFZ'] as Permission[];
+      return ['VIEW_DASHBOARD', 'VIEW_REPORT', 'EXPORT_REPORT', 'VIEW_AUDIT_LOG', 'VIEW_BUDGET_ANALYSIS', 'EXPORT_BUDGET_REPORT', 'VIEW_LIBRARY', 'VIEW_LIBRARY_REPORT', 'EXPORT_LIBRARY_REPORT', 'VIEW_EDUCATION', 'VIEW_MAKTAB', 'VIEW_HIFZ', 'VIEW_HIFZ_SABAK', 'VIEW_HIFZ_SABAKI'] as Permission[];
     case 'VIEWER':
     default:
-      return ['VIEW_DASHBOARD', 'VIEW_REPORT', 'VIEW_LIBRARY', 'VIEW_EDUCATION', 'VIEW_MAKTAB', 'VIEW_HIFZ'] as Permission[];
+      return ['VIEW_DASHBOARD', 'VIEW_REPORT', 'VIEW_LIBRARY', 'VIEW_EDUCATION', 'VIEW_MAKTAB', 'VIEW_HIFZ', 'VIEW_HIFZ_SABAK', 'VIEW_HIFZ_SABAKI'] as Permission[];
   }
 };
 
@@ -20442,6 +20470,1320 @@ app.patch('/api/v1/hifz/enrollments/:id/status', authenticate, requirePermission
     success: true,
     data: enrollment,
     message: `হিফজ ভর্তি স্ট্যাটাস সফলভাবে ${status} করা হয়েছে।`
+  });
+});
+
+// ==========================================
+// HIFZ H3-A — SABAK FOUNDATION
+// ==========================================
+
+// 1. Sabak Dashboard Stats (Today's counts & status breakdown)
+app.get('/api/v1/hifz/sabak/stats', authenticate, requireAnyPermission(['VIEW_HIFZ', 'VIEW_HIFZ_SABAK']), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const today = new Date().toISOString().split('T')[0];
+  const mosqueSabaks = db.hifzSabaks.filter(s => s.mosqueId === mosqueId);
+  const todaySabaks = mosqueSabaks.filter(s => s.date === today && s.status !== 'CANCELLED');
+
+  const stats = {
+    todayTotal: todaySabaks.length,
+    todayAssigned: todaySabaks.filter(s => s.status === 'ASSIGNED').length,
+    todayPresented: todaySabaks.filter(s => s.status === 'PRESENTED').length,
+    todayEvaluated: todaySabaks.filter(s => s.status === 'EVALUATED').length,
+    todayCompleted: todaySabaks.filter(s => s.status === 'COMPLETED').length,
+    todayNeedsImprovement: todaySabaks.filter(s => s.performance === 'NEEDS_IMPROVEMENT' || s.performance === 'NOT_PASSED').length,
+    totalAllTime: mosqueSabaks.length,
+    totalCompletedAllTime: mosqueSabaks.filter(s => s.status === 'COMPLETED').length,
+  };
+
+  res.json({
+    success: true,
+    data: stats
+  });
+});
+
+// 2. List Sabaks with Query Filters
+app.get('/api/v1/hifz/sabak', authenticate, requireAnyPermission(['VIEW_HIFZ', 'VIEW_HIFZ_SABAK']), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { date, enrollmentId, studentId, ustadId, status, performance, search } = req.query;
+
+  let sabaks = db.hifzSabaks.filter(s => s.mosqueId === mosqueId);
+
+  if (date && typeof date === 'string') {
+    sabaks = sabaks.filter(s => s.date === date);
+  }
+  if (enrollmentId && typeof enrollmentId === 'string') {
+    sabaks = sabaks.filter(s => s.enrollmentId === enrollmentId);
+  }
+  if (studentId && typeof studentId === 'string') {
+    sabaks = sabaks.filter(s => s.studentId === studentId || s.studentProfileId === studentId);
+  }
+  if (ustadId && typeof ustadId === 'string') {
+    sabaks = sabaks.filter(s => s.ustadId === ustadId);
+  }
+  if (status && typeof status === 'string' && status !== 'ALL') {
+    sabaks = sabaks.filter(s => s.status === status);
+  }
+  if (performance && typeof performance === 'string' && performance !== 'ALL') {
+    sabaks = sabaks.filter(s => s.performance === performance);
+  }
+  if (search && typeof search === 'string') {
+    const q = search.toLowerCase();
+    sabaks = sabaks.filter(s =>
+      s.sabakId.toLowerCase().includes(q) ||
+      (s.studentName && s.studentName.toLowerCase().includes(q)) ||
+      (s.studentId && s.studentId.toLowerCase().includes(q)) ||
+      (s.ustadName && s.ustadName.toLowerCase().includes(q)) ||
+      (s.remarks && s.remarks.toLowerCase().includes(q)) ||
+      (s.startSurahNameBn && s.startSurahNameBn.toLowerCase().includes(q)) ||
+      (s.endSurahNameBn && s.endSurahNameBn.toLowerCase().includes(q))
+    );
+  }
+
+  // Sort descending by date, then createdAt
+  sabaks.sort((a, b) => {
+    if (a.date !== b.date) return b.date.localeCompare(a.date);
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
+
+  res.json({
+    success: true,
+    data: sabaks,
+    total: sabaks.length
+  });
+});
+
+// 3. Get Single Sabak Detail
+app.get('/api/v1/hifz/sabak/:id', authenticate, requireAnyPermission(['VIEW_HIFZ', 'VIEW_HIFZ_SABAK']), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const sabak = db.hifzSabaks.find(s => (s.id === req.params.id || s.sabakId === req.params.id) && s.mosqueId === mosqueId);
+  if (!sabak) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সবক রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  res.json({
+    success: true,
+    data: sabak
+  });
+});
+
+// 4. Create New Sabak Assignment
+app.post('/api/v1/hifz/sabak', authenticate, requireAnyPermission(['MANAGE_HIFZ_STUDENTS', 'CREATE_HIFZ_SABAK']), (req: AuthRequest, res: Response) => {
+  // Idempotency check
+  if (req.idempotencyKey) {
+    const cached = db.checkIdempotency(req.idempotencyKey);
+    if (cached) return res.status(cached.status || 200).json(cached.body);
+  }
+
+  const mosqueId = req.currentMosque!.id;
+  const {
+    enrollmentId,
+    date,
+    ustadId,
+    startVerseKey,
+    endVerseKey,
+    status,
+    performance,
+    mistakeCount,
+    remarks
+  } = req.body;
+
+  // 1. Required field validation
+  if (!enrollmentId || !date || !startVerseKey || !endVerseKey) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'MISSING_REQUIRED_FIELDS', message: 'ভর্তি রেকর্ড (enrollmentId), তারিখ, শুরু ও শেষ আয়াত কী আবশ্যক।' }
+    });
+  }
+
+  // 2. Authoritative Enrollment Validation
+  const enrollment = db.hifzEnrollments.find(e => (e.id === enrollmentId || e.enrollmentId === enrollmentId) && e.mosqueId === mosqueId);
+  if (!enrollment) {
+    return res.status(404).json({
+      success: false,
+      error: { code: 'ENROLLMENT_NOT_FOUND', message: 'হিফজ ভর্তি রেকর্ড পাওয়া যায়নি বা অন্য মসজিদের।' }
+    });
+  }
+
+  // Check enrollment eligibility lifecycle (Section 6)
+  const nonEligibleStatuses = ['COMPLETED', 'TRANSFERRED', 'DROPPED', 'ARCHIVED', 'SUSPENDED'];
+  if (nonEligibleStatuses.includes(enrollment.status)) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: 'ENROLLMENT_INACTIVE',
+        message: `নিষ্ক্রিয় বা সমাপ্ত হিফজ ভর্তির জন্য নতুন সবক তৈরি করা যাবে না (বর্তমান স্ট্যাটাস: ${enrollment.status})।`
+      }
+    });
+  }
+
+  // 3. Authoritative Student Identity
+  const student = db.educationStudentProfiles.find(s => s.id === enrollment.studentProfileId && s.mosqueId === mosqueId);
+  if (!student) {
+    return res.status(404).json({
+      success: false,
+      error: { code: 'STUDENT_NOT_FOUND', message: 'শিক্ষার্থী প্রোফাইল পাওয়া যায়নি।' }
+    });
+  }
+
+  // 4. Authoritative Ustad Reference (Staff & Payroll)
+  const targetUstadId = ustadId || enrollment.primaryUstadId;
+  if (!targetUstadId) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'USTAD_REQUIRED', message: 'সবকের জন্য উস্তাদ নির্ধারণ আবশ্যক।' }
+    });
+  }
+  const ustad = db.staffList.find(st => st.id === targetUstadId && st.mosqueId === mosqueId);
+  if (!ustad) {
+    return res.status(404).json({
+      success: false,
+      error: { code: 'USTAD_NOT_FOUND', message: 'নির্ধারিত উস্তাদ স্টাফ ডাটাবেজে পাওয়া যায়নি বা অন্য মসজিদের।' }
+    });
+  }
+
+  // 5. Authoritative H2 Quran Range Validation
+  const rangeValidation = quranReferenceService.validateRange(startVerseKey, endVerseKey);
+  if (!rangeValidation.isValid) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_QURAN_RANGE', message: rangeValidation.error || 'অবৈধ কুরআন আয়াত রেঞ্জ।' }
+    });
+  }
+
+  const rangeResult = quranReferenceService.getAyahRange(startVerseKey, endVerseKey);
+  if (!rangeResult) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_QURAN_RANGE', message: 'কুরআন আয়াত রেঞ্জ সমাধান করা যায়নি।' }
+    });
+  }
+
+  // 6. Mistake Count Validation
+  let validatedMistakeCount: number | undefined = undefined;
+  if (mistakeCount !== undefined && mistakeCount !== null && mistakeCount !== '') {
+    const mc = Number(mistakeCount);
+    if (isNaN(mc) || mc < 0 || !Number.isInteger(mc)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_MISTAKE_COUNT', message: 'ভুল সংখ্যা অবশ্যই ০ বা তার বেশি পূর্ণসংখ্যা হতে হবে।' }
+      });
+    }
+    validatedMistakeCount = mc;
+  }
+
+  // 7. Performance Validation
+  const validPerformances = ['EXCELLENT', 'GOOD', 'ACCEPTABLE', 'NEEDS_IMPROVEMENT', 'NOT_PASSED'];
+  if (performance && !validPerformances.includes(performance)) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_PERFORMANCE', message: 'অবৈধ পারফরম্যান্স মান।' }
+    });
+  }
+
+  // 8. Exact Duplicate Active Sabak Guard (Section 16)
+  const existingActive = db.hifzSabaks.find(s =>
+    s.mosqueId === mosqueId &&
+    s.enrollmentId === enrollment.id &&
+    s.date === date &&
+    s.startVerseKey === startVerseKey &&
+    s.endVerseKey === endVerseKey &&
+    s.status !== 'CANCELLED'
+  );
+  if (existingActive) {
+    return res.status(409).json({
+      success: false,
+      error: {
+        code: 'ALREADY_EXISTS',
+        message: `একই শিক্ষার্থী, তারিখ ও আয়াত রেঞ্জে ইতোমধ্যে একটি সবক রেকর্ড সক্রিয় রয়েছে (#${existingActive.sabakId})।`
+      }
+    });
+  }
+
+  // 9. Initial Status Validation
+  const validStatuses = ['ASSIGNED', 'PRESENTED', 'EVALUATED', 'COMPLETED', 'CANCELLED'];
+  const targetStatus = status && validStatuses.includes(status) ? status : 'ASSIGNED';
+
+  // 10. Generate ID & Assemble Sabak Record
+  const sabakId = db.generateNextHifzSabakId(mosqueId);
+  const now = new Date().toISOString();
+  const newSabak: HifzSabak = {
+    id: `sbk-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    sabakId,
+    mosqueId,
+    enrollmentId: enrollment.id,
+    studentProfileId: student.id,
+    studentId: student.studentId,
+    studentName: student.personName,
+    date,
+    ustadId: ustad.id,
+    ustadName: ustad.name,
+    startVerseKey,
+    endVerseKey,
+    totalAyahs: rangeResult.totalAyahs,
+    startSurahNumber: rangeResult.startSurah.surahNumber,
+    startSurahNameBn: rangeResult.startSurah.nameBangla,
+    endSurahNumber: rangeResult.endSurah.surahNumber,
+    endSurahNameBn: rangeResult.endSurah.nameBangla,
+    status: targetStatus,
+    performance: performance || undefined,
+    mistakeCount: validatedMistakeCount,
+    remarks: remarks?.trim() || undefined,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  db.hifzSabaks.push(newSabak);
+  db.save();
+
+  // Audit Log
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'HIFZ',
+    `নতুন সবক বরাদ্দ (${sabakId}): ${student.personName} (${student.studentId}) -> ${rangeResult.startSurah.nameBangla} (${startVerseKey}) থেকে ${rangeResult.endSurah.nameBangla} (${endVerseKey}), মোট ${rangeResult.totalAyahs} আয়াত`,
+    newSabak.id
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'HIFZ_SABAK_CREATED', newSabak, { senderId: req.user!.id });
+
+  const responsePayload = {
+    success: true,
+    data: newSabak,
+    message: `শিক্ষার্থী ${student.personName}-এর জন্য সবক সফলভাবে সংরক্ষিত হয়েছে (#${sabakId})।`
+  };
+
+  if (req.idempotencyKey) {
+    db.saveIdempotency(req.idempotencyKey, responsePayload);
+  }
+
+  res.status(201).json(responsePayload);
+});
+
+// 5. Update Sabak Details
+app.put('/api/v1/hifz/sabak/:id', authenticate, requireAnyPermission(['MANAGE_HIFZ_STUDENTS', 'EDIT_HIFZ_SABAK', 'EVALUATE_HIFZ_SABAK']), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const sabak = db.hifzSabaks.find(s => (s.id === req.params.id || s.sabakId === req.params.id) && s.mosqueId === mosqueId);
+  if (!sabak) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সবক রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  if (sabak.status === 'CANCELLED') {
+    return res.status(400).json({ success: false, error: { code: 'CANCELLED_IMMUTABLE', message: 'বাতিলকৃত সবক রেকর্ড পরিবর্তন করা যাবে না।' } });
+  }
+
+  const {
+    ustadId,
+    startVerseKey,
+    endVerseKey,
+    status,
+    performance,
+    mistakeCount,
+    remarks
+  } = req.body;
+
+  // If Ustad changed
+  if (ustadId && ustadId !== sabak.ustadId) {
+    const ustad = db.staffList.find(st => st.id === ustadId && st.mosqueId === mosqueId);
+    if (!ustad) {
+      return res.status(404).json({ success: false, error: { code: 'USTAD_NOT_FOUND', message: 'উস্তাদ স্টাফ ডাটাবেজে পাওয়া যায়নি।' } });
+    }
+    sabak.ustadId = ustad.id;
+    sabak.ustadName = ustad.name;
+  }
+
+  // If Quran range changed
+  if ((startVerseKey && startVerseKey !== sabak.startVerseKey) || (endVerseKey && endVerseKey !== sabak.endVerseKey)) {
+    const sKey = startVerseKey || sabak.startVerseKey;
+    const eKey = endVerseKey || sabak.endVerseKey;
+    const rangeValidation = quranReferenceService.validateRange(sKey, eKey);
+    if (!rangeValidation.isValid) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_QURAN_RANGE', message: rangeValidation.error } });
+    }
+    const rangeResult = quranReferenceService.getAyahRange(sKey, eKey);
+    if (!rangeResult) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_QURAN_RANGE', message: 'কুরআন আয়াত রেঞ্জ সমাধান করা যায়নি।' } });
+    }
+    sabak.startVerseKey = sKey;
+    sabak.endVerseKey = eKey;
+    sabak.totalAyahs = rangeResult.totalAyahs;
+    sabak.startSurahNumber = rangeResult.startSurah.surahNumber;
+    sabak.startSurahNameBn = rangeResult.startSurah.nameBangla;
+    sabak.endSurahNumber = rangeResult.endSurah.surahNumber;
+    sabak.endSurahNameBn = rangeResult.endSurah.nameBangla;
+  }
+
+  // If Mistake count changed
+  if (mistakeCount !== undefined && mistakeCount !== null && mistakeCount !== '') {
+    const mc = Number(mistakeCount);
+    if (isNaN(mc) || mc < 0 || !Number.isInteger(mc)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_MISTAKE_COUNT', message: 'ভুল সংখ্যা অবশ্যই ০ বা তার বেশি পূর্ণসংখ্যা হতে হবে।' } });
+    }
+    sabak.mistakeCount = mc;
+  }
+
+  // If Performance changed
+  if (performance !== undefined) {
+    const validPerformances = ['EXCELLENT', 'GOOD', 'ACCEPTABLE', 'NEEDS_IMPROVEMENT', 'NOT_PASSED'];
+    if (performance && !validPerformances.includes(performance)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_PERFORMANCE', message: 'অবৈধ পারফরম্যান্স মান।' } });
+    }
+    sabak.performance = performance || undefined;
+  }
+
+  if (remarks !== undefined) {
+    sabak.remarks = remarks ? remarks.trim() : undefined;
+  }
+
+  // Status transition check if status changed
+  if (status && status !== sabak.status) {
+    const validTransitions: Record<string, string[]> = {
+      ASSIGNED: ['PRESENTED', 'CANCELLED'],
+      PRESENTED: ['EVALUATED', 'ASSIGNED', 'CANCELLED'],
+      EVALUATED: ['COMPLETED', 'PRESENTED', 'CANCELLED'],
+      COMPLETED: ['EVALUATED', 'CANCELLED'],
+    };
+    const allowed = validTransitions[sabak.status] || [];
+    if (!allowed.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_STATUS_TRANSITION', message: `অবৈধ স্ট্যাটাস পরিবর্তন: ${sabak.status} থেকে ${status} সম্ভব নয়।` }
+      });
+    }
+    sabak.status = status;
+  }
+
+  sabak.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'HIFZ',
+    `সবক তথ্য আপডেট (${sabak.sabakId}): স্ট্যাটাস=${sabak.status}, মূল্যায়ন=${sabak.performance || 'N/A'}, ভুল=${sabak.mistakeCount ?? 0}`,
+    sabak.id
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'HIFZ_SABAK_UPDATED', sabak, { senderId: req.user!.id });
+
+  res.json({
+    success: true,
+    data: sabak,
+    message: `সবক তথ্য সফলভাবে আপডেট হয়েছে (#${sabak.sabakId})।`
+  });
+});
+
+// 6. Update Sabak Status & Evaluation (Transition Guard)
+app.patch('/api/v1/hifz/sabak/:id/status', authenticate, requireAnyPermission(['MANAGE_HIFZ_STUDENTS', 'EDIT_HIFZ_SABAK', 'EVALUATE_HIFZ_SABAK']), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const sabak = db.hifzSabaks.find(s => (s.id === req.params.id || s.sabakId === req.params.id) && s.mosqueId === mosqueId);
+  if (!sabak) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সবক রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  const { status, performance, mistakeCount, remarks } = req.body;
+  if (!status) {
+    return res.status(400).json({ success: false, error: { code: 'STATUS_REQUIRED', message: 'স্ট্যাটাস আবশ্যক।' } });
+  }
+
+  if (sabak.status === 'CANCELLED') {
+    return res.status(400).json({ success: false, error: { code: 'CANCELLED_IMMUTABLE', message: 'বাতিলকৃত সবক রেকর্ড পরিবর্তন করা যাবে না।' } });
+  }
+
+  // Validate status transition
+  if (status !== sabak.status) {
+    const validTransitions: Record<string, string[]> = {
+      ASSIGNED: ['PRESENTED', 'CANCELLED'],
+      PRESENTED: ['EVALUATED', 'ASSIGNED', 'CANCELLED'],
+      EVALUATED: ['COMPLETED', 'PRESENTED', 'CANCELLED'],
+      COMPLETED: ['EVALUATED', 'CANCELLED'],
+    };
+    const allowed = validTransitions[sabak.status] || [];
+    if (!allowed.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_STATUS_TRANSITION', message: `অবৈধ স্ট্যাটাস পরিবর্তন: ${sabak.status} থেকে ${status} সম্ভব নয়।` }
+      });
+    }
+  }
+
+  // Mistake count validation
+  if (mistakeCount !== undefined && mistakeCount !== null && mistakeCount !== '') {
+    const mc = Number(mistakeCount);
+    if (isNaN(mc) || mc < 0 || !Number.isInteger(mc)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_MISTAKE_COUNT', message: 'ভুল সংখ্যা অবশ্যই ০ বা তার বেশি পূর্ণসংখ্যা হতে হবে।' } });
+    }
+    sabak.mistakeCount = mc;
+  }
+
+  // Performance validation
+  if (performance !== undefined) {
+    const validPerformances = ['EXCELLENT', 'GOOD', 'ACCEPTABLE', 'NEEDS_IMPROVEMENT', 'NOT_PASSED'];
+    if (performance && !validPerformances.includes(performance)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_PERFORMANCE', message: 'অবৈধ পারফরম্যান্স মান।' } });
+    }
+    sabak.performance = performance || undefined;
+  }
+
+  if (remarks !== undefined) {
+    sabak.remarks = remarks ? remarks.trim() : undefined;
+  }
+
+  const prevStatus = sabak.status;
+  sabak.status = status;
+  sabak.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'STATUS_CHANGE',
+    'HIFZ',
+    `সবক স্ট্যাটাস পরিবর্তন (${sabak.sabakId}): ${prevStatus} -> ${status}${performance ? ` [${performance}]` : ''}`,
+    sabak.id
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'HIFZ_SABAK_UPDATED', sabak, { senderId: req.user!.id });
+
+  res.json({
+    success: true,
+    data: sabak,
+    message: `সবক স্ট্যাটাস সফলভাবে ${status} করা হয়েছে (#${sabak.sabakId})।`
+  });
+});
+
+// ==========================================
+// HIFZ H3-B — SABAKI FOUNDATION (সবকী)
+// ==========================================
+
+// 1. Sabaki Dashboard Statistics
+app.get('/api/v1/hifz/sabaki/stats', authenticate, requireAnyPermission(['VIEW_HIFZ', 'VIEW_HIFZ_SABAK', 'VIEW_HIFZ_SABAKI']), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { enrollmentId, studentProfileId, ustadId, startDate, endDate, date } = req.query;
+
+  let sabakis = db.hifzSabakis.filter(s => s.mosqueId === mosqueId);
+
+  if (enrollmentId) {
+    sabakis = sabakis.filter(s => s.enrollmentId === enrollmentId);
+  }
+  if (studentProfileId) {
+    sabakis = sabakis.filter(s => s.studentProfileId === studentProfileId);
+  }
+  if (ustadId) {
+    sabakis = sabakis.filter(s => s.ustadId === ustadId);
+  }
+  if (date) {
+    sabakis = sabakis.filter(s => s.date === date);
+  }
+  if (startDate) {
+    sabakis = sabakis.filter(s => s.date >= (startDate as string));
+  }
+  if (endDate) {
+    sabakis = sabakis.filter(s => s.date <= (endDate as string));
+  }
+
+  const todayStr = new Date().toISOString().split('T')[0];
+  const todaySabakis = sabakis.filter(s => s.date === todayStr);
+
+  const statusCounts: Record<HifzSabakiStatus, number> = {
+    ASSIGNED: sabakis.filter(s => s.status === 'ASSIGNED').length,
+    REVIEWED: sabakis.filter(s => s.status === 'REVIEWED').length,
+    EVALUATED: sabakis.filter(s => s.status === 'EVALUATED').length,
+    COMPLETED: sabakis.filter(s => s.status === 'COMPLETED').length,
+    CANCELLED: sabakis.filter(s => s.status === 'CANCELLED').length,
+  };
+
+  const performanceCounts: Record<HifzSabakiPerformance, number> = {
+    EXCELLENT: sabakis.filter(s => s.performance === 'EXCELLENT').length,
+    GOOD: sabakis.filter(s => s.performance === 'GOOD').length,
+    ACCEPTABLE: sabakis.filter(s => s.performance === 'ACCEPTABLE').length,
+    NEEDS_IMPROVEMENT: sabakis.filter(s => s.performance === 'NEEDS_IMPROVEMENT').length,
+    NOT_PASSED: sabakis.filter(s => s.performance === 'NOT_PASSED').length,
+  };
+
+  const totalAyahsReviewed = sabakis
+    .filter(s => s.status !== 'CANCELLED')
+    .reduce((sum, s) => sum + (s.totalAyahs || 0), 0);
+
+  const distinctStudents = new Set(sabakis.map(s => s.studentProfileId)).size;
+
+  // Ustad activity breakdown
+  const ustadActivityMap: Record<string, { ustadId: string; ustadName: string; totalSabakis: number; todaySabakis: number; completedSabakis: number }> = {};
+  sabakis.forEach(s => {
+    if (!s.ustadId) return;
+    if (!ustadActivityMap[s.ustadId]) {
+      ustadActivityMap[s.ustadId] = {
+        ustadId: s.ustadId,
+        ustadName: s.ustadName || 'অনির্ধারিত উস্তাদ',
+        totalSabakis: 0,
+        todaySabakis: 0,
+        completedSabakis: 0,
+      };
+    }
+    ustadActivityMap[s.ustadId].totalSabakis += 1;
+    if (s.date === todayStr) {
+      ustadActivityMap[s.ustadId].todaySabakis += 1;
+    }
+    if (s.status === 'COMPLETED') {
+      ustadActivityMap[s.ustadId].completedSabakis += 1;
+    }
+  });
+
+  res.json({
+    success: true,
+    data: {
+      totalSabakis: sabakis.length,
+      todaySabakisCount: todaySabakis.length,
+      statusCounts,
+      performanceCounts,
+      totalAyahsReviewed,
+      studentCount: distinctStudents,
+      ustadActivity: Object.values(ustadActivityMap),
+    }
+  });
+});
+
+// 2. List Sabakis with Filters
+app.get('/api/v1/hifz/sabaki', authenticate, requireAnyPermission(['VIEW_HIFZ', 'VIEW_HIFZ_SABAK', 'VIEW_HIFZ_SABAKI']), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { enrollmentId, studentProfileId, studentId, ustadId, sourceSabakId, date, startDate, endDate, status, performance, search } = req.query;
+
+  let list = db.hifzSabakis.filter(s => s.mosqueId === mosqueId);
+
+  if (enrollmentId) {
+    list = list.filter(s => s.enrollmentId === enrollmentId);
+  }
+  if (studentProfileId) {
+    list = list.filter(s => s.studentProfileId === studentProfileId);
+  }
+  if (studentId) {
+    list = list.filter(s => s.studentId === studentId);
+  }
+  if (ustadId) {
+    list = list.filter(s => s.ustadId === ustadId);
+  }
+  if (sourceSabakId) {
+    list = list.filter(s => s.sourceSabakId === sourceSabakId);
+  }
+  if (date) {
+    list = list.filter(s => s.date === date);
+  }
+  if (startDate) {
+    list = list.filter(s => s.date >= (startDate as string));
+  }
+  if (endDate) {
+    list = list.filter(s => s.date <= (endDate as string));
+  }
+  if (status && status !== 'ALL') {
+    list = list.filter(s => s.status === status);
+  }
+  if (performance && performance !== 'ALL') {
+    list = list.filter(s => s.performance === performance);
+  }
+  if (search) {
+    const q = (search as string).toLowerCase().trim();
+    list = list.filter(s =>
+      s.sabakiId.toLowerCase().includes(q) ||
+      (s.studentId && s.studentId.toLowerCase().includes(q)) ||
+      (s.studentName && s.studentName.toLowerCase().includes(q)) ||
+      (s.ustadName && s.ustadName.toLowerCase().includes(q)) ||
+      (s.startVerseKey && s.startVerseKey.includes(q)) ||
+      (s.endVerseKey && s.endVerseKey.includes(q)) ||
+      (s.remarks && s.remarks.toLowerCase().includes(q))
+    );
+  }
+
+  // Sort descending by date, then createdAt
+  list.sort((a, b) => {
+    const dateComp = (b.date || '').localeCompare(a.date || '');
+    if (dateComp !== 0) return dateComp;
+    return (b.createdAt || '').localeCompare(a.createdAt || '');
+  });
+
+  res.json({
+    success: true,
+    data: list,
+    total: list.length,
+  });
+});
+
+// 3. Get Single Sabaki Details
+app.get('/api/v1/hifz/sabaki/:id', authenticate, requireAnyPermission(['VIEW_HIFZ', 'VIEW_HIFZ_SABAK', 'VIEW_HIFZ_SABAKI']), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const sabaki = db.hifzSabakis.find(s => (s.id === req.params.id || s.sabakiId === req.params.id) && s.mosqueId === mosqueId);
+  if (!sabaki) {
+    return res.status(404).json({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'সবকী রেকর্ড পাওয়া যায়নি।' }
+    });
+  }
+
+  res.json({
+    success: true,
+    data: sabaki,
+  });
+});
+
+// 4. Create New Sabaki Assignment
+app.post('/api/v1/hifz/sabaki', authenticate, requireAnyPermission(['MANAGE_HIFZ_STUDENTS', 'CREATE_HIFZ_SABAK', 'CREATE_HIFZ_SABAKI']), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+
+  // Idempotency check
+  if (req.idempotencyKey) {
+    const cached = db.checkIdempotency(req.idempotencyKey);
+    if (cached) {
+      return res.status(200).json({
+        success: true,
+        data: cached,
+        message: 'সবকী রেকর্ড পূর্বে সফলভাবে প্রক্রিয়াকৃত হয়েছে (Idempotent)।'
+      });
+    }
+  }
+
+  const {
+    enrollmentId,
+    date,
+    ustadId,
+    sourceSabakId,
+    startVerseKey,
+    endVerseKey,
+    status = 'ASSIGNED',
+    performance,
+    mistakeCount,
+    remarks,
+  } = req.body;
+
+  if (!enrollmentId) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'ENROLLMENT_REQUIRED', message: 'হিফজ শিক্ষার্থী ভর্তি আইডি আবশ্যক।' }
+    });
+  }
+
+  // Find authoritative active enrollment
+  const enrollment = db.hifzEnrollments.find(e => (e.id === enrollmentId || e.enrollmentId === enrollmentId) && e.mosqueId === mosqueId);
+  if (!enrollment) {
+    return res.status(404).json({
+      success: false,
+      error: { code: 'ENROLLMENT_NOT_FOUND', message: 'হিফজ ভর্তি রেকর্ড পাওয়া যায়নি।' }
+    });
+  }
+
+  // Strict enrollment eligibility rule
+  if (enrollment.status !== 'ACTIVE') {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: 'INELIGIBLE_ENROLLMENT',
+        message: `শুধুমাত্র সক্রিয় (ACTIVE) হিফজ শিক্ষার্থীর সবকী রেকর্ড তৈরি করা যাবে। বর্তমান ভর্তি স্ট্যাটাস: ${enrollment.status}`
+      }
+    });
+  }
+
+  // Student profile resolution
+  const studentProfile = db.educationStudentProfiles.find(p => p.id === enrollment.studentProfileId && p.mosqueId === mosqueId);
+
+  // Ustad resolution
+  const targetUstadId = ustadId || enrollment.primaryUstadId;
+  if (!targetUstadId) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'USTAD_REQUIRED', message: 'উস্তাদ নির্বাচন আবশ্যক।' }
+    });
+  }
+
+  const ustad = db.staffList.find(s => s.id === targetUstadId && s.mosqueId === mosqueId);
+  if (!ustad) {
+    return res.status(404).json({
+      success: false,
+      error: { code: 'USTAD_NOT_FOUND', message: 'নির্ধারিত উস্তাদ (স্টাফ রেকর্ড) পাওয়া যায়নি।' }
+    });
+  }
+
+  // Source Sabak validation if provided
+  let sourceSabakDisplayId: string | undefined = undefined;
+  let sourceSabakRecord: HifzSabak | undefined = undefined;
+  if (sourceSabakId) {
+    sourceSabakRecord = db.hifzSabaks.find(s => (s.id === sourceSabakId || s.sabakId === sourceSabakId) && s.mosqueId === mosqueId);
+    if (!sourceSabakRecord) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'SOURCE_SABAK_NOT_FOUND', message: 'রেফারেন্সকৃত মূল সবক রেকর্ড পাওয়া যায়নি।' }
+      });
+    }
+    if (sourceSabakRecord.enrollmentId !== enrollment.id) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'SOURCE_SABAK_MISMATCH', message: 'রেফারেন্সকৃত সবকটি এই শিক্ষার্থীর নয়।' }
+      });
+    }
+    sourceSabakDisplayId = sourceSabakRecord.sabakId;
+  }
+
+  // Quran Reference Range Validation using locked H2 service
+  if (!startVerseKey || !endVerseKey) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'QURAN_RANGE_REQUIRED', message: 'শুরুর আয়াত ও শেষের আয়াতের কী (e.g. 2:255) আবশ্যক।' }
+    });
+  }
+
+  const trimmedStart = startVerseKey.trim();
+  const trimmedEnd = endVerseKey.trim();
+
+  const rangeValidation = quranReferenceService.validateRange(trimmedStart, trimmedEnd);
+  if (!rangeValidation.isValid) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_QURAN_RANGE', message: rangeValidation.error || 'অবৈধ কুরআন আয়াত পরিসীমা।' }
+    });
+  }
+
+  const rangeInfo = quranReferenceService.getAyahRange(trimmedStart, trimmedEnd);
+  if (!rangeInfo) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'RANGE_RESOLUTION_FAILED', message: 'কুরআন রেফারেন্স থেকে আয়াতের তথ্য সংকলন করা যায়নি।' }
+    });
+  }
+
+  // Mistake count validation
+  let validatedMistakeCount: number | undefined = undefined;
+  if (mistakeCount !== undefined && mistakeCount !== null && mistakeCount !== '') {
+    const mc = Number(mistakeCount);
+    if (isNaN(mc) || mc < 0 || !Number.isInteger(mc)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_MISTAKE_COUNT', message: 'ভুল সংখ্যা অবশ্যই ০ বা তার বেশি পূর্ণসংখ্যা হতে হবে।' }
+      });
+    }
+    validatedMistakeCount = mc;
+  }
+
+  // Performance validation
+  const validPerformances = ['EXCELLENT', 'GOOD', 'ACCEPTABLE', 'NEEDS_IMPROVEMENT', 'NOT_PASSED'];
+  if (performance && !validPerformances.includes(performance)) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_PERFORMANCE', message: 'অবৈধ পারফরম্যান্স মান।' }
+    });
+  }
+
+  const sabakiDate = date || new Date().toISOString().split('T')[0];
+
+  // Exact duplicate active Sabaki check on same mosque, enrollment, date, sourceSabak, range
+  const isDuplicate = db.hifzSabakis.some(s =>
+    s.mosqueId === mosqueId &&
+    s.enrollmentId === enrollment.id &&
+    s.date === sabakiDate &&
+    s.startVerseKey === trimmedStart &&
+    s.endVerseKey === trimmedEnd &&
+    (sourceSabakRecord ? s.sourceSabakId === sourceSabakRecord.id : (!s.sourceSabakId || s.sourceSabakId === '')) &&
+    s.status !== 'CANCELLED'
+  );
+
+  if (isDuplicate) {
+    return res.status(409).json({
+      success: false,
+      error: {
+        code: 'DUPLICATE_SABAKI',
+        message: 'একই শিক্ষার্থীর জন্য একই তারিখে এই আয়াতের হুবহু সক্রিয় সবকী রেকর্ড ইতোমধ্যে বিদ্যমান রয়েছে।'
+      }
+    });
+  }
+
+  const newSabaki: HifzSabaki = {
+    id: crypto.randomUUID(),
+    sabakiId: db.generateNextHifzSabakiId(mosqueId),
+    mosqueId,
+    enrollmentId: enrollment.id,
+    studentProfileId: enrollment.studentProfileId,
+    studentId: enrollment.studentId,
+    studentName: studentProfile?.personName || enrollment.studentName,
+    date: sabakiDate,
+    ustadId: ustad.id,
+    ustadName: ustad.name,
+    sourceSabakId: sourceSabakRecord ? sourceSabakRecord.id : undefined,
+    sourceSabakDisplayId,
+    startVerseKey: trimmedStart,
+    endVerseKey: trimmedEnd,
+    totalAyahs: rangeInfo.totalAyahs,
+    startSurahNumber: rangeInfo.startSurah.surahNumber,
+    startSurahNameBn: rangeInfo.startSurah.nameBangla,
+    endSurahNumber: rangeInfo.endSurah.surahNumber,
+    endSurahNameBn: rangeInfo.endSurah.nameBangla,
+    status: (status as HifzSabakiStatus) || 'ASSIGNED',
+    performance: performance || undefined,
+    mistakeCount: validatedMistakeCount,
+    remarks: remarks ? remarks.trim() : undefined,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  db.hifzSabakis.unshift(newSabaki);
+  db.save();
+
+  // Audit Trail Logging
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'HIFZ',
+    `নতুন সবকী এন্ট্রি (${newSabaki.sabakiId}): ${newSabaki.studentName} - আয়াত ${newSabaki.startVerseKey} থেকে ${newSabaki.endVerseKey} (${newSabaki.totalAyahs} আয়াত)${sourceSabakDisplayId ? ` [মূল সবক: ${sourceSabakDisplayId}]` : ''}`,
+    newSabaki.id
+  );
+
+  if (req.idempotencyKey) {
+    db.saveIdempotency(req.idempotencyKey, newSabaki);
+  }
+
+  realtime.broadcastToMosque(mosqueId, 'HIFZ_SABAKI_CREATED', newSabaki, { senderId: req.user!.id });
+
+  res.status(201).json({
+    success: true,
+    data: newSabaki,
+    message: `সবকী সফলভাবে বরাদ্দ করা হয়েছে (#${newSabaki.sabakiId})।`
+  });
+});
+
+// 5. Update Sabaki Details
+app.put('/api/v1/hifz/sabaki/:id', authenticate, requireAnyPermission(['MANAGE_HIFZ_STUDENTS', 'EDIT_HIFZ_SABAK', 'EDIT_HIFZ_SABAKI', 'EVALUATE_HIFZ_SABAKI']), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const sabaki = db.hifzSabakis.find(s => (s.id === req.params.id || s.sabakiId === req.params.id) && s.mosqueId === mosqueId);
+  if (!sabaki) {
+    return res.status(404).json({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'সবকী রেকর্ড পাওয়া যায়নি।' }
+    });
+  }
+
+  if (sabaki.status === 'CANCELLED') {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'CANCELLED_IMMUTABLE', message: 'বাতিলকৃত সবকী রেকর্ড পরিবর্তন করা যাবে না।' }
+    });
+  }
+
+  const {
+    date,
+    ustadId,
+    sourceSabakId,
+    startVerseKey,
+    endVerseKey,
+    status,
+    performance,
+    mistakeCount,
+    remarks,
+  } = req.body;
+
+  if (date) {
+    sabaki.date = date;
+  }
+
+  if (ustadId && ustadId !== sabaki.ustadId) {
+    const ustad = db.staffList.find(s => s.id === ustadId && s.mosqueId === mosqueId);
+    if (!ustad) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'USTAD_NOT_FOUND', message: 'নির্ধারিত উস্তাদ পাওয়া যায়নি।' }
+      });
+    }
+    sabaki.ustadId = ustad.id;
+    sabaki.ustadName = ustad.name;
+  }
+
+  if (sourceSabakId !== undefined) {
+    if (sourceSabakId) {
+      const srcSabak = db.hifzSabaks.find(s => (s.id === sourceSabakId || s.sabakId === sourceSabakId) && s.mosqueId === mosqueId);
+      if (!srcSabak) {
+        return res.status(404).json({
+          success: false,
+          error: { code: 'SOURCE_SABAK_NOT_FOUND', message: 'রেফারেন্সকৃত মূল সবক রেকর্ড পাওয়া যায়নি।' }
+        });
+      }
+      if (srcSabak.enrollmentId !== sabaki.enrollmentId) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'SOURCE_SABAK_MISMATCH', message: 'রেফারেন্সকৃত সবকটি এই শিক্ষার্থীর নয়।' }
+        });
+      }
+      sabaki.sourceSabakId = srcSabak.id;
+      sabaki.sourceSabakDisplayId = srcSabak.sabakId;
+    } else {
+      sabaki.sourceSabakId = undefined;
+      sabaki.sourceSabakDisplayId = undefined;
+    }
+  }
+
+  // Check if verse range modified
+  const newStart = startVerseKey ? startVerseKey.trim() : sabaki.startVerseKey;
+  const newEnd = endVerseKey ? endVerseKey.trim() : sabaki.endVerseKey;
+  if (newStart !== sabaki.startVerseKey || newEnd !== sabaki.endVerseKey) {
+    const rangeValidation = quranReferenceService.validateRange(newStart, newEnd);
+    if (!rangeValidation.isValid) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_QURAN_RANGE', message: rangeValidation.error || 'অবৈধ কুরআন আয়াত পরিসীমা।' }
+      });
+    }
+    const rangeInfo = quranReferenceService.getAyahRange(newStart, newEnd);
+    if (!rangeInfo) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'RANGE_RESOLUTION_FAILED', message: 'কুরআন রেফারেন্স থেকে আয়াতের তথ্য সংকলন করা যায়নি।' }
+      });
+    }
+    sabaki.startVerseKey = newStart;
+    sabaki.endVerseKey = newEnd;
+    sabaki.totalAyahs = rangeInfo.totalAyahs;
+    sabaki.startSurahNumber = rangeInfo.startSurah.surahNumber;
+    sabaki.startSurahNameBn = rangeInfo.startSurah.nameBangla;
+    sabaki.endSurahNumber = rangeInfo.endSurah.surahNumber;
+    sabaki.endSurahNameBn = rangeInfo.endSurah.nameBangla;
+  }
+
+  // Mistake count
+  if (mistakeCount !== undefined && mistakeCount !== null && mistakeCount !== '') {
+    const mc = Number(mistakeCount);
+    if (isNaN(mc) || mc < 0 || !Number.isInteger(mc)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_MISTAKE_COUNT', message: 'ভুল সংখ্যা অবশ্যই ০ বা তার বেশি পূর্ণসংখ্যা হতে হবে।' }
+      });
+    }
+    sabaki.mistakeCount = mc;
+  } else if (mistakeCount === null || mistakeCount === '') {
+    sabaki.mistakeCount = undefined;
+  }
+
+  // Performance
+  if (performance !== undefined) {
+    const validPerformances = ['EXCELLENT', 'GOOD', 'ACCEPTABLE', 'NEEDS_IMPROVEMENT', 'NOT_PASSED'];
+    if (performance && !validPerformances.includes(performance)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_PERFORMANCE', message: 'অবৈধ পারফরম্যান্স মান।' }
+      });
+    }
+    sabaki.performance = performance || undefined;
+  }
+
+  if (remarks !== undefined) {
+    sabaki.remarks = remarks ? remarks.trim() : undefined;
+  }
+
+  // Status transition check if status changed
+  if (status && status !== sabaki.status) {
+    const validTransitions: Record<string, string[]> = {
+      ASSIGNED: ['REVIEWED', 'CANCELLED'],
+      REVIEWED: ['EVALUATED', 'ASSIGNED', 'CANCELLED'],
+      EVALUATED: ['COMPLETED', 'REVIEWED', 'CANCELLED'],
+      COMPLETED: ['EVALUATED', 'CANCELLED'],
+    };
+    const allowed = validTransitions[sabaki.status] || [];
+    if (!allowed.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_STATUS_TRANSITION', message: `অবৈধ স্ট্যাটাস পরিবর্তন: ${sabaki.status} থেকে ${status} সম্ভব নয়।` }
+      });
+    }
+    sabaki.status = status;
+  }
+
+  sabaki.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'HIFZ',
+    `সবকী তথ্য আপডেট (${sabaki.sabakiId}): স্ট্যাটাস=${sabaki.status}, মূল্যায়ন=${sabaki.performance || 'N/A'}, ভুল=${sabaki.mistakeCount ?? 0}`,
+    sabaki.id
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'HIFZ_SABAKI_UPDATED', sabaki, { senderId: req.user!.id });
+
+  res.json({
+    success: true,
+    data: sabaki,
+    message: `সবকী তথ্য সফলভাবে আপডেট হয়েছে (#${sabaki.sabakiId})।`
+  });
+});
+
+// 6. Update Sabaki Status & Evaluation (Transition Guard)
+app.patch('/api/v1/hifz/sabaki/:id/status', authenticate, requireAnyPermission(['MANAGE_HIFZ_STUDENTS', 'EDIT_HIFZ_SABAK', 'EDIT_HIFZ_SABAKI', 'EVALUATE_HIFZ_SABAKI']), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const sabaki = db.hifzSabakis.find(s => (s.id === req.params.id || s.sabakiId === req.params.id) && s.mosqueId === mosqueId);
+  if (!sabaki) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সবকী রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  const { status, performance, mistakeCount, remarks } = req.body;
+  if (!status) {
+    return res.status(400).json({ success: false, error: { code: 'STATUS_REQUIRED', message: 'স্ট্যাটাস আবশ্যক।' } });
+  }
+
+  if (sabaki.status === 'CANCELLED') {
+    return res.status(400).json({ success: false, error: { code: 'CANCELLED_IMMUTABLE', message: 'বাতিলকৃত সবকী রেকর্ড পরিবর্তন করা যাবে না।' } });
+  }
+
+  // Validate status transition
+  if (status !== sabaki.status) {
+    const validTransitions: Record<string, string[]> = {
+      ASSIGNED: ['REVIEWED', 'CANCELLED'],
+      REVIEWED: ['EVALUATED', 'ASSIGNED', 'CANCELLED'],
+      EVALUATED: ['COMPLETED', 'REVIEWED', 'CANCELLED'],
+      COMPLETED: ['EVALUATED', 'CANCELLED'],
+    };
+    const allowed = validTransitions[sabaki.status] || [];
+    if (!allowed.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_STATUS_TRANSITION', message: `অবৈধ স্ট্যাটাস পরিবর্তন: ${sabaki.status} থেকে ${status} সম্ভব নয়।` }
+      });
+    }
+  }
+
+  // Mistake count validation
+  if (mistakeCount !== undefined && mistakeCount !== null && mistakeCount !== '') {
+    const mc = Number(mistakeCount);
+    if (isNaN(mc) || mc < 0 || !Number.isInteger(mc)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_MISTAKE_COUNT', message: 'ভুল সংখ্যা অবশ্যই ০ বা তার বেশি পূর্ণসংখ্যা হতে হবে।' } });
+    }
+    sabaki.mistakeCount = mc;
+  }
+
+  // Performance validation
+  if (performance !== undefined) {
+    const validPerformances = ['EXCELLENT', 'GOOD', 'ACCEPTABLE', 'NEEDS_IMPROVEMENT', 'NOT_PASSED'];
+    if (performance && !validPerformances.includes(performance)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_PERFORMANCE', message: 'অবৈধ পারফরম্যান্স মান।' } });
+    }
+    sabaki.performance = performance || undefined;
+  }
+
+  if (remarks !== undefined) {
+    sabaki.remarks = remarks ? remarks.trim() : undefined;
+  }
+
+  const prevStatus = sabaki.status;
+  sabaki.status = status;
+  sabaki.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'STATUS_CHANGE',
+    'HIFZ',
+    `সবকী স্ট্যাটাস পরিবর্তন (${sabaki.sabakiId}): ${prevStatus} -> ${status}${performance ? ` [${performance}]` : ''}`,
+    sabaki.id
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'HIFZ_SABAKI_UPDATED', sabaki, { senderId: req.user!.id });
+
+  res.json({
+    success: true,
+    data: sabaki,
+    message: `সবকী স্ট্যাটাস সফলভাবে ${status} করা হয়েছে (#${sabaki.sabakiId})।`
+  });
+});
+
+// ==========================================
+// HIFZ H2 — QURAN REFERENCE FOUNDATION (READ-ONLY)
+// ==========================================
+
+// 1. Quran Reference Status & Dataset Metadata
+app.get('/api/v1/quran/status', authenticate, (req: AuthRequest, res: Response) => {
+  const status = quranReferenceService.getStatus();
+  res.json({
+    success: true,
+    data: status,
+    message: 'কুরআন রেফারেন্স স্ট্যাটাস লোড হয়েছে।'
+  });
+});
+
+// 2. All 114 Surahs
+app.get('/api/v1/quran/surahs', authenticate, (req: AuthRequest, res: Response) => {
+  const surahs = quranReferenceService.getSurahs();
+  res.json({
+    success: true,
+    data: surahs,
+    total: surahs.length
+  });
+});
+
+// 3. Surah Detail & Verses
+app.get('/api/v1/quran/surahs/:surahNumber', authenticate, (req: AuthRequest, res: Response) => {
+  const surahNum = parseInt(req.params.surahNumber, 10);
+  if (isNaN(surahNum) || surahNum < 1 || surahNum > 114) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_SURAH', message: 'সূরা নম্বর ১ থেকে ১১৪ এর মধ্যে হতে হবে।' } });
+  }
+
+  const result = quranReferenceService.getSurah(surahNum);
+  if (!result) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সূরা পাওয়া যায়নি।' } });
+  }
+
+  res.json({
+    success: true,
+    data: result
+  });
+});
+
+// 4. Ayah Range Resolver (e.g., start=2:255&end=2:257)
+app.get('/api/v1/quran/range', authenticate, (req: AuthRequest, res: Response) => {
+  const { start, end } = req.query;
+  if (!start || !end || typeof start !== 'string' || typeof end !== 'string') {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'MISSING_PARAMS', message: "রেঞ্জ নির্ধারণের জন্য 'start' এবং 'end' প্যারামিটার আবশ্যক (যেমন: start=2:255&end=2:257)।" }
+    });
+  }
+
+  const rangeResult = quranReferenceService.getAyahRange(start, end);
+  if (!rangeResult) {
+    const validation = quranReferenceService.validateRange(start, end);
+    return res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_RANGE', message: validation.error || 'আয়াত রেঞ্জ পাওয়া যায়নি বা অবৈধ।' }
+    });
+  }
+
+  res.json({
+    success: true,
+    data: rangeResult
+  });
+});
+
+// 5. Ayah by VerseKey (e.g., /api/v1/quran/ayahs/2:255)
+app.get('/api/v1/quran/ayahs/:verseKey', authenticate, (req: AuthRequest, res: Response) => {
+  const { verseKey } = req.params;
+  const ayah = quranReferenceService.getAyah(verseKey);
+  if (!ayah) {
+    return res.status(404).json({
+      success: false,
+      error: { code: 'AYAH_NOT_FOUND', message: `আয়াত '${verseKey}' পাওয়া যায়নি।` }
+    });
+  }
+
+  res.json({
+    success: true,
+    data: ayah
+  });
+});
+
+// 6. All 30 Juzs
+app.get('/api/v1/quran/juz', authenticate, (req: AuthRequest, res: Response) => {
+  const juzs = quranReferenceService.getJuzs();
+  res.json({
+    success: true,
+    data: juzs,
+    total: juzs.length
+  });
+});
+
+// 7. Juz Detail & Verses
+app.get('/api/v1/quran/juz/:juzNumber', authenticate, (req: AuthRequest, res: Response) => {
+  const juzNum = parseInt(req.params.juzNumber, 10);
+  if (isNaN(juzNum) || juzNum < 1 || juzNum > 30) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_JUZ', message: 'পারা নম্বর ১ থেকে ৩০ এর মধ্যে হতে হবে।' } });
+  }
+
+  const result = quranReferenceService.getJuz(juzNum);
+  if (!result) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'পারা পাওয়া যায়নি।' } });
+  }
+
+  res.json({
+    success: true,
+    data: result
+  });
+});
+
+// 8. Page Detail & Verses (1-604)
+app.get('/api/v1/quran/pages/:pageNumber', authenticate, (req: AuthRequest, res: Response) => {
+  const pageNum = parseInt(req.params.pageNumber, 10);
+  if (isNaN(pageNum) || pageNum < 1 || pageNum > 604) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_PAGE', message: 'পৃষ্ঠা নম্বর ১ থেকে ৬০৪ এর মধ্যে হতে হবে।' } });
+  }
+
+  const result = quranReferenceService.getPage(pageNum);
+  if (!result) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'পৃষ্ঠা পাওয়া যায়নি।' } });
+  }
+
+  res.json({
+    success: true,
+    data: result
+  });
+});
+
+// 9. Hizb Detail & Verses (1-60)
+app.get('/api/v1/quran/hizb/:hizbNumber', authenticate, (req: AuthRequest, res: Response) => {
+  const hizbNum = parseInt(req.params.hizbNumber, 10);
+  if (isNaN(hizbNum) || hizbNum < 1 || hizbNum > 60) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_HIZB', message: 'হিযব নম্বর ১ থেকে ৬০ এর মধ্যে হতে হবে।' } });
+  }
+
+  const result = quranReferenceService.getHizb(hizbNum);
+  if (!result) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'হিযব পাওয়া যায়নি।' } });
+  }
+
+  res.json({
+    success: true,
+    data: result
+  });
+});
+
+// 10. Rub al-Hizb (Quarter) Detail & Verses (1-240)
+app.get('/api/v1/quran/rub/:rubNumber', authenticate, (req: AuthRequest, res: Response) => {
+  const rubNum = parseInt(req.params.rubNumber, 10);
+  if (isNaN(rubNum) || rubNum < 1 || rubNum > 240) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_RUB', message: 'রুবুল হিযব নম্বর ১ থেকে ২৪০ এর মধ্যে হতে হবে।' } });
+  }
+
+  const result = quranReferenceService.getRubHizb(rubNum);
+  if (!result) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'রুবুল হিযব পাওয়া যায়নি।' } });
+  }
+
+  res.json({
+    success: true,
+    data: result
+  });
+});
+
+// 11. Manzil Detail & Verses (1-7)
+app.get('/api/v1/quran/manzil/:manzilNumber', authenticate, (req: AuthRequest, res: Response) => {
+  const manzilNum = parseInt(req.params.manzilNumber, 10);
+  if (isNaN(manzilNum) || manzilNum < 1 || manzilNum > 7) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_MANZIL', message: 'মঞ্জিল নম্বর ১ থেকে ৭ এর মধ্যে হতে হবে।' } });
+  }
+
+  const result = quranReferenceService.getManzil(manzilNum);
+  if (!result) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'মঞ্জিল পাওয়া যায়নি।' } });
+  }
+
+  res.json({
+    success: true,
+    data: result
   });
 });
 

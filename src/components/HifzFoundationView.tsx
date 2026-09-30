@@ -17,6 +17,8 @@ import {
   FileText,
   AlertCircle,
   Sparkles,
+  BookMarked,
+  RotateCcw,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import {
@@ -28,6 +30,9 @@ import {
   HifzStudyType,
 } from '../types';
 import { toBanglaNumber } from './CommitteeView';
+import { QuranReferenceView } from './QuranReferenceView';
+import { HifzSabakView } from './HifzSabakView';
+import { HifzSabakiView } from './HifzSabakiView';
 
 interface HifzFoundationViewProps {
   currentMosque?: any;
@@ -41,12 +46,14 @@ export const HifzFoundationView: React.FC<HifzFoundationViewProps> = ({
   currentUser,
   language = 'bn',
 }) => {
-  const [activeTab, setActiveTab] = useState<'enrollments' | 'levels' | 'curricula'>('enrollments');
+  const [activeTab, setActiveTab] = useState<'enrollments' | 'sabak' | 'sabaki' | 'levels' | 'curricula' | 'quranReference'>('enrollments');
   const [isLoading, setIsLoading] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Data states
   const [enrollments, setEnrollments] = useState<HifzkhanaEnrollment[]>([]);
+  const [sabakCount, setSabakCount] = useState<number>(0);
+  const [sabakiCount, setSabakiCount] = useState<number>(0);
   const [levels, setLevels] = useState<HifzLevel[]>([]);
   const [curricula, setCurricula] = useState<HifzCurriculum[]>([]);
   const [eligibleStudents, setEligibleStudents] = useState<EducationStudentProfile[]>([]);
@@ -90,12 +97,14 @@ export const HifzFoundationView: React.FC<HifzFoundationViewProps> = ({
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [enrollmentRes, levelRes, curriculumRes, studentRes, ustadRes] = await Promise.all([
+      const [enrollmentRes, levelRes, curriculumRes, studentRes, ustadRes, sabakStatsRes, sabakiStatsRes] = await Promise.all([
         api.getHifzEnrollments().catch(() => []),
         api.getHifzLevels().catch(() => []),
         api.getHifzCurricula().catch(() => []),
         api.getHifzEligibleStudents().catch(() => []),
         api.getHifzEligibleUstads().catch(() => []),
+        api.getHifzSabakStats().catch(() => null),
+        api.getHifzSabakiStats().catch(() => null),
       ]);
 
       setEnrollments(enrollmentRes);
@@ -103,6 +112,12 @@ export const HifzFoundationView: React.FC<HifzFoundationViewProps> = ({
       setCurricula(curriculumRes);
       setEligibleStudents(studentRes);
       setEligibleUstads(ustadRes);
+      if (sabakStatsRes?.totalAllTime !== undefined) {
+        setSabakCount(sabakStatsRes.totalAllTime);
+      }
+      if (sabakiStatsRes?.totalSabakis !== undefined) {
+        setSabakiCount(sabakiStatsRes.totalSabakis);
+      }
 
       if (levelRes.length > 0 && !newEnrollmentForm.currentLevelId) {
         setNewEnrollmentForm((prev) => ({ ...prev, currentLevelId: levelRes[0].id }));
@@ -244,8 +259,11 @@ export const HifzFoundationView: React.FC<HifzFoundationViewProps> = ({
         <nav className="p-2 space-y-1 font-tiro text-sm">
           {[
             { id: 'enrollments' as const, label: 'শিক্ষার্থী ভর্তি ও তালিকা', icon: Users, badge: enrollments.length },
+            { id: 'sabak' as const, label: '📖 সবক', icon: BookMarked, badge: sabakCount },
+            { id: 'sabaki' as const, label: '🔄 সবকী', icon: RotateCcw, badge: sabakiCount },
             { id: 'levels' as const, label: 'হিফজ স্তরসমূহ (Stages)', icon: GraduationCap, badge: levels.length },
             { id: 'curricula' as const, label: 'হিফজ পাঠ্যক্রম (Curricula)', icon: Compass, badge: curricula.length },
+            { id: 'quranReference' as const, label: '📖 কুরআন রেফারেন্স (H2)', icon: BookOpen, badge: '১১৪ সূরা' },
           ].map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -549,6 +567,29 @@ export const HifzFoundationView: React.FC<HifzFoundationViewProps> = ({
               ))}
             </div>
           </div>
+        )}
+
+        {/* TAB: HIFZ H3-A SABAK FOUNDATION */}
+        {activeTab === 'sabak' && (
+          <HifzSabakView
+            currentMosque={currentMosque}
+            currentUser={currentUser}
+            language={language}
+          />
+        )}
+
+        {/* TAB: HIFZ H3-B SABAKI FOUNDATION */}
+        {activeTab === 'sabaki' && (
+          <HifzSabakiView
+            currentMosque={currentMosque}
+            currentUser={currentUser}
+            language={language}
+          />
+        )}
+
+        {/* TAB 4: QURAN REFERENCE FOUNDATION (H2) */}
+        {activeTab === 'quranReference' && (
+          <QuranReferenceView language={language} />
         )}
       </main>
 
