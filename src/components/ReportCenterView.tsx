@@ -55,6 +55,7 @@ import {
 import { ReportPrintDocument, REPORT_TITLES } from './ReportPrintDocument';
 import { printElement } from '../lib/printUtils';
 import { PrintSettingsBar } from './common/PrintSettingsBar';
+import { HifzSubReportCenterView } from './HifzSubReportCenterView';
 
 interface ReportCenterViewProps {
   incomes: IncomeEntry[];
@@ -100,6 +101,7 @@ const REPORT_TYPES = [
   { id: 'PROPERTY_REGISTER_REPORT', labelBn: 'ওয়াকফ ও সম্পত্তি রেজিস্ট্রি (Property Register)', category: 'প্রশাসন' },
   { id: 'CEMETERY_REGISTER_REPORT', labelBn: 'কবরস্থান রেজিস্ট্রি প্রতিবেদন (Cemetery)', category: 'প্রশাসন' },
   { id: 'AUDIT_LOG_REPORT', labelBn: 'সিস্টেম অডিট ট্রেইল ও নিরাপত্তা লগ (Audit Trail)', category: 'নিরাপত্তা' },
+  { id: 'HIFZ_REPORTS', labelBn: 'হেফজখানা হাজিরা ও উস্তাদ প্রতিবেদন (Hifz Sub Report Center)', category: 'শিক্ষা ও হেফজখানা' },
 ];
 
 const CHART_COLORS = ['#059669', '#2563eb', '#d97706', '#dc2626', '#7c3aed', '#0891b2', '#ea580c', '#475569'];
@@ -773,36 +775,42 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
         </div>
 
         {/* The Official Printable Document Canvas */}
-        <div className="bg-white shadow-xl rounded-none border border-slate-300 overflow-x-auto">
-          <ReportPrintDocument
-            reportType={reportType}
-            dateRangeType={dateRangeType}
-            fromDate={fromDate}
-            toDate={toDate}
-            grouping={grouping}
-            level={level}
-            selectedHeadId={selectedHeadId}
-            selectedAccountId={selectedAccountId}
-            currentMosque={currentMosque}
-            currentUser={currentUser}
-            includeLetterhead={includeLetterhead}
-            incomes={incomes}
-            expenses={expenses}
-            accounts={accounts}
-            accountHeads={accountHeads}
-            donationBoxes={donationBoxes}
-            boxCollections={boxCollections}
-            staffList={staffList}
-            staffPayments={staffPayments}
-            assets={assets}
-            properties={properties}
-            cemeteryRecords={cemeteryRecords}
-            committeeMembers={committeeMembers}
-            meetings={meetings}
-            notices={notices}
-            auditLogs={auditLogs}
-          />
-        </div>
+        {reportType === 'HIFZ_REPORTS' ? (
+          <div className="bg-slate-50 p-2 md:p-4 rounded-2xl border border-slate-200">
+            <HifzSubReportCenterView currentMosque={currentMosque!} />
+          </div>
+        ) : (
+          <div className="bg-white shadow-xl rounded-none border border-slate-300 overflow-x-auto">
+            <ReportPrintDocument
+              reportType={reportType}
+              dateRangeType={dateRangeType}
+              fromDate={fromDate}
+              toDate={toDate}
+              grouping={grouping}
+              level={level}
+              selectedHeadId={selectedHeadId}
+              selectedAccountId={selectedAccountId}
+              currentMosque={currentMosque}
+              currentUser={currentUser}
+              includeLetterhead={includeLetterhead}
+              incomes={incomes}
+              expenses={expenses}
+              accounts={accounts}
+              accountHeads={accountHeads}
+              donationBoxes={donationBoxes}
+              boxCollections={boxCollections}
+              staffList={staffList}
+              staffPayments={staffPayments}
+              assets={assets}
+              properties={properties}
+              cemeteryRecords={cemeteryRecords}
+              committeeMembers={committeeMembers}
+              meetings={meetings}
+              notices={notices}
+              auditLogs={auditLogs}
+            />
+          </div>
+        )}
       </div>
 
       {/* Save Config Modal */}

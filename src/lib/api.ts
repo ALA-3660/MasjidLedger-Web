@@ -88,6 +88,32 @@ import {
   HifzSabaki,
   HifzSabakiStatus,
   HifzSabakiPerformance,
+  HifzDaurCycle,
+  HifzDaurCycleStatus,
+  HifzDaur,
+  HifzDaurStatus,
+  HifzDaurPerformance,
+  HifzRevision,
+  HifzRevisionReason,
+  HifzRevisionPriority,
+  HifzRevisionStatus,
+  HifzAttendance,
+  HifzAttendanceStatus,
+  HifzAttendanceReason,
+  HifzUstadAssignment,
+  HifzUstadAssignmentType,
+  HifzUstadAssignmentStatus,
+  HifzH5DashboardData,
+  HifzStudentHistoryData,
+  HifzUstadHistoryData,
+  HifzAttendanceSummaryGroup,
+  HifzReportType,
+  HifzReportResult,
+  HifzResidence,
+  HifzResidenceBuilding,
+  HifzResidenceRoom,
+  HifzResidenceBed,
+  HifzResidentialStatus,
 } from '../types';
 import {
   OfficialDocument,
@@ -3506,6 +3532,643 @@ class ApiService {
       body: JSON.stringify({ status, performance, mistakeCount, remarks }),
     });
     if (!res.success || !res.data) throw new Error(res.error?.message || 'সবকী স্ট্যাটাস আপডেট করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  // ==========================================
+  // HIFZ H4 — DAUR & REVISION METHODS
+  // ==========================================
+
+  // Daur Cycles
+  async getHifzDaurCycles(params?: {
+    enrollmentId?: string;
+    studentId?: string;
+    status?: HifzDaurCycleStatus;
+    search?: string;
+  }): Promise<HifzDaurCycle[]> {
+    const query = new URLSearchParams();
+    if (params?.enrollmentId) query.append('enrollmentId', params.enrollmentId);
+    if (params?.studentId) query.append('studentId', params.studentId);
+    if (params?.status) query.append('status', params.status);
+    if (params?.search) query.append('search', params.search);
+
+    const queryString = query.toString();
+    const url = `/hifz/daur/cycles${queryString ? `?${queryString}` : ''}`;
+    const res = await this.request<HifzDaurCycle[]>(url);
+    return res.data || [];
+  }
+
+  async getHifzDaurCycleById(id: string): Promise<HifzDaurCycle & { linkedDaurs?: HifzDaur[]; progressPercentage?: number }> {
+    const res = await this.request<HifzDaurCycle & { linkedDaurs?: HifzDaur[]; progressPercentage?: number }>(`/hifz/daur/cycles/${id}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'দৌর সাইকেল লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async createHifzDaurCycle(data: any): Promise<HifzDaurCycle> {
+    const res = await this.request<HifzDaurCycle>('/hifz/daur/cycles', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'দৌর সাইকেল তৈরি করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateHifzDaurCycle(id: string, data: any): Promise<HifzDaurCycle> {
+    const res = await this.request<HifzDaurCycle>(`/hifz/daur/cycles/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'দৌর সাইকেল আপডেট করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateHifzDaurCycleStatus(id: string, status: HifzDaurCycleStatus, remarks?: string): Promise<HifzDaurCycle> {
+    const res = await this.request<HifzDaurCycle>(`/hifz/daur/cycles/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, remarks }),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'দৌর সাইকেল স্ট্যাটাস আপডেট করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  // Daur Entries & Stats
+  async getHifzDaurStats(): Promise<any> {
+    const res = await this.request<any>('/hifz/daur/stats');
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'দৌর পরিসংখ্যান লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getHifzDaurs(params?: {
+    cycleId?: string;
+    enrollmentId?: string;
+    studentId?: string;
+    ustadId?: string;
+    status?: HifzDaurStatus;
+    date?: string;
+    startDate?: string;
+    endDate?: string;
+    performance?: HifzDaurPerformance;
+    search?: string;
+  }): Promise<HifzDaur[]> {
+    const query = new URLSearchParams();
+    if (params?.cycleId) query.append('cycleId', params.cycleId);
+    if (params?.enrollmentId) query.append('enrollmentId', params.enrollmentId);
+    if (params?.studentId) query.append('studentId', params.studentId);
+    if (params?.ustadId) query.append('ustadId', params.ustadId);
+    if (params?.status) query.append('status', params.status);
+    if (params?.date) query.append('date', params.date);
+    if (params?.startDate) query.append('startDate', params.startDate);
+    if (params?.endDate) query.append('endDate', params.endDate);
+    if (params?.performance) query.append('performance', params.performance);
+    if (params?.search) query.append('search', params.search);
+
+    const queryString = query.toString();
+    const url = `/hifz/daur${queryString ? `?${queryString}` : ''}`;
+    const res = await this.request<HifzDaur[]>(url);
+    return res.data || [];
+  }
+
+  async getHifzDaurById(id: string): Promise<HifzDaur> {
+    const res = await this.request<HifzDaur>(`/hifz/daur/${id}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'দৌর রেকর্ড লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async createHifzDaur(data: any): Promise<HifzDaur> {
+    const res = await this.request<HifzDaur>('/hifz/daur', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'দৌর সংরক্ষণ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateHifzDaur(id: string, data: any): Promise<HifzDaur> {
+    const res = await this.request<HifzDaur>(`/hifz/daur/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'দৌর তথ্য আপডেট করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateHifzDaurStatus(
+    id: string,
+    status: HifzDaurStatus,
+    performance?: HifzDaurPerformance,
+    mistakeCount?: number,
+    remarks?: string
+  ): Promise<HifzDaur> {
+    const res = await this.request<HifzDaur>(`/hifz/daur/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, performance, mistakeCount, remarks }),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'দৌর স্ট্যাটাস আপডেট করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  // Revision / দুর্বল অংশ
+  async getHifzRevisionStats(): Promise<any> {
+    const res = await this.request<any>('/hifz/revision/stats');
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'রিভিশন পরিসংখ্যান লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getHifzRevisions(params?: {
+    enrollmentId?: string;
+    studentId?: string;
+    ustadId?: string;
+    reason?: HifzRevisionReason;
+    priority?: HifzRevisionPriority;
+    status?: HifzRevisionStatus;
+    startDate?: string;
+    endDate?: string;
+    search?: string;
+  }): Promise<HifzRevision[]> {
+    const query = new URLSearchParams();
+    if (params?.enrollmentId) query.append('enrollmentId', params.enrollmentId);
+    if (params?.studentId) query.append('studentId', params.studentId);
+    if (params?.ustadId) query.append('ustadId', params.ustadId);
+    if (params?.reason) query.append('reason', params.reason);
+    if (params?.priority) query.append('priority', params.priority);
+    if (params?.status) query.append('status', params.status);
+    if (params?.startDate) query.append('startDate', params.startDate);
+    if (params?.endDate) query.append('endDate', params.endDate);
+    if (params?.search) query.append('search', params.search);
+
+    const queryString = query.toString();
+    const url = `/hifz/revision${queryString ? `?${queryString}` : ''}`;
+    const res = await this.request<HifzRevision[]>(url);
+    return res.data || [];
+  }
+
+  async getHifzRevisionById(id: string): Promise<HifzRevision> {
+    const res = await this.request<HifzRevision>(`/hifz/revision/${id}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'রিভিশন রেকর্ড লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async createHifzRevision(data: any): Promise<HifzRevision> {
+    const res = await this.request<HifzRevision>('/hifz/revision', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'রিভিশন সংরক্ষণ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateHifzRevision(id: string, data: any): Promise<HifzRevision> {
+    const res = await this.request<HifzRevision>(`/hifz/revision/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'রিভিশন তথ্য আপডেট করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateHifzRevisionStatus(
+    id: string,
+    status: HifzRevisionStatus,
+    performance?: HifzDaurPerformance,
+    mistakeCount?: number,
+    remarks?: string
+  ): Promise<HifzRevision> {
+    const res = await this.request<HifzRevision>(`/hifz/revision/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, performance, mistakeCount, remarks }),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'রিভিশন স্ট্যাটাস আপডেট করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  // ==========================================
+  // HIFZ H5-A — ATTENDANCE FOUNDATION
+  // ==========================================
+
+  async getHifzAttendanceStats(): Promise<any> {
+    const res = await this.request<any>('/hifz/attendance/stats');
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'হাজিরা পরিসংখ্যান লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getHifzAttendances(params?: {
+    date?: string;
+    startDate?: string;
+    endDate?: string;
+    studentId?: string;
+    studentProfileId?: string;
+    enrollmentId?: string;
+    status?: HifzAttendanceStatus;
+    reason?: HifzAttendanceReason;
+    search?: string;
+  }): Promise<HifzAttendance[]> {
+    const query = new URLSearchParams();
+    if (params?.date) query.append('date', params.date);
+    if (params?.startDate) query.append('startDate', params.startDate);
+    if (params?.endDate) query.append('endDate', params.endDate);
+    if (params?.studentId) query.append('studentId', params.studentId);
+    if (params?.studentProfileId) query.append('studentProfileId', params.studentProfileId);
+    if (params?.enrollmentId) query.append('enrollmentId', params.enrollmentId);
+    if (params?.status) query.append('status', params.status);
+    if (params?.reason) query.append('reason', params.reason);
+    if (params?.search) query.append('search', params.search);
+
+    const queryString = query.toString();
+    const url = `/hifz/attendance${queryString ? `?${queryString}` : ''}`;
+    const res = await this.request<HifzAttendance[]>(url);
+    return res.data || [];
+  }
+
+  async getHifzAttendanceById(id: string): Promise<HifzAttendance> {
+    const res = await this.request<HifzAttendance>(`/hifz/attendance/${id}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'হাজিরা রেকর্ড লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async createHifzAttendance(data: any): Promise<HifzAttendance> {
+    const res = await this.request<HifzAttendance>('/hifz/attendance', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'হাজিরা সংরক্ষণ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async createHifzAttendanceBulk(data: { date: string; records: any[] }): Promise<HifzAttendance[]> {
+    const res = await this.request<HifzAttendance[]>('/hifz/attendance/bulk', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'যৌথ হাজিরা সংরক্ষণ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateHifzAttendance(id: string, data: any): Promise<HifzAttendance> {
+    const res = await this.request<HifzAttendance>(`/hifz/attendance/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'হাজিরা তথ্য আপডেট করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateHifzAttendanceStatus(
+    id: string,
+    status: HifzAttendanceStatus,
+    reason?: HifzAttendanceReason,
+    otherReason?: string,
+    remarks?: string
+  ): Promise<HifzAttendance> {
+    const res = await this.request<HifzAttendance>(`/hifz/attendance/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, reason, otherReason, remarks }),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'হাজিরা স্ট্যাটাস আপডেট করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  // ==========================================
+  // HIFZ H5-B1 — USTAD ASSIGNMENT FOUNDATION
+  // ==========================================
+
+  async getHifzUstadAssignmentStats(): Promise<any> {
+    const res = await this.request<any>('/hifz/ustad-assignments/stats');
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'উস্তাদ অ্যাসাইনমেন্ট পরিসংখ্যান লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getHifzUstadAssignments(params?: {
+    studentId?: string;
+    studentProfileId?: string;
+    enrollmentId?: string;
+    ustadStaffId?: string;
+    assignmentType?: HifzUstadAssignmentType;
+    status?: HifzUstadAssignmentStatus;
+    isPrimary?: boolean;
+    search?: string;
+  }): Promise<HifzUstadAssignment[]> {
+    const query = new URLSearchParams();
+    if (params?.studentId) query.append('studentId', params.studentId);
+    if (params?.studentProfileId) query.append('studentProfileId', params.studentProfileId);
+    if (params?.enrollmentId) query.append('enrollmentId', params.enrollmentId);
+    if (params?.ustadStaffId) query.append('ustadStaffId', params.ustadStaffId);
+    if (params?.assignmentType) query.append('assignmentType', params.assignmentType);
+    if (params?.status) query.append('status', params.status);
+    if (params?.isPrimary !== undefined) query.append('isPrimary', String(params.isPrimary));
+    if (params?.search) query.append('search', params.search);
+
+    const queryString = query.toString();
+    const url = `/hifz/ustad-assignments${queryString ? `?${queryString}` : ''}`;
+    const res = await this.request<HifzUstadAssignment[]>(url);
+    return res.data || [];
+  }
+
+  async getHifzUstadAssignmentById(id: string): Promise<HifzUstadAssignment> {
+    const res = await this.request<HifzUstadAssignment>(`/hifz/ustad-assignments/${id}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'উস্তাদ অ্যাসাইনমেন্ট রেকর্ড লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async createHifzUstadAssignment(data: any): Promise<HifzUstadAssignment> {
+    const res = await this.request<HifzUstadAssignment>('/hifz/ustad-assignments', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'উস্তাদ অ্যাসাইনমেন্ট সংরক্ষণ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateHifzUstadAssignment(id: string, data: any): Promise<HifzUstadAssignment> {
+    const res = await this.request<HifzUstadAssignment>(`/hifz/ustad-assignments/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'উস্তাদ অ্যাসাইনমেন্ট আপডেট করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateHifzUstadAssignmentStatus(
+    id: string,
+    status: HifzUstadAssignmentStatus,
+    endDate?: string,
+    remarks?: string
+  ): Promise<HifzUstadAssignment> {
+    const res = await this.request<HifzUstadAssignment>(`/hifz/ustad-assignments/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, endDate, remarks }),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'অ্যাসাইনমেন্ট স্ট্যাটাস পরিবর্তন করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  // ==========================================
+  // HIFZ H5-C — DASHBOARD & HISTORY (READ-ONLY)
+  // ==========================================
+
+  async getHifzH5Dashboard(params?: { startDate?: string; endDate?: string; preset?: string }): Promise<HifzH5DashboardData> {
+    const query = new URLSearchParams();
+    if (params?.startDate) query.append('startDate', params.startDate);
+    if (params?.endDate) query.append('endDate', params.endDate);
+    if (params?.preset) query.append('preset', params.preset);
+
+    const queryString = query.toString();
+    const res = await this.request<HifzH5DashboardData>(`/hifz/h5/dashboard${queryString ? `?${queryString}` : ''}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'হিফজ ড্যাশবোর্ড লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getHifzH5StudentHistory(studentId: string): Promise<HifzStudentHistoryData> {
+    const res = await this.request<HifzStudentHistoryData>(`/hifz/h5/students/${studentId}/history`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'শিক্ষার্থীর ইতিহাস লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getHifzH5UstadHistory(staffId: string): Promise<HifzUstadHistoryData> {
+    const res = await this.request<HifzUstadHistoryData>(`/hifz/h5/ustads/${staffId}/history`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'উস্তাদের ইতিহাস লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getHifzH5AttendanceSummary(params?: {
+    startDate?: string;
+    endDate?: string;
+    studentId?: string;
+    groupBy?: string;
+  }): Promise<HifzAttendanceSummaryGroup[]> {
+    const query = new URLSearchParams();
+    if (params?.startDate) query.append('startDate', params.startDate);
+    if (params?.endDate) query.append('endDate', params.endDate);
+    if (params?.studentId) query.append('studentId', params.studentId);
+    if (params?.groupBy) query.append('groupBy', params.groupBy);
+
+    const queryString = query.toString();
+    const res = await this.request<HifzAttendanceSummaryGroup[]>(`/hifz/h5/attendance/summary${queryString ? `?${queryString}` : ''}`);
+    return res.data || [];
+  }
+
+  async getHifzH5CurrentAssignments(params?: {
+    assignmentType?: string;
+    ustadStaffId?: string;
+    studentId?: string;
+    search?: string;
+  }): Promise<HifzUstadAssignment[]> {
+    const query = new URLSearchParams();
+    if (params?.assignmentType) query.append('assignmentType', params.assignmentType);
+    if (params?.ustadStaffId) query.append('ustadStaffId', params.ustadStaffId);
+    if (params?.studentId) query.append('studentId', params.studentId);
+    if (params?.search) query.append('search', params.search);
+
+    const queryString = query.toString();
+    const res = await this.request<HifzUstadAssignment[]>(`/hifz/h5/assignments/current${queryString ? `?${queryString}` : ''}`);
+    return res.data || [];
+  }
+
+  async getHifzH5HistoricalAssignments(params?: {
+    status?: string;
+    ustadStaffId?: string;
+    studentId?: string;
+    startDate?: string;
+    endDate?: string;
+    search?: string;
+  }): Promise<HifzUstadAssignment[]> {
+    const query = new URLSearchParams();
+    if (params?.status) query.append('status', params.status);
+    if (params?.ustadStaffId) query.append('ustadStaffId', params.ustadStaffId);
+    if (params?.studentId) query.append('studentId', params.studentId);
+    if (params?.startDate) query.append('startDate', params.startDate);
+    if (params?.endDate) query.append('endDate', params.endDate);
+    if (params?.search) query.append('search', params.search);
+
+    const queryString = query.toString();
+    const res = await this.request<HifzUstadAssignment[]>(`/hifz/h5/assignments/history${queryString ? `?${queryString}` : ''}`);
+    return res.data || [];
+  }
+
+  // ==========================================
+  // HIFZ H5-D — SUB REPORT CENTER & REPORTS
+  // ==========================================
+
+  async getHifzH5Reports(params: {
+    reportType?: HifzReportType;
+    mode?: 'DATE_RANGE' | 'MONTH_RANGE' | 'YEAR_RANGE' | 'QUICK';
+    startDate?: string;
+    endDate?: string;
+    startMonth?: string;
+    endMonth?: string;
+    startYear?: string;
+    endYear?: string;
+    preset?: string;
+    studentId?: string;
+    ustadStaffId?: string;
+    attendanceStatus?: string;
+    assignmentType?: string;
+    assignmentStatus?: string;
+  }): Promise<HifzReportResult> {
+    const query = new URLSearchParams();
+    if (params.reportType) query.append('reportType', params.reportType);
+    if (params.mode) query.append('mode', params.mode);
+    if (params.startDate) query.append('startDate', params.startDate);
+    if (params.endDate) query.append('endDate', params.endDate);
+    if (params.startMonth) query.append('startMonth', params.startMonth);
+    if (params.endMonth) query.append('endMonth', params.endMonth);
+    if (params.startYear) query.append('startYear', params.startYear);
+    if (params.endYear) query.append('endYear', params.endYear);
+    if (params.preset) query.append('preset', params.preset);
+    if (params.studentId) query.append('studentId', params.studentId);
+    if (params.ustadStaffId) query.append('ustadStaffId', params.ustadStaffId);
+    if (params.attendanceStatus) query.append('attendanceStatus', params.attendanceStatus);
+    if (params.assignmentType) query.append('assignmentType', params.assignmentType);
+    if (params.assignmentStatus) query.append('assignmentStatus', params.assignmentStatus);
+
+    const queryString = query.toString();
+    const res = await this.request<HifzReportResult>(`/hifz/h5/reports${queryString ? `?${queryString}` : ''}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'হিফজ রিপোর্ট লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  // ==========================================
+  // HIFZ H6-A — RESIDENTIAL FOUNDATION METHODS
+  // ==========================================
+
+  // 1. Residences
+  async getHifzResidences(params?: { status?: string }): Promise<HifzResidence[]> {
+    const query = new URLSearchParams();
+    if (params?.status) query.append('status', params.status);
+    const qStr = query.toString();
+    const res = await this.request<HifzResidence[]>(`/hifz/h6/residences${qStr ? `?${qStr}` : ''}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'আবাসিক কেন্দ্র তালিকা লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getHifzResidenceById(id: string): Promise<HifzResidence> {
+    const res = await this.request<HifzResidence>(`/hifz/h6/residences/${id}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'আবাসিক কেন্দ্র লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async createHifzResidence(data: Partial<HifzResidence>): Promise<HifzResidence> {
+    const res = await this.request<HifzResidence>('/hifz/h6/residences', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'আবাসিক কেন্দ্র তৈরি করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateHifzResidence(id: string, data: Partial<HifzResidence>): Promise<HifzResidence> {
+    const res = await this.request<HifzResidence>(`/hifz/h6/residences/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'আবাসিক কেন্দ্র হালনাগাদ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  // 2. Buildings
+  async getHifzResidenceBuildings(params?: { residenceId?: string; status?: string }): Promise<HifzResidenceBuilding[]> {
+    const query = new URLSearchParams();
+    if (params?.residenceId) query.append('residenceId', params.residenceId);
+    if (params?.status) query.append('status', params.status);
+    const qStr = query.toString();
+    const res = await this.request<HifzResidenceBuilding[]>(`/hifz/h6/buildings${qStr ? `?${qStr}` : ''}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'ভবন তালিকা লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getHifzResidenceBuildingById(id: string): Promise<HifzResidenceBuilding> {
+    const res = await this.request<HifzResidenceBuilding>(`/hifz/h6/buildings/${id}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'ভবন লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async createHifzResidenceBuilding(data: Partial<HifzResidenceBuilding>): Promise<HifzResidenceBuilding> {
+    const res = await this.request<HifzResidenceBuilding>('/hifz/h6/buildings', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'ভবন তৈরি করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateHifzResidenceBuilding(id: string, data: Partial<HifzResidenceBuilding>): Promise<HifzResidenceBuilding> {
+    const res = await this.request<HifzResidenceBuilding>(`/hifz/h6/buildings/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'ভবন হালনাগাদ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  // 3. Rooms
+  async getHifzResidenceRooms(params?: { residenceId?: string; buildingId?: string; status?: string }): Promise<HifzResidenceRoom[]> {
+    const query = new URLSearchParams();
+    if (params?.residenceId) query.append('residenceId', params.residenceId);
+    if (params?.buildingId) query.append('buildingId', params.buildingId);
+    if (params?.status) query.append('status', params.status);
+    const qStr = query.toString();
+    const res = await this.request<HifzResidenceRoom[]>(`/hifz/h6/rooms${qStr ? `?${qStr}` : ''}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'কক্ষ তালিকা লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getHifzResidenceRoomById(id: string): Promise<HifzResidenceRoom> {
+    const res = await this.request<HifzResidenceRoom>(`/hifz/h6/rooms/${id}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'কক্ষ লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async createHifzResidenceRoom(data: Partial<HifzResidenceRoom>): Promise<HifzResidenceRoom> {
+    const res = await this.request<HifzResidenceRoom>('/hifz/h6/rooms', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'কক্ষ তৈরি করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateHifzResidenceRoom(id: string, data: Partial<HifzResidenceRoom>): Promise<HifzResidenceRoom> {
+    const res = await this.request<HifzResidenceRoom>(`/hifz/h6/rooms/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'কক্ষ হালনাগাদ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  // 4. Beds
+  async getHifzResidenceBeds(params?: { residenceId?: string; buildingId?: string; roomId?: string; status?: string }): Promise<HifzResidenceBed[]> {
+    const query = new URLSearchParams();
+    if (params?.residenceId) query.append('residenceId', params.residenceId);
+    if (params?.buildingId) query.append('buildingId', params.buildingId);
+    if (params?.roomId) query.append('roomId', params.roomId);
+    if (params?.status) query.append('status', params.status);
+    const qStr = query.toString();
+    const res = await this.request<HifzResidenceBed[]>(`/hifz/h6/beds${qStr ? `?${qStr}` : ''}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'বেড তালিকা লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getHifzResidenceBedById(id: string): Promise<HifzResidenceBed> {
+    const res = await this.request<HifzResidenceBed>(`/hifz/h6/beds/${id}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'বেড লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async createHifzResidenceBed(data: Partial<HifzResidenceBed>): Promise<HifzResidenceBed> {
+    const res = await this.request<HifzResidenceBed>('/hifz/h6/beds', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'বেড তৈরি করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateHifzResidenceBed(id: string, data: Partial<HifzResidenceBed>): Promise<HifzResidenceBed> {
+    const res = await this.request<HifzResidenceBed>(`/hifz/h6/beds/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'বেড হালনাগাদ করতে ব্যর্থ হয়েছে');
     return res.data;
   }
 

@@ -97,7 +97,24 @@ export type Permission =
   | 'VIEW_HIFZ_SABAKI'
   | 'CREATE_HIFZ_SABAKI'
   | 'EDIT_HIFZ_SABAKI'
-  | 'EVALUATE_HIFZ_SABAKI';
+  | 'EVALUATE_HIFZ_SABAKI'
+  | 'VIEW_HIFZ_DAUR'
+  | 'CREATE_HIFZ_DAUR'
+  | 'EDIT_HIFZ_DAUR'
+  | 'EVALUATE_HIFZ_DAUR'
+  | 'VIEW_HIFZ_REVISION'
+  | 'CREATE_HIFZ_REVISION'
+  | 'EDIT_HIFZ_REVISION'
+  | 'RESOLVE_HIFZ_REVISION'
+  | 'VIEW_HIFZ_ATTENDANCE'
+  | 'CREATE_HIFZ_ATTENDANCE'
+  | 'EDIT_HIFZ_ATTENDANCE'
+  | 'VIEW_HIFZ_USTAD_ASSIGNMENT'
+  | 'CREATE_HIFZ_USTAD_ASSIGNMENT'
+  | 'EDIT_HIFZ_USTAD_ASSIGNMENT'
+  | 'VIEW_HIFZ_RESIDENTIAL'
+  | 'CREATE_HIFZ_RESIDENTIAL'
+  | 'EDIT_HIFZ_RESIDENTIAL';
 
 export interface User {
   id: string;
@@ -4017,6 +4034,395 @@ export interface HifzSabaki {
   status: HifzSabakiStatus;
   performance?: HifzSabakiPerformance;
   mistakeCount?: number;
+  remarks?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ==========================================
+// HIFZ H4 — DAUR & REVISION TYPES
+// ==========================================
+
+export type HifzDaurCycleStatus = 'PLANNED' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
+
+export interface HifzDaurCycle {
+  id: string;
+  cycleId: string; // Server-generated: DCR-YYYY-000001
+  mosqueId: string;
+  enrollmentId: string; // References HifzkhanaEnrollment.id
+  studentProfileId: string; // References EducationStudentProfile.id
+  studentId: string; // STU-000001
+  studentName?: string;
+  cycleNumber: number; // 1, 2, 3...
+  startDate: string; // YYYY-MM-DD
+  targetEndDate?: string; // YYYY-MM-DD
+  startVerseKey: string; // e.g. "1:1"
+  endVerseKey: string; // e.g. "2:286"
+  totalAyahs: number; // resolved from H2
+  startSurahNumber: number;
+  startSurahNameBn?: string;
+  endSurahNumber: number;
+  endSurahNameBn?: string;
+  status: HifzDaurCycleStatus;
+  remarks?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type HifzDaurStatus =
+  | 'ASSIGNED'
+  | 'REVIEWED'
+  | 'EVALUATED'
+  | 'COMPLETED'
+  | 'CANCELLED';
+
+export type HifzDaurPerformance =
+  | 'EXCELLENT'
+  | 'GOOD'
+  | 'ACCEPTABLE'
+  | 'NEEDS_IMPROVEMENT'
+  | 'NOT_PASSED';
+
+export interface HifzDaur {
+  id: string;
+  daurId: string; // Server-generated: DUR-YYYY-000001
+  cycleId: string; // References HifzDaurCycle.id
+  cycleDisplayId?: string; // e.g. "DCR-2026-000001"
+  mosqueId: string;
+  enrollmentId: string; // References HifzkhanaEnrollment.id
+  studentProfileId: string; // References EducationStudentProfile.id
+  studentId: string; // STU-000001
+  studentName?: string;
+  date: string; // YYYY-MM-DD
+  ustadId: string; // References Staff.id
+  ustadName?: string;
+  startVerseKey: string; // e.g. "2:1"
+  endVerseKey: string; // e.g. "2:30"
+  totalAyahs: number; // resolved from H2
+  startSurahNumber: number;
+  startSurahNameBn?: string;
+  endSurahNumber: number;
+  endSurahNameBn?: string;
+  status: HifzDaurStatus;
+  performance?: HifzDaurPerformance;
+  mistakeCount?: number;
+  remarks?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type HifzRevisionReason =
+  | 'MEMORY_WEAKNESS'
+  | 'REPEATED_MISTAKES'
+  | 'FORGOTTEN_PORTION'
+  | 'CONNECTIVITY_ISSUE'
+  | 'USTAD_ASSIGNED'
+  | 'OTHER';
+
+export type HifzRevisionPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
+export type HifzRevisionStatus =
+  | 'OPEN'
+  | 'IN_PROGRESS'
+  | 'VERIFIED'
+  | 'RESOLVED'
+  | 'CANCELLED';
+
+export interface HifzRevision {
+  id: string;
+  revisionId: string; // Server-generated: REV-YYYY-000001
+  mosqueId: string;
+  enrollmentId: string; // References HifzkhanaEnrollment.id
+  studentProfileId: string; // References EducationStudentProfile.id
+  studentId: string; // STU-000001
+  studentName?: string;
+  date: string; // YYYY-MM-DD
+  ustadId: string; // References Staff.id
+  ustadName?: string;
+  sourceDaurId?: string; // Optional reference to HifzDaur.id
+  sourceDaurDisplayId?: string; // e.g. "DUR-2026-000001"
+  sourceSabakiId?: string; // Optional reference to HifzSabaki.id
+  sourceSabakiDisplayId?: string; // e.g. "SBKI-2026-000001"
+  startVerseKey: string; // e.g. "2:20"
+  endVerseKey: string; // e.g. "2:30"
+  totalAyahs: number; // resolved from H2
+  startSurahNumber: number;
+  startSurahNameBn?: string;
+  endSurahNumber: number;
+  endSurahNameBn?: string;
+  reason: HifzRevisionReason;
+  priority: HifzRevisionPriority;
+  status: HifzRevisionStatus;
+  performance?: HifzDaurPerformance;
+  mistakeCount?: number;
+  remarks?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ==========================================
+// HIFZ H5-A — ATTENDANCE FOUNDATION
+// ==========================================
+
+export type HifzAttendanceStatus =
+  | 'PRESENT'
+  | 'ABSENT'
+  | 'LATE'
+  | 'LEAVE'
+  | 'EXCUSED';
+
+export type HifzAttendanceReason =
+  | 'ILLNESS'
+  | 'FAMILY_REASON'
+  | 'TRAVEL'
+  | 'APPROVED_LEAVE'
+  | 'EMERGENCY'
+  | 'OTHER';
+
+export interface HifzAttendance {
+  id: string;
+  attendanceId: string; // Server-generated: HAT-YYYY-000001
+  mosqueId: string;
+  enrollmentId: string; // References HifzkhanaEnrollment.id
+  studentProfileId: string; // References EducationStudentProfile.id
+  studentId: string; // STU-000001
+  studentName?: string;
+  date: string; // YYYY-MM-DD
+  status: HifzAttendanceStatus;
+  reason?: HifzAttendanceReason;
+  otherReason?: string;
+  remarks?: string;
+  recordedBy?: string; // User ID
+  recordedByName?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ==========================================
+// HIFZ H5-B1 — USTAD ASSIGNMENT FOUNDATION
+// ==========================================
+
+export type HifzUstadAssignmentType = 'PRIMARY' | 'SECONDARY';
+
+export type HifzUstadAssignmentStatus = 'ACTIVE' | 'ENDED' | 'CANCELLED';
+
+export interface HifzUstadAssignment {
+  id: string;
+  assignmentId: string; // Server-generated: HUA-YYYY-000001
+  mosqueId: string;
+  enrollmentId: string; // References HifzkhanaEnrollment.id
+  studentProfileId: string; // References EducationStudentProfile.id
+  studentId: string; // STU-000001
+  studentName?: string;
+  ustadStaffId: string; // References Staff.id
+  ustadName?: string;
+  assignmentType: HifzUstadAssignmentType;
+  startDate: string; // YYYY-MM-DD
+  endDate?: string; // YYYY-MM-DD
+  status: HifzUstadAssignmentStatus;
+  isPrimary: boolean;
+  remarks?: string;
+  assignedBy?: string;
+  assignedByName?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ==========================================
+// HIFZ H5-C — DASHBOARD & HISTORY TYPES
+// ==========================================
+
+export interface HifzH5DashboardData {
+  mosqueId: string;
+  period: {
+    startDate?: string;
+    endDate?: string;
+    preset?: string;
+  };
+  attendanceKPI: {
+    totalStudents: number;
+    totalRecords: number;
+    presentCount: number;
+    absentCount: number;
+    lateCount: number;
+    leaveCount: number;
+    excusedCount: number;
+    attendanceRate: number;
+  } | null;
+  ustadKPI: {
+    totalActiveAssignments: number;
+    activePrimaryCount: number;
+    activeSecondaryCount: number;
+    assignedStudentsCount: number;
+    totalUstadsActive: number;
+    endedAssignmentsCount: number;
+    cancelledAssignmentsCount: number;
+  } | null;
+}
+
+export interface HifzStudentHistoryData {
+  student: {
+    id: string;
+    studentId: string;
+    studentName: string;
+    studentProfileId: string;
+    enrollmentId: string;
+    status: string;
+    programType: string;
+    studyType: string;
+    admissionDate: string;
+  };
+  attendanceSummary: {
+    totalRecords: number;
+    present: number;
+    absent: number;
+    late: number;
+    leave: number;
+    excused: number;
+    attendanceRate: number;
+  } | null;
+  attendances: HifzAttendance[];
+  assignments: HifzUstadAssignment[];
+}
+
+export interface HifzUstadHistoryData {
+  ustad: {
+    staffId: string;
+    name: string;
+    staffCode?: string;
+    designation: string;
+    designationBn?: string;
+    phone?: string;
+    status: string;
+  };
+  activeAssignmentsCount: number;
+  primaryAssignmentsCount: number;
+  secondaryAssignmentsCount: number;
+  currentStudentsCount: number;
+  historicalStudentsCount: number;
+  activeAssignments: HifzUstadAssignment[];
+  historicalAssignments: HifzUstadAssignment[];
+}
+
+export interface HifzAttendanceSummaryGroup {
+  dateOrMonth: string;
+  totalRecords: number;
+  present: number;
+  absent: number;
+  late: number;
+  leave: number;
+  excused: number;
+  attendanceRate: number;
+}
+
+// ==========================================
+// HIFZ H5-D — SUB REPORT CENTER & PRINT TYPES
+// ==========================================
+
+export type HifzReportType =
+  | 'ATTENDANCE'
+  | 'STUDENT_WISE'
+  | 'USTAD_WISE'
+  | 'ASSIGNMENT'
+  | 'DAILY_SUMMARY'
+  | 'MONTHLY_SUMMARY'
+  | 'YEARLY_SUMMARY'
+  | 'REGISTER';
+
+export interface HifzReportPeriod {
+  mode: 'DATE_RANGE' | 'MONTH_RANGE' | 'YEAR_RANGE' | 'QUICK';
+  startDate: string;
+  endDate: string;
+  labelBn: string;
+}
+
+export interface HifzReportSummary {
+  totalRecords: number;
+  presentCount: number;
+  absentCount: number;
+  lateCount: number;
+  leaveCount: number;
+  excusedCount: number;
+  attendanceRate: number;
+  totalStudents?: number;
+  totalUstads?: number;
+  activeAssignments?: number;
+  endedAssignments?: number;
+  cancelledAssignments?: number;
+}
+
+export interface HifzReportResult {
+  mosqueId: string;
+  reportType: HifzReportType;
+  period: HifzReportPeriod;
+  summary: HifzReportSummary;
+  records: any[];
+  groupedData?: any[];
+  studentInfo?: any;
+  ustadInfo?: any;
+}
+
+// ==========================================
+// HIFZ H6-A — RESIDENTIAL FOUNDATION TYPES
+// ==========================================
+
+export type HifzResidentialStatus = 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
+
+export interface HifzResidence {
+  id: string;
+  residenceId: string; // HRS-YYYY-000001
+  mosqueId: string;
+  name: string;
+  nameBn: string;
+  type?: string;
+  address?: string;
+  status: HifzResidentialStatus;
+  remarks?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HifzResidenceBuilding {
+  id: string;
+  buildingId: string; // HRB-YYYY-000001
+  mosqueId: string;
+  residenceId: string;
+  name: string;
+  nameBn: string;
+  code: string;
+  floorCount: number;
+  status: HifzResidentialStatus;
+  remarks?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HifzResidenceRoom {
+  id: string;
+  roomId: string; // HRM-YYYY-000001
+  mosqueId: string;
+  residenceId: string;
+  buildingId: string;
+  roomNumber: string;
+  name?: string;
+  floorNumber: number;
+  capacity: number;
+  status: HifzResidentialStatus;
+  remarks?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HifzResidenceBed {
+  id: string;
+  bedId: string; // HRBD-YYYY-000001
+  mosqueId: string;
+  residenceId: string;
+  buildingId: string;
+  roomId: string;
+  bedNumber: string;
+  code: string;
+  status: HifzResidentialStatus;
   remarks?: string;
   createdAt: string;
   updatedAt: string;

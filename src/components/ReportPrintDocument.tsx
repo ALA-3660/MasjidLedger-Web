@@ -152,6 +152,11 @@ export const REPORT_TITLES: Record<string, { titleBn: string; subtitleBn: string
     subtitleBn: 'ব্যবহারকারী কর্তৃক প্রতিটি এন্ট্রি, পরিবর্তন ও অনুমোদন ট্র্যাকিং',
     isLandscape: true,
   },
+  HIFZ_REPORTS: {
+    titleBn: 'হেফজখানা হাজিরা ও উস্তাদ দায়িত্ব রেজিস্টার (Hifz Reports)',
+    subtitleBn: 'হিফজ শিক্ষার্থীদের উপস্থিতি, ছুটির বিবরণী ও উস্তাদগণের দায়িত্ব খতিয়ান',
+    isLandscape: true,
+  },
 };
 
 export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({

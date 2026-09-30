@@ -89,6 +89,15 @@ import {
   HifzkhanaEnrollment,
   HifzSabak,
   HifzSabaki,
+  HifzDaurCycle,
+  HifzDaur,
+  HifzRevision,
+  HifzAttendance,
+  HifzUstadAssignment,
+  HifzResidence,
+  HifzResidenceBuilding,
+  HifzResidenceRoom,
+  HifzResidenceBed,
 } from '../types';
 import {
   OfficialDocument,
@@ -523,6 +532,15 @@ export class DatabaseStore {
   hifzCurricula: HifzCurriculum[] = [];
   hifzSabaks: HifzSabak[] = [];
   hifzSabakis: HifzSabaki[] = [];
+  hifzDaurCycles: HifzDaurCycle[] = [];
+  hifzDaurs: HifzDaur[] = [];
+  hifzRevisions: HifzRevision[] = [];
+  hifzAttendances: HifzAttendance[] = [];
+  hifzTeacherAssignments: HifzUstadAssignment[] = [];
+  hifzResidences: HifzResidence[] = [];
+  hifzResidenceBuildings: HifzResidenceBuilding[] = [];
+  hifzResidenceRooms: HifzResidenceRoom[] = [];
+  hifzResidenceBeds: HifzResidenceBed[] = [];
 
   constructor() {
     this.init();
@@ -767,6 +785,15 @@ export class DatabaseStore {
         this.hifzCurricula = parsed.hifzCurricula || [];
         this.hifzSabaks = parsed.hifzSabaks || [];
         this.hifzSabakis = parsed.hifzSabakis || [];
+        this.hifzDaurCycles = parsed.hifzDaurCycles || [];
+        this.hifzDaurs = parsed.hifzDaurs || [];
+        this.hifzRevisions = parsed.hifzRevisions || [];
+        this.hifzAttendances = parsed.hifzAttendances || [];
+        this.hifzTeacherAssignments = parsed.hifzTeacherAssignments || parsed.hifzUstadAssignments || [];
+        this.hifzResidences = parsed.hifzResidences || [];
+        this.hifzResidenceBuildings = parsed.hifzResidenceBuildings || [];
+        this.hifzResidenceRooms = parsed.hifzResidenceRooms || [];
+        this.hifzResidenceBeds = parsed.hifzResidenceBeds || [];
 
         return;
       }
@@ -865,6 +892,15 @@ export class DatabaseStore {
         hifzCurricula: this.hifzCurricula,
         hifzSabaks: this.hifzSabaks,
         hifzSabakis: this.hifzSabakis,
+        hifzDaurCycles: this.hifzDaurCycles,
+        hifzDaurs: this.hifzDaurs,
+        hifzRevisions: this.hifzRevisions,
+        hifzAttendances: this.hifzAttendances,
+        hifzTeacherAssignments: this.hifzTeacherAssignments,
+        hifzResidences: this.hifzResidences,
+        hifzResidenceBuildings: this.hifzResidenceBuildings,
+        hifzResidenceRooms: this.hifzResidenceRooms,
+        hifzResidenceBeds: this.hifzResidenceBeds,
       };
       const tempPath = `${DB_FILE_PATH}.tmp.${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), 'utf-8');
@@ -3052,6 +3088,132 @@ export class DatabaseStore {
       }
     });
     return `SBKI-${year}-${String(maxNum + 1).padStart(6, '0')}`;
+  }
+
+  generateNextHifzDaurCycleId(mosqueId: string): string {
+    const year = new Date().getFullYear();
+    const mosqueCycles = this.hifzDaurCycles.filter(c => c.mosqueId === mosqueId);
+    let maxNum = 0;
+    mosqueCycles.forEach(c => {
+      const match = c.cycleId?.match(/^DCR-\d{4}-(\d+)$/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    return `DCR-${year}-${String(maxNum + 1).padStart(6, '0')}`;
+  }
+
+  generateNextHifzDaurId(mosqueId: string): string {
+    const year = new Date().getFullYear();
+    const mosqueDaurs = this.hifzDaurs.filter(d => d.mosqueId === mosqueId);
+    let maxNum = 0;
+    mosqueDaurs.forEach(d => {
+      const match = d.daurId?.match(/^DUR-\d{4}-(\d+)$/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    return `DUR-${year}-${String(maxNum + 1).padStart(6, '0')}`;
+  }
+
+  generateNextHifzRevisionId(mosqueId: string): string {
+    const year = new Date().getFullYear();
+    const mosqueRevisions = this.hifzRevisions.filter(r => r.mosqueId === mosqueId);
+    let maxNum = 0;
+    mosqueRevisions.forEach(r => {
+      const match = r.revisionId?.match(/^REV-\d{4}-(\d+)$/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    return `REV-${year}-${String(maxNum + 1).padStart(6, '0')}`;
+  }
+
+  generateNextHifzAttendanceId(mosqueId: string): string {
+    const year = new Date().getFullYear();
+    const mosqueAtt = this.hifzAttendances.filter(a => a.mosqueId === mosqueId);
+    let maxNum = 0;
+    mosqueAtt.forEach(a => {
+      const match = a.attendanceId?.match(/^HAT-\d{4}-(\d+)$/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    return `HAT-${year}-${String(maxNum + 1).padStart(6, '0')}`;
+  }
+
+  generateNextHifzUstadAssignmentId(mosqueId: string): string {
+    const year = new Date().getFullYear();
+    const mosqueAssignments = this.hifzTeacherAssignments.filter(a => a.mosqueId === mosqueId);
+    let maxNum = 0;
+    mosqueAssignments.forEach(a => {
+      const match = a.assignmentId?.match(/^HUA-\d{4}-(\d+)$/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    return `HUA-${year}-${String(maxNum + 1).padStart(6, '0')}`;
+  }
+
+  generateNextHifzResidenceId(mosqueId: string): string {
+    const year = new Date().getFullYear();
+    const mosqueList = this.hifzResidences.filter(r => r.mosqueId === mosqueId);
+    let maxNum = 0;
+    mosqueList.forEach(r => {
+      const match = r.residenceId?.match(/^HRS-\d{4}-(\d+)$/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    return `HRS-${year}-${String(maxNum + 1).padStart(6, '0')}`;
+  }
+
+  generateNextHifzResidenceBuildingId(mosqueId: string): string {
+    const year = new Date().getFullYear();
+    const mosqueList = this.hifzResidenceBuildings.filter(b => b.mosqueId === mosqueId);
+    let maxNum = 0;
+    mosqueList.forEach(b => {
+      const match = b.buildingId?.match(/^HRB-\d{4}-(\d+)$/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    return `HRB-${year}-${String(maxNum + 1).padStart(6, '0')}`;
+  }
+
+  generateNextHifzResidenceRoomId(mosqueId: string): string {
+    const year = new Date().getFullYear();
+    const mosqueList = this.hifzResidenceRooms.filter(r => r.mosqueId === mosqueId);
+    let maxNum = 0;
+    mosqueList.forEach(r => {
+      const match = r.roomId?.match(/^HRM-\d{4}-(\d+)$/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    return `HRM-${year}-${String(maxNum + 1).padStart(6, '0')}`;
+  }
+
+  generateNextHifzResidenceBedId(mosqueId: string): string {
+    const year = new Date().getFullYear();
+    const mosqueList = this.hifzResidenceBeds.filter(b => b.mosqueId === mosqueId);
+    let maxNum = 0;
+    mosqueList.forEach(b => {
+      const match = b.bedId?.match(/^HRBD-\d{4}-(\d+)$/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    return `HRBD-${year}-${String(maxNum + 1).padStart(6, '0')}`;
   }
 }
 

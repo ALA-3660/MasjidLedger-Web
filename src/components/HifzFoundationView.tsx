@@ -19,6 +19,9 @@ import {
   Sparkles,
   BookMarked,
   RotateCcw,
+  Calendar,
+  UserCheck,
+  BarChart3,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import {
@@ -33,6 +36,12 @@ import { toBanglaNumber } from './CommitteeView';
 import { QuranReferenceView } from './QuranReferenceView';
 import { HifzSabakView } from './HifzSabakView';
 import { HifzSabakiView } from './HifzSabakiView';
+import { HifzDaurRevisionView } from './HifzDaurRevisionView';
+import { HifzAttendanceView } from './HifzAttendanceView';
+import { HifzUstadAssignmentView } from './HifzUstadAssignmentView';
+import { HifzDashboardHistoryView } from './HifzDashboardHistoryView';
+import { HifzSubReportCenterView } from './HifzSubReportCenterView';
+import { HifzResidentialFoundationView } from './HifzResidentialFoundationView';
 
 interface HifzFoundationViewProps {
   currentMosque?: any;
@@ -46,7 +55,7 @@ export const HifzFoundationView: React.FC<HifzFoundationViewProps> = ({
   currentUser,
   language = 'bn',
 }) => {
-  const [activeTab, setActiveTab] = useState<'enrollments' | 'sabak' | 'sabaki' | 'levels' | 'curricula' | 'quranReference'>('enrollments');
+  const [activeTab, setActiveTab] = useState<'enrollments' | 'sabak' | 'sabaki' | 'daur_revision' | 'attendance' | 'ustad_assignment' | 'dashboard_history' | 'sub_report_center' | 'residential' | 'levels' | 'curricula' | 'quranReference'>('enrollments');
   const [isLoading, setIsLoading] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -54,6 +63,9 @@ export const HifzFoundationView: React.FC<HifzFoundationViewProps> = ({
   const [enrollments, setEnrollments] = useState<HifzkhanaEnrollment[]>([]);
   const [sabakCount, setSabakCount] = useState<number>(0);
   const [sabakiCount, setSabakiCount] = useState<number>(0);
+  const [daurCount, setDaurCount] = useState<number>(0);
+  const [attendanceCount, setAttendanceCount] = useState<number>(0);
+  const [ustadAssignmentCount, setUstadAssignmentCount] = useState<number>(0);
   const [levels, setLevels] = useState<HifzLevel[]>([]);
   const [curricula, setCurricula] = useState<HifzCurriculum[]>([]);
   const [eligibleStudents, setEligibleStudents] = useState<EducationStudentProfile[]>([]);
@@ -97,7 +109,7 @@ export const HifzFoundationView: React.FC<HifzFoundationViewProps> = ({
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [enrollmentRes, levelRes, curriculumRes, studentRes, ustadRes, sabakStatsRes, sabakiStatsRes] = await Promise.all([
+      const [enrollmentRes, levelRes, curriculumRes, studentRes, ustadRes, sabakStatsRes, sabakiStatsRes, daurStatsRes, attendanceStatsRes, ustadAssignStatsRes] = await Promise.all([
         api.getHifzEnrollments().catch(() => []),
         api.getHifzLevels().catch(() => []),
         api.getHifzCurricula().catch(() => []),
@@ -105,6 +117,9 @@ export const HifzFoundationView: React.FC<HifzFoundationViewProps> = ({
         api.getHifzEligibleUstads().catch(() => []),
         api.getHifzSabakStats().catch(() => null),
         api.getHifzSabakiStats().catch(() => null),
+        api.getHifzDaurStats().catch(() => null),
+        api.getHifzAttendanceStats().catch(() => null),
+        api.getHifzUstadAssignmentStats().catch(() => null),
       ]);
 
       setEnrollments(enrollmentRes);
@@ -117,6 +132,15 @@ export const HifzFoundationView: React.FC<HifzFoundationViewProps> = ({
       }
       if (sabakiStatsRes?.totalSabakis !== undefined) {
         setSabakiCount(sabakiStatsRes.totalSabakis);
+      }
+      if (daurStatsRes?.totalDaurs !== undefined) {
+        setDaurCount(daurStatsRes.totalDaurs);
+      }
+      if (attendanceStatsRes?.todayTotal !== undefined) {
+        setAttendanceCount(attendanceStatsRes.todayTotal);
+      }
+      if (ustadAssignStatsRes?.activeAssignments !== undefined) {
+        setUstadAssignmentCount(ustadAssignStatsRes.activeAssignments);
       }
 
       if (levelRes.length > 0 && !newEnrollmentForm.currentLevelId) {
@@ -261,6 +285,12 @@ export const HifzFoundationView: React.FC<HifzFoundationViewProps> = ({
             { id: 'enrollments' as const, label: 'শিক্ষার্থী ভর্তি ও তালিকা', icon: Users, badge: enrollments.length },
             { id: 'sabak' as const, label: '📖 সবক', icon: BookMarked, badge: sabakCount },
             { id: 'sabaki' as const, label: '🔄 সবকী', icon: RotateCcw, badge: sabakiCount },
+            { id: 'daur_revision' as const, label: '📚 দৌর ও রিভিশন (H4)', icon: BookOpen, badge: daurCount },
+            { id: 'attendance' as const, label: '📅 দৈনিক হাজিরা (H5-A)', icon: Calendar, badge: attendanceCount },
+            { id: 'ustad_assignment' as const, label: '👤 উস্তাদ নির্ধারণ (H5-B1)', icon: UserCheck, badge: ustadAssignmentCount },
+            { id: 'dashboard_history' as const, label: '📊 ড্যাশবোর্ড ও ইতিহাস (H5-C)', icon: BarChart3 },
+            { id: 'sub_report_center' as const, label: '📊 সাব রিপোর্ট সেন্টার (H5-D)', icon: FileText },
+            { id: 'residential' as const, label: '🏠 আবাসিক ব্যবস্থাপনা (H6-A)', icon: Home },
             { id: 'levels' as const, label: 'হিফজ স্তরসমূহ (Stages)', icon: GraduationCap, badge: levels.length },
             { id: 'curricula' as const, label: 'হিফজ পাঠ্যক্রম (Curricula)', icon: Compass, badge: curricula.length },
             { id: 'quranReference' as const, label: '📖 কুরআন রেফারেন্স (H2)', icon: BookOpen, badge: '১১৪ সূরা' },
@@ -584,6 +614,48 @@ export const HifzFoundationView: React.FC<HifzFoundationViewProps> = ({
             currentMosque={currentMosque}
             currentUser={currentUser}
             language={language}
+          />
+        )}
+
+        {/* TAB: HIFZ H4 DAUR & REVISION FOUNDATION */}
+        {activeTab === 'daur_revision' && (
+          <HifzDaurRevisionView
+            currentMosque={currentMosque}
+          />
+        )}
+
+        {/* TAB: HIFZ H5-A ATTENDANCE FOUNDATION */}
+        {activeTab === 'attendance' && (
+          <HifzAttendanceView
+            currentMosque={currentMosque}
+          />
+        )}
+
+        {/* TAB: HIFZ H5-B1 USTAD ASSIGNMENT FOUNDATION */}
+        {activeTab === 'ustad_assignment' && (
+          <HifzUstadAssignmentView
+            currentMosque={currentMosque}
+          />
+        )}
+
+        {/* TAB: HIFZ H5-C DASHBOARD & HISTORY */}
+        {activeTab === 'dashboard_history' && (
+          <HifzDashboardHistoryView
+            currentMosque={currentMosque}
+          />
+        )}
+
+        {/* TAB: HIFZ H5-D SUB REPORT CENTER */}
+        {activeTab === 'sub_report_center' && (
+          <HifzSubReportCenterView
+            currentMosque={currentMosque}
+          />
+        )}
+
+        {/* TAB: HIFZ H6-A RESIDENTIAL FOUNDATION */}
+        {activeTab === 'residential' && (
+          <HifzResidentialFoundationView
+            currentMosque={currentMosque}
           />
         )}
 

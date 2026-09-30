@@ -109,6 +109,26 @@ import {
   HifzSabaki,
   HifzSabakiStatus,
   HifzSabakiPerformance,
+  HifzDaurCycle,
+  HifzDaurCycleStatus,
+  HifzDaur,
+  HifzDaurStatus,
+  HifzDaurPerformance,
+  HifzRevision,
+  HifzRevisionReason,
+  HifzRevisionPriority,
+  HifzRevisionStatus,
+  HifzAttendance,
+  HifzAttendanceStatus,
+  HifzAttendanceReason,
+  HifzUstadAssignment,
+  HifzUstadAssignmentType,
+  HifzUstadAssignmentStatus,
+  HifzResidence,
+  HifzResidenceBuilding,
+  HifzResidenceRoom,
+  HifzResidenceBed,
+  HifzResidentialStatus,
 } from './src/types';
 
 const app = express();
@@ -242,7 +262,12 @@ const ALL_VALID_PERMISSIONS: Set<string> = new Set([
   'VIEW_MAKTAB', 'MANAGE_MAKTAB_ATTENDANCE', 'MANAGE_MAKTAB_PROGRESS', 'MANAGE_MAKTAB_FEES',
   'VIEW_HIFZ', 'MANAGE_HIFZ_STUDENTS',
   'VIEW_HIFZ_SABAK', 'CREATE_HIFZ_SABAK', 'EDIT_HIFZ_SABAK', 'EVALUATE_HIFZ_SABAK',
-  'VIEW_HIFZ_SABAKI', 'CREATE_HIFZ_SABAKI', 'EDIT_HIFZ_SABAKI', 'EVALUATE_HIFZ_SABAKI'
+  'VIEW_HIFZ_SABAKI', 'CREATE_HIFZ_SABAKI', 'EDIT_HIFZ_SABAKI', 'EVALUATE_HIFZ_SABAKI',
+  'VIEW_HIFZ_DAUR', 'CREATE_HIFZ_DAUR', 'EDIT_HIFZ_DAUR', 'EVALUATE_HIFZ_DAUR',
+  'VIEW_HIFZ_REVISION', 'CREATE_HIFZ_REVISION', 'EDIT_HIFZ_REVISION', 'RESOLVE_HIFZ_REVISION',
+  'VIEW_HIFZ_ATTENDANCE', 'CREATE_HIFZ_ATTENDANCE', 'EDIT_HIFZ_ATTENDANCE',
+  'VIEW_HIFZ_USTAD_ASSIGNMENT', 'CREATE_HIFZ_USTAD_ASSIGNMENT', 'EDIT_HIFZ_USTAD_ASSIGNMENT',
+  'VIEW_HIFZ_RESIDENTIAL', 'CREATE_HIFZ_RESIDENTIAL', 'EDIT_HIFZ_RESIDENTIAL'
 ]);
 
 const getAuthoritativeRolePermissions = (targetRole: UserRole): Permission[] => {
@@ -257,14 +282,18 @@ const getAuthoritativeRolePermissions = (targetRole: UserRole): Permission[] => 
         'APPROVE_INCOME', 'APPROVE_EXPENSE', 'VIEW_REPORT', 'EXPORT_REPORT', 'MANAGE_ACCOUNTS',
         'VIEW_BUDGET', 'CREATE_BUDGET', 'EDIT_BUDGET', 'SUBMIT_BUDGET', 'VIEW_BUDGET_ANALYSIS', 'EXPORT_BUDGET_REPORT',
         'VIEW_LIBRARY', 'VIEW_LIBRARY_REPORT', 'EXPORT_LIBRARY_REPORT',
-        'VIEW_EDUCATION', 'VIEW_MAKTAB', 'MANAGE_MAKTAB_FEES', 'VIEW_HIFZ', 'VIEW_HIFZ_SABAK', 'VIEW_HIFZ_SABAKI'
+        'VIEW_EDUCATION', 'VIEW_MAKTAB', 'MANAGE_MAKTAB_FEES', 'VIEW_HIFZ', 'VIEW_HIFZ_SABAK', 'VIEW_HIFZ_SABAKI',
+        'VIEW_HIFZ_DAUR', 'VIEW_HIFZ_REVISION', 'VIEW_HIFZ_ATTENDANCE', 'VIEW_HIFZ_USTAD_ASSIGNMENT',
+        'VIEW_HIFZ_RESIDENTIAL'
       ] as Permission[];
     case 'COMMITTEE_ADMIN':
       return [
         'VIEW_DASHBOARD', 'MANAGE_COMMITTEE', 'VIEW_REPORT', 'EXPORT_REPORT',
         'VIEW_MEMBER_PERFORMANCE', 'CREATE_EVALUATION', 'EDIT_EVALUATION', 'ADD_MEMBER_ACTIVITY', 'UPDATE_RESPONSIBILITY_STATUS', 'PRINT_PERFORMANCE_REPORT',
         'VIEW_LIBRARY', 'VIEW_LIBRARY_REPORT',
-        'VIEW_EDUCATION', 'VIEW_MAKTAB', 'VIEW_HIFZ', 'VIEW_HIFZ_SABAK', 'VIEW_HIFZ_SABAKI'
+        'VIEW_EDUCATION', 'VIEW_MAKTAB', 'VIEW_HIFZ', 'VIEW_HIFZ_SABAK', 'VIEW_HIFZ_SABAKI',
+        'VIEW_HIFZ_DAUR', 'VIEW_HIFZ_REVISION', 'VIEW_HIFZ_ATTENDANCE', 'VIEW_HIFZ_USTAD_ASSIGNMENT',
+        'VIEW_HIFZ_RESIDENTIAL'
       ] as Permission[];
     case 'DATA_ENTRY_OPERATOR':
       return [
@@ -273,13 +302,27 @@ const getAuthoritativeRolePermissions = (targetRole: UserRole): Permission[] => 
         'VIEW_EDUCATION', 'MANAGE_EDUCATION_STUDENT', 'MANAGE_EDUCATION_ENROLLMENT',
         'VIEW_MAKTAB', 'MANAGE_MAKTAB_ATTENDANCE', 'MANAGE_MAKTAB_PROGRESS', 'MANAGE_MAKTAB_FEES',
         'VIEW_HIFZ', 'MANAGE_HIFZ_STUDENTS', 'VIEW_HIFZ_SABAK', 'CREATE_HIFZ_SABAK', 'EDIT_HIFZ_SABAK', 'EVALUATE_HIFZ_SABAK',
-        'VIEW_HIFZ_SABAKI', 'CREATE_HIFZ_SABAKI', 'EDIT_HIFZ_SABAKI', 'EVALUATE_HIFZ_SABAKI'
+        'VIEW_HIFZ_SABAKI', 'CREATE_HIFZ_SABAKI', 'EDIT_HIFZ_SABAKI', 'EVALUATE_HIFZ_SABAKI',
+        'VIEW_HIFZ_DAUR', 'CREATE_HIFZ_DAUR', 'EDIT_HIFZ_DAUR', 'EVALUATE_HIFZ_DAUR',
+        'VIEW_HIFZ_REVISION', 'CREATE_HIFZ_REVISION', 'EDIT_HIFZ_REVISION', 'RESOLVE_HIFZ_REVISION',
+        'VIEW_HIFZ_ATTENDANCE', 'CREATE_HIFZ_ATTENDANCE', 'EDIT_HIFZ_ATTENDANCE',
+        'VIEW_HIFZ_USTAD_ASSIGNMENT', 'CREATE_HIFZ_USTAD_ASSIGNMENT', 'EDIT_HIFZ_USTAD_ASSIGNMENT',
+        'VIEW_HIFZ_RESIDENTIAL', 'CREATE_HIFZ_RESIDENTIAL', 'EDIT_HIFZ_RESIDENTIAL'
       ] as Permission[];
     case 'AUDITOR':
-      return ['VIEW_DASHBOARD', 'VIEW_REPORT', 'EXPORT_REPORT', 'VIEW_AUDIT_LOG', 'VIEW_BUDGET_ANALYSIS', 'EXPORT_BUDGET_REPORT', 'VIEW_LIBRARY', 'VIEW_LIBRARY_REPORT', 'EXPORT_LIBRARY_REPORT', 'VIEW_EDUCATION', 'VIEW_MAKTAB', 'VIEW_HIFZ', 'VIEW_HIFZ_SABAK', 'VIEW_HIFZ_SABAKI'] as Permission[];
+      return [
+        'VIEW_DASHBOARD', 'VIEW_REPORT', 'EXPORT_REPORT', 'VIEW_AUDIT_LOG', 'VIEW_BUDGET_ANALYSIS', 'EXPORT_BUDGET_REPORT',
+        'VIEW_LIBRARY', 'VIEW_LIBRARY_REPORT', 'EXPORT_LIBRARY_REPORT', 'VIEW_EDUCATION', 'VIEW_MAKTAB',
+        'VIEW_HIFZ', 'VIEW_HIFZ_SABAK', 'VIEW_HIFZ_SABAKI', 'VIEW_HIFZ_DAUR', 'VIEW_HIFZ_REVISION',
+        'VIEW_HIFZ_ATTENDANCE', 'VIEW_HIFZ_USTAD_ASSIGNMENT', 'VIEW_HIFZ_RESIDENTIAL'
+      ] as Permission[];
     case 'VIEWER':
     default:
-      return ['VIEW_DASHBOARD', 'VIEW_REPORT', 'VIEW_LIBRARY', 'VIEW_EDUCATION', 'VIEW_MAKTAB', 'VIEW_HIFZ', 'VIEW_HIFZ_SABAK', 'VIEW_HIFZ_SABAKI'] as Permission[];
+      return [
+        'VIEW_DASHBOARD', 'VIEW_REPORT', 'VIEW_LIBRARY', 'VIEW_EDUCATION', 'VIEW_MAKTAB',
+        'VIEW_HIFZ', 'VIEW_HIFZ_SABAK', 'VIEW_HIFZ_SABAKI', 'VIEW_HIFZ_DAUR', 'VIEW_HIFZ_REVISION',
+        'VIEW_HIFZ_ATTENDANCE', 'VIEW_HIFZ_USTAD_ASSIGNMENT', 'VIEW_HIFZ_RESIDENTIAL'
+      ] as Permission[];
   }
 };
 
@@ -21602,6 +21645,3720 @@ app.patch('/api/v1/hifz/sabaki/:id/status', authenticate, requireAnyPermission([
     message: `সবকী স্ট্যাটাস সফলভাবে ${status} করা হয়েছে (#${sabaki.sabakiId})।`
   });
 });
+
+// ==========================================
+// HIFZ H4 — DAUR & REVISION API ENDPOINTS
+// ==========================================
+
+// 1. DAUR CYCLES — List
+app.get('/api/v1/hifz/daur/cycles', authenticate, requirePermission('VIEW_HIFZ_DAUR'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { enrollmentId, studentId, status, search } = req.query;
+
+  let list = db.hifzDaurCycles.filter(c => c.mosqueId === mosqueId);
+
+  if (enrollmentId) {
+    list = list.filter(c => c.enrollmentId === enrollmentId);
+  }
+  if (studentId) {
+    list = list.filter(c => c.studentId === studentId);
+  }
+  if (status) {
+    list = list.filter(c => c.status === status);
+  }
+  if (search) {
+    const q = String(search).toLowerCase();
+    list = list.filter(c =>
+      c.cycleId.toLowerCase().includes(q) ||
+      (c.studentName && c.studentName.toLowerCase().includes(q)) ||
+      (c.startSurahNameBn && c.startSurahNameBn.toLowerCase().includes(q)) ||
+      (c.endSurahNameBn && c.endSurahNameBn.toLowerCase().includes(q))
+    );
+  }
+
+  // Enrich studentName if missing
+  const enriched = list.map(c => {
+    if (!c.studentName) {
+      const stu = db.educationStudentProfiles.find(s => s.id === c.studentProfileId || s.studentId === c.studentId);
+      return { ...c, studentName: stu?.personName || 'শিক্ষার্থী' };
+    }
+    return c;
+  });
+
+  enriched.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  res.json({
+    success: true,
+    data: enriched,
+    total: enriched.length
+  });
+});
+
+// 2. DAUR CYCLES — Single by ID
+app.get('/api/v1/hifz/daur/cycles/:id', authenticate, requirePermission('VIEW_HIFZ_DAUR'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const cycle = db.hifzDaurCycles.find(c => c.mosqueId === mosqueId && (c.id === req.params.id || c.cycleId === req.params.id));
+
+  if (!cycle) {
+    return res.status(404).json({ success: false, error: { code: 'DAUR_CYCLE_NOT_FOUND', message: 'দৌর সাইকেল পাওয়া যায়নি।' } });
+  }
+
+  const linkedDaurs = db.hifzDaurs.filter(d => d.mosqueId === mosqueId && d.cycleId === cycle.id);
+  const completedDaurs = linkedDaurs.filter(d => d.status === 'COMPLETED');
+  const totalCompletedAyahs = completedDaurs.reduce((acc, d) => acc + (d.totalAyahs || 0), 0);
+
+  res.json({
+    success: true,
+    data: {
+      ...cycle,
+      linkedDaurs,
+      daurCount: linkedDaurs.length,
+      completedDaurCount: completedDaurs.length,
+      totalCompletedAyahs,
+      progressPercentage: cycle.totalAyahs > 0 ? Math.min(100, Math.round((totalCompletedAyahs / cycle.totalAyahs) * 100)) : 0
+    }
+  });
+});
+
+// 3. DAUR CYCLES — Create
+app.post('/api/v1/hifz/daur/cycles', authenticate, requirePermission('CREATE_HIFZ_DAUR'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+
+  if (req.idempotencyKey) {
+    const cached = db.checkIdempotency(req.idempotencyKey);
+    if (cached) {
+      return res.status(cached.status || 200).json(cached.body);
+    }
+  }
+
+  const {
+    enrollmentId,
+    cycleNumber,
+    startDate,
+    targetEndDate,
+    startVerseKey,
+    endVerseKey,
+    status = 'PLANNED',
+    remarks
+  } = req.body;
+
+  if (!enrollmentId || !startDate || !startVerseKey || !endVerseKey) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'MISSING_REQUIRED_FIELDS', message: 'ভর্তি আইডি, শুরুর তারিখ এবং কুরআন রেঞ্জ (শুরু ও শেষ আয়াত) আবশ্যক।' }
+    });
+  }
+
+  const enrollment = db.hifzEnrollments.find(e => e.id === enrollmentId && e.mosqueId === mosqueId);
+  if (!enrollment) {
+    return res.status(404).json({ success: false, error: { code: 'ENROLLMENT_NOT_FOUND', message: 'হিফজ ভর্তি রেকর্ড পাওয়া যায়নি।' } });
+  }
+  if (enrollment.status !== 'ACTIVE') {
+    return res.status(400).json({ success: false, error: { code: 'ENROLLMENT_INACTIVE', message: 'শুধুমাত্র সক্রিয় (ACTIVE) ভর্তিতে নতুন দৌর সাইকেল খোলা যাবে।' } });
+  }
+
+  const studentProfile = db.educationStudentProfiles.find(s => s.id === enrollment.studentProfileId && s.mosqueId === mosqueId);
+  const studentName = studentProfile?.personName || 'শিক্ষার্থী';
+  const studentId = enrollment.studentId || studentProfile?.studentId || '';
+
+  const cycleNum = Number(cycleNumber) || (db.hifzDaurCycles.filter(c => c.mosqueId === mosqueId && c.enrollmentId === enrollmentId && c.status !== 'CANCELLED').length + 1);
+
+  // Range validation via H2
+  const rangeValidation = quranReferenceService.validateRange(startVerseKey, endVerseKey);
+  if (!rangeValidation.isValid) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_QURAN_RANGE', message: rangeValidation.error || 'অবৈধ কুরআন রেঞ্জ।' }
+    });
+  }
+
+  const rangeInfo = quranReferenceService.getAyahRange(startVerseKey, endVerseKey);
+  if (!rangeInfo) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_QURAN_RANGE', message: 'কুরআন রেঞ্জের বিবরণ পাওয়া যায়নি।' }
+    });
+  }
+
+  // Duplicate check: same mosque + enrollment + cycleNumber + active
+  const duplicate = db.hifzDaurCycles.find(
+    c => c.mosqueId === mosqueId &&
+      c.enrollmentId === enrollmentId &&
+      c.cycleNumber === cycleNum &&
+      c.status !== 'CANCELLED'
+  );
+  if (duplicate) {
+    return res.status(409).json({
+      success: false,
+      error: { code: 'DUPLICATE_DAUR_CYCLE', message: `এই শিক্ষার্থীর জন্য সাইকেল নং #${cycleNum} ইতোমধ্যে বিদ্যমান (#${duplicate.cycleId})।` }
+    });
+  }
+
+  const now = new Date().toISOString();
+  const id = `dcr-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const cycleId = db.generateNextHifzDaurCycleId(mosqueId);
+
+  const newCycle: HifzDaurCycle = {
+    id,
+    cycleId,
+    mosqueId,
+    enrollmentId,
+    studentProfileId: enrollment.studentProfileId,
+    studentId,
+    studentName,
+    cycleNumber: cycleNum,
+    startDate,
+    targetEndDate: targetEndDate || undefined,
+    startVerseKey: rangeInfo.startVerseKey,
+    endVerseKey: rangeInfo.endVerseKey,
+    totalAyahs: rangeInfo.totalAyahs,
+    startSurahNumber: rangeInfo.startSurah.surahNumber,
+    startSurahNameBn: rangeInfo.startSurah.nameBangla,
+    endSurahNumber: rangeInfo.endSurah.surahNumber,
+    endSurahNameBn: rangeInfo.endSurah.nameBangla,
+    status: status === 'ACTIVE' ? 'ACTIVE' : 'PLANNED',
+    remarks: remarks ? String(remarks).trim() : undefined,
+    createdAt: now,
+    updatedAt: now
+  };
+
+  db.hifzDaurCycles.push(newCycle);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'HIFZ',
+    `নতুন দৌর সাইকেল তৈরি (${cycleId}): শিক্ষার্থী: ${studentName}, সাইকেল #${cycleNum}, রেঞ্জ: ${startVerseKey} - ${endVerseKey} (${rangeInfo.totalAyahs} আয়াত)`,
+    newCycle.id
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'HIFZ_DAUR_CYCLE_CREATED', newCycle, { senderId: req.user!.id });
+
+  const responseBody = {
+    success: true,
+    data: newCycle,
+    message: `দৌর সাইকেল #${cycleId} সফলভাবে খোলা হয়েছে।`
+  };
+
+  if (req.idempotencyKey) {
+    db.saveIdempotency(req.idempotencyKey, responseBody);
+  }
+
+  res.status(201).json(responseBody);
+});
+
+// 4. DAUR CYCLES — Update (PUT)
+app.put('/api/v1/hifz/daur/cycles/:id', authenticate, requirePermission('EDIT_HIFZ_DAUR'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const cycle = db.hifzDaurCycles.find(c => c.mosqueId === mosqueId && (c.id === req.params.id || c.cycleId === req.params.id));
+
+  if (!cycle) {
+    return res.status(404).json({ success: false, error: { code: 'DAUR_CYCLE_NOT_FOUND', message: 'দৌর সাইকেল পাওয়া যায়নি।' } });
+  }
+
+  if (cycle.status === 'CANCELLED') {
+    return res.status(400).json({ success: false, error: { code: 'CANCELLED_IMMUTABLE', message: 'বাতিলকৃত দৌর সাইকেল পরিবর্তনযোগ্য নয়।' } });
+  }
+
+  const { startDate, targetEndDate, startVerseKey, endVerseKey, status, remarks } = req.body;
+
+  if (startVerseKey && endVerseKey) {
+    const rangeValidation = quranReferenceService.validateRange(startVerseKey, endVerseKey);
+    if (!rangeValidation.isValid) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_QURAN_RANGE', message: rangeValidation.error || 'অবৈধ কুরআন রেঞ্জ।' } });
+    }
+    const rangeInfo = quranReferenceService.getAyahRange(startVerseKey, endVerseKey);
+    if (rangeInfo) {
+      cycle.startVerseKey = rangeInfo.startVerseKey;
+      cycle.endVerseKey = rangeInfo.endVerseKey;
+      cycle.totalAyahs = rangeInfo.totalAyahs;
+      cycle.startSurahNumber = rangeInfo.startSurah.surahNumber;
+      cycle.startSurahNameBn = rangeInfo.startSurah.nameBangla;
+      cycle.endSurahNumber = rangeInfo.endSurah.surahNumber;
+      cycle.endSurahNameBn = rangeInfo.endSurah.nameBangla;
+    }
+  }
+
+  if (status && status !== cycle.status) {
+    const validTransitions: Record<string, string[]> = {
+      PLANNED: ['ACTIVE', 'CANCELLED'],
+      ACTIVE: ['COMPLETED', 'CANCELLED', 'PLANNED'],
+      COMPLETED: ['ACTIVE', 'CANCELLED'],
+    };
+    const allowed = validTransitions[cycle.status] || [];
+    if (!allowed.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_STATUS_TRANSITION', message: `অবৈধ সাইকেল স্ট্যাটাস পরিবর্তন: ${cycle.status} থেকে ${status} সম্ভব নয়।` }
+      });
+    }
+    cycle.status = status;
+  }
+
+  if (startDate) cycle.startDate = startDate;
+  if (targetEndDate !== undefined) cycle.targetEndDate = targetEndDate || undefined;
+  if (remarks !== undefined) cycle.remarks = remarks ? String(remarks).trim() : undefined;
+
+  cycle.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'HIFZ',
+    `দৌর সাইকেল আপডেট (${cycle.cycleId}): স্ট্যাটাস: ${cycle.status}`,
+    cycle.id
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'HIFZ_DAUR_CYCLE_UPDATED', cycle, { senderId: req.user!.id });
+
+  res.json({
+    success: true,
+    data: cycle,
+    message: `দৌর সাইকেল #${cycle.cycleId} সফলভাবে আপডেট করা হয়েছে।`
+  });
+});
+
+// 5. DAUR CYCLES — Status Update (PATCH)
+app.patch('/api/v1/hifz/daur/cycles/:id/status', authenticate, requirePermission('EDIT_HIFZ_DAUR'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const cycle = db.hifzDaurCycles.find(c => c.mosqueId === mosqueId && (c.id === req.params.id || c.cycleId === req.params.id));
+
+  if (!cycle) {
+    return res.status(404).json({ success: false, error: { code: 'DAUR_CYCLE_NOT_FOUND', message: 'দৌর সাইকেল পাওয়া যায়নি।' } });
+  }
+
+  if (cycle.status === 'CANCELLED') {
+    return res.status(400).json({ success: false, error: { code: 'CANCELLED_IMMUTABLE', message: 'বাতিলকৃত দৌর সাইকেল পরিবর্তনযোগ্য নয়।' } });
+  }
+
+  const { status, remarks } = req.body;
+  if (!status) {
+    return res.status(400).json({ success: false, error: { code: 'MISSING_STATUS', message: 'স্ট্যাটাস আবশ্যক।' } });
+  }
+
+  const validTransitions: Record<string, string[]> = {
+    PLANNED: ['ACTIVE', 'CANCELLED'],
+    ACTIVE: ['COMPLETED', 'CANCELLED', 'PLANNED'],
+    COMPLETED: ['ACTIVE', 'CANCELLED'],
+  };
+  const allowed = validTransitions[cycle.status] || [];
+  if (!allowed.includes(status)) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_STATUS_TRANSITION', message: `অবৈধ সাইকেল স্ট্যাটাস পরিবর্তন: ${cycle.status} থেকে ${status} সম্ভব নয়।` }
+    });
+  }
+
+  const prevStatus = cycle.status;
+  cycle.status = status;
+  if (remarks !== undefined) cycle.remarks = remarks ? String(remarks).trim() : cycle.remarks;
+  cycle.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'STATUS_CHANGE',
+    'HIFZ',
+    `দৌর সাইকেল স্ট্যাটাস পরিবর্তন (${cycle.cycleId}): ${prevStatus} -> ${status}`,
+    cycle.id
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'HIFZ_DAUR_CYCLE_UPDATED', cycle, { senderId: req.user!.id });
+
+  res.json({
+    success: true,
+    data: cycle,
+    message: `দৌর সাইকেল স্ট্যাটাস সফলভাবে ${status} করা হয়েছে (#${cycle.cycleId})।`
+  });
+});
+
+// ==========================================
+// DAUR ENTRIES — Stats & CRUD
+// ==========================================
+
+// 6. DAUR & REVISION STATS
+app.get('/api/v1/hifz/daur/stats', authenticate, requirePermission('VIEW_HIFZ_DAUR'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const today = new Date().toISOString().split('T')[0];
+
+  const cycles = db.hifzDaurCycles.filter(c => c.mosqueId === mosqueId && c.status !== 'CANCELLED');
+  const activeCycles = cycles.filter(c => c.status === 'ACTIVE');
+  const completedCycles = cycles.filter(c => c.status === 'COMPLETED');
+
+  const daurs = db.hifzDaurs.filter(d => d.mosqueId === mosqueId && d.status !== 'CANCELLED');
+  const todayDaurs = daurs.filter(d => d.date === today);
+  const completedDaurs = daurs.filter(d => d.status === 'COMPLETED');
+  const evaluatedDaurs = daurs.filter(d => d.status === 'EVALUATED' || d.status === 'COMPLETED');
+  const pendingDaurs = daurs.filter(d => d.status === 'ASSIGNED' || d.status === 'REVIEWED');
+
+  const revisions = db.hifzRevisions.filter(r => r.mosqueId === mosqueId && r.status !== 'CANCELLED');
+  const openRevisions = revisions.filter(r => r.status === 'OPEN');
+  const inProgressRevisions = revisions.filter(r => r.status === 'IN_PROGRESS');
+  const resolvedRevisions = revisions.filter(r => r.status === 'RESOLVED');
+  const criticalRevisions = revisions.filter(r => r.priority === 'CRITICAL' && r.status !== 'RESOLVED');
+
+  res.json({
+    success: true,
+    data: {
+      totalCycles: cycles.length,
+      activeCycles: activeCycles.length,
+      completedCycles: completedCycles.length,
+      totalDaurs: daurs.length,
+      todayDaurs: todayDaurs.length,
+      completedDaurs: completedDaurs.length,
+      evaluatedDaurs: evaluatedDaurs.length,
+      pendingDaurs: pendingDaurs.length,
+      totalRevisions: revisions.length,
+      openRevisions: openRevisions.length,
+      inProgressRevisions: inProgressRevisions.length,
+      resolvedRevisions: resolvedRevisions.length,
+      criticalRevisions: criticalRevisions.length
+    }
+  });
+});
+
+// 7. DAUR ENTRIES — List
+app.get('/api/v1/hifz/daur', authenticate, requirePermission('VIEW_HIFZ_DAUR'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { cycleId, enrollmentId, studentId, ustadId, status, date, startDate, endDate, performance, search } = req.query;
+
+  let list = db.hifzDaurs.filter(d => d.mosqueId === mosqueId);
+
+  if (cycleId) list = list.filter(d => d.cycleId === cycleId);
+  if (enrollmentId) list = list.filter(d => d.enrollmentId === enrollmentId);
+  if (studentId) list = list.filter(d => d.studentId === studentId);
+  if (ustadId) list = list.filter(d => d.ustadId === ustadId);
+  if (status) list = list.filter(d => d.status === status);
+  if (date) list = list.filter(d => d.date === date);
+  if (startDate) list = list.filter(d => d.date >= String(startDate));
+  if (endDate) list = list.filter(d => d.date <= String(endDate));
+  if (performance) list = list.filter(d => d.performance === performance);
+
+  if (search) {
+    const q = String(search).toLowerCase();
+    list = list.filter(d =>
+      d.daurId.toLowerCase().includes(q) ||
+      (d.studentName && d.studentName.toLowerCase().includes(q)) ||
+      (d.ustadName && d.ustadName.toLowerCase().includes(q)) ||
+      (d.startSurahNameBn && d.startSurahNameBn.toLowerCase().includes(q)) ||
+      (d.endSurahNameBn && d.endSurahNameBn.toLowerCase().includes(q))
+    );
+  }
+
+  // Enrich names if needed
+  const enriched = list.map(d => {
+    let studentName = d.studentName;
+    if (!studentName) {
+      const stu = db.educationStudentProfiles.find(s => s.id === d.studentProfileId || s.studentId === d.studentId);
+      studentName = stu?.personName || 'শিক্ষার্থী';
+    }
+    let ustadName = d.ustadName;
+    if (!ustadName) {
+      const staff = db.staffList.find(s => s.id === d.ustadId);
+      ustadName = staff?.name || 'উস্তাদ';
+    }
+    let cycleDisplayId = d.cycleDisplayId;
+    if (!cycleDisplayId) {
+      const cyc = db.hifzDaurCycles.find(c => c.id === d.cycleId);
+      cycleDisplayId = cyc?.cycleId;
+    }
+    return { ...d, studentName, ustadName, cycleDisplayId };
+  });
+
+  enriched.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime() || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  res.json({
+    success: true,
+    data: enriched,
+    total: enriched.length
+  });
+});
+
+// 8. DAUR ENTRIES — Single by ID
+app.get('/api/v1/hifz/daur/:id', authenticate, requirePermission('VIEW_HIFZ_DAUR'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const daur = db.hifzDaurs.find(d => d.mosqueId === mosqueId && (d.id === req.params.id || d.daurId === req.params.id));
+
+  if (!daur) {
+    return res.status(404).json({ success: false, error: { code: 'DAUR_NOT_FOUND', message: 'দৌর রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  res.json({
+    success: true,
+    data: daur
+  });
+});
+
+// 9. DAUR ENTRIES — Create
+app.post('/api/v1/hifz/daur', authenticate, requirePermission('CREATE_HIFZ_DAUR'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+
+  if (req.idempotencyKey) {
+    const cached = db.checkIdempotency(req.idempotencyKey);
+    if (cached) {
+      return res.status(cached.status || 200).json(cached.body);
+    }
+  }
+
+  const {
+    cycleId,
+    enrollmentId,
+    date,
+    ustadId,
+    startVerseKey,
+    endVerseKey,
+    status = 'ASSIGNED',
+    performance,
+    mistakeCount,
+    remarks
+  } = req.body;
+
+  if (!cycleId || !date || !ustadId || !startVerseKey || !endVerseKey) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'MISSING_REQUIRED_FIELDS', message: 'সাইকেল আইডি, তারিখ, উস্তাদ এবং কুরআন রেঞ্জ আবশ্যক।' }
+    });
+  }
+
+  const cycle = db.hifzDaurCycles.find(c => (c.id === cycleId || c.cycleId === cycleId) && c.mosqueId === mosqueId);
+  if (!cycle) {
+    return res.status(404).json({ success: false, error: { code: 'CYCLE_NOT_FOUND', message: 'দৌর সাইকেল পাওয়া যায়নি।' } });
+  }
+  if (cycle.status === 'CANCELLED') {
+    return res.status(400).json({ success: false, error: { code: 'CYCLE_CANCELLED', message: 'বাতিলকৃত দৌর সাইকেলে নতুন দৌর এন্ট্রি যুক্ত করা যাবে না।' } });
+  }
+
+  const targetEnrollmentId = enrollmentId || cycle.enrollmentId;
+  const enrollment = db.hifzEnrollments.find(e => e.id === targetEnrollmentId && e.mosqueId === mosqueId);
+  if (!enrollment) {
+    return res.status(404).json({ success: false, error: { code: 'ENROLLMENT_NOT_FOUND', message: 'হিফজ ভর্তি পাওয়া যায়নি।' } });
+  }
+  if (enrollment.status !== 'ACTIVE') {
+    return res.status(400).json({ success: false, error: { code: 'ENROLLMENT_INACTIVE', message: 'শুধুমাত্র সক্রিয় (ACTIVE) ভর্তিতে নতুন দৌর এন্ট্রি নেওয়া যাবে।' } });
+  }
+
+  const staff = db.staffList.find(s => s.id === ustadId && s.mosqueId === mosqueId);
+  if (!staff) {
+    return res.status(404).json({ success: false, error: { code: 'USTAD_NOT_FOUND', message: 'অনুমোদিত উস্তাদ বা শিক্ষক পাওয়া যায়নি।' } });
+  }
+
+  // Range validation via H2
+  const rangeValidation = quranReferenceService.validateRange(startVerseKey, endVerseKey);
+  if (!rangeValidation.isValid) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_QURAN_RANGE', message: rangeValidation.error || 'অবৈধ কুরআন রেঞ্জ।' }
+    });
+  }
+
+  const rangeInfo = quranReferenceService.getAyahRange(startVerseKey, endVerseKey);
+  if (!rangeInfo) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_QURAN_RANGE', message: 'কুরআন রেঞ্জের বিবরণ পাওয়া যায়নি।' }
+    });
+  }
+
+  // Duplicate check: active duplicate with same mosque + cycleId + date + ustadId + startVerseKey + endVerseKey + active
+  const duplicate = db.hifzDaurs.find(
+    d => d.mosqueId === mosqueId &&
+      d.cycleId === cycle.id &&
+      d.date === date &&
+      d.ustadId === ustadId &&
+      d.startVerseKey === rangeInfo.startVerseKey &&
+      d.endVerseKey === rangeInfo.endVerseKey &&
+      d.status !== 'CANCELLED'
+  );
+  if (duplicate) {
+    return res.status(409).json({
+      success: false,
+      error: { code: 'DUPLICATE_DAUR', message: `একই দিনে একই সাইকেল ও রেঞ্জের সক্রিয় দৌর রেকর্ড ইতোমধ্যে বিদ্যমান (#${duplicate.daurId})।` }
+    });
+  }
+
+  // Performance / mistake count validation
+  let validatedMistakes: number | undefined = undefined;
+  if (mistakeCount !== undefined && mistakeCount !== null && mistakeCount !== '') {
+    const mc = Number(mistakeCount);
+    if (isNaN(mc) || mc < 0 || !Number.isInteger(mc)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_MISTAKE_COUNT', message: 'ভুল সংখ্যা অবশ্যই ০ বা তার বেশি পূর্ণসংখ্যা হতে হবে।' } });
+    }
+    validatedMistakes = mc;
+  }
+
+  const validPerformances = ['EXCELLENT', 'GOOD', 'ACCEPTABLE', 'NEEDS_IMPROVEMENT', 'NOT_PASSED'];
+  if (performance && !validPerformances.includes(performance)) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_PERFORMANCE', message: 'অবৈধ পারফরম্যান্স মান।' } });
+  }
+
+  const studentProfile = db.educationStudentProfiles.find(s => s.id === enrollment.studentProfileId && s.mosqueId === mosqueId);
+  const studentName = studentProfile?.personName || 'শিক্ষার্থী';
+  const studentId = enrollment.studentId || studentProfile?.studentId || '';
+
+  const now = new Date().toISOString();
+  const id = `dur-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const daurId = db.generateNextHifzDaurId(mosqueId);
+
+  const newDaur: HifzDaur = {
+    id,
+    daurId,
+    cycleId: cycle.id,
+    cycleDisplayId: cycle.cycleId,
+    mosqueId,
+    enrollmentId: enrollment.id,
+    studentProfileId: enrollment.studentProfileId,
+    studentId,
+    studentName,
+    date,
+    ustadId: staff.id,
+    ustadName: staff.name,
+    startVerseKey: rangeInfo.startVerseKey,
+    endVerseKey: rangeInfo.endVerseKey,
+    totalAyahs: rangeInfo.totalAyahs,
+    startSurahNumber: rangeInfo.startSurah.surahNumber,
+    startSurahNameBn: rangeInfo.startSurah.nameBangla,
+    endSurahNumber: rangeInfo.endSurah.surahNumber,
+    endSurahNameBn: rangeInfo.endSurah.nameBangla,
+    status: status || 'ASSIGNED',
+    performance: performance || undefined,
+    mistakeCount: validatedMistakes,
+    remarks: remarks ? String(remarks).trim() : undefined,
+    createdAt: now,
+    updatedAt: now
+  };
+
+  db.hifzDaurs.push(newDaur);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'HIFZ',
+    `নতুন দৌর বরাদ্দ (${daurId}): শিক্ষার্থী: ${studentName}, উস্তাদ: ${staff.name}, রেঞ্জ: ${startVerseKey} - ${endVerseKey} (${rangeInfo.totalAyahs} আয়াত)`,
+    newDaur.id
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'HIFZ_DAUR_CREATED', newDaur, { senderId: req.user!.id });
+
+  const responseBody = {
+    success: true,
+    data: newDaur,
+    message: `দৌর রেকর্ড #${daurId} সফলভাবে তৈরি করা হয়েছে।`
+  };
+
+  if (req.idempotencyKey) {
+    db.saveIdempotency(req.idempotencyKey, responseBody);
+  }
+
+  res.status(201).json(responseBody);
+});
+
+// 10. DAUR ENTRIES — Update (PUT)
+app.put('/api/v1/hifz/daur/:id', authenticate, requirePermission('EDIT_HIFZ_DAUR'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const daur = db.hifzDaurs.find(d => d.mosqueId === mosqueId && (d.id === req.params.id || d.daurId === req.params.id));
+
+  if (!daur) {
+    return res.status(404).json({ success: false, error: { code: 'DAUR_NOT_FOUND', message: 'দৌর রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  if (daur.status === 'CANCELLED') {
+    return res.status(400).json({ success: false, error: { code: 'CANCELLED_IMMUTABLE', message: 'বাতিলকৃত দৌর পরিবর্তনযোগ্য নয়।' } });
+  }
+
+  const { date, ustadId, startVerseKey, endVerseKey, status, performance, mistakeCount, remarks } = req.body;
+
+  if (ustadId && ustadId !== daur.ustadId) {
+    const staff = db.staffList.find(s => s.id === ustadId && s.mosqueId === mosqueId);
+    if (!staff) {
+      return res.status(404).json({ success: false, error: { code: 'USTAD_NOT_FOUND', message: 'উস্তাদ পাওয়া যায়নি।' } });
+    }
+    daur.ustadId = staff.id;
+    daur.ustadName = staff.name;
+  }
+
+  if (startVerseKey && endVerseKey) {
+    const rangeValidation = quranReferenceService.validateRange(startVerseKey, endVerseKey);
+    if (!rangeValidation.isValid) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_QURAN_RANGE', message: rangeValidation.error || 'অবৈধ কুরআন রেঞ্জ।' } });
+    }
+    const rangeInfo = quranReferenceService.getAyahRange(startVerseKey, endVerseKey);
+    if (rangeInfo) {
+      daur.startVerseKey = rangeInfo.startVerseKey;
+      daur.endVerseKey = rangeInfo.endVerseKey;
+      daur.totalAyahs = rangeInfo.totalAyahs;
+      daur.startSurahNumber = rangeInfo.startSurah.surahNumber;
+      daur.startSurahNameBn = rangeInfo.startSurah.nameBangla;
+      daur.endSurahNumber = rangeInfo.endSurah.surahNumber;
+      daur.endSurahNameBn = rangeInfo.endSurah.nameBangla;
+    }
+  }
+
+  if (status && status !== daur.status) {
+    const validTransitions: Record<string, string[]> = {
+      ASSIGNED: ['REVIEWED', 'CANCELLED'],
+      REVIEWED: ['EVALUATED', 'ASSIGNED', 'CANCELLED'],
+      EVALUATED: ['COMPLETED', 'REVIEWED', 'CANCELLED'],
+      COMPLETED: ['EVALUATED', 'CANCELLED'],
+    };
+    const allowed = validTransitions[daur.status] || [];
+    if (!allowed.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_STATUS_TRANSITION', message: `অবৈধ স্ট্যাটাস পরিবর্তন: ${daur.status} থেকে ${status} সম্ভব নয়।` }
+      });
+    }
+    daur.status = status;
+  }
+
+  if (performance !== undefined) {
+    const validPerformances = ['EXCELLENT', 'GOOD', 'ACCEPTABLE', 'NEEDS_IMPROVEMENT', 'NOT_PASSED'];
+    if (performance && !validPerformances.includes(performance)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_PERFORMANCE', message: 'অবৈধ পারফরম্যান্স মান।' } });
+    }
+    daur.performance = performance || undefined;
+  }
+
+  if (mistakeCount !== undefined && mistakeCount !== null && mistakeCount !== '') {
+    const mc = Number(mistakeCount);
+    if (isNaN(mc) || mc < 0 || !Number.isInteger(mc)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_MISTAKE_COUNT', message: 'ভুল সংখ্যা অবশ্যই ০ বা তার বেশি পূর্ণসংখ্যা হতে হবে।' } });
+    }
+    daur.mistakeCount = mc;
+  }
+
+  if (date) daur.date = date;
+  if (remarks !== undefined) daur.remarks = remarks ? String(remarks).trim() : undefined;
+
+  daur.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'HIFZ',
+    `দৌর রেকর্ড আপডেট (${daur.daurId})`,
+    daur.id
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'HIFZ_DAUR_UPDATED', daur, { senderId: req.user!.id });
+
+  res.json({
+    success: true,
+    data: daur,
+    message: `দৌর রেকর্ড #${daur.daurId} সফলভাবে আপডেট করা হয়েছে।`
+  });
+});
+
+// 11. DAUR ENTRIES — Status Update (PATCH)
+app.patch('/api/v1/hifz/daur/:id/status', authenticate, requirePermission('EVALUATE_HIFZ_DAUR'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const daur = db.hifzDaurs.find(d => d.mosqueId === mosqueId && (d.id === req.params.id || d.daurId === req.params.id));
+
+  if (!daur) {
+    return res.status(404).json({ success: false, error: { code: 'DAUR_NOT_FOUND', message: 'দৌর রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  if (daur.status === 'CANCELLED') {
+    return res.status(400).json({ success: false, error: { code: 'CANCELLED_IMMUTABLE', message: 'বাতিলকৃত দৌর পরিবর্তনযোগ্য নয়।' } });
+  }
+
+  const { status, performance, mistakeCount, remarks } = req.body;
+  if (!status) {
+    return res.status(400).json({ success: false, error: { code: 'MISSING_STATUS', message: 'স্ট্যাটাস আবশ্যক।' } });
+  }
+
+  if (status !== daur.status) {
+    const validTransitions: Record<string, string[]> = {
+      ASSIGNED: ['REVIEWED', 'CANCELLED'],
+      REVIEWED: ['EVALUATED', 'ASSIGNED', 'CANCELLED'],
+      EVALUATED: ['COMPLETED', 'REVIEWED', 'CANCELLED'],
+      COMPLETED: ['EVALUATED', 'CANCELLED'],
+    };
+    const allowed = validTransitions[daur.status] || [];
+    if (!allowed.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_STATUS_TRANSITION', message: `অবৈধ স্ট্যাটাস পরিবর্তন: ${daur.status} থেকে ${status} সম্ভব নয়।` }
+      });
+    }
+  }
+
+  if (mistakeCount !== undefined && mistakeCount !== null && mistakeCount !== '') {
+    const mc = Number(mistakeCount);
+    if (isNaN(mc) || mc < 0 || !Number.isInteger(mc)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_MISTAKE_COUNT', message: 'ভুল সংখ্যা অবশ্যই ০ বা তার বেশি পূর্ণসংখ্যা হতে হবে।' } });
+    }
+    daur.mistakeCount = mc;
+  }
+
+  if (performance !== undefined) {
+    const validPerformances = ['EXCELLENT', 'GOOD', 'ACCEPTABLE', 'NEEDS_IMPROVEMENT', 'NOT_PASSED'];
+    if (performance && !validPerformances.includes(performance)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_PERFORMANCE', message: 'অবৈধ পারফরম্যান্স মান।' } });
+    }
+    daur.performance = performance || undefined;
+  }
+
+  if (remarks !== undefined) daur.remarks = remarks ? String(remarks).trim() : undefined;
+
+  const prevStatus = daur.status;
+  daur.status = status;
+  daur.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'STATUS_CHANGE',
+    'HIFZ',
+    `দৌর স্ট্যাটাস পরিবর্তন (${daur.daurId}): ${prevStatus} -> ${status}${performance ? ` [${performance}]` : ''}`,
+    daur.id
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'HIFZ_DAUR_UPDATED', daur, { senderId: req.user!.id });
+
+  res.json({
+    success: true,
+    data: daur,
+    message: `দৌর স্ট্যাটাস সফলভাবে ${status} করা হয়েছে (#${daur.daurId})।`
+  });
+});
+
+// ==========================================
+// REVISION / দুর্বল অংশ — APIs
+// ==========================================
+
+// 12. REVISION — Stats
+app.get('/api/v1/hifz/revision/stats', authenticate, requirePermission('VIEW_HIFZ_REVISION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const revisions = db.hifzRevisions.filter(r => r.mosqueId === mosqueId && r.status !== 'CANCELLED');
+
+  const open = revisions.filter(r => r.status === 'OPEN').length;
+  const inProgress = revisions.filter(r => r.status === 'IN_PROGRESS').length;
+  const verified = revisions.filter(r => r.status === 'VERIFIED').length;
+  const resolved = revisions.filter(r => r.status === 'RESOLVED').length;
+  const critical = revisions.filter(r => r.priority === 'CRITICAL' && r.status !== 'RESOLVED').length;
+  const high = revisions.filter(r => r.priority === 'HIGH' && r.status !== 'RESOLVED').length;
+
+  res.json({
+    success: true,
+    data: {
+      total: revisions.length,
+      open,
+      inProgress,
+      verified,
+      resolved,
+      critical,
+      high
+    }
+  });
+});
+
+// 13. REVISION — List
+app.get('/api/v1/hifz/revision', authenticate, requirePermission('VIEW_HIFZ_REVISION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { enrollmentId, studentId, ustadId, reason, priority, status, startDate, endDate, search } = req.query;
+
+  let list = db.hifzRevisions.filter(r => r.mosqueId === mosqueId);
+
+  if (enrollmentId) list = list.filter(r => r.enrollmentId === enrollmentId);
+  if (studentId) list = list.filter(r => r.studentId === studentId);
+  if (ustadId) list = list.filter(r => r.ustadId === ustadId);
+  if (reason) list = list.filter(r => r.reason === reason);
+  if (priority) list = list.filter(r => r.priority === priority);
+  if (status) list = list.filter(r => r.status === status);
+  if (startDate) list = list.filter(r => r.date >= String(startDate));
+  if (endDate) list = list.filter(r => r.date <= String(endDate));
+
+  if (search) {
+    const q = String(search).toLowerCase();
+    list = list.filter(r =>
+      r.revisionId.toLowerCase().includes(q) ||
+      (r.studentName && r.studentName.toLowerCase().includes(q)) ||
+      (r.ustadName && r.ustadName.toLowerCase().includes(q)) ||
+      (r.startSurahNameBn && r.startSurahNameBn.toLowerCase().includes(q)) ||
+      (r.endSurahNameBn && r.endSurahNameBn.toLowerCase().includes(q))
+    );
+  }
+
+  // Enrich names if missing
+  const enriched = list.map(r => {
+    let studentName = r.studentName;
+    if (!studentName) {
+      const stu = db.educationStudentProfiles.find(s => s.id === r.studentProfileId || s.studentId === r.studentId);
+      studentName = stu?.personName || 'শিক্ষার্থী';
+    }
+    let ustadName = r.ustadName;
+    if (!ustadName) {
+      const staff = db.staffList.find(s => s.id === r.ustadId);
+      ustadName = staff?.name || 'উস্তাদ';
+    }
+    return { ...r, studentName, ustadName };
+  });
+
+  enriched.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime() || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  res.json({
+    success: true,
+    data: enriched,
+    total: enriched.length
+  });
+});
+
+// 14. REVISION — Single by ID
+app.get('/api/v1/hifz/revision/:id', authenticate, requirePermission('VIEW_HIFZ_REVISION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const rev = db.hifzRevisions.find(r => r.mosqueId === mosqueId && (r.id === req.params.id || r.revisionId === req.params.id));
+
+  if (!rev) {
+    return res.status(404).json({ success: false, error: { code: 'REVISION_NOT_FOUND', message: 'রিভিশন রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  res.json({
+    success: true,
+    data: rev
+  });
+});
+
+// 15. REVISION — Create
+app.post('/api/v1/hifz/revision', authenticate, requirePermission('CREATE_HIFZ_REVISION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+
+  if (req.idempotencyKey) {
+    const cached = db.checkIdempotency(req.idempotencyKey);
+    if (cached) {
+      return res.status(cached.status || 200).json(cached.body);
+    }
+  }
+
+  const {
+    enrollmentId,
+    date,
+    ustadId,
+    sourceDaurId,
+    sourceSabakiId,
+    startVerseKey,
+    endVerseKey,
+    reason = 'MEMORY_WEAKNESS',
+    priority = 'MEDIUM',
+    status = 'OPEN',
+    performance,
+    mistakeCount,
+    remarks
+  } = req.body;
+
+  if (!enrollmentId || !date || !ustadId || !startVerseKey || !endVerseKey) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'MISSING_REQUIRED_FIELDS', message: 'ভর্তি আইডি, তারিখ, উস্তাদ এবং কুরআন রেঞ্জ আবশ্যক।' }
+    });
+  }
+
+  const enrollment = db.hifzEnrollments.find(e => e.id === enrollmentId && e.mosqueId === mosqueId);
+  if (!enrollment) {
+    return res.status(404).json({ success: false, error: { code: 'ENROLLMENT_NOT_FOUND', message: 'হিফজ ভর্তি পাওয়া যায়নি।' } });
+  }
+  if (enrollment.status !== 'ACTIVE') {
+    return res.status(400).json({ success: false, error: { code: 'ENROLLMENT_INACTIVE', message: 'শুধুমাত্র সক্রিয় (ACTIVE) ভর্তিতে নতুন রিভিশন বরাদ্দ করা যাবে।' } });
+  }
+
+  const staff = db.staffList.find(s => s.id === ustadId && s.mosqueId === mosqueId);
+  if (!staff) {
+    return res.status(404).json({ success: false, error: { code: 'USTAD_NOT_FOUND', message: 'উস্তাদ পাওয়া যায়নি।' } });
+  }
+
+  // Validate optional sourceDaurId
+  let sourceDaurDisplayId: string | undefined = undefined;
+  if (sourceDaurId) {
+    const srcDaur = db.hifzDaurs.find(d => (d.id === sourceDaurId || d.daurId === sourceDaurId) && d.mosqueId === mosqueId);
+    if (!srcDaur) {
+      return res.status(404).json({ success: false, error: { code: 'SOURCE_DAUR_NOT_FOUND', message: 'উৎস দৌর রেকর্ড পাওয়া যায়নি।' } });
+    }
+    if (srcDaur.enrollmentId !== enrollment.id) {
+      return res.status(400).json({ success: false, error: { code: 'SOURCE_DAUR_MISMATCH', message: 'উৎস দৌর অন্য শিক্ষার্থীর ভর্তির সাথে সম্পৃক্ত।' } });
+    }
+    sourceDaurDisplayId = srcDaur.daurId;
+  }
+
+  // Validate optional sourceSabakiId
+  let sourceSabakiDisplayId: string | undefined = undefined;
+  if (sourceSabakiId) {
+    const srcSabaki = db.hifzSabakis.find(s => (s.id === sourceSabakiId || s.sabakiId === sourceSabakiId) && s.mosqueId === mosqueId);
+    if (!srcSabaki) {
+      return res.status(404).json({ success: false, error: { code: 'SOURCE_SABAKI_NOT_FOUND', message: 'উৎস সবকী রেকর্ড পাওয়া যায়নি।' } });
+    }
+    if (srcSabaki.enrollmentId !== enrollment.id) {
+      return res.status(400).json({ success: false, error: { code: 'SOURCE_SABAKI_MISMATCH', message: 'উৎস সবকী অন্য শিক্ষার্থীর ভর্তির সাথে সম্পৃক্ত।' } });
+    }
+    sourceSabakiDisplayId = srcSabaki.sabakiId;
+  }
+
+  // Range validation via H2
+  const rangeValidation = quranReferenceService.validateRange(startVerseKey, endVerseKey);
+  if (!rangeValidation.isValid) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_QURAN_RANGE', message: rangeValidation.error || 'অবৈধ কুরআন রেঞ্জ।' }
+    });
+  }
+
+  const rangeInfo = quranReferenceService.getAyahRange(startVerseKey, endVerseKey);
+  if (!rangeInfo) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_QURAN_RANGE', message: 'কুরআন রেঞ্জের বিবরণ পাওয়া যায়নি।' }
+    });
+  }
+
+  // Reason & Priority validation
+  const validReasons = ['MEMORY_WEAKNESS', 'REPEATED_MISTAKES', 'FORGOTTEN_PORTION', 'CONNECTIVITY_ISSUE', 'USTAD_ASSIGNED', 'OTHER'];
+  if (!validReasons.includes(reason)) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_REASON', message: 'অবৈধ রিভিশন কারণ।' } });
+  }
+
+  const validPriorities = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+  if (!validPriorities.includes(priority)) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_PRIORITY', message: 'অবৈধ প্রায়োরিটি লেভেল।' } });
+  }
+
+  // Duplicate check: same mosque + enrollmentId + date + startVerseKey + endVerseKey + active
+  const duplicate = db.hifzRevisions.find(
+    r => r.mosqueId === mosqueId &&
+      r.enrollmentId === enrollmentId &&
+      r.date === date &&
+      r.startVerseKey === rangeInfo.startVerseKey &&
+      r.endVerseKey === rangeInfo.endVerseKey &&
+      r.status !== 'CANCELLED'
+  );
+  if (duplicate) {
+    return res.status(409).json({
+      success: false,
+      error: { code: 'DUPLICATE_REVISION', message: `একই দিনে একই শিক্ষার্থীর একই রেঞ্জের সক্রিয় রিভিশন রেকর্ড ইতোমধ্যে বিদ্যমান (#${duplicate.revisionId})।` }
+    });
+  }
+
+  let validatedMistakes: number | undefined = undefined;
+  if (mistakeCount !== undefined && mistakeCount !== null && mistakeCount !== '') {
+    const mc = Number(mistakeCount);
+    if (isNaN(mc) || mc < 0 || !Number.isInteger(mc)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_MISTAKE_COUNT', message: 'ভুল সংখ্যা অবশ্যই ০ বা তার বেশি পূর্ণসংখ্যা হতে হবে।' } });
+    }
+    validatedMistakes = mc;
+  }
+
+  const validPerformances = ['EXCELLENT', 'GOOD', 'ACCEPTABLE', 'NEEDS_IMPROVEMENT', 'NOT_PASSED'];
+  if (performance && !validPerformances.includes(performance)) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_PERFORMANCE', message: 'অবৈধ পারফরম্যান্স মান।' } });
+  }
+
+  const studentProfile = db.educationStudentProfiles.find(s => s.id === enrollment.studentProfileId && s.mosqueId === mosqueId);
+  const studentName = studentProfile?.personName || 'শিক্ষার্থী';
+  const studentId = enrollment.studentId || studentProfile?.studentId || '';
+
+  const now = new Date().toISOString();
+  const id = `rev-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const revisionId = db.generateNextHifzRevisionId(mosqueId);
+
+  const newRevision: HifzRevision = {
+    id,
+    revisionId,
+    mosqueId,
+    enrollmentId: enrollment.id,
+    studentProfileId: enrollment.studentProfileId,
+    studentId,
+    studentName,
+    date,
+    ustadId: staff.id,
+    ustadName: staff.name,
+    sourceDaurId: sourceDaurId || undefined,
+    sourceDaurDisplayId,
+    sourceSabakiId: sourceSabakiId || undefined,
+    sourceSabakiDisplayId,
+    startVerseKey: rangeInfo.startVerseKey,
+    endVerseKey: rangeInfo.endVerseKey,
+    totalAyahs: rangeInfo.totalAyahs,
+    startSurahNumber: rangeInfo.startSurah.surahNumber,
+    startSurahNameBn: rangeInfo.startSurah.nameBangla,
+    endSurahNumber: rangeInfo.endSurah.surahNumber,
+    endSurahNameBn: rangeInfo.endSurah.nameBangla,
+    reason,
+    priority,
+    status: status || 'OPEN',
+    performance: performance || undefined,
+    mistakeCount: validatedMistakes,
+    remarks: remarks ? String(remarks).trim() : undefined,
+    createdAt: now,
+    updatedAt: now
+  };
+
+  db.hifzRevisions.push(newRevision);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'HIFZ',
+    `নতুন রিভিশন বরাদ্দ (${revisionId}): শিক্ষার্থী: ${studentName}, কারণ: ${reason}, প্রায়োরিটি: ${priority}, রেঞ্জ: ${startVerseKey} - ${endVerseKey}`,
+    newRevision.id
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'HIFZ_REVISION_CREATED', newRevision, { senderId: req.user!.id });
+
+  const responseBody = {
+    success: true,
+    data: newRevision,
+    message: `রিভিশন রেকর্ড #${revisionId} সফলভাবে তৈরি করা হয়েছে।`
+  };
+
+  if (req.idempotencyKey) {
+    db.saveIdempotency(req.idempotencyKey, responseBody);
+  }
+
+  res.status(201).json(responseBody);
+});
+
+// 16. REVISION — Update (PUT)
+app.put('/api/v1/hifz/revision/:id', authenticate, requirePermission('EDIT_HIFZ_REVISION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const rev = db.hifzRevisions.find(r => r.mosqueId === mosqueId && (r.id === req.params.id || r.revisionId === req.params.id));
+
+  if (!rev) {
+    return res.status(404).json({ success: false, error: { code: 'REVISION_NOT_FOUND', message: 'রিভিশন রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  if (rev.status === 'CANCELLED') {
+    return res.status(400).json({ success: false, error: { code: 'CANCELLED_IMMUTABLE', message: 'বাতিলকৃত রিভিশন পরিবর্তনযোগ্য নয়।' } });
+  }
+
+  const { date, ustadId, startVerseKey, endVerseKey, reason, priority, status, performance, mistakeCount, remarks } = req.body;
+
+  if (ustadId && ustadId !== rev.ustadId) {
+    const staff = db.staffList.find(s => s.id === ustadId && s.mosqueId === mosqueId);
+    if (!staff) {
+      return res.status(404).json({ success: false, error: { code: 'USTAD_NOT_FOUND', message: 'উস্তাদ পাওয়া যায়নি।' } });
+    }
+    rev.ustadId = staff.id;
+    rev.ustadName = staff.name;
+  }
+
+  if (startVerseKey && endVerseKey) {
+    const rangeValidation = quranReferenceService.validateRange(startVerseKey, endVerseKey);
+    if (!rangeValidation.isValid) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_QURAN_RANGE', message: rangeValidation.error || 'অবৈধ কুরআন রেঞ্জ।' } });
+    }
+    const rangeInfo = quranReferenceService.getAyahRange(startVerseKey, endVerseKey);
+    if (rangeInfo) {
+      rev.startVerseKey = rangeInfo.startVerseKey;
+      rev.endVerseKey = rangeInfo.endVerseKey;
+      rev.totalAyahs = rangeInfo.totalAyahs;
+      rev.startSurahNumber = rangeInfo.startSurah.surahNumber;
+      rev.startSurahNameBn = rangeInfo.startSurah.nameBangla;
+      rev.endSurahNumber = rangeInfo.endSurah.surahNumber;
+      rev.endSurahNameBn = rangeInfo.endSurah.nameBangla;
+    }
+  }
+
+  if (status && status !== rev.status) {
+    const validTransitions: Record<string, string[]> = {
+      OPEN: ['IN_PROGRESS', 'CANCELLED'],
+      IN_PROGRESS: ['VERIFIED', 'OPEN', 'CANCELLED'],
+      VERIFIED: ['RESOLVED', 'IN_PROGRESS', 'CANCELLED'],
+      RESOLVED: ['IN_PROGRESS', 'CANCELLED'],
+    };
+    const allowed = validTransitions[rev.status] || [];
+    if (!allowed.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_STATUS_TRANSITION', message: `অবৈধ স্ট্যাটাস পরিবর্তন: ${rev.status} থেকে ${status} সম্ভব নয়।` }
+      });
+    }
+    rev.status = status;
+  }
+
+  if (reason) {
+    const validReasons = ['MEMORY_WEAKNESS', 'REPEATED_MISTAKES', 'FORGOTTEN_PORTION', 'CONNECTIVITY_ISSUE', 'USTAD_ASSIGNED', 'OTHER'];
+    if (validReasons.includes(reason)) rev.reason = reason;
+  }
+
+  if (priority) {
+    const validPriorities = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+    if (validPriorities.includes(priority)) rev.priority = priority;
+  }
+
+  if (performance !== undefined) {
+    const validPerformances = ['EXCELLENT', 'GOOD', 'ACCEPTABLE', 'NEEDS_IMPROVEMENT', 'NOT_PASSED'];
+    if (performance && !validPerformances.includes(performance)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_PERFORMANCE', message: 'অবৈধ পারফরম্যান্স মান।' } });
+    }
+    rev.performance = performance || undefined;
+  }
+
+  if (mistakeCount !== undefined && mistakeCount !== null && mistakeCount !== '') {
+    const mc = Number(mistakeCount);
+    if (isNaN(mc) || mc < 0 || !Number.isInteger(mc)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_MISTAKE_COUNT', message: 'ভুল সংখ্যা অবশ্যই ০ বা তার বেশি পূর্ণসংখ্যা হতে হবে।' } });
+    }
+    rev.mistakeCount = mc;
+  }
+
+  if (date) rev.date = date;
+  if (remarks !== undefined) rev.remarks = remarks ? String(remarks).trim() : undefined;
+
+  rev.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'HIFZ',
+    `রিভিশন রেকর্ড আপডেট (${rev.revisionId})`,
+    rev.id
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'HIFZ_REVISION_UPDATED', rev, { senderId: req.user!.id });
+
+  res.json({
+    success: true,
+    data: rev,
+    message: `রিভিশন রেকর্ড #${rev.revisionId} সফলভাবে আপডেট করা হয়েছে।`
+  });
+});
+
+// 17. REVISION — Status Update (PATCH)
+app.patch('/api/v1/hifz/revision/:id/status', authenticate, requirePermission('RESOLVE_HIFZ_REVISION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const rev = db.hifzRevisions.find(r => r.mosqueId === mosqueId && (r.id === req.params.id || r.revisionId === req.params.id));
+
+  if (!rev) {
+    return res.status(404).json({ success: false, error: { code: 'REVISION_NOT_FOUND', message: 'রিভিশন রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  if (rev.status === 'CANCELLED') {
+    return res.status(400).json({ success: false, error: { code: 'CANCELLED_IMMUTABLE', message: 'বাতিলকৃত রিভিশন পরিবর্তনযোগ্য নয়।' } });
+  }
+
+  const { status, performance, mistakeCount, remarks } = req.body;
+  if (!status) {
+    return res.status(400).json({ success: false, error: { code: 'MISSING_STATUS', message: 'স্ট্যাটাস আবশ্যক।' } });
+  }
+
+  if (status !== rev.status) {
+    const validTransitions: Record<string, string[]> = {
+      OPEN: ['IN_PROGRESS', 'CANCELLED'],
+      IN_PROGRESS: ['VERIFIED', 'OPEN', 'CANCELLED'],
+      VERIFIED: ['RESOLVED', 'IN_PROGRESS', 'CANCELLED'],
+      RESOLVED: ['IN_PROGRESS', 'CANCELLED'],
+    };
+    const allowed = validTransitions[rev.status] || [];
+    if (!allowed.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_STATUS_TRANSITION', message: `অবৈধ স্ট্যাটাস পরিবর্তন: ${rev.status} থেকে ${status} সম্ভব নয়।` }
+      });
+    }
+  }
+
+  if (mistakeCount !== undefined && mistakeCount !== null && mistakeCount !== '') {
+    const mc = Number(mistakeCount);
+    if (isNaN(mc) || mc < 0 || !Number.isInteger(mc)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_MISTAKE_COUNT', message: 'ভুল সংখ্যা অবশ্যই ০ বা তার বেশি পূর্ণসংখ্যা হতে হবে।' } });
+    }
+    rev.mistakeCount = mc;
+  }
+
+  if (performance !== undefined) {
+    const validPerformances = ['EXCELLENT', 'GOOD', 'ACCEPTABLE', 'NEEDS_IMPROVEMENT', 'NOT_PASSED'];
+    if (performance && !validPerformances.includes(performance)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_PERFORMANCE', message: 'অবৈধ পারফরম্যান্স মান।' } });
+    }
+    rev.performance = performance || undefined;
+  }
+
+  if (remarks !== undefined) rev.remarks = remarks ? String(remarks).trim() : undefined;
+
+  const prevStatus = rev.status;
+  rev.status = status;
+  rev.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'STATUS_CHANGE',
+    'HIFZ',
+    `রিভিশন স্ট্যাটাস পরিবর্তন (${rev.revisionId}): ${prevStatus} -> ${status}${performance ? ` [${performance}]` : ''}`,
+    rev.id
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'HIFZ_REVISION_UPDATED', rev, { senderId: req.user!.id });
+
+  res.json({
+    success: true,
+    data: rev,
+    message: `রিভিশন স্ট্যাটাস সফলভাবে ${status} করা হয়েছে (#${rev.revisionId})।`
+  });
+});
+
+// ==========================================
+// HIFZ H5-A — ATTENDANCE FOUNDATION REST API
+// ==========================================
+
+// 1. ATTENDANCE — Daily / Summary Stats
+app.get('/api/v1/hifz/attendance/stats', authenticate, requirePermission('VIEW_HIFZ_ATTENDANCE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const today = new Date().toISOString().split('T')[0];
+  const list = db.hifzAttendances.filter(a => a.mosqueId === mosqueId);
+  const todayList = list.filter(a => a.date === today);
+
+  const stats = {
+    today,
+    todayPresent: todayList.filter(a => a.status === 'PRESENT').length,
+    todayAbsent: todayList.filter(a => a.status === 'ABSENT').length,
+    todayLate: todayList.filter(a => a.status === 'LATE').length,
+    todayLeave: todayList.filter(a => a.status === 'LEAVE').length,
+    todayExcused: todayList.filter(a => a.status === 'EXCUSED').length,
+    todayTotal: todayList.length,
+    totalRecords: list.length,
+    totalActiveStudents: db.hifzEnrollments.filter(e => e.mosqueId === mosqueId && e.status === 'ACTIVE').length
+  };
+
+  res.json({
+    success: true,
+    data: stats
+  });
+});
+
+// 2. ATTENDANCE — List & Filter
+app.get('/api/v1/hifz/attendance', authenticate, requirePermission('VIEW_HIFZ_ATTENDANCE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { date, startDate, endDate, studentId, studentProfileId, enrollmentId, status, reason, search } = req.query;
+
+  let list = db.hifzAttendances.filter(a => a.mosqueId === mosqueId);
+
+  if (date) {
+    list = list.filter(a => a.date === date);
+  }
+  if (startDate) {
+    list = list.filter(a => a.date >= String(startDate));
+  }
+  if (endDate) {
+    list = list.filter(a => a.date <= String(endDate));
+  }
+  if (studentId) {
+    list = list.filter(a => a.studentId === studentId);
+  }
+  if (studentProfileId) {
+    list = list.filter(a => a.studentProfileId === studentProfileId);
+  }
+  if (enrollmentId) {
+    list = list.filter(a => a.enrollmentId === enrollmentId);
+  }
+  if (status) {
+    list = list.filter(a => a.status === status);
+  }
+  if (reason) {
+    list = list.filter(a => a.reason === reason);
+  }
+  if (search) {
+    const q = String(search).toLowerCase();
+    list = list.filter(a =>
+      a.attendanceId.toLowerCase().includes(q) ||
+      (a.studentName && a.studentName.toLowerCase().includes(q)) ||
+      (a.studentId && a.studentId.toLowerCase().includes(q)) ||
+      (a.remarks && a.remarks.toLowerCase().includes(q)) ||
+      (a.otherReason && a.otherReason.toLowerCase().includes(q))
+    );
+  }
+
+  // Enrich studentName if needed
+  const enriched = list.map(a => {
+    let studentName = a.studentName;
+    if (!studentName) {
+      const stu = db.educationStudentProfiles.find(s => s.id === a.studentProfileId || s.studentId === a.studentId);
+      studentName = stu?.personName || 'শিক্ষার্থী';
+    }
+    return { ...a, studentName };
+  });
+
+  enriched.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime() || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  res.json({
+    success: true,
+    data: enriched,
+    total: enriched.length
+  });
+});
+
+// 3. ATTENDANCE — Single by ID
+app.get('/api/v1/hifz/attendance/:id', authenticate, requirePermission('VIEW_HIFZ_ATTENDANCE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const attendance = db.hifzAttendances.find(a => a.mosqueId === mosqueId && (a.id === req.params.id || a.attendanceId === req.params.id));
+
+  if (!attendance) {
+    return res.status(404).json({ success: false, error: { code: 'ATTENDANCE_NOT_FOUND', message: 'হাজিরা রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  res.json({
+    success: true,
+    data: attendance
+  });
+});
+
+// 4. ATTENDANCE — Create Single
+app.post('/api/v1/hifz/attendance', authenticate, requirePermission('CREATE_HIFZ_ATTENDANCE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+
+  if (req.idempotencyKey) {
+    const cached = db.checkIdempotency(req.idempotencyKey);
+    if (cached) {
+      return res.status(cached.status || 200).json(cached.body);
+    }
+  }
+
+  const { enrollmentId, date, status, reason, otherReason, remarks } = req.body;
+
+  if (!enrollmentId || !date || !status) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'MISSING_REQUIRED_FIELDS', message: 'ভর্তি আইডি, তারিখ এবং হাজিরা স্ট্যাটাস আবশ্যক।' }
+    });
+  }
+
+  // Validate date format YYYY-MM-DD
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_DATE_FORMAT', message: 'তারিখ ফরম্যাট অবশ্যই YYYY-MM-DD হতে হবে।' }
+    });
+  }
+
+  const enrollment = db.hifzEnrollments.find(e => e.id === enrollmentId && e.mosqueId === mosqueId);
+  if (!enrollment) {
+    return res.status(404).json({ success: false, error: { code: 'ENROLLMENT_NOT_FOUND', message: 'হিফজ শিক্ষার্থী ভর্তি রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  if (enrollment.status !== 'ACTIVE') {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'ENROLLMENT_INACTIVE', message: 'শুধুমাত্র সক্রিয় (ACTIVE) শিক্ষার্থীর নতুন হাজিরা গ্রহণ করা যাবে।' }
+    });
+  }
+
+  const studentProfile = db.educationStudentProfiles.find(s => s.id === enrollment.studentProfileId && s.mosqueId === mosqueId);
+  const studentName = studentProfile?.personName || enrollment.studentName || 'শিক্ষার্থী';
+  const studentId = enrollment.studentId || studentProfile?.studentId || '';
+
+  // Validate status
+  const validStatuses: HifzAttendanceStatus[] = ['PRESENT', 'ABSENT', 'LATE', 'LEAVE', 'EXCUSED'];
+  if (!validStatuses.includes(status)) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_STATUS', message: 'অবৈধ হাজিরা স্ট্যাটাস। গ্রহণযোগ্য মান: PRESENT, ABSENT, LATE, LEAVE, EXCUSED।' }
+    });
+  }
+
+  // Validate reason if provided
+  const validReasons: HifzAttendanceReason[] = ['ILLNESS', 'FAMILY_REASON', 'TRAVEL', 'APPROVED_LEAVE', 'EMERGENCY', 'OTHER'];
+  if (reason && !validReasons.includes(reason)) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_REASON', message: 'অবৈধ কারণ (Reason)। গ্রহণযোগ্য মান: ILLNESS, FAMILY_REASON, TRAVEL, APPROVED_LEAVE, EMERGENCY, OTHER।' }
+    });
+  }
+
+  // CRITICAL DUPLICATE RULE: ONE STUDENT + ONE DATE = ONE CANONICAL ATTENDANCE
+  const duplicate = db.hifzAttendances.find(
+    a => a.mosqueId === mosqueId &&
+      a.enrollmentId === enrollment.id &&
+      a.studentId === studentId &&
+      a.date === date
+  );
+
+  if (duplicate) {
+    return res.status(409).json({
+      success: false,
+      error: {
+        code: 'DUPLICATE_ATTENDANCE',
+        message: `এই শিক্ষার্থীর জন্য ${date} তারিখে হাজিরা ইতোমধ্যে রেকর্ড করা হয়েছে (#${duplicate.attendanceId})। অনুগ্রহ করে পূর্বের রেকর্ড আপডেট করুন।`
+      }
+    });
+  }
+
+  const now = new Date().toISOString();
+  const id = `hat-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const attendanceId = db.generateNextHifzAttendanceId(mosqueId);
+
+  const newAttendance: HifzAttendance = {
+    id,
+    attendanceId,
+    mosqueId,
+    enrollmentId: enrollment.id,
+    studentProfileId: enrollment.studentProfileId,
+    studentId,
+    studentName,
+    date,
+    status,
+    reason: reason || undefined,
+    otherReason: otherReason ? String(otherReason).trim() : undefined,
+    remarks: remarks ? String(remarks).trim() : undefined,
+    recordedBy: req.user!.id,
+    recordedByName: req.user!.name,
+    createdAt: now,
+    updatedAt: now
+  };
+
+  db.hifzAttendances.push(newAttendance);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'HIFZ',
+    `হিফজ দৈনিক হাজিরা রেকর্ড (${attendanceId}): শিক্ষার্থী: ${studentName}, তারিখ: ${date}, স্ট্যাটাস: ${status}${reason ? ` (${reason})` : ''}`,
+    newAttendance.id
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'HIFZ_ATTENDANCE_CREATED', newAttendance, { senderId: req.user!.id });
+
+  const responseBody = {
+    success: true,
+    data: newAttendance,
+    message: `হাজিরা #${attendanceId} সফলভাবে সংরক্ষণ করা হয়েছে।`
+  };
+
+  if (req.idempotencyKey) {
+    db.saveIdempotency(req.idempotencyKey, responseBody);
+  }
+
+  res.status(201).json(responseBody);
+});
+
+// 5. ATTENDANCE — Bulk Submit for a Date
+app.post('/api/v1/hifz/attendance/bulk', authenticate, requirePermission('CREATE_HIFZ_ATTENDANCE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+
+  if (req.idempotencyKey) {
+    const cached = db.checkIdempotency(req.idempotencyKey);
+    if (cached) {
+      return res.status(cached.status || 200).json(cached.body);
+    }
+  }
+
+  const { date, records } = req.body;
+
+  if (!date || !records || !Array.isArray(records) || records.length === 0) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_BULK_PAYLOAD', message: "তারিখ এবং 'records' অ্যারে আবশ্যক।" }
+    });
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_DATE_FORMAT', message: 'তারিখ ফরম্যাট অবশ্যই YYYY-MM-DD হতে হবে।' }
+    });
+  }
+
+  const validStatuses: HifzAttendanceStatus[] = ['PRESENT', 'ABSENT', 'LATE', 'LEAVE', 'EXCUSED'];
+  const validReasons: HifzAttendanceReason[] = ['ILLNESS', 'FAMILY_REASON', 'TRAVEL', 'APPROVED_LEAVE', 'EMERGENCY', 'OTHER'];
+  const savedRecords: HifzAttendance[] = [];
+  const now = new Date().toISOString();
+
+  for (const item of records) {
+    if (!item.enrollmentId || !item.status) continue;
+    if (!validStatuses.includes(item.status)) continue;
+
+    const enrollment = db.hifzEnrollments.find(e => e.id === item.enrollmentId && e.mosqueId === mosqueId);
+    if (!enrollment || enrollment.status !== 'ACTIVE') continue;
+
+    const studentProfile = db.educationStudentProfiles.find(s => s.id === enrollment.studentProfileId && s.mosqueId === mosqueId);
+    const studentName = studentProfile?.personName || enrollment.studentName || 'শিক্ষার্থী';
+    const studentId = enrollment.studentId || studentProfile?.studentId || '';
+
+    const reason = item.reason && validReasons.includes(item.reason) ? item.reason : undefined;
+
+    // Check existing record for same student + date -> update if exists, otherwise create new
+    const existingIndex = db.hifzAttendances.findIndex(
+      a => a.mosqueId === mosqueId &&
+        a.enrollmentId === enrollment.id &&
+        a.studentId === studentId &&
+        a.date === date
+    );
+
+    if (existingIndex >= 0) {
+      const existing = db.hifzAttendances[existingIndex];
+      existing.status = item.status;
+      existing.reason = reason;
+      if (item.otherReason !== undefined) existing.otherReason = item.otherReason ? String(item.otherReason).trim() : undefined;
+      if (item.remarks !== undefined) existing.remarks = item.remarks ? String(item.remarks).trim() : undefined;
+      existing.updatedAt = now;
+      savedRecords.push(existing);
+    } else {
+      const id = `hat-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const attendanceId = db.generateNextHifzAttendanceId(mosqueId);
+      const newAtt: HifzAttendance = {
+        id,
+        attendanceId,
+        mosqueId,
+        enrollmentId: enrollment.id,
+        studentProfileId: enrollment.studentProfileId,
+        studentId,
+        studentName,
+        date,
+        status: item.status,
+        reason,
+        otherReason: item.otherReason ? String(item.otherReason).trim() : undefined,
+        remarks: item.remarks ? String(item.remarks).trim() : undefined,
+        recordedBy: req.user!.id,
+        recordedByName: req.user!.name,
+        createdAt: now,
+        updatedAt: now
+      };
+      db.hifzAttendances.push(newAtt);
+      savedRecords.push(newAtt);
+    }
+  }
+
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'HIFZ',
+    `হিফজ যৌথ দৈনিক হাজিরা (${date}): ${savedRecords.length} জন শিক্ষার্থীর হাজিরা গ্রহণ করা হয়েছে।`
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'HIFZ_ATTENDANCE_BULK_SAVED', { date, count: savedRecords.length }, { senderId: req.user!.id });
+
+  const responseBody = {
+    success: true,
+    data: savedRecords,
+    message: `${savedRecords.length} জন শিক্ষার্থীর হাজিরা সফলভাবে সংরক্ষণ করা হয়েছে (${date})।`
+  };
+
+  if (req.idempotencyKey) {
+    db.saveIdempotency(req.idempotencyKey, responseBody);
+  }
+
+  res.status(201).json(responseBody);
+});
+
+// 6. ATTENDANCE — Update / Correction (PUT)
+app.put('/api/v1/hifz/attendance/:id', authenticate, requirePermission('EDIT_HIFZ_ATTENDANCE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const attendance = db.hifzAttendances.find(a => a.mosqueId === mosqueId && (a.id === req.params.id || a.attendanceId === req.params.id));
+
+  if (!attendance) {
+    return res.status(404).json({ success: false, error: { code: 'ATTENDANCE_NOT_FOUND', message: 'হাজিরা রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  const { status, reason, otherReason, remarks } = req.body;
+
+  if (status) {
+    const validStatuses: HifzAttendanceStatus[] = ['PRESENT', 'ABSENT', 'LATE', 'LEAVE', 'EXCUSED'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_STATUS', message: 'অবৈধ হাজিরা স্ট্যাটাস।' } });
+    }
+    attendance.status = status;
+  }
+
+  if (reason !== undefined) {
+    const validReasons: HifzAttendanceReason[] = ['ILLNESS', 'FAMILY_REASON', 'TRAVEL', 'APPROVED_LEAVE', 'EMERGENCY', 'OTHER'];
+    if (reason && !validReasons.includes(reason)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_REASON', message: 'অবৈধ কারণ।' } });
+    }
+    attendance.reason = reason || undefined;
+  }
+
+  if (otherReason !== undefined) {
+    attendance.otherReason = otherReason ? String(otherReason).trim() : undefined;
+  }
+  if (remarks !== undefined) {
+    attendance.remarks = remarks ? String(remarks).trim() : undefined;
+  }
+
+  attendance.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'HIFZ',
+    `হাজিরা রেকর্ড সংশোধন (${attendance.attendanceId}): স্ট্যাটাস: ${attendance.status}${attendance.reason ? ` (${attendance.reason})` : ''}`,
+    attendance.id
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'HIFZ_ATTENDANCE_UPDATED', attendance, { senderId: req.user!.id });
+
+  res.json({
+    success: true,
+    data: attendance,
+    message: `হাজিরা #${attendance.attendanceId} সফলভাবে আপডেট করা হয়েছে।`
+  });
+});
+
+// 7. ATTENDANCE — Status Patch (PATCH)
+app.patch('/api/v1/hifz/attendance/:id', authenticate, requirePermission('EDIT_HIFZ_ATTENDANCE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const attendance = db.hifzAttendances.find(a => a.mosqueId === mosqueId && (a.id === req.params.id || a.attendanceId === req.params.id));
+
+  if (!attendance) {
+    return res.status(404).json({ success: false, error: { code: 'ATTENDANCE_NOT_FOUND', message: 'হাজিরা রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  const { status, reason, otherReason, remarks } = req.body;
+
+  if (status) {
+    const validStatuses: HifzAttendanceStatus[] = ['PRESENT', 'ABSENT', 'LATE', 'LEAVE', 'EXCUSED'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_STATUS', message: 'অবৈধ হাজিরা স্ট্যাটাস।' } });
+    }
+    attendance.status = status;
+  }
+
+  if (reason !== undefined) {
+    const validReasons: HifzAttendanceReason[] = ['ILLNESS', 'FAMILY_REASON', 'TRAVEL', 'APPROVED_LEAVE', 'EMERGENCY', 'OTHER'];
+    if (reason && !validReasons.includes(reason)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_REASON', message: 'অবৈধ কারণ।' } });
+    }
+    attendance.reason = reason || undefined;
+  }
+
+  if (otherReason !== undefined) attendance.otherReason = otherReason ? String(otherReason).trim() : undefined;
+  if (remarks !== undefined) attendance.remarks = remarks ? String(remarks).trim() : undefined;
+
+  attendance.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'HIFZ',
+    `হাজিরা স্ট্যাটাস পরিবর্তন (${attendance.attendanceId}): ${attendance.status}`,
+    attendance.id
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'HIFZ_ATTENDANCE_UPDATED', attendance, { senderId: req.user!.id });
+
+  res.json({
+    success: true,
+    data: attendance,
+    message: `হাজিরা স্ট্যাটাস সফলভাবে আপডেট করা হয়েছে।`
+  });
+});
+
+// ==========================================
+// HIFZ H5-B1 — USTAD ASSIGNMENT FOUNDATION
+// ==========================================
+
+// 1. USTAD ASSIGNMENT — Summary / Stats
+app.get('/api/v1/hifz/ustad-assignments/stats', authenticate, requirePermission('VIEW_HIFZ_USTAD_ASSIGNMENT'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const list = db.hifzTeacherAssignments.filter(a => a.mosqueId === mosqueId);
+  const activeList = list.filter(a => a.status === 'ACTIVE');
+
+  const activeUstadSet = new Set<string>();
+  const activeStudentSet = new Set<string>();
+
+  activeList.forEach(a => {
+    activeUstadSet.add(a.ustadStaffId);
+    activeStudentSet.add(a.studentProfileId || a.enrollmentId);
+  });
+
+  const stats = {
+    totalAssignments: list.length,
+    activeAssignments: activeList.length,
+    activePrimaryAssignments: activeList.filter(a => a.isPrimary || a.assignmentType === 'PRIMARY').length,
+    activeSecondaryAssignments: activeList.filter(a => a.assignmentType === 'SECONDARY').length,
+    endedAssignments: list.filter(a => a.status === 'ENDED').length,
+    cancelledAssignments: list.filter(a => a.status === 'CANCELLED').length,
+    activeUstadsAssignedCount: activeUstadSet.size,
+    activeStudentsAssignedCount: activeStudentSet.size,
+  };
+
+  res.json({
+    success: true,
+    data: stats
+  });
+});
+
+// 2. USTAD ASSIGNMENT — List & Filter
+app.get('/api/v1/hifz/ustad-assignments', authenticate, requirePermission('VIEW_HIFZ_USTAD_ASSIGNMENT'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { studentId, studentProfileId, enrollmentId, ustadStaffId, assignmentType, status, isPrimary, search } = req.query;
+
+  let list = db.hifzTeacherAssignments.filter(a => a.mosqueId === mosqueId);
+
+  if (studentId) {
+    list = list.filter(a => a.studentId === studentId);
+  }
+  if (studentProfileId) {
+    list = list.filter(a => a.studentProfileId === studentProfileId);
+  }
+  if (enrollmentId) {
+    list = list.filter(a => a.enrollmentId === enrollmentId);
+  }
+  if (ustadStaffId) {
+    list = list.filter(a => a.ustadStaffId === ustadStaffId);
+  }
+  if (assignmentType) {
+    list = list.filter(a => a.assignmentType === assignmentType);
+  }
+  if (status) {
+    list = list.filter(a => a.status === status);
+  }
+  if (isPrimary !== undefined) {
+    const p = String(isPrimary) === 'true';
+    list = list.filter(a => Boolean(a.isPrimary) === p);
+  }
+  if (search) {
+    const q = String(search).toLowerCase();
+    list = list.filter(a =>
+      a.assignmentId.toLowerCase().includes(q) ||
+      (a.studentName && a.studentName.toLowerCase().includes(q)) ||
+      (a.studentId && a.studentId.toLowerCase().includes(q)) ||
+      (a.ustadName && a.ustadName.toLowerCase().includes(q)) ||
+      (a.remarks && a.remarks.toLowerCase().includes(q))
+    );
+  }
+
+  // Enrich names if missing
+  const enriched = list.map(a => {
+    let studentName = a.studentName;
+    if (!studentName) {
+      const stu = db.educationStudentProfiles.find(s => s.id === a.studentProfileId || s.studentId === a.studentId);
+      studentName = stu?.personName || 'শিক্ষার্থী';
+    }
+    let ustadName = a.ustadName;
+    if (!ustadName) {
+      const staff = db.staffList.find(s => s.id === a.ustadStaffId);
+      ustadName = staff?.name || 'উস্তাদ';
+    }
+    return { ...a, studentName, ustadName };
+  });
+
+  enriched.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime() || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  res.json({
+    success: true,
+    data: enriched,
+    total: enriched.length
+  });
+});
+
+// 3. USTAD ASSIGNMENT — Single by ID
+app.get('/api/v1/hifz/ustad-assignments/:id', authenticate, requirePermission('VIEW_HIFZ_USTAD_ASSIGNMENT'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const assignment = db.hifzTeacherAssignments.find(a => a.mosqueId === mosqueId && (a.id === req.params.id || a.assignmentId === req.params.id));
+
+  if (!assignment) {
+    return res.status(404).json({ success: false, error: { code: 'ASSIGNMENT_NOT_FOUND', message: 'উস্তাদ অ্যাসাইনমেন্ট রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  let studentName = assignment.studentName;
+  if (!studentName) {
+    const stu = db.educationStudentProfiles.find(s => s.id === assignment.studentProfileId || s.studentId === assignment.studentId);
+    studentName = stu?.personName || 'শিক্ষার্থী';
+  }
+  let ustadName = assignment.ustadName;
+  if (!ustadName) {
+    const staff = db.staffList.find(s => s.id === assignment.ustadStaffId);
+    ustadName = staff?.name || 'উস্তাদ';
+  }
+
+  res.json({
+    success: true,
+    data: { ...assignment, studentName, ustadName }
+  });
+});
+
+// 4. USTAD ASSIGNMENT — Create Single
+app.post('/api/v1/hifz/ustad-assignments', authenticate, requirePermission('CREATE_HIFZ_USTAD_ASSIGNMENT'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+
+  if (req.idempotencyKey) {
+    const cached = db.checkIdempotency(req.idempotencyKey);
+    if (cached) {
+      return res.status(cached.status || 200).json(cached.body);
+    }
+  }
+
+  const { enrollmentId, ustadStaffId, assignmentType, startDate, endDate, remarks } = req.body;
+
+  if (!enrollmentId || !ustadStaffId || !assignmentType || !startDate) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'MISSING_REQUIRED_FIELDS', message: 'ভর্তি আইডি, উস্তাদ নির্বাচন, অ্যাসাইনমেন্টের ধরন এবং শুরুর তারিখ আবশ্যক।' }
+    });
+  }
+
+  // Validate assignmentType
+  if (assignmentType !== 'PRIMARY' && assignmentType !== 'SECONDARY') {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_ASSIGNMENT_TYPE', message: "অ্যাসাইনমেন্টের ধরন অবশ্যই 'PRIMARY' অথবা 'SECONDARY' হতে হবে।" }
+    });
+  }
+
+  // Validate startDate format YYYY-MM-DD
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_DATE_FORMAT', message: 'শুরুর তারিখ ফরম্যাট অবশ্যই YYYY-MM-DD হতে হবে।' }
+    });
+  }
+
+  // Validate endDate if present
+  if (endDate) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_DATE_FORMAT', message: 'সমাপ্তির তারিখ ফরম্যাট অবশ্যই YYYY-MM-DD হতে হবে।' }
+      });
+    }
+    if (endDate < startDate) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_DATE_RANGE', message: 'সমাপ্তির তারিখ অবশ্যই শুরুর তারিখের সমান বা পরবর্তী হতে হবে।' }
+      });
+    }
+  }
+
+  // Validate Enrollment: must exist, belong to mosque, programType HIFZKHANA, status ACTIVE
+  const enrollment = db.hifzEnrollments.find(e => e.id === enrollmentId && e.mosqueId === mosqueId);
+  if (!enrollment) {
+    return res.status(404).json({ success: false, error: { code: 'ENROLLMENT_NOT_FOUND', message: 'হিফজ শিক্ষার্থী ভর্তি রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  if (enrollment.status !== 'ACTIVE') {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'ENROLLMENT_INACTIVE', message: `শুধুমাত্র সক্রিয় (ACTIVE) শিক্ষার্থীর উস্তাদ নির্ধারণ করা যায় (বর্তমান স্ট্যাটাস: ${enrollment.status})।` }
+    });
+  }
+
+  // Validate Staff / Ustad: must exist, belong to mosque, not terminated/inactive
+  const staff = db.staffList.find(s => s.id === ustadStaffId && s.mosqueId === mosqueId);
+  if (!staff) {
+    return res.status(404).json({ success: false, error: { code: 'STAFF_NOT_FOUND', message: 'উস্তাদ / শিক্ষক রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  if ((staff as any).employmentType === 'TERMINATED' || (staff as any).status === 'INACTIVE' || (staff as any).status === 'SUSPENDED') {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'STAFF_INACTIVE', message: 'নির্বাচিত উস্তাদ বর্তমানে সক্রিয় নন।' }
+    });
+  }
+
+  const studentProfile = db.educationStudentProfiles.find(s => s.id === enrollment.studentProfileId && s.mosqueId === mosqueId);
+  const studentName = studentProfile?.personName || enrollment.studentName || 'শিক্ষার্থী';
+  const studentId = enrollment.studentId || studentProfile?.studentId || '';
+
+  const isPrimary = assignmentType === 'PRIMARY';
+
+  // Rule 2: At most ONE ACTIVE PRIMARY assignment per student
+  if (isPrimary) {
+    const existingActivePrimary = db.hifzTeacherAssignments.find(
+      a => a.mosqueId === mosqueId &&
+        a.enrollmentId === enrollment.id &&
+        a.status === 'ACTIVE' &&
+        (a.isPrimary || a.assignmentType === 'PRIMARY')
+    );
+
+    if (existingActivePrimary) {
+      return res.status(409).json({
+        success: false,
+        error: {
+          code: 'ACTIVE_PRIMARY_EXISTS',
+          message: `এই শিক্ষার্থীর জন্য ইতোমধ্যে একজন সক্রিয় প্রধান উস্তাদ নির্ধারিত আছেন (${existingActivePrimary.ustadName || 'উস্তাদ'}, #${existingActivePrimary.assignmentId})। নতুন প্রধান উস্তাদ নির্ধারণ করতে পূর্বের অ্যাসাইনমেন্টটি সমাপ্ত (ENDED) করুন।`
+        }
+      });
+    }
+  }
+
+  // Rule 4: Exact duplicate active assignment protection
+  const exactDuplicate = db.hifzTeacherAssignments.find(
+    a => a.mosqueId === mosqueId &&
+      a.enrollmentId === enrollment.id &&
+      a.ustadStaffId === staff.id &&
+      a.assignmentType === assignmentType &&
+      a.startDate === startDate &&
+      a.status === 'ACTIVE'
+  );
+
+  if (exactDuplicate) {
+    return res.status(409).json({
+      success: false,
+      error: {
+        code: 'DUPLICATE_ASSIGNMENT',
+        message: `একই উস্তাদের অধীনে একই তারিখে সক্রিয় অ্যাসাইনমেন্ট ইতোমধ্যে বিদ্যমান (#${exactDuplicate.assignmentId})।`
+      }
+    });
+  }
+
+  const now = new Date().toISOString();
+  const id = `hua-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const assignmentId = db.generateNextHifzUstadAssignmentId(mosqueId);
+
+  const newAssignment: HifzUstadAssignment = {
+    id,
+    assignmentId,
+    mosqueId,
+    enrollmentId: enrollment.id,
+    studentProfileId: enrollment.studentProfileId,
+    studentId,
+    studentName,
+    ustadStaffId: staff.id,
+    ustadName: staff.name,
+    assignmentType,
+    startDate,
+    endDate: endDate || undefined,
+    status: 'ACTIVE',
+    isPrimary,
+    remarks: remarks ? String(remarks).trim() : undefined,
+    assignedBy: req.user!.id,
+    assignedByName: req.user!.name,
+    createdAt: now,
+    updatedAt: now
+  };
+
+  db.hifzTeacherAssignments.push(newAssignment);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'HIFZ',
+    `উস্তাদ অ্যাসাইনমেন্ট নির্ধারণ (${assignmentId}): শিক্ষার্থী: ${studentName}, উস্তাদ: ${staff.name}, ধরন: ${assignmentType} (${startDate})`,
+    newAssignment.id
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'HIFZ_USTAD_ASSIGNMENT_CREATED', newAssignment, { senderId: req.user!.id });
+
+  const responseBody = {
+    success: true,
+    data: newAssignment,
+    message: `উস্তাদ অ্যাসাইনমেন্ট #${assignmentId} সফলভাবে তৈরি করা হয়েছে।`
+  };
+
+  if (req.idempotencyKey) {
+    db.saveIdempotency(req.idempotencyKey, responseBody);
+  }
+
+  res.status(201).json(responseBody);
+});
+
+// 5. USTAD ASSIGNMENT — Update (PUT)
+app.put('/api/v1/hifz/ustad-assignments/:id', authenticate, requirePermission('EDIT_HIFZ_USTAD_ASSIGNMENT'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const assignment = db.hifzTeacherAssignments.find(a => a.mosqueId === mosqueId && (a.id === req.params.id || a.assignmentId === req.params.id));
+
+  if (!assignment) {
+    return res.status(404).json({ success: false, error: { code: 'ASSIGNMENT_NOT_FOUND', message: 'উস্তাদ অ্যাসাইনমেন্ট রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  if (assignment.status === 'CANCELLED') {
+    return res.status(400).json({ success: false, error: { code: 'CANCELLED_IMMUTABLE', message: 'বাতিলকৃত অ্যাসাইনমেন্ট পরিবর্তনযোগ্য নয়।' } });
+  }
+
+  const { ustadStaffId, assignmentType, startDate, endDate, status, remarks } = req.body;
+
+  // Validate Ustad if changed
+  if (ustadStaffId && ustadStaffId !== assignment.ustadStaffId) {
+    const staff = db.staffList.find(s => s.id === ustadStaffId && s.mosqueId === mosqueId);
+    if (!staff) {
+      return res.status(404).json({ success: false, error: { code: 'STAFF_NOT_FOUND', message: 'উস্তাদ রেকর্ড পাওয়া যায়নি।' } });
+    }
+    assignment.ustadStaffId = staff.id;
+    assignment.ustadName = staff.name;
+  }
+
+  if (startDate) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_DATE_FORMAT', message: 'শুরুর তারিখ ফরম্যাট অবশ্যই YYYY-MM-DD হতে হবে।' } });
+    }
+    assignment.startDate = startDate;
+  }
+
+  if (endDate !== undefined) {
+    if (endDate && !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_DATE_FORMAT', message: 'সমাপ্তির তারিখ ফরম্যাট অবশ্যই YYYY-MM-DD হতে হবে।' } });
+    }
+    if (endDate && endDate < assignment.startDate) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_DATE_RANGE', message: 'সমাপ্তির তারিখ অবশ্যই শুরুর তারিখের সমান বা পরবর্তী হতে হবে।' } });
+    }
+    assignment.endDate = endDate ? String(endDate).trim() : undefined;
+  }
+
+  // Validate assignmentType / isPrimary transition
+  if (assignmentType && assignmentType !== assignment.assignmentType) {
+    if (assignmentType === 'PRIMARY' && assignment.status === 'ACTIVE') {
+      const existingActivePrimary = db.hifzTeacherAssignments.find(
+        a => a.mosqueId === mosqueId &&
+          a.enrollmentId === assignment.enrollmentId &&
+          a.id !== assignment.id &&
+          a.status === 'ACTIVE' &&
+          (a.isPrimary || a.assignmentType === 'PRIMARY')
+      );
+      if (existingActivePrimary) {
+        return res.status(409).json({
+          success: false,
+          error: {
+            code: 'ACTIVE_PRIMARY_EXISTS',
+            message: `এই শিক্ষার্থীর জন্য ইতোমধ্যে একজন সক্রিয় প্রধান উস্তাদ নির্ধারিত আছেন (#${existingActivePrimary.assignmentId})।`
+          }
+        });
+      }
+    }
+    assignment.assignmentType = assignmentType;
+    assignment.isPrimary = assignmentType === 'PRIMARY';
+  }
+
+  // Validate status transition
+  if (status && status !== assignment.status) {
+    const validTransitions: Record<string, string[]> = {
+      ACTIVE: ['ENDED', 'CANCELLED'],
+      ENDED: ['CANCELLED'],
+      CANCELLED: []
+    };
+    const allowed = validTransitions[assignment.status] || [];
+    if (!allowed.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_STATUS_TRANSITION', message: `অবৈধ স্ট্যাটাস পরিবর্তন: ${assignment.status} থেকে ${status} সম্ভব নয়।` }
+      });
+    }
+    assignment.status = status;
+    if (status === 'ENDED' && !assignment.endDate) {
+      assignment.endDate = new Date().toISOString().split('T')[0];
+    }
+  }
+
+  if (remarks !== undefined) {
+    assignment.remarks = remarks ? String(remarks).trim() : undefined;
+  }
+
+  assignment.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'HIFZ',
+    `উস্তাদ অ্যাসাইনমেন্ট আপডেট (${assignment.assignmentId}): স্ট্যাটাস: ${assignment.status}, উস্তাদ: ${assignment.ustadName}`,
+    assignment.id
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'HIFZ_USTAD_ASSIGNMENT_UPDATED', assignment, { senderId: req.user!.id });
+
+  res.json({
+    success: true,
+    data: assignment,
+    message: `অ্যাসাইনমেন্ট #${assignment.assignmentId} সফলভাবে আপডেট করা হয়েছে।`
+  });
+});
+
+// 6. USTAD ASSIGNMENT — Status Patch (PATCH)
+app.patch('/api/v1/hifz/ustad-assignments/:id/status', authenticate, requirePermission('EDIT_HIFZ_USTAD_ASSIGNMENT'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const assignment = db.hifzTeacherAssignments.find(a => a.mosqueId === mosqueId && (a.id === req.params.id || a.assignmentId === req.params.id));
+
+  if (!assignment) {
+    return res.status(404).json({ success: false, error: { code: 'ASSIGNMENT_NOT_FOUND', message: 'উস্তাদ অ্যাসাইনমেন্ট রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  if (assignment.status === 'CANCELLED') {
+    return res.status(400).json({ success: false, error: { code: 'CANCELLED_IMMUTABLE', message: 'বাতিলকৃত অ্যাসাইনমেন্ট পরিবর্তনযোগ্য নয়।' } });
+  }
+
+  const { status, endDate, remarks } = req.body;
+
+  if (!status) {
+    return res.status(400).json({ success: false, error: { code: 'MISSING_STATUS', message: 'স্ট্যাটাস আবশ্যক।' } });
+  }
+
+  const validTransitions: Record<string, string[]> = {
+    ACTIVE: ['ENDED', 'CANCELLED'],
+    ENDED: ['CANCELLED'],
+    CANCELLED: []
+  };
+  const allowed = validTransitions[assignment.status] || [];
+  if (!allowed.includes(status)) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_STATUS_TRANSITION', message: `অবৈধ স্ট্যাটাস পরিবর্তন: ${assignment.status} থেকে ${status} সম্ভব নয়।` }
+    });
+  }
+
+  const prevStatus = assignment.status;
+  assignment.status = status;
+
+  if (status === 'ENDED') {
+    assignment.endDate = endDate || assignment.endDate || new Date().toISOString().split('T')[0];
+  }
+
+  if (remarks !== undefined) {
+    assignment.remarks = remarks ? String(remarks).trim() : undefined;
+  }
+
+  assignment.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'STATUS_CHANGE',
+    'HIFZ',
+    `উস্তাদ অ্যাসাইনমেন্ট স্ট্যাটাস পরিবর্তন (${assignment.assignmentId}): ${prevStatus} -> ${status}`,
+    assignment.id
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'HIFZ_USTAD_ASSIGNMENT_UPDATED', assignment, { senderId: req.user!.id });
+
+  res.json({
+    success: true,
+    data: assignment,
+    message: `অ্যাসাইনমেন্ট স্ট্যাটাস সফলভাবে ${status} করা হয়েছে (#${assignment.assignmentId})।`
+  });
+});
+
+// ==========================================
+// HIFZ H5-C — DASHBOARD & HISTORY (READ-ONLY)
+// ==========================================
+
+// 1. DASHBOARD & KPIS — Read-Only
+app.get('/api/v1/hifz/h5/dashboard', authenticate, requireAnyPermission(['VIEW_HIFZ_ATTENDANCE', 'VIEW_HIFZ_USTAD_ASSIGNMENT']), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { startDate, endDate, preset } = req.query;
+
+  // Validate dates if provided
+  if (startDate && !/^\d{4}-\d{2}-\d{2}$/.test(String(startDate))) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_DATE_FORMAT', message: 'শুরুর তারিখ ফরম্যাট অবশ্যই YYYY-MM-DD হতে হবে।' } });
+  }
+  if (endDate && !/^\d{4}-\d{2}-\d{2}$/.test(String(endDate))) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_DATE_FORMAT', message: 'সমাপ্তির তারিখ ফরম্যাট অবশ্যই YYYY-MM-DD হতে হবে।' } });
+  }
+  if (startDate && endDate && String(endDate) < String(startDate)) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_DATE_RANGE', message: 'সমাপ্তির তারিখ অবশ্যই শুরুর তারিখের সমান বা পরবর্তী হতে হবে।' } });
+  }
+
+  const userPerms = req.user?.permissions || [];
+  const isAdmin = req.user?.role === 'SUPER_ADMIN' || req.user?.role === 'MOSQUE_ADMIN';
+  const hasAttPerm = isAdmin || userPerms.includes('VIEW_HIFZ_ATTENDANCE');
+  const hasUstadPerm = isAdmin || userPerms.includes('VIEW_HIFZ_USTAD_ASSIGNMENT');
+
+  let attendanceKPI: any = null;
+  if (hasAttPerm) {
+    const activeStudents = db.hifzEnrollments.filter(e => e.mosqueId === mosqueId && e.status === 'ACTIVE' && e.programType === 'HIFZKHANA');
+    let attRecords = db.hifzAttendances.filter(a => a.mosqueId === mosqueId);
+
+    if (startDate) {
+      attRecords = attRecords.filter(a => a.date >= String(startDate));
+    }
+    if (endDate) {
+      attRecords = attRecords.filter(a => a.date <= String(endDate));
+    }
+
+    const presentCount = attRecords.filter(a => a.status === 'PRESENT').length;
+    const absentCount = attRecords.filter(a => a.status === 'ABSENT').length;
+    const lateCount = attRecords.filter(a => a.status === 'LATE').length;
+    const leaveCount = attRecords.filter(a => a.status === 'LEAVE').length;
+    const excusedCount = attRecords.filter(a => a.status === 'EXCUSED').length;
+    const totalRecords = attRecords.length;
+
+    // Attendance percentage calculation: (PRESENT + LATE) / totalRecords * 100
+    const attendanceRate = totalRecords > 0 ? Math.round(((presentCount + lateCount) / totalRecords) * 1000) / 10 : 0;
+
+    attendanceKPI = {
+      totalStudents: activeStudents.length,
+      totalRecords,
+      presentCount,
+      absentCount,
+      lateCount,
+      leaveCount,
+      excusedCount,
+      attendanceRate
+    };
+  }
+
+  let ustadKPI: any = null;
+  if (hasUstadPerm) {
+    const allAssignments = db.hifzTeacherAssignments.filter(a => a.mosqueId === mosqueId);
+    const activeAssignments = allAssignments.filter(a => a.status === 'ACTIVE');
+
+    const activeUstadSet = new Set<string>();
+    const activeStudentSet = new Set<string>();
+
+    activeAssignments.forEach(a => {
+      if (a.ustadStaffId) activeUstadSet.add(a.ustadStaffId);
+      if (a.studentProfileId || a.enrollmentId) activeStudentSet.add(a.studentProfileId || a.enrollmentId);
+    });
+
+    ustadKPI = {
+      totalActiveAssignments: activeAssignments.length,
+      activePrimaryCount: activeAssignments.filter(a => a.isPrimary || a.assignmentType === 'PRIMARY').length,
+      activeSecondaryCount: activeAssignments.filter(a => a.assignmentType === 'SECONDARY').length,
+      assignedStudentsCount: activeStudentSet.size,
+      totalUstadsActive: activeUstadSet.size,
+      endedAssignmentsCount: allAssignments.filter(a => a.status === 'ENDED').length,
+      cancelledAssignmentsCount: allAssignments.filter(a => a.status === 'CANCELLED').length
+    };
+  }
+
+  res.json({
+    success: true,
+    data: {
+      mosqueId,
+      period: {
+        startDate: startDate ? String(startDate) : undefined,
+        endDate: endDate ? String(endDate) : undefined,
+        preset: preset ? String(preset) : undefined
+      },
+      attendanceKPI,
+      ustadKPI
+    }
+  });
+});
+
+// 2. STUDENT-WISE HISTORY — Read-Only
+app.get('/api/v1/hifz/h5/students/:studentId/history', authenticate, requireAnyPermission(['VIEW_HIFZ_ATTENDANCE', 'VIEW_HIFZ_USTAD_ASSIGNMENT']), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { studentId } = req.params;
+
+  // Resolve student from active or historical enrollments in this mosque
+  const enrollment = db.hifzEnrollments.find(e =>
+    e.mosqueId === mosqueId &&
+    (e.id === studentId || e.enrollmentId === studentId || e.studentId === studentId || e.studentProfileId === studentId)
+  );
+
+  if (!enrollment) {
+    return res.status(404).json({
+      success: false,
+      error: { code: 'STUDENT_NOT_FOUND', message: 'হিফজ শিক্ষার্থী পাওয়া যায়নি।' }
+    });
+  }
+
+  const studentProfile = db.educationStudentProfiles.find(s => s.id === enrollment.studentProfileId && s.mosqueId === mosqueId);
+  const resolvedStudentName = studentProfile?.personName || enrollment.studentName || 'শিক্ষার্থী';
+  const resolvedStudentId = enrollment.studentId || studentProfile?.studentId || '';
+
+  const userPerms = req.user?.permissions || [];
+  const isAdmin = req.user?.role === 'SUPER_ADMIN' || req.user?.role === 'MOSQUE_ADMIN';
+  const hasAttPerm = isAdmin || userPerms.includes('VIEW_HIFZ_ATTENDANCE');
+  const hasUstadPerm = isAdmin || userPerms.includes('VIEW_HIFZ_USTAD_ASSIGNMENT');
+
+  let attendances: any[] = [];
+  let attendanceSummary: any = null;
+
+  if (hasAttPerm) {
+    attendances = db.hifzAttendances
+      .filter(a => a.mosqueId === mosqueId && (a.enrollmentId === enrollment.id || a.studentId === resolvedStudentId || a.studentProfileId === enrollment.studentProfileId))
+      .sort((a, b) => b.date.localeCompare(a.date));
+
+    const present = attendances.filter(a => a.status === 'PRESENT').length;
+    const absent = attendances.filter(a => a.status === 'ABSENT').length;
+    const late = attendances.filter(a => a.status === 'LATE').length;
+    const leave = attendances.filter(a => a.status === 'LEAVE').length;
+    const excused = attendances.filter(a => a.status === 'EXCUSED').length;
+    const totalRecords = attendances.length;
+    const attendanceRate = totalRecords > 0 ? Math.round(((present + late) / totalRecords) * 1000) / 10 : 0;
+
+    attendanceSummary = {
+      totalRecords,
+      present,
+      absent,
+      late,
+      leave,
+      excused,
+      attendanceRate
+    };
+  }
+
+  let assignments: any[] = [];
+  if (hasUstadPerm) {
+    assignments = db.hifzTeacherAssignments
+      .filter(a => a.mosqueId === mosqueId && (a.enrollmentId === enrollment.id || a.studentId === resolvedStudentId || a.studentProfileId === enrollment.studentProfileId))
+      .map(a => {
+        let ustadName = a.ustadName;
+        if (!ustadName) {
+          const staff = db.staffList.find(s => s.id === a.ustadStaffId);
+          ustadName = staff?.name || 'উস্তাদ';
+        }
+        return { ...a, ustadName, studentName: resolvedStudentName };
+      })
+      .sort((a, b) => b.startDate.localeCompare(a.startDate));
+  }
+
+  res.json({
+    success: true,
+    data: {
+      student: {
+        id: enrollment.id,
+        studentId: resolvedStudentId,
+        studentName: resolvedStudentName,
+        studentProfileId: enrollment.studentProfileId,
+        enrollmentId: enrollment.enrollmentId,
+        status: enrollment.status,
+        programType: enrollment.programType,
+        studyType: enrollment.studyType,
+        admissionDate: enrollment.admissionDate
+      },
+      attendanceSummary,
+      attendances,
+      assignments
+    }
+  });
+});
+
+// 3. USTAD-WISE HISTORY — Read-Only
+app.get('/api/v1/hifz/h5/ustads/:staffId/history', authenticate, requirePermission('VIEW_HIFZ_USTAD_ASSIGNMENT'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { staffId } = req.params;
+
+  const staff = db.staffList.find(s => s.mosqueId === mosqueId && (s.id === staffId || s.staffCode === staffId));
+  if (!staff) {
+    return res.status(404).json({
+      success: false,
+      error: { code: 'STAFF_NOT_FOUND', message: 'উস্তাদ / শিক্ষক রেকর্ড পাওয়া যায়নি।' }
+    });
+  }
+
+  const allAssignments = db.hifzTeacherAssignments
+    .filter(a => a.mosqueId === mosqueId && a.ustadStaffId === staff.id)
+    .map(a => {
+      let studentName = a.studentName;
+      if (!studentName) {
+        const stu = db.educationStudentProfiles.find(s => s.id === a.studentProfileId || s.studentId === a.studentId);
+        studentName = stu?.personName || 'শিক্ষার্থী';
+      }
+      return { ...a, studentName, ustadName: staff.name };
+    })
+    .sort((a, b) => b.startDate.localeCompare(a.startDate));
+
+  const activeAssignments = allAssignments.filter(a => a.status === 'ACTIVE');
+  const historicalAssignments = allAssignments.filter(a => a.status === 'ENDED' || a.status === 'CANCELLED');
+
+  const currentStudentIds = new Set(activeAssignments.map(a => a.studentProfileId || a.enrollmentId));
+  const historicalStudentIds = new Set(historicalAssignments.map(a => a.studentProfileId || a.enrollmentId));
+
+  res.json({
+    success: true,
+    data: {
+      ustad: {
+        staffId: staff.id,
+        name: staff.name,
+        staffCode: staff.staffCode,
+        designation: staff.designation,
+        designationBn: staff.designationBn,
+        phone: staff.phone,
+        status: staff.status
+      },
+      activeAssignmentsCount: activeAssignments.length,
+      primaryAssignmentsCount: activeAssignments.filter(a => a.isPrimary || a.assignmentType === 'PRIMARY').length,
+      secondaryAssignmentsCount: activeAssignments.filter(a => a.assignmentType === 'SECONDARY').length,
+      currentStudentsCount: currentStudentIds.size,
+      historicalStudentsCount: historicalStudentIds.size,
+      activeAssignments,
+      historicalAssignments
+    }
+  });
+});
+
+// 4. ATTENDANCE SUMMARY (DAILY / MONTHLY) — Read-Only
+app.get('/api/v1/hifz/h5/attendance/summary', authenticate, requirePermission('VIEW_HIFZ_ATTENDANCE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { startDate, endDate, studentId, groupBy } = req.query;
+
+  if (startDate && !/^\d{4}-\d{2}-\d{2}$/.test(String(startDate))) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_DATE_FORMAT', message: 'শুরুর তারিখ ফরম্যাট অবশ্যই YYYY-MM-DD হতে হবে।' } });
+  }
+  if (endDate && !/^\d{4}-\d{2}-\d{2}$/.test(String(endDate))) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_DATE_FORMAT', message: 'সমাপ্তির তারিখ ফরম্যাট অবশ্যই YYYY-MM-DD হতে হবে।' } });
+  }
+  if (startDate && endDate && String(endDate) < String(startDate)) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_DATE_RANGE', message: 'সমাপ্তির তারিখ অবশ্যই শুরুর তারিখের সমান বা পরবর্তী হতে হবে।' } });
+  }
+
+  let list = db.hifzAttendances.filter(a => a.mosqueId === mosqueId);
+
+  if (studentId) {
+    list = list.filter(a => a.studentId === studentId || a.studentProfileId === studentId || a.enrollmentId === studentId);
+  }
+  if (startDate) {
+    list = list.filter(a => a.date >= String(startDate));
+  }
+  if (endDate) {
+    list = list.filter(a => a.date <= String(endDate));
+  }
+
+  const isMonthly = groupBy === 'monthly' || groupBy === 'month';
+  const groupMap = new Map<string, { total: number; present: number; absent: number; late: number; leave: number; excused: number }>();
+
+  list.forEach(a => {
+    const key = isMonthly ? a.date.substring(0, 7) : a.date;
+    const current = groupMap.get(key) || { total: 0, present: 0, absent: 0, late: 0, leave: 0, excused: 0 };
+    current.total++;
+    if (a.status === 'PRESENT') current.present++;
+    else if (a.status === 'ABSENT') current.absent++;
+    else if (a.status === 'LATE') current.late++;
+    else if (a.status === 'LEAVE') current.leave++;
+    else if (a.status === 'EXCUSED') current.excused++;
+    groupMap.set(key, current);
+  });
+
+  const groups = Array.from(groupMap.entries())
+    .map(([dateOrMonth, counts]) => ({
+      dateOrMonth,
+      totalRecords: counts.total,
+      present: counts.present,
+      absent: counts.absent,
+      late: counts.late,
+      leave: counts.leave,
+      excused: counts.excused,
+      attendanceRate: counts.total > 0 ? Math.round(((counts.present + counts.late) / counts.total) * 1000) / 10 : 0
+    }))
+    .sort((a, b) => b.dateOrMonth.localeCompare(a.dateOrMonth));
+
+  res.json({
+    success: true,
+    data: groups,
+    totalGroups: groups.length
+  });
+});
+
+// 5. CURRENT USTAD ASSIGNMENTS — Read-Only
+app.get('/api/v1/hifz/h5/assignments/current', authenticate, requirePermission('VIEW_HIFZ_USTAD_ASSIGNMENT'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { assignmentType, ustadStaffId, studentId, search } = req.query;
+
+  let list = db.hifzTeacherAssignments.filter(a => a.mosqueId === mosqueId && a.status === 'ACTIVE');
+
+  if (assignmentType) {
+    list = list.filter(a => a.assignmentType === assignmentType);
+  }
+  if (ustadStaffId) {
+    list = list.filter(a => a.ustadStaffId === ustadStaffId);
+  }
+  if (studentId) {
+    list = list.filter(a => a.studentId === studentId || a.studentProfileId === studentId || a.enrollmentId === studentId);
+  }
+  if (search) {
+    const q = String(search).toLowerCase();
+    list = list.filter(a =>
+      a.assignmentId.toLowerCase().includes(q) ||
+      (a.studentName && a.studentName.toLowerCase().includes(q)) ||
+      (a.studentId && a.studentId.toLowerCase().includes(q)) ||
+      (a.ustadName && a.ustadName.toLowerCase().includes(q))
+    );
+  }
+
+  const enriched = list.map(a => {
+    let studentName = a.studentName;
+    if (!studentName) {
+      const stu = db.educationStudentProfiles.find(s => s.id === a.studentProfileId || s.studentId === a.studentId);
+      studentName = stu?.personName || 'শিক্ষার্থী';
+    }
+    let ustadName = a.ustadName;
+    if (!ustadName) {
+      const staff = db.staffList.find(s => s.id === a.ustadStaffId);
+      ustadName = staff?.name || 'উস্তাদ';
+    }
+    return { ...a, studentName, ustadName };
+  }).sort((a, b) => b.startDate.localeCompare(a.startDate));
+
+  res.json({
+    success: true,
+    data: enriched,
+    total: enriched.length
+  });
+});
+
+// 6. HISTORICAL USTAD ASSIGNMENTS — Read-Only
+app.get('/api/v1/hifz/h5/assignments/history', authenticate, requirePermission('VIEW_HIFZ_USTAD_ASSIGNMENT'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { status, ustadStaffId, studentId, search, startDate, endDate } = req.query;
+
+  let list = db.hifzTeacherAssignments.filter(a => a.mosqueId === mosqueId && (a.status === 'ENDED' || a.status === 'CANCELLED'));
+
+  if (status) {
+    list = list.filter(a => a.status === status);
+  }
+  if (ustadStaffId) {
+    list = list.filter(a => a.ustadStaffId === ustadStaffId);
+  }
+  if (studentId) {
+    list = list.filter(a => a.studentId === studentId || a.studentProfileId === studentId || a.enrollmentId === studentId);
+  }
+  if (startDate) {
+    list = list.filter(a => a.startDate >= String(startDate));
+  }
+  if (endDate) {
+    list = list.filter(a => (a.endDate ? a.endDate <= String(endDate) : a.startDate <= String(endDate)));
+  }
+  if (search) {
+    const q = String(search).toLowerCase();
+    list = list.filter(a =>
+      a.assignmentId.toLowerCase().includes(q) ||
+      (a.studentName && a.studentName.toLowerCase().includes(q)) ||
+      (a.studentId && a.studentId.toLowerCase().includes(q)) ||
+      (a.ustadName && a.ustadName.toLowerCase().includes(q))
+    );
+  }
+
+  const enriched = list.map(a => {
+    let studentName = a.studentName;
+    if (!studentName) {
+      const stu = db.educationStudentProfiles.find(s => s.id === a.studentProfileId || s.studentId === a.studentId);
+      studentName = stu?.personName || 'শিক্ষার্থী';
+    }
+    let ustadName = a.ustadName;
+    if (!ustadName) {
+      const staff = db.staffList.find(s => s.id === a.ustadStaffId);
+      ustadName = staff?.name || 'উস্তাদ';
+    }
+    return { ...a, studentName, ustadName };
+  }).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+
+  res.json({
+    success: true,
+    data: enriched,
+    total: enriched.length
+  });
+});
+
+// ==========================================
+// HIFZ H5-D — SUB REPORT CENTER & REPORTS (READ-ONLY)
+// ==========================================
+
+// Helper to resolve dates and validate boundaries for H5-D Reports
+const resolveHifzReportDates = (query: any) => {
+  const now = new Date();
+  const todayStr = now.toISOString().split('T')[0];
+  const currentMonthStr = todayStr.slice(0, 7);
+  const currentYearStr = todayStr.slice(0, 4);
+
+  const mode = query.mode || 'DATE_RANGE';
+
+  if (mode === 'QUICK') {
+    const preset = query.preset || 'THIS_MONTH';
+    switch (preset) {
+      case 'TODAY':
+        return { startDate: todayStr, endDate: todayStr, labelBn: 'আজ', mode };
+      case 'LAST_7_DAYS': {
+        const past = new Date(now);
+        past.setDate(past.getDate() - 6);
+        return { startDate: past.toISOString().split('T')[0], endDate: todayStr, labelBn: 'গত ৭ দিন', mode };
+      }
+      case 'THIS_MONTH': {
+        const start = `${currentMonthStr}-01`;
+        return { startDate: start, endDate: todayStr, labelBn: 'চলতি মাস', mode };
+      }
+      case 'LAST_MONTH': {
+        const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const y = prev.getFullYear();
+        const m = String(prev.getMonth() + 1).padStart(2, '0');
+        const lastDay = new Date(y, prev.getMonth() + 1, 0).getDate();
+        return { startDate: `${y}-${m}-01`, endDate: `${y}-${m}-${String(lastDay).padStart(2, '0')}`, labelBn: 'বিগত মাস', mode };
+      }
+      case 'THIS_YEAR': {
+        return { startDate: `${currentYearStr}-01-01`, endDate: todayStr, labelBn: 'চলতি বছর', mode };
+      }
+      case 'CUSTOM':
+      default:
+        break; // fall through to DATE_RANGE
+    }
+  }
+
+  if (mode === 'MONTH_RANGE') {
+    const startMonth = query.startMonth;
+    const endMonth = query.endMonth || startMonth;
+    if (!startMonth || !/^\d{4}-\d{2}$/.test(startMonth)) {
+      throw { code: 'INVALID_DATE_FORMAT', message: 'শুরুর মাস ফরম্যাট অবশ্যই YYYY-MM হতে হবে।' };
+    }
+    if (!endMonth || !/^\d{4}-\d{2}$/.test(endMonth)) {
+      throw { code: 'INVALID_DATE_FORMAT', message: 'সমাপ্তির মাস ফরম্যাট অবশ্যই YYYY-MM হতে হবে।' };
+    }
+    if (endMonth < startMonth) {
+      throw { code: 'INVALID_DATE_RANGE', message: 'সমাপ্তির মাস অবশ্যই শুরুর মাসের সমান বা পরবর্তী হতে হবে।' };
+    }
+    const [ey, em] = endMonth.split('-').map(Number);
+    const lastDay = new Date(ey, em, 0).getDate();
+    return {
+      startDate: `${startMonth}-01`,
+      endDate: `${endMonth}-${String(lastDay).padStart(2, '0')}`,
+      labelBn: `${startMonth} হতে ${endMonth} (মাসভিত্তিক)`,
+      mode
+    };
+  }
+
+  if (mode === 'YEAR_RANGE') {
+    const startYear = query.startYear;
+    const endYear = query.endYear || startYear;
+    if (!startYear || !/^\d{4}$/.test(startYear)) {
+      throw { code: 'INVALID_DATE_FORMAT', message: 'শুরুর বছর ফরম্যাট অবশ্যই YYYY হতে হবে।' };
+    }
+    if (!endYear || !/^\d{4}$/.test(endYear)) {
+      throw { code: 'INVALID_DATE_FORMAT', message: 'সমাপ্তির বছর ফরম্যাট অবশ্যই YYYY হতে হবে।' };
+    }
+    if (endYear < startYear) {
+      throw { code: 'INVALID_DATE_RANGE', message: 'সমাপ্তির বছর অবশ্যই শুরুর বছরের সমান বা পরবর্তী হতে হবে।' };
+    }
+    return {
+      startDate: `${startYear}-01-01`,
+      endDate: `${endYear}-12-31`,
+      labelBn: `${startYear} হতে ${endYear} (বছরভিত্তিক)`,
+      mode
+    };
+  }
+
+  // Standard DATE_RANGE
+  const sDate = query.startDate || `${currentMonthStr}-01`;
+  const eDate = query.endDate || todayStr;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(sDate)) {
+    throw { code: 'INVALID_DATE_FORMAT', message: 'শুরুর তারিখ ফরম্যাট অবশ্যই YYYY-MM-DD হতে হবে।' };
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(eDate)) {
+    throw { code: 'INVALID_DATE_FORMAT', message: 'সমাপ্তির তারিখ ফরম্যাট অবশ্যই YYYY-MM-DD হতে হবে।' };
+  }
+  if (eDate < sDate) {
+    throw { code: 'INVALID_DATE_RANGE', message: 'সমাপ্তির তারিখ অবশ্যই শুরুর তারিখের সমান বা পরবর্তী হতে হবে।' };
+  }
+  return {
+    startDate: sDate,
+    endDate: eDate,
+    labelBn: `${sDate} হতে ${eDate}`,
+    mode: 'DATE_RANGE'
+  };
+};
+
+// 1. CANONICAL HIFZ REPORT ENGINE (Supports Sub Report Center & Central Report Center)
+app.get('/api/v1/hifz/h5/reports', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const reportType = (req.query.reportType as string) || 'ATTENDANCE';
+
+  let periodInfo: any;
+  try {
+    periodInfo = resolveHifzReportDates(req.query);
+  } catch (err: any) {
+    return res.status(400).json({ success: false, error: err });
+  }
+
+  const { startDate, endDate, labelBn, mode } = periodInfo;
+
+  const userPerms = req.user?.permissions || [];
+  const isAdmin = req.user?.role === 'SUPER_ADMIN' || req.user?.role === 'MOSQUE_ADMIN';
+  const hasAttPerm = isAdmin || userPerms.includes('VIEW_HIFZ_ATTENDANCE');
+  const hasUstadPerm = isAdmin || userPerms.includes('VIEW_HIFZ_USTAD_ASSIGNMENT');
+
+  // Verify RBAC based on requested report type
+  const isUstadOnlyReport = reportType === 'USTAD_WISE' || reportType === 'ASSIGNMENT';
+  if (isUstadOnlyReport && !hasUstadPerm) {
+    return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'উস্তাদ দায়িত্ব রিপোর্ট দেখার অনুমতি নেই।' } });
+  }
+  if (!isUstadOnlyReport && !hasAttPerm) {
+    return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'হিফজ হাজিরা রিপোর্ট দেখার অনুমতি নেই।' } });
+  }
+
+  // 1. ATTENDANCE & REGISTER REPORTS
+  if (reportType === 'ATTENDANCE' || reportType === 'REGISTER') {
+    let records = db.hifzAttendances.filter(a => a.mosqueId === mosqueId && a.date >= startDate && a.date <= endDate);
+
+    const { studentId, attendanceStatus } = req.query;
+    if (studentId) {
+      records = records.filter(a => a.studentId === studentId || a.studentProfileId === studentId || a.enrollmentId === studentId);
+    }
+    if (attendanceStatus) {
+      records = records.filter(a => a.status === attendanceStatus);
+    }
+
+    const presentCount = records.filter(a => a.status === 'PRESENT').length;
+    const absentCount = records.filter(a => a.status === 'ABSENT').length;
+    const lateCount = records.filter(a => a.status === 'LATE').length;
+    const leaveCount = records.filter(a => a.status === 'LEAVE').length;
+    const excusedCount = records.filter(a => a.status === 'EXCUSED').length;
+    const totalRecords = records.length;
+    const attendanceRate = totalRecords > 0 ? Math.round(((presentCount + lateCount) / totalRecords) * 1000) / 10 : 0;
+
+    const enrichedRecords = records.map(a => {
+      let studentName = a.studentName;
+      if (!studentName) {
+        const profile = db.educationStudentProfiles.find(s => s.id === a.studentProfileId || s.studentId === a.studentId);
+        studentName = profile?.personName || 'শিক্ষার্থী';
+      }
+      return { ...a, studentName };
+    }).sort((a, b) => b.date.localeCompare(a.date));
+
+    return res.json({
+      success: true,
+      data: {
+        mosqueId,
+        reportType,
+        period: { mode, startDate, endDate, labelBn },
+        summary: {
+          totalRecords,
+          presentCount,
+          absentCount,
+          lateCount,
+          leaveCount,
+          excusedCount,
+          attendanceRate,
+          totalStudents: new Set(records.map(a => a.studentProfileId || a.studentId)).size,
+        },
+        records: enrichedRecords,
+      }
+    });
+  }
+
+  // 2. STUDENT-WISE REPORT
+  if (reportType === 'STUDENT_WISE') {
+    const studentQueryId = (req.query.studentId as string);
+    let enrollment = db.hifzEnrollments.find(e =>
+      e.mosqueId === mosqueId &&
+      (e.id === studentQueryId || e.enrollmentId === studentQueryId || e.studentId === studentQueryId || e.studentProfileId === studentQueryId)
+    );
+
+    // If no specific student provided, default to first available enrollment
+    if (!enrollment && !studentQueryId) {
+      enrollment = db.hifzEnrollments.find(e => e.mosqueId === mosqueId);
+    }
+
+    if (!enrollment) {
+      return res.status(404).json({ success: false, error: { code: 'STUDENT_NOT_FOUND', message: 'শিক্ষার্থী পাওয়া যায়নি।' } });
+    }
+
+    const studentProfile = db.educationStudentProfiles.find(s => s.id === enrollment!.studentProfileId && s.mosqueId === mosqueId);
+    const resolvedStudentName = studentProfile?.personName || enrollment.studentName || 'শিক্ষার্থী';
+    const resolvedStudentId = enrollment.studentId || studentProfile?.studentId || '';
+
+    const records = db.hifzAttendances
+      .filter(a => a.mosqueId === mosqueId && (a.enrollmentId === enrollment!.id || a.studentId === resolvedStudentId || a.studentProfileId === enrollment!.studentProfileId) && a.date >= startDate && a.date <= endDate)
+      .sort((a, b) => b.date.localeCompare(a.date));
+
+    const presentCount = records.filter(a => a.status === 'PRESENT').length;
+    const absentCount = records.filter(a => a.status === 'ABSENT').length;
+    const lateCount = records.filter(a => a.status === 'LATE').length;
+    const leaveCount = records.filter(a => a.status === 'LEAVE').length;
+    const excusedCount = records.filter(a => a.status === 'EXCUSED').length;
+    const totalRecords = records.length;
+    const attendanceRate = totalRecords > 0 ? Math.round(((presentCount + lateCount) / totalRecords) * 1000) / 10 : 0;
+
+    const studentAssignments = db.hifzTeacherAssignments
+      .filter(a => a.mosqueId === mosqueId && (a.enrollmentId === enrollment!.id || a.studentId === resolvedStudentId || a.studentProfileId === enrollment!.studentProfileId))
+      .map(a => {
+        let ustadName = a.ustadName;
+        if (!ustadName) {
+          const staff = db.staffList.find(s => s.id === a.ustadStaffId);
+          ustadName = staff?.name || 'উস্তাদ';
+        }
+        return { ...a, ustadName, studentName: resolvedStudentName };
+      });
+
+    return res.json({
+      success: true,
+      data: {
+        mosqueId,
+        reportType,
+        period: { mode, startDate, endDate, labelBn },
+        studentInfo: {
+          id: enrollment.id,
+          studentId: resolvedStudentId,
+          studentName: resolvedStudentName,
+          enrollmentId: enrollment.enrollmentId,
+          status: enrollment.status,
+          admissionDate: enrollment.admissionDate,
+          studyType: enrollment.studyType,
+        },
+        summary: {
+          totalRecords,
+          presentCount,
+          absentCount,
+          lateCount,
+          leaveCount,
+          excusedCount,
+          attendanceRate,
+          activeAssignments: studentAssignments.filter(a => a.status === 'ACTIVE').length,
+        },
+        records,
+        assignments: studentAssignments,
+      }
+    });
+  }
+
+  // 3. USTAD-WISE REPORT
+  if (reportType === 'USTAD_WISE') {
+    const staffQueryId = (req.query.ustadStaffId as string);
+    let staff = db.staffList.find(s => s.mosqueId === mosqueId && (s.id === staffQueryId || s.staffCode === staffQueryId));
+
+    if (!staff && !staffQueryId) {
+      staff = db.staffList.find(s => s.mosqueId === mosqueId);
+    }
+
+    if (!staff) {
+      return res.status(404).json({ success: false, error: { code: 'STAFF_NOT_FOUND', message: 'উস্তাদ রেকর্ড পাওয়া যায়নি।' } });
+    }
+
+    const assignments = db.hifzTeacherAssignments
+      .filter(a => a.mosqueId === mosqueId && a.ustadStaffId === staff!.id)
+      .map(a => {
+        let studentName = a.studentName;
+        if (!studentName) {
+          const stu = db.educationStudentProfiles.find(s => s.id === a.studentProfileId || s.studentId === a.studentId);
+          studentName = stu?.personName || 'শিক্ষার্থী';
+        }
+        return { ...a, studentName, ustadName: staff!.name };
+      })
+      .sort((a, b) => b.startDate.localeCompare(a.startDate));
+
+    const activeAssignments = assignments.filter(a => a.status === 'ACTIVE');
+    const historicalAssignments = assignments.filter(a => a.status === 'ENDED' || a.status === 'CANCELLED');
+
+    return res.json({
+      success: true,
+      data: {
+        mosqueId,
+        reportType,
+        period: { mode, startDate, endDate, labelBn },
+        ustadInfo: {
+          staffId: staff.id,
+          name: staff.name,
+          staffCode: staff.staffCode,
+          designation: staff.designation,
+          designationBn: staff.designationBn,
+          phone: staff.phone,
+          status: staff.status,
+        },
+        summary: {
+          totalRecords: assignments.length,
+          presentCount: 0,
+          absentCount: 0,
+          lateCount: 0,
+          leaveCount: 0,
+          excusedCount: 0,
+          attendanceRate: 0,
+          activeAssignments: activeAssignments.length,
+          endedAssignments: assignments.filter(a => a.status === 'ENDED').length,
+          cancelledAssignments: assignments.filter(a => a.status === 'CANCELLED').length,
+          totalStudents: new Set(activeAssignments.map(a => a.studentProfileId || a.enrollmentId)).size,
+        },
+        activeAssignments,
+        historicalAssignments,
+        records: assignments,
+      }
+    });
+  }
+
+  // 4. USTAD ASSIGNMENT REPORT
+  if (reportType === 'ASSIGNMENT') {
+    let list = db.hifzTeacherAssignments.filter(a => a.mosqueId === mosqueId);
+
+    const { assignmentType, assignmentStatus, ustadStaffId, studentId } = req.query;
+    if (assignmentType) {
+      list = list.filter(a => a.assignmentType === assignmentType);
+    }
+    if (assignmentStatus) {
+      list = list.filter(a => a.status === assignmentStatus);
+    }
+    if (ustadStaffId) {
+      list = list.filter(a => a.ustadStaffId === ustadStaffId);
+    }
+    if (studentId) {
+      list = list.filter(a => a.studentId === studentId || a.studentProfileId === studentId || a.enrollmentId === studentId);
+    }
+
+    const enriched = list.map(a => {
+      let studentName = a.studentName;
+      if (!studentName) {
+        const stu = db.educationStudentProfiles.find(s => s.id === a.studentProfileId || s.studentId === a.studentId);
+        studentName = stu?.personName || 'শিক্ষার্থী';
+      }
+      let ustadName = a.ustadName;
+      if (!ustadName) {
+        const stf = db.staffList.find(s => s.id === a.ustadStaffId);
+        ustadName = stf?.name || 'উস্তাদ';
+      }
+      return { ...a, studentName, ustadName };
+    }).sort((a, b) => b.startDate.localeCompare(a.startDate));
+
+    return res.json({
+      success: true,
+      data: {
+        mosqueId,
+        reportType,
+        period: { mode, startDate, endDate, labelBn },
+        summary: {
+          totalRecords: enriched.length,
+          presentCount: 0,
+          absentCount: 0,
+          lateCount: 0,
+          leaveCount: 0,
+          excusedCount: 0,
+          attendanceRate: 0,
+          activeAssignments: enriched.filter(a => a.status === 'ACTIVE').length,
+          endedAssignments: enriched.filter(a => a.status === 'ENDED').length,
+          cancelledAssignments: enriched.filter(a => a.status === 'CANCELLED').length,
+          totalStudents: new Set(enriched.map(a => a.studentProfileId || a.enrollmentId)).size,
+          totalUstads: new Set(enriched.map(a => a.ustadStaffId)).size,
+        },
+        records: enriched,
+      }
+    });
+  }
+
+  // 5. DAILY, MONTHLY & YEARLY SUMMARIES
+  if (reportType === 'DAILY_SUMMARY' || reportType === 'MONTHLY_SUMMARY' || reportType === 'YEARLY_SUMMARY') {
+    let records = db.hifzAttendances.filter(a => a.mosqueId === mosqueId && a.date >= startDate && a.date <= endDate);
+
+    const { studentId } = req.query;
+    if (studentId) {
+      records = records.filter(a => a.studentId === studentId || a.studentProfileId === studentId || a.enrollmentId === studentId);
+    }
+
+    const groupMap = new Map<string, { total: number; present: number; absent: number; late: number; leave: number; excused: number }>();
+
+    records.forEach(a => {
+      let key = a.date; // daily
+      if (reportType === 'MONTHLY_SUMMARY') {
+        key = a.date.substring(0, 7); // YYYY-MM
+      } else if (reportType === 'YEARLY_SUMMARY') {
+        key = a.date.substring(0, 4); // YYYY
+      }
+
+      const curr = groupMap.get(key) || { total: 0, present: 0, absent: 0, late: 0, leave: 0, excused: 0 };
+      curr.total++;
+      if (a.status === 'PRESENT') curr.present++;
+      else if (a.status === 'ABSENT') curr.absent++;
+      else if (a.status === 'LATE') curr.late++;
+      else if (a.status === 'LEAVE') curr.leave++;
+      else if (a.status === 'EXCUSED') curr.excused++;
+      groupMap.set(key, curr);
+    });
+
+    const groups = Array.from(groupMap.entries())
+      .map(([periodKey, c]) => ({
+        periodKey,
+        totalRecords: c.total,
+        presentCount: c.present,
+        absentCount: c.absent,
+        lateCount: c.late,
+        leaveCount: c.leave,
+        excusedCount: c.excused,
+        attendanceRate: c.total > 0 ? Math.round(((c.present + c.late) / c.total) * 1000) / 10 : 0
+      }))
+      .sort((a, b) => b.periodKey.localeCompare(a.periodKey));
+
+    const totalRecords = records.length;
+    const presentCount = records.filter(a => a.status === 'PRESENT').length;
+    const absentCount = records.filter(a => a.status === 'ABSENT').length;
+    const lateCount = records.filter(a => a.status === 'LATE').length;
+    const leaveCount = records.filter(a => a.status === 'LEAVE').length;
+    const excusedCount = records.filter(a => a.status === 'EXCUSED').length;
+    const attendanceRate = totalRecords > 0 ? Math.round(((presentCount + lateCount) / totalRecords) * 1000) / 10 : 0;
+
+    return res.json({
+      success: true,
+      data: {
+        mosqueId,
+        reportType,
+        period: { mode, startDate, endDate, labelBn },
+        summary: {
+          totalRecords,
+          presentCount,
+          absentCount,
+          lateCount,
+          leaveCount,
+          excusedCount,
+          attendanceRate,
+          totalStudents: new Set(records.map(a => a.studentProfileId || a.studentId)).size,
+        },
+        groupedData: groups,
+        records,
+      }
+    });
+  }
+
+  // Fallback for unexpected report type
+  res.status(400).json({ success: false, error: { code: 'INVALID_REPORT_TYPE', message: 'অবৈধ রিপোর্ট টাইপ।' } });
+});
+
+// ==========================================
+// HIFZ H6-A — RESIDENTIAL FOUNDATION ROUTES
+// ==========================================
+
+// 1. RESIDENCES (HOSTELS / FACILITIES)
+app.get('/api/v1/hifz/h6/residences', authenticate, requirePermission('VIEW_HIFZ_RESIDENTIAL'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { status } = req.query;
+  let list = db.hifzResidences.filter(r => r.mosqueId === mosqueId);
+  if (status) {
+    list = list.filter(r => r.status === status);
+  }
+  res.json({ success: true, data: list });
+});
+
+app.get('/api/v1/hifz/h6/residences/:id', authenticate, requirePermission('VIEW_HIFZ_RESIDENTIAL'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { id } = req.params;
+  const item = db.hifzResidences.find(r => r.mosqueId === mosqueId && (r.id === id || r.residenceId === id));
+  if (!item) {
+    return res.status(404).json({ success: false, error: { code: 'RESIDENCE_NOT_FOUND', message: 'আবাসিক কেন্দ্র পাওয়া যায়নি।' } });
+  }
+  res.json({ success: true, data: item });
+});
+
+app.post('/api/v1/hifz/h6/residences', authenticate, requirePermission('CREATE_HIFZ_RESIDENTIAL'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { name, nameBn, type, address, remarks, status } = req.body;
+
+  if (!name || !name.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'আবাসিক কেন্দ্রের নাম আবশ্যক।' } });
+  }
+
+  // Duplicate check within mosque
+  const duplicate = db.hifzResidences.find(r =>
+    r.mosqueId === mosqueId &&
+    r.status !== 'ARCHIVED' &&
+    (r.name.trim().toLowerCase() === name.trim().toLowerCase() ||
+     (nameBn && r.nameBn && r.nameBn.trim() === nameBn.trim()))
+  );
+  if (duplicate) {
+    return res.status(409).json({ success: false, error: { code: 'DUPLICATE_RESIDENCE', message: 'একই নামের আবাসিক কেন্দ্র ইতোমধ্যে বিদ্যমান।' } });
+  }
+
+  const residenceId = db.generateNextHifzResidenceId(mosqueId);
+  const now = new Date().toISOString();
+  const newResidence: HifzResidence = {
+    id: `res-${mosqueId}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    residenceId,
+    mosqueId,
+    name: name.trim(),
+    nameBn: nameBn?.trim() || name.trim(),
+    type: type || 'HOSTEL',
+    address: address?.trim() || '',
+    status: (status as HifzResidentialStatus) || 'ACTIVE',
+    remarks: remarks?.trim() || '',
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  db.hifzResidences.push(newResidence);
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'HIFZ_RESIDENTIAL',
+    `নতুন আবাসিক কেন্দ্র তৈরি করা হয়েছে: ${newResidence.name} (#${newResidence.residenceId})`,
+    newResidence.id
+  );
+  db.save();
+
+  res.status(201).json({
+    success: true,
+    data: newResidence,
+    message: `আবাসিক কেন্দ্র সফলভাবে তৈরি হয়েছে (#${newResidence.residenceId})।`
+  });
+});
+
+const updateResidenceHandler = (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { id } = req.params;
+  const item = db.hifzResidences.find(r => r.mosqueId === mosqueId && (r.id === id || r.residenceId === id));
+  if (!item) {
+    return res.status(404).json({ success: false, error: { code: 'RESIDENCE_NOT_FOUND', message: 'আবাসিক কেন্দ্র পাওয়া যায়নি।' } });
+  }
+
+  const { name, nameBn, type, address, remarks, status } = req.body;
+  if (name && name.trim().toLowerCase() !== item.name.toLowerCase()) {
+    const duplicate = db.hifzResidences.find(r =>
+      r.id !== item.id &&
+      r.mosqueId === mosqueId &&
+      r.status !== 'ARCHIVED' &&
+      r.name.trim().toLowerCase() === name.trim().toLowerCase()
+    );
+    if (duplicate) {
+      return res.status(409).json({ success: false, error: { code: 'DUPLICATE_RESIDENCE', message: 'একই নামের আবাসিক কেন্দ্র ইতোমধ্যে বিদ্যমান।' } });
+    }
+    item.name = name.trim();
+  }
+
+  if (nameBn !== undefined) item.nameBn = nameBn.trim();
+  if (type !== undefined) item.type = type;
+  if (address !== undefined) item.address = address.trim();
+  if (remarks !== undefined) item.remarks = remarks.trim();
+  if (status !== undefined) {
+    if (status !== 'ACTIVE' && status !== 'INACTIVE' && status !== 'ARCHIVED') {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_STATUS', message: 'অবৈধ স্ট্যাটাস।' } });
+    }
+    item.status = status;
+  }
+
+  item.updatedAt = new Date().toISOString();
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'HIFZ_RESIDENTIAL',
+    `আবাসিক কেন্দ্র হালনাগাদ করা হয়েছে: ${item.name} (#${item.residenceId})`,
+    item.id
+  );
+  db.save();
+
+  res.json({
+    success: true,
+    data: item,
+    message: `আবাসিক কেন্দ্র সফলভাবে হালনাগাদ করা হয়েছে (#${item.residenceId})।`
+  });
+};
+
+app.put('/api/v1/hifz/h6/residences/:id', authenticate, requirePermission('EDIT_HIFZ_RESIDENTIAL'), updateResidenceHandler);
+app.patch('/api/v1/hifz/h6/residences/:id', authenticate, requirePermission('EDIT_HIFZ_RESIDENTIAL'), updateResidenceHandler);
+
+// 2. BUILDINGS / BLOCKS
+app.get('/api/v1/hifz/h6/buildings', authenticate, requirePermission('VIEW_HIFZ_RESIDENTIAL'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { residenceId, status } = req.query;
+  let list = db.hifzResidenceBuildings.filter(b => b.mosqueId === mosqueId);
+  if (residenceId) {
+    list = list.filter(b => b.residenceId === residenceId);
+  }
+  if (status) {
+    list = list.filter(b => b.status === status);
+  }
+  res.json({ success: true, data: list });
+});
+
+app.get('/api/v1/hifz/h6/buildings/:id', authenticate, requirePermission('VIEW_HIFZ_RESIDENTIAL'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { id } = req.params;
+  const item = db.hifzResidenceBuildings.find(b => b.mosqueId === mosqueId && (b.id === id || b.buildingId === id));
+  if (!item) {
+    return res.status(404).json({ success: false, error: { code: 'BUILDING_NOT_FOUND', message: 'ভবন/ব্লক পাওয়া যায়নি।' } });
+  }
+  res.json({ success: true, data: item });
+});
+
+app.post('/api/v1/hifz/h6/buildings', authenticate, requirePermission('CREATE_HIFZ_RESIDENTIAL'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { residenceId, name, nameBn, code, floorCount, remarks, status } = req.body;
+
+  if (!residenceId || !residenceId.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'আবাসিক কেন্দ্র নির্বাচন আবশ্যক।' } });
+  }
+  if (!name || !name.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'ভবনের নাম আবশ্যক।' } });
+  }
+  if (!code || !code.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'ভবন কোড আবশ্যক।' } });
+  }
+
+  const parsedFloorCount = floorCount !== undefined ? parseInt(String(floorCount), 10) : 1;
+  if (isNaN(parsedFloorCount) || parsedFloorCount < 0) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'ফ্লোর সংখ্যা অঋণাত্মক পূর্ণসংখ্যা হতে হবে।' } });
+  }
+
+  // Hierarchy validation: Residence must belong to this mosque
+  const parentResidence = db.hifzResidences.find(r => r.mosqueId === mosqueId && (r.id === residenceId || r.residenceId === residenceId));
+  if (!parentResidence) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_HIERARCHY', message: 'নির্বাচিত আবাসিক কেন্দ্র অবৈধ বা অন্য মসজিদের অন্তর্গত।' } });
+  }
+
+  // Duplicate check within same residence and mosque
+  const duplicate = db.hifzResidenceBuildings.find(b =>
+    b.mosqueId === mosqueId &&
+    b.residenceId === parentResidence.id &&
+    b.status !== 'ARCHIVED' &&
+    b.code.trim().toLowerCase() === code.trim().toLowerCase()
+  );
+  if (duplicate) {
+    return res.status(409).json({ success: false, error: { code: 'DUPLICATE_BUILDING', message: 'একই কোডের ভবন ইতোমধ্যে বিদ্যমান।' } });
+  }
+
+  const buildingId = db.generateNextHifzResidenceBuildingId(mosqueId);
+  const now = new Date().toISOString();
+  const newBuilding: HifzResidenceBuilding = {
+    id: `bld-${mosqueId}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    buildingId,
+    mosqueId,
+    residenceId: parentResidence.id,
+    name: name.trim(),
+    nameBn: nameBn?.trim() || name.trim(),
+    code: code.trim().toUpperCase(),
+    floorCount: parsedFloorCount,
+    status: (status as HifzResidentialStatus) || 'ACTIVE',
+    remarks: remarks?.trim() || '',
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  db.hifzResidenceBuildings.push(newBuilding);
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'HIFZ_RESIDENTIAL',
+    `নতুন ভবন/ব্লক তৈরি করা হয়েছে: ${newBuilding.name} (${newBuilding.code}, #${newBuilding.buildingId})`,
+    newBuilding.id
+  );
+  db.save();
+
+  res.status(201).json({
+    success: true,
+    data: newBuilding,
+    message: `ভবন সফলভাবে তৈরি হয়েছে (#${newBuilding.buildingId})।`
+  });
+});
+
+const updateBuildingHandler = (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { id } = req.params;
+  const item = db.hifzResidenceBuildings.find(b => b.mosqueId === mosqueId && (b.id === id || b.buildingId === id));
+  if (!item) {
+    return res.status(404).json({ success: false, error: { code: 'BUILDING_NOT_FOUND', message: 'ভবন/ব্লক পাওয়া যায়নি।' } });
+  }
+
+  const { name, nameBn, code, floorCount, remarks, status } = req.body;
+  if (code && code.trim().toUpperCase() !== item.code) {
+    const duplicate = db.hifzResidenceBuildings.find(b =>
+      b.id !== item.id &&
+      b.mosqueId === mosqueId &&
+      b.residenceId === item.residenceId &&
+      b.status !== 'ARCHIVED' &&
+      b.code.trim().toLowerCase() === code.trim().toLowerCase()
+    );
+    if (duplicate) {
+      return res.status(409).json({ success: false, error: { code: 'DUPLICATE_BUILDING', message: 'একই কোডের ভবন ইতোমধ্যে বিদ্যমান।' } });
+    }
+    item.code = code.trim().toUpperCase();
+  }
+
+  if (floorCount !== undefined) {
+    const parsedFloor = parseInt(String(floorCount), 10);
+    if (isNaN(parsedFloor) || parsedFloor < 0) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'ফ্লোর সংখ্যা অঋণাত্মক পূর্ণসংখ্যা হতে হবে।' } });
+    }
+    item.floorCount = parsedFloor;
+  }
+
+  if (name !== undefined) item.name = name.trim();
+  if (nameBn !== undefined) item.nameBn = nameBn.trim();
+  if (remarks !== undefined) item.remarks = remarks.trim();
+  if (status !== undefined) {
+    if (status !== 'ACTIVE' && status !== 'INACTIVE' && status !== 'ARCHIVED') {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_STATUS', message: 'অবৈধ স্ট্যাটাস।' } });
+    }
+    item.status = status;
+  }
+
+  item.updatedAt = new Date().toISOString();
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'HIFZ_RESIDENTIAL',
+    `ভবন/ব্লক হালনাগাদ করা হয়েছে: ${item.name} (#${item.buildingId})`,
+    item.id
+  );
+  db.save();
+
+  res.json({
+    success: true,
+    data: item,
+    message: `ভবন সফলভাবে হালনাগাদ করা হয়েছে (#${item.buildingId})।`
+  });
+};
+
+app.put('/api/v1/hifz/h6/buildings/:id', authenticate, requirePermission('EDIT_HIFZ_RESIDENTIAL'), updateBuildingHandler);
+app.patch('/api/v1/hifz/h6/buildings/:id', authenticate, requirePermission('EDIT_HIFZ_RESIDENTIAL'), updateBuildingHandler);
+
+// 3. ROOMS
+app.get('/api/v1/hifz/h6/rooms', authenticate, requirePermission('VIEW_HIFZ_RESIDENTIAL'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { residenceId, buildingId, status } = req.query;
+  let list = db.hifzResidenceRooms.filter(r => r.mosqueId === mosqueId);
+  if (residenceId) {
+    list = list.filter(r => r.residenceId === residenceId);
+  }
+  if (buildingId) {
+    list = list.filter(r => r.buildingId === buildingId);
+  }
+  if (status) {
+    list = list.filter(r => r.status === status);
+  }
+  res.json({ success: true, data: list });
+});
+
+app.get('/api/v1/hifz/h6/rooms/:id', authenticate, requirePermission('VIEW_HIFZ_RESIDENTIAL'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { id } = req.params;
+  const item = db.hifzResidenceRooms.find(r => r.mosqueId === mosqueId && (r.id === id || r.roomId === id));
+  if (!item) {
+    return res.status(404).json({ success: false, error: { code: 'ROOM_NOT_FOUND', message: 'কক্ষ পাওয়া যায়নি।' } });
+  }
+  res.json({ success: true, data: item });
+});
+
+app.post('/api/v1/hifz/h6/rooms', authenticate, requirePermission('CREATE_HIFZ_RESIDENTIAL'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { buildingId, roomNumber, name, floorNumber, capacity, remarks, status } = req.body;
+
+  if (!buildingId || !buildingId.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'ভবন নির্বাচন আবশ্যক।' } });
+  }
+  if (!roomNumber || !roomNumber.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'কক্ষ নম্বর আবশ্যক।' } });
+  }
+
+  const parsedCapacity = parseInt(String(capacity), 10);
+  if (isNaN(parsedCapacity) || parsedCapacity < 1) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'ধারণক্ষমতা অন্তত ১ বা তার বেশি পূর্ণসংখ্যা হতে হবে।' } });
+  }
+
+  const parsedFloor = floorNumber !== undefined ? parseInt(String(floorNumber), 10) : 0;
+
+  // Hierarchy check: Building must exist and belong to mosque
+  const parentBuilding = db.hifzResidenceBuildings.find(b => b.mosqueId === mosqueId && (b.id === buildingId || b.buildingId === buildingId));
+  if (!parentBuilding) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_HIERARCHY', message: 'নির্বাচিত ভবন অবৈধ বা অন্য মসজিদের অন্তর্গত।' } });
+  }
+
+  // Duplicate check within building and mosque
+  const duplicate = db.hifzResidenceRooms.find(r =>
+    r.mosqueId === mosqueId &&
+    r.buildingId === parentBuilding.id &&
+    r.status !== 'ARCHIVED' &&
+    r.roomNumber.trim().toLowerCase() === roomNumber.trim().toLowerCase()
+  );
+  if (duplicate) {
+    return res.status(409).json({ success: false, error: { code: 'DUPLICATE_ROOM', message: 'একই ভবনে এই কক্ষ নম্বর ইতোমধ্যে বিদ্যমান।' } });
+  }
+
+  const roomId = db.generateNextHifzResidenceRoomId(mosqueId);
+  const now = new Date().toISOString();
+  const newRoom: HifzResidenceRoom = {
+    id: `rom-${mosqueId}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    roomId,
+    mosqueId,
+    residenceId: parentBuilding.residenceId,
+    buildingId: parentBuilding.id,
+    roomNumber: roomNumber.trim(),
+    name: name?.trim() || `কক্ষ ${roomNumber.trim()}`,
+    floorNumber: isNaN(parsedFloor) ? 0 : parsedFloor,
+    capacity: parsedCapacity,
+    status: (status as HifzResidentialStatus) || 'ACTIVE',
+    remarks: remarks?.trim() || '',
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  db.hifzResidenceRooms.push(newRoom);
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'HIFZ_RESIDENTIAL',
+    `নতুন কক্ষ তৈরি করা হয়েছে: ${newRoom.roomNumber} (${parentBuilding.name}, #${newRoom.roomId})`,
+    newRoom.id
+  );
+  db.save();
+
+  res.status(201).json({
+    success: true,
+    data: newRoom,
+    message: `কক্ষ সফলভাবে তৈরি হয়েছে (#${newRoom.roomId})।`
+  });
+});
+
+const updateRoomHandler = (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { id } = req.params;
+  const item = db.hifzResidenceRooms.find(r => r.mosqueId === mosqueId && (r.id === id || r.roomId === id));
+  if (!item) {
+    return res.status(404).json({ success: false, error: { code: 'ROOM_NOT_FOUND', message: 'কক্ষ পাওয়া যায়নি।' } });
+  }
+
+  const { roomNumber, name, floorNumber, capacity, remarks, status } = req.body;
+  if (roomNumber && roomNumber.trim().toLowerCase() !== item.roomNumber.toLowerCase()) {
+    const duplicate = db.hifzResidenceRooms.find(r =>
+      r.id !== item.id &&
+      r.mosqueId === mosqueId &&
+      r.buildingId === item.buildingId &&
+      r.status !== 'ARCHIVED' &&
+      r.roomNumber.trim().toLowerCase() === roomNumber.trim().toLowerCase()
+    );
+    if (duplicate) {
+      return res.status(409).json({ success: false, error: { code: 'DUPLICATE_ROOM', message: 'একই ভবনে এই কক্ষ নম্বর ইতোমধ্যে বিদ্যমান।' } });
+    }
+    item.roomNumber = roomNumber.trim();
+  }
+
+  if (capacity !== undefined) {
+    const parsedCap = parseInt(String(capacity), 10);
+    if (isNaN(parsedCap) || parsedCap < 1) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'ধারণক্ষমতা অন্তত ১ বা তার বেশি পূর্ণসংখ্যা হতে হবে।' } });
+    }
+    item.capacity = parsedCap;
+  }
+
+  if (floorNumber !== undefined) {
+    const parsedFloor = parseInt(String(floorNumber), 10);
+    item.floorNumber = isNaN(parsedFloor) ? 0 : parsedFloor;
+  }
+
+  if (name !== undefined) item.name = name.trim();
+  if (remarks !== undefined) item.remarks = remarks.trim();
+  if (status !== undefined) {
+    if (status !== 'ACTIVE' && status !== 'INACTIVE' && status !== 'ARCHIVED') {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_STATUS', message: 'অবৈধ স্ট্যাটাস।' } });
+    }
+    item.status = status;
+  }
+
+  item.updatedAt = new Date().toISOString();
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'HIFZ_RESIDENTIAL',
+    `কক্ষ হালনাগাদ করা হয়েছে: ${item.roomNumber} (#${item.roomId})`,
+    item.id
+  );
+  db.save();
+
+  res.json({
+    success: true,
+    data: item,
+    message: `কক্ষ সফলভাবে হালনাগাদ করা হয়েছে (#${item.roomId})।`
+  });
+};
+
+app.put('/api/v1/hifz/h6/rooms/:id', authenticate, requirePermission('EDIT_HIFZ_RESIDENTIAL'), updateRoomHandler);
+app.patch('/api/v1/hifz/h6/rooms/:id', authenticate, requirePermission('EDIT_HIFZ_RESIDENTIAL'), updateRoomHandler);
+
+// 4. BEDS
+app.get('/api/v1/hifz/h6/beds', authenticate, requirePermission('VIEW_HIFZ_RESIDENTIAL'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { residenceId, buildingId, roomId, status } = req.query;
+  let list = db.hifzResidenceBeds.filter(b => b.mosqueId === mosqueId);
+  if (residenceId) {
+    list = list.filter(b => b.residenceId === residenceId);
+  }
+  if (buildingId) {
+    list = list.filter(b => b.buildingId === buildingId);
+  }
+  if (roomId) {
+    list = list.filter(b => b.roomId === roomId);
+  }
+  if (status) {
+    list = list.filter(b => b.status === status);
+  }
+  res.json({ success: true, data: list });
+});
+
+app.get('/api/v1/hifz/h6/beds/:id', authenticate, requirePermission('VIEW_HIFZ_RESIDENTIAL'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { id } = req.params;
+  const item = db.hifzResidenceBeds.find(b => b.mosqueId === mosqueId && (b.id === id || b.bedId === id));
+  if (!item) {
+    return res.status(404).json({ success: false, error: { code: 'BED_NOT_FOUND', message: 'বেড পাওয়া যায়নি।' } });
+  }
+  res.json({ success: true, data: item });
+});
+
+app.post('/api/v1/hifz/h6/beds', authenticate, requirePermission('CREATE_HIFZ_RESIDENTIAL'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { roomId, bedNumber, code, remarks, status } = req.body;
+
+  if (!roomId || !roomId.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'কক্ষ নির্বাচন আবশ্যক।' } });
+  }
+  if (!bedNumber || !bedNumber.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'বেড নম্বর আবশ্যক।' } });
+  }
+
+  // Hierarchy check: Room must exist and belong to mosque
+  const parentRoom = db.hifzResidenceRooms.find(r => r.mosqueId === mosqueId && (r.id === roomId || r.roomId === roomId));
+  if (!parentRoom) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_HIERARCHY', message: 'নির্বাচিত কক্ষ অবৈধ বা অন্য মসজিদের অন্তর্গত।' } });
+  }
+
+  const bedCode = code?.trim() || `${parentRoom.roomNumber}-${bedNumber.trim()}`;
+
+  // Duplicate check within room and mosque
+  const duplicate = db.hifzResidenceBeds.find(b =>
+    b.mosqueId === mosqueId &&
+    b.roomId === parentRoom.id &&
+    b.status !== 'ARCHIVED' &&
+    (b.bedNumber.trim().toLowerCase() === bedNumber.trim().toLowerCase() ||
+     b.code.trim().toLowerCase() === bedCode.toLowerCase())
+  );
+  if (duplicate) {
+    return res.status(409).json({ success: false, error: { code: 'DUPLICATE_BED', message: 'একই কক্ষে এই বেড নম্বর বা কোড ইতোমধ্যে বিদ্যমান।' } });
+  }
+
+  const bedId = db.generateNextHifzResidenceBedId(mosqueId);
+  const now = new Date().toISOString();
+  const newBed: HifzResidenceBed = {
+    id: `bed-${mosqueId}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    bedId,
+    mosqueId,
+    residenceId: parentRoom.residenceId,
+    buildingId: parentRoom.buildingId,
+    roomId: parentRoom.id,
+    bedNumber: bedNumber.trim(),
+    code: bedCode,
+    status: (status as HifzResidentialStatus) || 'ACTIVE',
+    remarks: remarks?.trim() || '',
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  db.hifzResidenceBeds.push(newBed);
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'HIFZ_RESIDENTIAL',
+    `নতুন বেড তৈরি করা হয়েছে: ${newBed.bedNumber} (কক্ষ ${parentRoom.roomNumber}, #${newBed.bedId})`,
+    newBed.id
+  );
+  db.save();
+
+  res.status(201).json({
+    success: true,
+    data: newBed,
+    message: `বেড সফলভাবে তৈরি হয়েছে (#${newBed.bedId})।`
+  });
+});
+
+const updateBedHandler = (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { id } = req.params;
+  const item = db.hifzResidenceBeds.find(b => b.mosqueId === mosqueId && (b.id === id || b.bedId === id));
+  if (!item) {
+    return res.status(404).json({ success: false, error: { code: 'BED_NOT_FOUND', message: 'বেড পাওয়া যায়নি।' } });
+  }
+
+  const { bedNumber, code, remarks, status } = req.body;
+  if (bedNumber && bedNumber.trim().toLowerCase() !== item.bedNumber.toLowerCase()) {
+    const duplicate = db.hifzResidenceBeds.find(b =>
+      b.id !== item.id &&
+      b.mosqueId === mosqueId &&
+      b.roomId === item.roomId &&
+      b.status !== 'ARCHIVED' &&
+      b.bedNumber.trim().toLowerCase() === bedNumber.trim().toLowerCase()
+    );
+    if (duplicate) {
+      return res.status(409).json({ success: false, error: { code: 'DUPLICATE_BED', message: 'একই কক্ষে এই বেড নম্বর ইতোমধ্যে বিদ্যমান।' } });
+    }
+    item.bedNumber = bedNumber.trim();
+  }
+
+  if (code && code.trim().toLowerCase() !== item.code.toLowerCase()) {
+    const duplicate = db.hifzResidenceBeds.find(b =>
+      b.id !== item.id &&
+      b.mosqueId === mosqueId &&
+      b.roomId === item.roomId &&
+      b.status !== 'ARCHIVED' &&
+      b.code.trim().toLowerCase() === code.trim().toLowerCase()
+    );
+    if (duplicate) {
+      return res.status(409).json({ success: false, error: { code: 'DUPLICATE_BED', message: 'একই কক্ষে এই বেড কোড ইতোমধ্যে বিদ্যমান।' } });
+    }
+    item.code = code.trim();
+  }
+
+  if (remarks !== undefined) item.remarks = remarks.trim();
+  if (status !== undefined) {
+    if (status !== 'ACTIVE' && status !== 'INACTIVE' && status !== 'ARCHIVED') {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_STATUS', message: 'অবৈধ স্ট্যাটাস।' } });
+    }
+    item.status = status;
+  }
+
+  item.updatedAt = new Date().toISOString();
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'HIFZ_RESIDENTIAL',
+    `বেড হালনাগাদ করা হয়েছে: ${item.bedNumber} (#${item.bedId})`,
+    item.id
+  );
+  db.save();
+
+  res.json({
+    success: true,
+    data: item,
+    message: `বেড সফলভাবে হালনাগাদ করা হয়েছে (#${item.bedId})।`
+  });
+};
+
+app.put('/api/v1/hifz/h6/beds/:id', authenticate, requirePermission('EDIT_HIFZ_RESIDENTIAL'), updateBedHandler);
+app.patch('/api/v1/hifz/h6/beds/:id', authenticate, requirePermission('EDIT_HIFZ_RESIDENTIAL'), updateBedHandler);
 
 // ==========================================
 // HIFZ H2 — QURAN REFERENCE FOUNDATION (READ-ONLY)
