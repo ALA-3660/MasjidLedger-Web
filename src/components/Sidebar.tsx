@@ -69,6 +69,8 @@ export type NavTab =
   | 'documents'
   | 'cemetery'
   | 'notices'
+  | 'knowledgeCenter'
+  | 'library'
   | 'maktab'
   | 'hifz'
   | 'prayerTimes'
@@ -167,21 +169,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ],
     },
     {
-      title: language === 'bn' ? 'শিক্ষা ও দ্বীনিয়াত' : 'Education & Deeniyat',
+      title: language === 'bn' ? 'পাঠাগার ও জ্ঞানকেন্দ্র' : 'Library & Knowledge Center',
       items: [
         {
-          id: 'maktab' as NavTab,
-          label: language === 'bn' ? '🕌 মক্তব শিক্ষা কার্যক্রম' : 'Maktab Subsystem',
-          icon: GraduationCap,
-          badge: language === 'bn' ? '১০টি বিভাগ' : '10 Sections',
-          color: 'text-emerald-700',
-        },
-        {
-          id: 'hifz' as NavTab,
-          label: language === 'bn' ? '📖 হিফজখানা (এইচ-১ ভিত্তি)' : 'Hifz Foundation (H1)',
+          id: 'knowledgeCenter' as NavTab,
+          label: language === 'bn' ? '📚 পাঠাগার ও জ্ঞানকেন্দ্র' : 'Library & Knowledge Center',
           icon: BookOpen,
-          badge: language === 'bn' ? 'ভিত্তি' : 'H1',
-          color: 'text-teal-700',
+          badge: language === 'bn' ? '৩টি বিভাগ' : '3 Modules',
+          color: 'text-emerald-700',
         },
       ],
     },
@@ -319,6 +314,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       'income_register',
                       'income_analytics',
                       'income_reports',
+                    ].includes(activeTab as string);
+                  } else if (item.id === 'knowledgeCenter') {
+                    isActive = [
+                      'knowledgeCenter',
+                      'library',
+                      'maktab',
+                      'hifz',
                     ].includes(activeTab as string);
                   }
 

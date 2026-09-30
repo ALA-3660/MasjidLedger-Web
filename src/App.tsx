@@ -46,6 +46,7 @@ import { AccountHeadsView } from './components/AccountHeadsView';
 import { MusalliDonorManagementView } from './components/MusalliDonorManagementView';
 import { MaktabManagementView } from './components/MaktabManagementView';
 import { HifzFoundationView } from './components/HifzFoundationView';
+import { LibraryKnowledgeCenterView } from './components/LibraryKnowledgeCenterView';
 import { CommitteeView } from './components/CommitteeView';
 import { CommitteeManagementView } from './components/CommitteeManagementView';
 import { CemeteryManagementView } from './components/CemeteryManagementView';
@@ -1284,23 +1285,23 @@ export default function App() {
         />
       )}
 
-      {/* 5.6 Maktab Operational Subsystem View */}
-      {currentTab === 'maktab' && (
-        <MaktabManagementView
+      {/* 5.6 Library & Knowledge Center (📚 পাঠাগার ও জ্ঞানকেন্দ্র — 📚 পাঠাগার, 🕌 মক্তব, 📖 হেফজখানা) */}
+      {(currentTab === 'knowledgeCenter' ||
+        currentTab === 'library' ||
+        currentTab === 'maktab' ||
+        currentTab === 'hifz') && (
+        <LibraryKnowledgeCenterView
           currentMosque={mosque}
           currentUser={currentUser}
           accounts={accounts}
           language={language}
-          onNavigateTab={(tab) => setCurrentTab(tab as NavTab)}
-        />
-      )}
-
-      {/* 5.7 Hifzkhana — H1 Foundation View */}
-      {currentTab === 'hifz' && (
-        <HifzFoundationView
-          currentMosque={mosque}
-          currentUser={currentUser}
-          language={language}
+          initialModule={
+            currentTab === 'maktab'
+              ? 'maktab'
+              : currentTab === 'hifz'
+              ? 'hifz'
+              : 'library'
+          }
           onNavigateTab={(tab) => setCurrentTab(tab as NavTab)}
         />
       )}
