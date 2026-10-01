@@ -114,6 +114,9 @@ import {
   HifzResidenceRoom,
   HifzResidenceBed,
   HifzResidentialStatus,
+  HifzResidentialAllocation,
+  HifzResidentialTransfer,
+  HifzResidentialTransferReason,
 } from '../types';
 import {
   OfficialDocument,
@@ -4169,6 +4172,137 @@ class ApiService {
       body: JSON.stringify(data),
     });
     if (!res.success || !res.data) throw new Error(res.error?.message || 'বেড হালনাগাদ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  // ==========================================
+  // HIFZ H6-B — RESIDENTIAL ALLOCATION METHODS
+  // ==========================================
+
+  async getHifzResidentialAllocations(params?: { residenceId?: string; buildingId?: string; roomId?: string; bedId?: string; status?: string; enrollmentId?: string }): Promise<HifzResidentialAllocation[]> {
+    const query = new URLSearchParams();
+    if (params?.residenceId) query.append('residenceId', params.residenceId);
+    if (params?.buildingId) query.append('buildingId', params.buildingId);
+    if (params?.roomId) query.append('roomId', params.roomId);
+    if (params?.bedId) query.append('bedId', params.bedId);
+    if (params?.status) query.append('status', params.status);
+    if (params?.enrollmentId) query.append('enrollmentId', params.enrollmentId);
+    const qStr = query.toString();
+    const res = await this.request<HifzResidentialAllocation[]>(`/hifz/h6/allocations${qStr ? `?${qStr}` : ''}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'আবাসিক অ্যালোকেশন তালিকা লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getHifzResidentialAllocationById(id: string): Promise<HifzResidentialAllocation> {
+    const res = await this.request<HifzResidentialAllocation>(`/hifz/h6/allocations/${id}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'আবাসিক অ্যালোকেশন লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async createHifzResidentialAllocation(data: Partial<HifzResidentialAllocation>): Promise<HifzResidentialAllocation> {
+    const res = await this.request<HifzResidentialAllocation>('/hifz/h6/allocations', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'আবাসিক অ্যালোকেশন তৈরি করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateHifzResidentialAllocation(id: string, data: Partial<HifzResidentialAllocation>): Promise<HifzResidentialAllocation> {
+    const res = await this.request<HifzResidentialAllocation>(`/hifz/h6/allocations/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'আবাসিক অ্যালোকেশন হালনাগাদ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async checkInHifzResidentialAllocation(id: string): Promise<HifzResidentialAllocation> {
+    const res = await this.request<HifzResidentialAllocation>(`/hifz/h6/allocations/${id}/check-in`, {
+      method: 'POST',
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'আবাসিক চেক-ইন করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async checkOutHifzResidentialAllocation(id: string, checkOutDate?: string): Promise<HifzResidentialAllocation> {
+    const res = await this.request<HifzResidentialAllocation>(`/hifz/h6/allocations/${id}/check-out`, {
+      method: 'POST',
+      body: JSON.stringify({ checkOutDate }),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'আবাসিক চেক-আউট করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async cancelHifzResidentialAllocation(id: string): Promise<HifzResidentialAllocation> {
+    const res = await this.request<HifzResidentialAllocation>(`/hifz/h6/allocations/${id}/cancel`, {
+      method: 'POST',
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'আবাসিক অ্যালোকেশন বাতিল করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  // ==========================================
+  // HIFZ H6-C — RESIDENTIAL TRANSFER & HISTORY
+  // ==========================================
+
+  async createHifzResidentialTransfer(payload: {
+    sourceAllocationId: string;
+    destinationResidenceId: string;
+    destinationBuildingId: string;
+    destinationRoomId: string;
+    destinationBedId: string;
+    transferDate?: string;
+    reason?: HifzResidentialTransferReason;
+    remarks?: string;
+  }): Promise<{ transfer: HifzResidentialTransfer; newAllocation: HifzResidentialAllocation; closedAllocation: HifzResidentialAllocation }> {
+    const res = await this.request<{ transfer: HifzResidentialTransfer; newAllocation: HifzResidentialAllocation; closedAllocation: HifzResidentialAllocation }>('/hifz/h6/transfers', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'আবাসিক স্থানান্তর করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getHifzResidentialTransfers(params?: {
+    enrollmentId?: string;
+    studentProfileId?: string;
+    sourceAllocationId?: string;
+    reason?: string;
+  }): Promise<HifzResidentialTransfer[]> {
+    const query = new URLSearchParams();
+    if (params?.enrollmentId) query.append('enrollmentId', params.enrollmentId);
+    if (params?.studentProfileId) query.append('studentProfileId', params.studentProfileId);
+    if (params?.sourceAllocationId) query.append('sourceAllocationId', params.sourceAllocationId);
+    if (params?.reason) query.append('reason', params.reason);
+
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    const res = await this.request<HifzResidentialTransfer[]>(`/hifz/h6/transfers${qs}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'আবাসিক স্থানান্তর তালিকা লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getHifzResidentialTransfer(id: string): Promise<HifzResidentialTransfer> {
+    const res = await this.request<HifzResidentialTransfer>(`/hifz/h6/transfers/${id}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'আবাসিক স্থানান্তর তথ্য লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getStudentResidentialHistory(studentProfileId: string): Promise<{
+    studentProfile: EducationStudentProfile;
+    enrollments: HifzkhanaEnrollment[];
+    activeAllocation: HifzResidentialAllocation | null;
+    allocations: HifzResidentialAllocation[];
+    transfers: HifzResidentialTransfer[];
+  }> {
+    const res = await this.request<{
+      studentProfile: EducationStudentProfile;
+      enrollments: HifzkhanaEnrollment[];
+      activeAllocation: HifzResidentialAllocation | null;
+      allocations: HifzResidentialAllocation[];
+      transfers: HifzResidentialTransfer[];
+    }>(`/hifz/h6/residential-history/${studentProfileId}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'শিক্ষার্থীর আবাসিক ইতিহাস লোড করতে ব্যর্থ হয়েছে');
     return res.data;
   }
 

@@ -114,7 +114,14 @@ export type Permission =
   | 'EDIT_HIFZ_USTAD_ASSIGNMENT'
   | 'VIEW_HIFZ_RESIDENTIAL'
   | 'CREATE_HIFZ_RESIDENTIAL'
-  | 'EDIT_HIFZ_RESIDENTIAL';
+  | 'EDIT_HIFZ_RESIDENTIAL'
+  | 'VIEW_HIFZ_RESIDENTIAL_ALLOCATION'
+  | 'CREATE_HIFZ_RESIDENTIAL_ALLOCATION'
+  | 'EDIT_HIFZ_RESIDENTIAL_ALLOCATION'
+  | 'CHECKIN_HIFZ_RESIDENTIAL'
+  | 'CHECKOUT_HIFZ_RESIDENTIAL'
+  | 'VIEW_HIFZ_RESIDENTIAL_TRANSFER'
+  | 'CREATE_HIFZ_RESIDENTIAL_TRANSFER';
 
 export interface User {
   id: string;
@@ -4424,6 +4431,82 @@ export interface HifzResidenceBed {
   code: string;
   status: HifzResidentialStatus;
   remarks?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type HifzResidentialAllocationStatus =
+  | 'ALLOCATED'
+  | 'CHECKED_IN'
+  | 'CHECKED_OUT'
+  | 'CANCELLED';
+
+export interface HifzResidentialAllocation {
+  id: string;
+  allocationId: string; // HRA-YYYY-000001
+  mosqueId: string;
+  enrollmentId: string; // References HifzkhanaEnrollment.id
+  studentProfileId?: string;
+  studentId?: string;
+  studentName?: string;
+  residenceId: string;
+  buildingId: string;
+  roomId: string;
+  bedId: string;
+  allocationDate: string; // YYYY-MM-DD
+  plannedCheckInDate?: string;
+  actualCheckInAt?: string;
+  actualCheckOutAt?: string;
+  status: HifzResidentialAllocationStatus;
+  remarks?: string;
+  createdBy?: string;
+  createdByName?: string;
+  updatedBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type HifzResidentialTransferReason =
+  | 'ROOM_CHANGE'
+  | 'BED_CHANGE'
+  | 'BUILDING_CHANGE'
+  | 'RESIDENCE_CHANGE'
+  | 'ADMINISTRATIVE'
+  | 'STUDENT_REQUEST'
+  | 'OTHER';
+
+export interface HifzResidentialTransfer {
+  id: string;
+  transferId: string; // HRT-YYYY-000001
+  mosqueId: string;
+
+  enrollmentId: string;
+  studentProfileId?: string;
+  studentId?: string;
+  studentName?: string;
+
+  sourceAllocationId: string;
+  newAllocationId: string;
+
+  fromResidenceId: string;
+  fromBuildingId: string;
+  fromRoomId: string;
+  fromBedId: string;
+
+  destinationResidenceId: string;
+  destinationBuildingId: string;
+  destinationRoomId: string;
+  destinationBedId: string;
+
+  transferDate: string;
+  reason: HifzResidentialTransferReason;
+  remarks?: string;
+
+  status: 'COMPLETED';
+
+  transferredBy?: string;
+  transferredByName?: string;
+
   createdAt: string;
   updatedAt: string;
 }

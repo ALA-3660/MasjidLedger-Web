@@ -129,6 +129,9 @@ import {
   HifzResidenceRoom,
   HifzResidenceBed,
   HifzResidentialStatus,
+  HifzResidentialAllocation,
+  HifzResidentialTransfer,
+  HifzResidentialTransferReason,
 } from './src/types';
 
 const app = express();
@@ -267,7 +270,10 @@ const ALL_VALID_PERMISSIONS: Set<string> = new Set([
   'VIEW_HIFZ_REVISION', 'CREATE_HIFZ_REVISION', 'EDIT_HIFZ_REVISION', 'RESOLVE_HIFZ_REVISION',
   'VIEW_HIFZ_ATTENDANCE', 'CREATE_HIFZ_ATTENDANCE', 'EDIT_HIFZ_ATTENDANCE',
   'VIEW_HIFZ_USTAD_ASSIGNMENT', 'CREATE_HIFZ_USTAD_ASSIGNMENT', 'EDIT_HIFZ_USTAD_ASSIGNMENT',
-  'VIEW_HIFZ_RESIDENTIAL', 'CREATE_HIFZ_RESIDENTIAL', 'EDIT_HIFZ_RESIDENTIAL'
+  'VIEW_HIFZ_RESIDENTIAL', 'CREATE_HIFZ_RESIDENTIAL', 'EDIT_HIFZ_RESIDENTIAL',
+  'VIEW_HIFZ_RESIDENTIAL_ALLOCATION', 'CREATE_HIFZ_RESIDENTIAL_ALLOCATION', 'EDIT_HIFZ_RESIDENTIAL_ALLOCATION',
+  'CHECKIN_HIFZ_RESIDENTIAL', 'CHECKOUT_HIFZ_RESIDENTIAL',
+  'VIEW_HIFZ_RESIDENTIAL_TRANSFER', 'CREATE_HIFZ_RESIDENTIAL_TRANSFER'
 ]);
 
 const getAuthoritativeRolePermissions = (targetRole: UserRole): Permission[] => {
@@ -284,7 +290,7 @@ const getAuthoritativeRolePermissions = (targetRole: UserRole): Permission[] => 
         'VIEW_LIBRARY', 'VIEW_LIBRARY_REPORT', 'EXPORT_LIBRARY_REPORT',
         'VIEW_EDUCATION', 'VIEW_MAKTAB', 'MANAGE_MAKTAB_FEES', 'VIEW_HIFZ', 'VIEW_HIFZ_SABAK', 'VIEW_HIFZ_SABAKI',
         'VIEW_HIFZ_DAUR', 'VIEW_HIFZ_REVISION', 'VIEW_HIFZ_ATTENDANCE', 'VIEW_HIFZ_USTAD_ASSIGNMENT',
-        'VIEW_HIFZ_RESIDENTIAL'
+        'VIEW_HIFZ_RESIDENTIAL', 'VIEW_HIFZ_RESIDENTIAL_ALLOCATION'
       ] as Permission[];
     case 'COMMITTEE_ADMIN':
       return [
@@ -293,7 +299,7 @@ const getAuthoritativeRolePermissions = (targetRole: UserRole): Permission[] => 
         'VIEW_LIBRARY', 'VIEW_LIBRARY_REPORT',
         'VIEW_EDUCATION', 'VIEW_MAKTAB', 'VIEW_HIFZ', 'VIEW_HIFZ_SABAK', 'VIEW_HIFZ_SABAKI',
         'VIEW_HIFZ_DAUR', 'VIEW_HIFZ_REVISION', 'VIEW_HIFZ_ATTENDANCE', 'VIEW_HIFZ_USTAD_ASSIGNMENT',
-        'VIEW_HIFZ_RESIDENTIAL'
+        'VIEW_HIFZ_RESIDENTIAL', 'VIEW_HIFZ_RESIDENTIAL_ALLOCATION'
       ] as Permission[];
     case 'DATA_ENTRY_OPERATOR':
       return [
@@ -25359,6 +25365,563 @@ const updateBedHandler = (req: AuthRequest, res: Response) => {
 
 app.put('/api/v1/hifz/h6/beds/:id', authenticate, requirePermission('EDIT_HIFZ_RESIDENTIAL'), updateBedHandler);
 app.patch('/api/v1/hifz/h6/beds/:id', authenticate, requirePermission('EDIT_HIFZ_RESIDENTIAL'), updateBedHandler);
+
+// ==========================================
+// HIFZ H6-B — RESIDENTIAL ALLOCATION & CHECK-IN / CHECK-OUT
+// ==========================================
+
+app.get('/api/v1/hifz/h6/allocations', authenticate, requirePermission('VIEW_HIFZ_RESIDENTIAL_ALLOCATION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { residenceId, buildingId, roomId, bedId, status, enrollmentId } = req.query;
+  let list = db.hifzResidentialAllocations.filter(a => a.mosqueId === mosqueId);
+  if (residenceId) list = list.filter(a => a.residenceId === residenceId);
+  if (buildingId) list = list.filter(a => a.buildingId === buildingId);
+  if (roomId) list = list.filter(a => a.roomId === roomId);
+  if (bedId) list = list.filter(a => a.bedId === bedId);
+  if (status) list = list.filter(a => a.status === status);
+  if (enrollmentId) list = list.filter(a => a.enrollmentId === enrollmentId);
+  res.json({ success: true, data: list });
+});
+
+app.get('/api/v1/hifz/h6/allocations/:id', authenticate, requirePermission('VIEW_HIFZ_RESIDENTIAL_ALLOCATION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { id } = req.params;
+  const item = db.hifzResidentialAllocations.find(a => a.mosqueId === mosqueId && (a.id === id || a.allocationId === id));
+  if (!item) {
+    return res.status(404).json({ success: false, error: { code: 'ALLOCATION_NOT_FOUND', message: 'আবাসিক অ্যালোকেশন পাওয়া যায়নি।' } });
+  }
+  res.json({ success: true, data: item });
+});
+
+app.post('/api/v1/hifz/h6/allocations', authenticate, requirePermission('CREATE_HIFZ_RESIDENTIAL_ALLOCATION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const idempotencyKey = req.idempotencyKey;
+  if (idempotencyKey) {
+    const cached = db.checkIdempotency(idempotencyKey);
+    if (cached) return res.json(cached);
+  }
+
+  const { enrollmentId, residenceId, buildingId, roomId, bedId, allocationDate, plannedCheckInDate, remarks } = req.body;
+
+  if (!enrollmentId || !enrollmentId.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'হিফজ শিক্ষার্থী ভর্তি আইডি (enrollmentId) আবশ্যক।' } });
+  }
+  if (!residenceId || !buildingId || !roomId || !bedId) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'আবাসিক কেন্দ্র, ভবন, কক্ষ ও বেড নির্বাচন বাধ্যতামূলক।' } });
+  }
+
+  // 1. Verify Hifz Enrollment
+  const enrollment = db.hifzEnrollments.find(e => e.mosqueId === mosqueId && (e.id === enrollmentId || e.enrollmentId === enrollmentId));
+  if (!enrollment) {
+    return res.status(400).json({ success: false, error: { code: 'ENROLLMENT_NOT_FOUND', message: 'হিফজ শিক্ষার্থী ভর্তি রেকর্ড পাওয়া যায়নি।' } });
+  }
+  if (enrollment.status !== 'ACTIVE') {
+    return res.status(400).json({ success: false, error: { code: 'INACTIVE_ENROLLMENT', message: 'শুধুমাত্র সক্রিয় (ACTIVE) হিফজ শিক্ষার্থীকে আবাসিক অ্যালোকেশন দেওয়া সম্ভব।' } });
+  }
+
+  // 2. Active Student Rule: Student cannot already have active allocation
+  const activeStudentAlloc = db.hifzResidentialAllocations.find(a =>
+    a.mosqueId === mosqueId &&
+    a.enrollmentId === enrollment.id &&
+    (a.status === 'ALLOCATED' || a.status === 'CHECKED_IN')
+  );
+  if (activeStudentAlloc) {
+    return res.status(409).json({ success: false, error: { code: 'STUDENT_ALREADY_ALLOCATED', message: 'এই শিক্ষার্থীর ইতোমধ্যে একটি সক্রিয় আবাসিক অ্যালোকেশন রয়েছে।' } });
+  }
+
+  // 3. Hierarchy Validation
+  const residence = db.hifzResidences.find(r => r.mosqueId === mosqueId && (r.id === residenceId || r.residenceId === residenceId));
+  const building = db.hifzResidenceBuildings.find(b => b.mosqueId === mosqueId && (b.id === buildingId || b.buildingId === buildingId));
+  const room = db.hifzResidenceRooms.find(r => r.mosqueId === mosqueId && (r.id === roomId || r.roomId === roomId));
+  const bed = db.hifzResidenceBeds.find(b => b.mosqueId === mosqueId && (b.id === bedId || b.bedId === bedId));
+
+  if (!residence || !building || !room || !bed) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_HIERARCHY', message: 'প্রদত্ত আবাসিক কাঠামোর তথ্য সঠিক নয় বা অন্য মসজিদের অন্তর্গত।' } });
+  }
+
+  if (building.residenceId !== residence.id || room.buildingId !== building.id || bed.roomId !== room.id) {
+    return res.status(400).json({ success: false, error: { code: 'HIERARCHY_MISMATCH', message: 'আবাসিক কাঠামোর প্যারেন্ট-চাইল্ড সম্পর্ক সামঞ্জস্যপূর্ণ নয়।' } });
+  }
+
+  // 4. Active Bed Rule: Bed cannot already have active allocation
+  const activeBedAlloc = db.hifzResidentialAllocations.find(a =>
+    a.mosqueId === mosqueId &&
+    a.bedId === bed.id &&
+    (a.status === 'ALLOCATED' || a.status === 'CHECKED_IN')
+  );
+  if (activeBedAlloc) {
+    return res.status(409).json({ success: false, error: { code: 'BED_ALREADY_OCCUPIED', message: 'এই বেডটি ইতোমধ্যে অন্য শিক্ষার্থীর জন্য অ্যালোকেটেড বা চেক-ইন করা রয়েছে।' } });
+  }
+
+  const allocationId = db.generateNextHifzResidentialAllocationId(mosqueId);
+  const now = new Date().toISOString();
+  const newAllocation: HifzResidentialAllocation = {
+    id: `hra-${mosqueId}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    allocationId,
+    mosqueId,
+    enrollmentId: enrollment.id,
+    studentProfileId: enrollment.studentProfileId,
+    studentId: enrollment.studentId,
+    studentName: enrollment.studentName,
+    residenceId: residence.id,
+    buildingId: building.id,
+    roomId: room.id,
+    bedId: bed.id,
+    allocationDate: allocationDate || now.split('T')[0],
+    plannedCheckInDate: plannedCheckInDate?.trim() || undefined,
+    status: 'ALLOCATED',
+    remarks: remarks?.trim() || '',
+    createdBy: req.user!.id,
+    createdByName: req.user!.name,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  db.hifzResidentialAllocations.push(newAllocation);
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'HIFZ_RESIDENTIAL_ALLOCATION',
+    `আবাসিক অ্যালোকেশন তৈরি করা হয়েছে: শিক্ষার্থী ${newAllocation.studentName || newAllocation.studentId} → বেড ${bed.bedNumber} (#${newAllocation.allocationId})`,
+    newAllocation.id
+  );
+  db.save();
+
+  const responsePayload = {
+    success: true,
+    data: newAllocation,
+    message: `আবাসিক অ্যালোকেশন সফলভাবে সম্পন্ন হয়েছে (#${newAllocation.allocationId})।`
+  };
+
+  if (idempotencyKey) {
+    db.saveIdempotency(idempotencyKey, responsePayload);
+  }
+
+  res.status(201).json(responsePayload);
+});
+
+app.patch('/api/v1/hifz/h6/allocations/:id', authenticate, requirePermission('EDIT_HIFZ_RESIDENTIAL_ALLOCATION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { id } = req.params;
+  const item = db.hifzResidentialAllocations.find(a => a.mosqueId === mosqueId && (a.id === id || a.allocationId === id));
+  if (!item) {
+    return res.status(404).json({ success: false, error: { code: 'ALLOCATION_NOT_FOUND', message: 'আবাসিক অ্যালোকেশন পাওয়া যায়নি।' } });
+  }
+
+  const { remarks, plannedCheckInDate } = req.body;
+  if (remarks !== undefined) item.remarks = remarks.trim();
+  if (plannedCheckInDate !== undefined) item.plannedCheckInDate = plannedCheckInDate.trim();
+
+  item.updatedAt = new Date().toISOString();
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'HIFZ_RESIDENTIAL_ALLOCATION',
+    `আবাসিক অ্যালোকেশন হালনাগাদ করা হয়েছে (#${item.allocationId})`,
+    item.id
+  );
+  db.save();
+
+  res.json({
+    success: true,
+    data: item,
+    message: `আবাসিক অ্যালোকেশন সফলভাবে হালনাগাদ করা হয়েছে (#${item.allocationId})।`
+  });
+});
+
+app.post('/api/v1/hifz/h6/allocations/:id/check-in', authenticate, requirePermission('CHECKIN_HIFZ_RESIDENTIAL'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { id } = req.params;
+  const idempotencyKey = req.idempotencyKey;
+  if (idempotencyKey) {
+    const cached = db.checkIdempotency(idempotencyKey);
+    if (cached) return res.json(cached);
+  }
+
+  const item = db.hifzResidentialAllocations.find(a => a.mosqueId === mosqueId && (a.id === id || a.allocationId === id));
+  if (!item) {
+    return res.status(404).json({ success: false, error: { code: 'ALLOCATION_NOT_FOUND', message: 'আবাসিক অ্যালোকেশন পাওয়া যায়নি।' } });
+  }
+
+  if (item.status !== 'ALLOCATED') {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_STATUS_TRANSITION', message: `শুধুমাত্র ALLOCATED স্ট্যাটাসের অ্যালোকেশন চেক-ইন করা সম্ভব। বর্তমান স্ট্যাটাস: ${item.status}` } });
+  }
+
+  // Verify enrollment still active
+  const enrollment = db.hifzEnrollments.find(e => e.mosqueId === mosqueId && e.id === item.enrollmentId);
+  if (!enrollment || enrollment.status !== 'ACTIVE') {
+    return res.status(400).json({ success: false, error: { code: 'INACTIVE_ENROLLMENT', message: 'শিক্ষার্থীর হিফজ ভর্তি বর্তমানে সক্রিয় নয়।' } });
+  }
+
+  // Verify bed not occupied
+  const occupied = db.hifzResidentialAllocations.find(a =>
+    a.mosqueId === mosqueId &&
+    a.bedId === item.bedId &&
+    a.id !== item.id &&
+    a.status === 'CHECKED_IN'
+  );
+  if (occupied) {
+    return res.status(409).json({ success: false, error: { code: 'BED_ALREADY_OCCUPIED', message: 'এই বেডটিতে ইতিমধ্যে অন্য শিক্ষার্থী চেক-ইন করে আছেন।' } });
+  }
+
+  const now = new Date().toISOString();
+  item.status = 'CHECKED_IN';
+  item.actualCheckInAt = now;
+  item.updatedAt = now;
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'HIFZ_RESIDENTIAL_ALLOCATION',
+    `আবাসিক চেক-ইন সম্পন্ন হয়েছে: শিক্ষার্থী ${item.studentName || item.studentId} (#${item.allocationId})`,
+    item.id
+  );
+  db.save();
+
+  const responsePayload = {
+    success: true,
+    data: item,
+    message: `আবাসিক চেক-ইন সফলভাবে সম্পন্ন হয়েছে (#${item.allocationId})।`
+  };
+
+  if (idempotencyKey) {
+    db.saveIdempotency(idempotencyKey, responsePayload);
+  }
+
+  res.json(responsePayload);
+});
+
+app.post('/api/v1/hifz/h6/allocations/:id/check-out', authenticate, requirePermission('CHECKOUT_HIFZ_RESIDENTIAL'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { id } = req.params;
+  const idempotencyKey = req.idempotencyKey;
+  if (idempotencyKey) {
+    const cached = db.checkIdempotency(idempotencyKey);
+    if (cached) return res.json(cached);
+  }
+
+  const item = db.hifzResidentialAllocations.find(a => a.mosqueId === mosqueId && (a.id === id || a.allocationId === id));
+  if (!item) {
+    return res.status(404).json({ success: false, error: { code: 'ALLOCATION_NOT_FOUND', message: 'আবাসিক অ্যালোকেশন পাওয়া যায়নি।' } });
+  }
+
+  if (item.status !== 'CHECKED_IN') {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_STATUS_TRANSITION', message: `শুধুমাত্র CHECKED_IN স্ট্যাটাসের অ্যালোকেশন চেক-আউট করা সম্ভব। বর্তমান স্ট্যাটাস: ${item.status}` } });
+  }
+
+  const { checkOutDate } = req.body;
+  const now = new Date().toISOString();
+  const outTime = checkOutDate ? `${checkOutDate}T12:00:00.000Z` : now;
+
+  if (item.actualCheckInAt && new Date(outTime).getTime() < new Date(item.actualCheckInAt).getTime()) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_CHECKOUT_TIME', message: 'চেক-আউট সময় চেক-ইন সময়ের পূর্বে হতে পারে না।' } });
+  }
+
+  item.status = 'CHECKED_OUT';
+  item.actualCheckOutAt = outTime;
+  item.updatedAt = now;
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'HIFZ_RESIDENTIAL_ALLOCATION',
+    `আবাসিক চেক-আউট সম্পন্ন হয়েছে: শিক্ষার্থী ${item.studentName || item.studentId} (#${item.allocationId})`,
+    item.id
+  );
+  db.save();
+
+  const responsePayload = {
+    success: true,
+    data: item,
+    message: `আবাসিক চেক-আউট সফলভাবে সম্পন্ন হয়েছে (#${item.allocationId})।`
+  };
+
+  if (idempotencyKey) {
+    db.saveIdempotency(idempotencyKey, responsePayload);
+  }
+
+  res.json(responsePayload);
+});
+
+app.post('/api/v1/hifz/h6/allocations/:id/cancel', authenticate, requirePermission('EDIT_HIFZ_RESIDENTIAL_ALLOCATION'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { id } = req.params;
+  const item = db.hifzResidentialAllocations.find(a => a.mosqueId === mosqueId && (a.id === id || a.allocationId === id));
+  if (!item) {
+    return res.status(404).json({ success: false, error: { code: 'ALLOCATION_NOT_FOUND', message: 'আবাসিক অ্যালোকেশন পাওয়া যায়নি।' } });
+  }
+
+  if (item.status !== 'ALLOCATED') {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_STATUS_TRANSITION', message: 'শুধুমাত্র ALLOCATED স্ট্যাটাসের অ্যালোকেশন বাতিল করা সম্ভব।' } });
+  }
+
+  const now = new Date().toISOString();
+  item.status = 'CANCELLED';
+  item.updatedAt = now;
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'HIFZ_RESIDENTIAL_ALLOCATION',
+    `আবাসিক অ্যালোকেশন বাতিল করা হয়েছে (#${item.allocationId})`,
+    item.id
+  );
+  db.save();
+
+  res.json({
+    success: true,
+    data: item,
+    message: `আবাসিক অ্যালোকেশন বাতিল করা হয়েছে (#${item.allocationId})।`
+  });
+});
+
+// ==========================================
+// HIFZ H6-C — RESIDENTIAL TRANSFER & HISTORY
+// ==========================================
+
+// 1. Create Residential Transfer
+app.post('/api/v1/hifz/h6/transfers', authenticate, requirePermission('CREATE_HIFZ_RESIDENTIAL_TRANSFER'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const idempotencyKey = req.idempotencyKey;
+  if (idempotencyKey) {
+    const cached = db.checkIdempotency(idempotencyKey);
+    if (cached) return res.json(cached);
+  }
+
+  const {
+    sourceAllocationId,
+    destinationResidenceId,
+    destinationBuildingId,
+    destinationRoomId,
+    destinationBedId,
+    transferDate,
+    reason,
+    remarks,
+  } = req.body;
+
+  if (!sourceAllocationId || !sourceAllocationId.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'পূর্বের স্থানান্তরের উৎস অ্যালোকেশন আইডি (sourceAllocationId) আবশ্যক।' } });
+  }
+  if (!destinationResidenceId || !destinationBuildingId || !destinationRoomId || !destinationBedId) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'গন্তব্য আবাসিক কেন্দ্র, ভবন, কক্ষ ও বেড নির্বাচন বাধ্যতামূলক।' } });
+  }
+
+  // 1. Validate Source Allocation
+  const sourceAlloc = db.hifzResidentialAllocations.find(a =>
+    a.mosqueId === mosqueId && (a.id === sourceAllocationId || a.allocationId === sourceAllocationId)
+  );
+  if (!sourceAlloc) {
+    return res.status(404).json({ success: false, error: { code: 'SOURCE_ALLOCATION_NOT_FOUND', message: 'উৎস আবাসিক অ্যালোকেশন রেকর্ড পাওয়া যায়নি।' } });
+  }
+  if (sourceAlloc.status !== 'ALLOCATED' && sourceAlloc.status !== 'CHECKED_IN') {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_SOURCE_STATE', message: `শুধুমাত্র ALLOCATED বা CHECKED_IN স্ট্যাটাসের শিক্ষার্থীকে স্থানান্তর করা সম্ভব। বর্তমান স্ট্যাটাস: ${sourceAlloc.status}` } });
+  }
+
+  // 2. Validate Active Enrollment
+  const enrollment = db.hifzEnrollments.find(e => e.mosqueId === mosqueId && e.id === sourceAlloc.enrollmentId);
+  if (!enrollment || enrollment.status !== 'ACTIVE') {
+    return res.status(400).json({ success: false, error: { code: 'INACTIVE_ENROLLMENT', message: 'শুধুমাত্র সক্রিয় (ACTIVE) হিফজ শিক্ষার্থীর আসন স্থানান্তর করা সম্ভব।' } });
+  }
+
+  // 3. Validate Destination Hierarchy
+  const destRes = db.hifzResidences.find(r => r.mosqueId === mosqueId && (r.id === destinationResidenceId || r.residenceId === destinationResidenceId));
+  const destBld = db.hifzResidenceBuildings.find(b => b.mosqueId === mosqueId && (b.id === destinationBuildingId || b.buildingId === destinationBuildingId));
+  const destRoom = db.hifzResidenceRooms.find(r => r.mosqueId === mosqueId && (r.id === destinationRoomId || r.roomId === destinationRoomId));
+  const destBed = db.hifzResidenceBeds.find(b => b.mosqueId === mosqueId && (b.id === destinationBedId || b.bedId === destinationBedId));
+
+  if (!destRes || !destBld || !destRoom || !destBed) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_HIERARCHY', message: 'গন্তব্য আবাসিক কাঠামোর তথ্য সঠিক নয় বা অন্য মসজিদের অন্তর্গত।' } });
+  }
+
+  if (destBld.residenceId !== destRes.id || destRoom.buildingId !== destBld.id || destBed.roomId !== destRoom.id) {
+    return res.status(400).json({ success: false, error: { code: 'HIERARCHY_MISMATCH', message: 'গন্তব্য আবাসিক কাঠামোর প্যারেন্ট-চাইল্ড সম্পর্ক সামঞ্জস্যপূর্ণ নয়।' } });
+  }
+
+  // Reject transfer to exact same bed
+  if (sourceAlloc.bedId === destBed.id) {
+    return res.status(400).json({ success: false, error: { code: 'SAME_BED_TRANSFER', message: 'শিক্ষার্থী বর্তমানে ইতোমধ্যে এই বেডেই অবস্থান করছেন।' } });
+  }
+
+  // 4. Validate Destination Bed Occupancy
+  const occupiedBedAlloc = db.hifzResidentialAllocations.find(a =>
+    a.mosqueId === mosqueId &&
+    a.bedId === destBed.id &&
+    a.id !== sourceAlloc.id &&
+    (a.status === 'ALLOCATED' || a.status === 'CHECKED_IN')
+  );
+  if (occupiedBedAlloc) {
+    return res.status(409).json({ success: false, error: { code: 'BED_ALREADY_OCCUPIED', message: 'গন্তব্য বেডটি ইতোমধ্যে অন্য শিক্ষার্থীর জন্য অ্যালোকেটেড বা চেক-ইন করা রয়েছে।' } });
+  }
+
+  const now = new Date().toISOString();
+  const dateStr = transferDate || now.split('T')[0];
+
+  // 5. Close Source Allocation (CHECKED_OUT)
+  sourceAlloc.status = 'CHECKED_OUT';
+  sourceAlloc.actualCheckOutAt = `${dateStr}T12:00:00.000Z`;
+  sourceAlloc.updatedAt = now;
+
+  // 6. Create New H6-B Allocation (ALLOCATED)
+  const newAllocationId = db.generateNextHifzResidentialAllocationId(mosqueId);
+  const newAllocation: HifzResidentialAllocation = {
+    id: `hra-${mosqueId}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    allocationId: newAllocationId,
+    mosqueId,
+    enrollmentId: enrollment.id,
+    studentProfileId: enrollment.studentProfileId,
+    studentId: enrollment.studentId,
+    studentName: enrollment.studentName,
+    residenceId: destRes.id,
+    buildingId: destBld.id,
+    roomId: destRoom.id,
+    bedId: destBed.id,
+    allocationDate: dateStr,
+    status: 'ALLOCATED',
+    remarks: remarks?.trim() || `স্থানান্তরিত allocation (উৎস: #${sourceAlloc.allocationId})`,
+    createdBy: req.user!.id,
+    createdByName: req.user!.name,
+    createdAt: now,
+    updatedAt: now,
+  };
+  db.hifzResidentialAllocations.push(newAllocation);
+
+  // 7. Create H6-C Transfer History Record
+  const transferId = db.generateNextHifzResidentialTransferId(mosqueId);
+  const newTransfer: HifzResidentialTransfer = {
+    id: `hrt-${mosqueId}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    transferId,
+    mosqueId,
+    enrollmentId: enrollment.id,
+    studentProfileId: enrollment.studentProfileId,
+    studentId: enrollment.studentId,
+    studentName: enrollment.studentName,
+    sourceAllocationId: sourceAlloc.id,
+    newAllocationId: newAllocation.id,
+    fromResidenceId: sourceAlloc.residenceId,
+    fromBuildingId: sourceAlloc.buildingId,
+    fromRoomId: sourceAlloc.roomId,
+    fromBedId: sourceAlloc.bedId,
+    destinationResidenceId: destRes.id,
+    destinationBuildingId: destBld.id,
+    destinationRoomId: destRoom.id,
+    destinationBedId: destBed.id,
+    transferDate: dateStr,
+    reason: (reason as HifzResidentialTransferReason) || 'ROOM_CHANGE',
+    remarks: remarks?.trim() || '',
+    status: 'COMPLETED',
+    transferredBy: req.user!.id,
+    transferredByName: req.user!.name,
+    createdAt: now,
+    updatedAt: now,
+  };
+  db.hifzResidentialTransfers.push(newTransfer);
+
+  // 8. Audit Log
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'HIFZ_RESIDENTIAL_TRANSFER',
+    `আবাসিক আসন স্থানান্তর সম্পন্ন হয়েছে: শিক্ষার্থী ${enrollment.studentName || enrollment.studentId} → নতুন বেড ${destBed.bedNumber} (#${newTransfer.transferId})`,
+    newTransfer.id
+  );
+
+  db.save();
+
+  const responsePayload = {
+    success: true,
+    data: {
+      transfer: newTransfer,
+      newAllocation,
+      closedAllocation: sourceAlloc,
+    },
+    message: `আবাসিক স্থানান্তর সফলভাবে সম্পন্ন হয়েছে (#${newTransfer.transferId})।`
+  };
+
+  if (idempotencyKey) {
+    db.saveIdempotency(idempotencyKey, responsePayload);
+  }
+
+  res.status(201).json(responsePayload);
+});
+
+// 2. List Residential Transfers
+app.get('/api/v1/hifz/h6/transfers', authenticate, requirePermission('VIEW_HIFZ_RESIDENTIAL_TRANSFER'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { enrollmentId, studentProfileId, sourceAllocationId, reason } = req.query;
+  let list = db.hifzResidentialTransfers.filter(t => t.mosqueId === mosqueId);
+
+  if (enrollmentId) list = list.filter(t => t.enrollmentId === enrollmentId);
+  if (studentProfileId) list = list.filter(t => t.studentProfileId === studentProfileId);
+  if (sourceAllocationId) list = list.filter(t => t.sourceAllocationId === sourceAllocationId);
+  if (reason) list = list.filter(t => t.reason === reason);
+
+  list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  res.json({ success: true, data: list });
+});
+
+// 3. Get Residential Transfer Detail
+app.get('/api/v1/hifz/h6/transfers/:id', authenticate, requirePermission('VIEW_HIFZ_RESIDENTIAL_TRANSFER'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { id } = req.params;
+  const item = db.hifzResidentialTransfers.find(t => t.mosqueId === mosqueId && (t.id === id || t.transferId === id));
+  if (!item) {
+    return res.status(404).json({ success: false, error: { code: 'TRANSFER_NOT_FOUND', message: 'আবাসিক স্থানান্তর রেকর্ড পাওয়া যায়নি।' } });
+  }
+  res.json({ success: true, data: item });
+});
+
+// 4. Student Residential History API
+app.get('/api/v1/hifz/h6/residential-history/:studentProfileId', authenticate, (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { studentProfileId } = req.params;
+
+  const profile = db.educationStudentProfiles.find(p => p.mosqueId === mosqueId && (p.id === studentProfileId || p.studentId === studentProfileId));
+  if (!profile) {
+    return res.status(404).json({ success: false, error: { code: 'STUDENT_NOT_FOUND', message: 'শিক্ষার্থীর প্রোফাইল পাওয়া যায়নি।' } });
+  }
+
+  const enrollments = db.hifzEnrollments.filter(e => e.mosqueId === mosqueId && e.studentProfileId === profile.id);
+  const enrollmentIds = enrollments.map(e => e.id);
+
+  const allocations = db.hifzResidentialAllocations.filter(a =>
+    a.mosqueId === mosqueId && (a.studentProfileId === profile.id || enrollmentIds.includes(a.enrollmentId))
+  ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  const transfers = db.hifzResidentialTransfers.filter(t =>
+    t.mosqueId === mosqueId && (t.studentProfileId === profile.id || enrollmentIds.includes(t.enrollmentId))
+  ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  const activeAllocation = allocations.find(a => a.status === 'ALLOCATED' || a.status === 'CHECKED_IN') || null;
+
+  res.json({
+    success: true,
+    data: {
+      studentProfile: profile,
+      enrollments,
+      activeAllocation,
+      allocations,
+      transfers,
+    }
+  });
+});
 
 // ==========================================
 // HIFZ H2 — QURAN REFERENCE FOUNDATION (READ-ONLY)

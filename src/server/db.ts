@@ -98,6 +98,8 @@ import {
   HifzResidenceBuilding,
   HifzResidenceRoom,
   HifzResidenceBed,
+  HifzResidentialAllocation,
+  HifzResidentialTransfer,
 } from '../types';
 import {
   OfficialDocument,
@@ -541,6 +543,8 @@ export class DatabaseStore {
   hifzResidenceBuildings: HifzResidenceBuilding[] = [];
   hifzResidenceRooms: HifzResidenceRoom[] = [];
   hifzResidenceBeds: HifzResidenceBed[] = [];
+  hifzResidentialAllocations: HifzResidentialAllocation[] = [];
+  hifzResidentialTransfers: HifzResidentialTransfer[] = [];
 
   constructor() {
     this.init();
@@ -794,6 +798,8 @@ export class DatabaseStore {
         this.hifzResidenceBuildings = parsed.hifzResidenceBuildings || [];
         this.hifzResidenceRooms = parsed.hifzResidenceRooms || [];
         this.hifzResidenceBeds = parsed.hifzResidenceBeds || [];
+        this.hifzResidentialAllocations = parsed.hifzResidentialAllocations || [];
+        this.hifzResidentialTransfers = parsed.hifzResidentialTransfers || [];
 
         return;
       }
@@ -901,6 +907,8 @@ export class DatabaseStore {
         hifzResidenceBuildings: this.hifzResidenceBuildings,
         hifzResidenceRooms: this.hifzResidenceRooms,
         hifzResidenceBeds: this.hifzResidenceBeds,
+        hifzResidentialAllocations: this.hifzResidentialAllocations,
+        hifzResidentialTransfers: this.hifzResidentialTransfers,
       };
       const tempPath = `${DB_FILE_PATH}.tmp.${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), 'utf-8');
@@ -3214,6 +3222,34 @@ export class DatabaseStore {
       }
     });
     return `HRBD-${year}-${String(maxNum + 1).padStart(6, '0')}`;
+  }
+
+  generateNextHifzResidentialAllocationId(mosqueId: string): string {
+    const year = new Date().getFullYear();
+    const mosqueList = this.hifzResidentialAllocations.filter(a => a.mosqueId === mosqueId);
+    let maxNum = 0;
+    mosqueList.forEach(a => {
+      const match = a.allocationId?.match(/^HRA-\d{4}-(\d+)$/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    return `HRA-${year}-${String(maxNum + 1).padStart(6, '0')}`;
+  }
+
+  generateNextHifzResidentialTransferId(mosqueId: string): string {
+    const year = new Date().getFullYear();
+    const mosqueList = this.hifzResidentialTransfers.filter(t => t.mosqueId === mosqueId);
+    let maxNum = 0;
+    mosqueList.forEach(t => {
+      const match = t.transferId?.match(/^HRT-\d{4}-(\d+)$/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    return `HRT-${year}-${String(maxNum + 1).padStart(6, '0')}`;
   }
 }
 
