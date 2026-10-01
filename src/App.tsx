@@ -1563,13 +1563,14 @@ export default function App() {
         />
       )}
 
-      {/* 14. Public Portal View */}
-      {(currentTab === 'public' || currentTab === 'publicPortal') && (
+      {/* 14. Public Portal View & Live Kiosk Display */}
+      {(currentTab === 'public' || currentTab === 'publicPortal' || currentTab === 'live') && (
         <PublicPortalView
           mosque={mosque}
           accounts={accounts}
           notices={notices}
           language={language}
+          forcedDisplayMode={currentTab === 'live'}
           onDonate={handleAddDonation}
           onPrintReceipt={(don) => setActiveDonationReceipt({ donation: don, format: 'POS_80', isReprint: false })}
           onNavigateToLogin={() => setCurrentTab('dashboard')}

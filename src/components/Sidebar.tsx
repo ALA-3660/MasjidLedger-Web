@@ -1,40 +1,29 @@
 import React from 'react';
 import {
   LayoutDashboard,
-  ArrowDownLeft,
+  Banknote,
   ArrowUpRight,
-  HeartHandshake,
-  Box,
-  Wallet,
-  Landmark,
+  BarChart3,
   Layers,
+  UserCheck,
   Users,
   Users2,
-  CalendarCheck,
-  UserCheck,
-  Package,
-  Building,
-  Crosshair,
   Bell,
-  FileBarChart,
-  Settings,
-  ShieldAlert,
-  ExternalLink,
-  Bot,
-  Banknote,
-  Calculator,
-  QrCode,
-  Scale,
-  Clock,
+  Crosshair,
+  Building,
   BookOpen,
-  Shield,
+  Clock,
+  Radio,
+  Globe,
+  FileBarChart,
   FolderOpen,
-  ChevronDown,
-  ChevronUp,
-  BarChart3,
+  Landmark,
+  QrCode,
+  ShieldAlert,
+  HelpCircle,
+  Camera,
   Printer,
-  TrendingUp,
-  GraduationCap,
+  Calculator,
 } from 'lucide-react';
 import { Language, translations } from '../lib/i18n';
 
@@ -74,6 +63,7 @@ export type NavTab =
   | 'maktab'
   | 'hifz'
   | 'prayerTimes'
+  | 'live'
   | 'reports'
   | 'users'
   | 'admin'
@@ -94,6 +84,20 @@ export interface SidebarProps {
   isOpen?: boolean;
   onClose?: () => void;
   currentUser?: any;
+}
+
+interface NavItemConfig {
+  id?: NavTab;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  color?: string;
+  isAction?: boolean;
+  actionType?: 'scanner' | 'actionQr' | 'calculator';
+}
+
+interface NavSectionConfig {
+  title: string;
+  items: NavItemConfig[];
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -120,151 +124,295 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
-  const navSections = [
+  const handleActionClick = (actionType?: 'scanner' | 'actionQr' | 'calculator') => {
+    if (actionType === 'scanner' && onOpenScanner) {
+      onOpenScanner();
+    } else if (actionType === 'actionQr' && onOpenActionQrHub) {
+      onOpenActionQrHub();
+    } else if (actionType === 'calculator' && onOpenCalculator) {
+      onOpenCalculator();
+    }
+    if (typeof onClose === 'function') {
+      onClose();
+    }
+  };
+
+  const navSections: NavSectionConfig[] = [
     {
-      title: language === 'bn' ? 'সারসংক্ষেপ' : 'Overview',
+      title: language === 'bn' ? 'ড্যাশবোর্ড' : 'Dashboard',
       items: [
-        { id: 'dashboard' as NavTab, label: t.dashboard, icon: LayoutDashboard },
+        {
+          id: 'dashboard',
+          label: language === 'bn' ? '📊 ড্যাশবোর্ড (সারসংক্ষেপ হিসাব)' : '📊 Dashboard (Summary)',
+          icon: LayoutDashboard,
+          color: 'text-blue-600',
+        },
       ],
     },
     {
-      title: t.financials,
+      title: language === 'bn' ? 'আর্থিক ব্যবস্থাপনা' : 'Financial Management',
       items: [
         {
-          id: 'income' as NavTab,
-          label: language === 'bn' ? '💵 আয় ও প্রাপ্তি' : 'Income & Receipts',
+          id: 'income',
+          label: language === 'bn' ? '💵 আয় ও প্রাপ্তি' : '💵 Income & Receipts',
           icon: Banknote,
           color: 'text-emerald-600',
         },
         {
-          id: 'expense' as NavTab,
-          label: language === 'bn' ? '💸 ব্যয় ও পরিশোধ' : 'Expense & Payments',
+          id: 'expense',
+          label: language === 'bn' ? '💸 ব্যয় ও পরিশোধ' : '💸 Expense & Payments',
           icon: ArrowUpRight,
           color: 'text-rose-600',
         },
         {
-          id: 'financialManagement' as NavTab,
-          label: language === 'bn' ? '📊 হিসাব ও লেনদেন' : 'Accounts & Ledgers',
+          id: 'financialManagement',
+          label: language === 'bn' ? '📊 হিসাব ও লেনদেন' : '📊 Accounts & Ledgers',
           icon: BarChart3,
           color: 'text-blue-600',
         },
         {
-          id: 'accountHeads' as NavTab,
-          label: language === 'bn' ? '📑 আয়-ব্যয় খাত (হেড)' : t.accountHeads,
+          id: 'accountHeads',
+          label: language === 'bn' ? '📑 আয়-ব্যয় খাত (হেড)' : '📑 Chart of Accounts',
           icon: Layers,
           color: 'text-slate-600',
         },
-      ],
-    },
-    {
-      title: language === 'bn' ? 'মুসল্লি ও সমাজ' : 'Community & Donors',
-      items: [
         {
-          id: 'musalliDatabase' as NavTab,
-          label: language === 'bn' ? '👥 মুসল্লি ও দাতা ডেটাবেস' : 'Musalli & Donor DB',
-          icon: Users,
-          badge: language === 'bn' ? '৭টি বিভাগ' : '7 Sections',
-          color: 'text-emerald-700',
-        },
-      ],
-    },
-    {
-      title: language === 'bn' ? 'পাঠাগার ও জ্ঞানকেন্দ্র' : 'Library & Knowledge Center',
-      items: [
-        {
-          id: 'knowledgeCenter' as NavTab,
-          label: language === 'bn' ? '📚 পাঠাগার ও জ্ঞানকেন্দ্র' : 'Library & Knowledge Center',
-          icon: BookOpen,
-          badge: language === 'bn' ? '৩টি বিভাগ' : '3 Modules',
-          color: 'text-emerald-700',
-        },
-      ],
-    },
-    {
-      title: t.committee,
-      items: [
-        {
-          id: 'committee' as NavTab,
-          label: language === 'bn' ? '👥 কমিটি ব্যবস্থাপনা' : 'Committee Management',
-          icon: Users2,
-          badge: language === 'bn' ? '১২টি বিভাগ' : '12 Sections',
-          color: 'text-blue-600',
-        },
-      ],
-    },
-    {
-      title: t.management,
-      items: [
-        {
-          id: 'mosqueManagement' as NavTab,
-          label: language === 'bn' ? '🏛️ মসজিদ পরিচিতি ও সেটিংস' : '🏛️ Mosque Identity & Settings',
-          icon: Landmark,
-          color: 'text-emerald-700',
-        },
-        {
-          id: 'staff' as NavTab,
-          label: language === 'bn' ? '👤 ইমাম, স্টাফ ও বেতন' : 'Imam, Staff & Payroll',
+          id: 'staff',
+          label: language === 'bn' ? '👤 ইমাম, স্টাফ ও বেতন' : '👤 Staff & Payroll',
           icon: UserCheck,
           color: 'text-indigo-600',
         },
         {
-          id: 'assets' as NavTab,
-          label: language === 'bn' ? '🏢 সম্পদ ও ওয়াকফ ব্যবস্থাপনা' : 'Assets & Waqf Management',
-          icon: Building,
-          badge: language === 'bn' ? '২টি বিভাগ' : '2 Sections',
-          color: 'text-amber-700',
-        },
-        {
-          id: 'notices' as NavTab,
-          label: language === 'bn' ? '📢 নোটিশ ও দাপ্তরিক যোগাযোগ' : 'Notices & Official Communication',
-          icon: Bell,
-          badge: language === 'bn' ? '১৪টি বিভাগ' : '14 Sections',
-          color: 'text-blue-600',
-        },
-        {
-          id: 'documents' as NavTab,
-          label: language === 'bn' ? '📁 সেন্ট্রাল ডকুমেন্ট ও আর্কাইভ' : 'Central Documents',
-          icon: FolderOpen,
-          badge: language === 'bn' ? 'সেন্ট্রাল' : 'Central',
-          color: 'text-emerald-600',
-        },
-        {
-          id: 'cemetery' as NavTab,
-          label: language === 'bn' ? '🪦 কবরস্থান ব্যবস্থাপনা' : t.cemetery,
-          icon: Crosshair,
-          color: 'text-stone-600',
-        },
-      ],
-    },
-    {
-      title: language === 'bn' ? 'রিপোর্টিং ও পাবলিক' : 'Reports & Public',
-      items: [
-        { id: 'prayerTimes' as NavTab, label: language === 'bn' ? 'নামাজের সময়সূচি' : 'Prayer Schedule', icon: Clock, badge: 'লাইভ', color: 'text-indigo-600' },
-        { id: 'reports' as NavTab, label: t.reports, icon: FileBarChart, badge: '20+' },
-        { id: 'publicPortal' as NavTab, label: t.publicPortal, icon: ExternalLink },
-      ],
-    },
-    {
-      title: t.admin,
-      items: [
-        { id: 'users' as NavTab, label: language === 'bn' ? 'ইউজার ব্যবস্থাপনা' : 'User Management', icon: Users2, color: 'text-blue-600' },
-        { id: 'qrManagement' as NavTab, label: language === 'bn' ? 'QR ও কুইক এন্ট্রি' : 'QR Management', icon: QrCode, color: 'text-teal-600' },
-        { id: 'audit' as NavTab, label: t.auditLogs, icon: ShieldAlert },
-      ],
-    },
-    {
-      title: language === 'bn' ? 'সহায়িকা ও সাহায্য' : 'Help & Guide',
-      items: [
-        {
-          id: 'userManual' as NavTab,
-          label: language === 'bn' ? 'ব্যবহার বিধি ও সহায়িকা' : 'User Manual & Guide',
-          icon: BookOpen,
-          badge: 'গাইড',
+          id: 'musalliDatabase',
+          label: language === 'bn' ? '👥 মুসল্লি ও দাতা ডেটাবেস' : '👥 Musalli & Donor DB',
+          icon: Users,
           color: 'text-emerald-700',
         },
       ],
     },
+    {
+      title: language === 'bn' ? 'পরিচালনা কমিটি ব্যবস্থাপনা' : 'Management Committee',
+      items: [
+        {
+          id: 'committee',
+          label: language === 'bn' ? '👥 কমিটি ব্যবস্থাপনা' : '👥 Committee Management',
+          icon: Users2,
+          color: 'text-blue-600',
+        },
+        {
+          id: 'notices',
+          label: language === 'bn' ? '📢 নোটিশ ও দাপ্তরিক যোগাযোগ' : '📢 Notices & Official Communications',
+          icon: Bell,
+          color: 'text-amber-600',
+        },
+      ],
+    },
+    {
+      title: language === 'bn' ? 'সাধারণ ব্যবস্থাপনা' : 'General Management',
+      items: [
+        {
+          id: 'cemetery',
+          label: language === 'bn' ? '🪦 কবরস্থান ব্যবস্থাপনা' : '🪦 Cemetery Management',
+          icon: Crosshair,
+          color: 'text-stone-600',
+        },
+        {
+          id: 'assets',
+          label: language === 'bn' ? '🏢 সম্পদ ও ওয়াকফ ব্যবস্থাপনা' : '🏢 Assets & Waqf Management',
+          icon: Building,
+          color: 'text-amber-700',
+        },
+        {
+          id: 'knowledgeCenter',
+          label: language === 'bn' ? '📚 পাঠাগার ও জ্ঞানকেন্দ্র' : '📚 Library & Knowledge Center',
+          icon: BookOpen,
+          color: 'text-emerald-700',
+        },
+        {
+          id: 'prayerTimes',
+          label: language === 'bn' ? '🕌 নামাজের সময়সূচি' : '🕌 Prayer Schedule',
+          icon: Clock,
+          color: 'text-indigo-600',
+        },
+        {
+          id: 'live',
+          label: language === 'bn' ? '🔴 লাইভ' : '🔴 Live Kiosk Screen',
+          icon: Radio,
+          color: 'text-rose-600',
+        },
+        {
+          id: 'publicPortal',
+          label: language === 'bn' ? '🌐 পাবলিক পেজ' : '🌐 Public Portal Page',
+          icon: Globe,
+          color: 'text-cyan-600',
+        },
+      ],
+    },
+    {
+      title: language === 'bn' ? 'রিপোর্টিং ও সেটিংস' : 'Reports & Settings',
+      items: [
+        {
+          id: 'reports',
+          label: language === 'bn' ? '📊 রিপোর্ট সেন্টার' : '📊 Report Center',
+          icon: FileBarChart,
+          color: 'text-blue-700',
+        },
+        {
+          id: 'documents',
+          label: language === 'bn' ? '📁 সেন্ট্রাল ডকুমেন্ট ও আর্কাইভ' : '📁 Central Documents & Archive',
+          icon: FolderOpen,
+          color: 'text-emerald-600',
+        },
+        {
+          id: 'mosqueManagement',
+          label: language === 'bn' ? '🏛️ মসজিদ পরিচিতি ও সেটিংস' : '🏛️ Mosque Settings',
+          icon: Landmark,
+          color: 'text-emerald-700',
+        },
+        {
+          id: 'users',
+          label: language === 'bn' ? '👤 ইউজার ব্যবস্থাপনা' : '👤 User Management',
+          icon: Users2,
+          color: 'text-blue-600',
+        },
+        {
+          id: 'qrManagement',
+          label: language === 'bn' ? '⚡ QR ও কুইক এন্ট্রি' : '⚡ QR & Quick Entry',
+          icon: QrCode,
+          color: 'text-teal-600',
+        },
+        {
+          id: 'audit',
+          label: language === 'bn' ? '🛡️ সিস্টেম ও আর্থিক অডিট লগ' : '🛡️ System & Audit Logs',
+          icon: ShieldAlert,
+          color: 'text-slate-700',
+        },
+        {
+          id: 'userManual',
+          label: language === 'bn' ? '📖 ব্যবহার বিধি ও সহায়িকা' : '📖 User Manual & Guide',
+          icon: BookOpen,
+          color: 'text-indigo-600',
+        },
+        {
+          label: language === 'bn' ? '📷 ক্যামেরা ও লাইভ স্ক্যান' : '📷 Camera & Live Scan',
+          icon: Camera,
+          color: 'text-blue-600',
+          isAction: true,
+          actionType: 'scanner',
+        },
+        {
+          label: language === 'bn' ? '🖨️ অ্যাকশন QR প্রিন্ট সেন্টার' : '🖨️ Action QR Print Hub',
+          icon: Printer,
+          color: 'text-slate-700',
+          isAction: true,
+          actionType: 'actionQr',
+        },
+        {
+          label: language === 'bn' ? '🔢 নোট ও কয়েন কাউন্টার' : '🔢 Cash & Change Counter',
+          icon: Calculator,
+          color: 'text-emerald-600',
+          isAction: true,
+          actionType: 'calculator',
+        },
+      ],
+    },
   ];
+
+  const checkIsActive = (itemId?: NavTab): boolean => {
+    if (!itemId) return false;
+    if (itemId === 'dashboard') {
+      return activeTab === 'dashboard';
+    }
+    if (itemId === 'income') {
+      return [
+        'income',
+        'new_income_entry',
+        'income_juma',
+        'donations',
+        'donationBox',
+        'income_waqf',
+        'income_other',
+        'income_register',
+        'income_analytics',
+        'income_reports',
+      ].includes(activeTab as string);
+    }
+    if (itemId === 'expense') {
+      return activeTab === 'expense';
+    }
+    if (itemId === 'financialManagement') {
+      return [
+        'financialManagement',
+        'dailyLedger',
+        'openingBalance',
+        'cashbook',
+        'bank',
+        'accounts',
+      ].includes(activeTab as string);
+    }
+    if (itemId === 'accountHeads') {
+      return activeTab === 'accountHeads';
+    }
+    if (itemId === 'staff') {
+      return ['staff', 'salaryBankTransfer'].includes(activeTab as string);
+    }
+    if (itemId === 'musalliDatabase') {
+      return ['musalliDatabase', 'musalli-database'].includes(activeTab as string);
+    }
+    if (itemId === 'committee') {
+      return ['committee', 'meetings', 'advisors'].includes(activeTab as string);
+    }
+    if (itemId === 'notices') {
+      return activeTab === 'notices';
+    }
+    if (itemId === 'cemetery') {
+      return activeTab === 'cemetery';
+    }
+    if (itemId === 'assets') {
+      return ['assets', 'property'].includes(activeTab as string);
+    }
+    if (itemId === 'knowledgeCenter') {
+      return ['knowledgeCenter', 'library', 'maktab', 'hifz'].includes(activeTab as string);
+    }
+    if (itemId === 'prayerTimes') {
+      return activeTab === 'prayerTimes';
+    }
+    if (itemId === 'live') {
+      return activeTab === 'live';
+    }
+    if (itemId === 'publicPortal') {
+      return ['publicPortal', 'public'].includes(activeTab as string);
+    }
+    if (itemId === 'reports') {
+      return activeTab === 'reports';
+    }
+    if (itemId === 'documents') {
+      return activeTab === 'documents';
+    }
+    if (itemId === 'mosqueManagement') {
+      return [
+        'mosqueManagement',
+        'mosque',
+        'admin',
+        'settings',
+        'mosqueProfileSettings',
+        'publicPortalSettings',
+      ].includes(activeTab as string);
+    }
+    if (itemId === 'users') {
+      return activeTab === 'users';
+    }
+    if (itemId === 'qrManagement') {
+      return ['qrManagement', 'quickEntry'].includes(activeTab as string);
+    }
+    if (itemId === 'audit') {
+      return activeTab === 'audit';
+    }
+    if (itemId === 'userManual') {
+      return activeTab === 'userManual';
+    }
+    return activeTab === itemId;
+  };
 
   return (
     <>
@@ -283,71 +431,61 @@ export const Sidebar: React.FC<SidebarProps> = ({
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        <div className="flex-1 overflow-y-auto px-3.5 py-4 space-y-5 font-siliguri">
+        <div className="flex-1 overflow-y-auto px-3 py-3.5 space-y-4 font-siliguri">
           {navSections.map((sec, idx) => (
-            <div key={idx} className="space-y-1">
-              <h3 className="px-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider font-siliguri">
+            <div key={idx} className="space-y-0.5">
+              <h3 className="px-3 py-1 text-[11px] font-bold text-slate-500 uppercase tracking-wider font-siliguri">
                 {sec.title}
               </h3>
-              <div className="space-y-1 mt-1">
-                {sec.items.map((item: any) => {
+              <div className="space-y-0.5">
+                {sec.items.map((item, itemIdx) => {
                   const Icon = item.icon;
-                  let isActive = activeTab === item.id;
-                  if (item.id === 'financialManagement') {
-                    isActive = [
-                      'financialManagement',
-                      'dailyLedger',
-                      'openingBalance',
-                      'cashbook',
-                      'bank',
-                      'accounts',
-                    ].includes(activeTab as string);
-                  } else if (item.id === 'income') {
-                    isActive = [
-                      'income',
-                      'new_income_entry',
-                      'income_juma',
-                      'donations',
-                      'donationBox',
-                      'income_waqf',
-                      'income_other',
-                      'income_register',
-                      'income_analytics',
-                      'income_reports',
-                    ].includes(activeTab as string);
-                  } else if (item.id === 'knowledgeCenter') {
-                    isActive = [
-                      'knowledgeCenter',
-                      'library',
-                      'maktab',
-                      'hifz',
-                    ].includes(activeTab as string);
+                  const isActive = item.isAction ? false : checkIsActive(item.id);
+
+                  if (item.isAction) {
+                    const buttonId =
+                      item.actionType === 'scanner'
+                        ? 'btn-sidebar-qr-scanner'
+                        : item.actionType === 'actionQr'
+                        ? 'btn-sidebar-qr-action-hub'
+                        : 'btn-sidebar-calculator';
+
+                    return (
+                      <button
+                        key={itemIdx}
+                        id={buttonId}
+                        type="button"
+                        onClick={() => handleActionClick(item.actionType)}
+                        className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-[13px] font-semibold font-siliguri transition-all cursor-pointer text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+                      >
+                        <div className="flex items-center space-x-2.5 min-w-0">
+                          <Icon className={`w-4 h-4 shrink-0 ${item.color || 'text-slate-400'}`} />
+                          <span className="truncate text-[13px] font-siliguri">{item.label}</span>
+                        </div>
+                      </button>
+                    );
                   }
 
                   return (
                     <button
-                      key={item.id}
+                      key={item.id || itemIdx}
                       id={`nav-item-${item.id}`}
-                      onClick={() => handleTabClick(item.id)}
-                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-[13px] font-semibold font-siliguri transition-all cursor-pointer ${
+                      type="button"
+                      onClick={() => item.id && handleTabClick(item.id)}
+                      className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-[13px] font-semibold font-siliguri transition-all cursor-pointer ${
                         isActive
                           ? 'bg-blue-50 text-blue-700 font-bold shadow-2xs ring-1 ring-blue-100'
                           : 'text-slate-700 hover:bg-slate-50 hover:text-slate-900'
                       }`}
                     >
-                      <div className="flex items-center space-x-2.5">
+                      <div className="flex items-center space-x-2.5 min-w-0">
                         <Icon
                           className={`w-4 h-4 shrink-0 ${
-                            isActive ? 'text-blue-600' : item.color || 'text-slate-400 group-hover:text-slate-600'
+                            isActive ? 'text-blue-600' : item.color || 'text-slate-400'
                           }`}
                         />
                         <span className="truncate text-[13px] font-siliguri">{item.label}</span>
                       </div>
-                      {item.badge && (
-                        <span className="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full font-bold font-siliguri">
-                          {item.badge}
-                        </span>
-                      )}
                     </button>
                   );
                 })}
@@ -355,104 +493,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           ))}
 
-          {/* Universal QR & Barcode Scanner Quick Trigger */}
-          {onOpenScanner && (
-            <button
-              id="btn-sidebar-qr-scanner"
-              type="button"
-              onClick={() => {
-                onOpenScanner();
-                if (onClose) onClose();
-              }}
-              className="w-full flex items-center justify-between p-3 bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 border border-blue-200/80 rounded-xl text-left transition-all group cursor-pointer shadow-2xs mb-2.5"
-            >
-              <div className="flex items-center space-x-2.5">
-                <div className="p-2 bg-blue-600 text-white rounded-lg group-hover:scale-105 transition-transform">
-                  <QrCode className="w-4 h-4" />
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-blue-950 font-siliguri">
-                    {language === 'bn' ? 'QR ও বারকোড স্ক্যানার' : 'QR & Barcode Scanner'}
-                  </p>
-                  <p className="text-[11px] text-blue-700 font-baloo">
-                    {language === 'bn' ? 'ক্যামেরা ও লাইভ স্ক্যান' : 'Live Camera & Actions'}
-                  </p>
-                </div>
-              </div>
-              <span className="text-[10px] bg-blue-200/70 text-blue-900 font-bold px-1.5 py-0.5 rounded font-mono">
-                Alt+Q
-              </span>
-            </button>
-          )}
-
-          {/* Action Cards Print Hub Quick Trigger */}
-          {onOpenActionQrHub && (
-            <button
-              id="btn-sidebar-qr-action-hub"
-              type="button"
-              onClick={() => {
-                onOpenActionQrHub();
-                if (onClose) onClose();
-              }}
-              className="w-full flex items-center justify-between p-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-200/80 rounded-xl text-left transition-all group cursor-pointer shadow-2xs mb-2.5"
-            >
-              <div className="flex items-center space-x-2">
-                <div className="p-1.5 bg-slate-700 text-white rounded-lg">
-                  <Layers className="w-3.5 h-3.5" />
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-slate-800 font-siliguri">
-                    {language === 'bn' ? 'অ্যাকশন QR প্রিন্ট সেন্টার' : 'Action QR Print Hub'}
-                  </p>
-                </div>
-              </div>
-              <span className="text-[10px] text-slate-500 font-semibold font-siliguri">
-                {language === 'bn' ? 'কার্ড / স্টিকার' : 'Cards / Sticker'}
-              </span>
-            </button>
-          )}
-
-          {/* Denomination Counter Quick Trigger */}
-          {onOpenCalculator && (
-            <button
-              id="btn-sidebar-calculator"
-              type="button"
-              onClick={() => {
-                onOpenCalculator();
-                if (onClose) onClose();
-              }}
-              className="w-full flex items-center justify-between p-3 bg-gradient-to-r from-emerald-50 to-teal-50 hover:from-emerald-100 hover:to-teal-100 border border-emerald-200/80 rounded-xl text-left transition-all group cursor-pointer shadow-2xs"
-            >
-              <div className="flex items-center space-x-2.5">
-                <div className="p-2 bg-emerald-600 text-white rounded-lg group-hover:scale-105 transition-transform">
-                  <Banknote className="w-4 h-4" />
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-emerald-950 font-siliguri">
-                    {language === 'bn' ? 'ভাংতি টাকা গণনা' : 'Cash & Change Counter'}
-                  </p>
-                  <p className="text-[11px] text-emerald-700 font-baloo">
-                    {language === 'bn' ? 'নোট ও কয়েন কাউন্টার' : 'Denomination Notes & Coins'}
-                  </p>
-                </div>
-              </div>
-              <span className="text-[10px] bg-emerald-200/70 text-emerald-900 font-bold px-1.5 py-0.5 rounded font-mono">
-                Alt+C
-              </span>
-            </button>
-          )}
-
-          {/* Android Mobile Edition Card */}
-          <div className="p-3.5 bg-slate-50 rounded-xl border border-dashed border-slate-300 mt-4 font-siliguri">
+          {/* Android Mobile Edition Card & Status Footer */}
+          <div className="p-3 bg-slate-50 rounded-xl border border-dashed border-slate-300 mt-3 font-siliguri">
             <p className="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1 font-siliguri">
               {language === 'bn' ? 'মোবাইল পরিকল্পনা' : 'Mobile Plan'}
             </p>
             <p className="text-xs leading-relaxed text-slate-700 font-siliguri">
               {language === 'bn'
                 ? 'পরবর্তী সংস্করণ: অ্যান্ড্রয়েড নেটিভ অ্যাপ্লিকেশন। আপনার UI এখন প্রতিক্রিয়াশীল।'
-                : 'Next edition: Android Native App. Responsive architecture active.'}
+                : 'Next edition: Android Native App. Responsive UI active.'}
             </p>
-            <div className="mt-2.5 flex items-center justify-between text-xs text-slate-600 font-semibold font-siliguri">
+            <div className="mt-2 flex items-center justify-between text-xs text-slate-600 font-semibold font-siliguri">
               <span>{language === 'bn' ? 'মুদ্রা:' : 'Currency:'} BDT (৳)</span>
               <span className="flex items-center text-green-700 font-bold">
                 <span className="w-2 h-2 rounded-full bg-green-500 mr-1.5 animate-pulse"></span>

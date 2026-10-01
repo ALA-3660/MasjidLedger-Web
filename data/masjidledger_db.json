@@ -1465,6 +1465,19 @@
       "status": "ACTIVE",
       "createdAt": "2026-10-01T18:39:47.926Z",
       "updatedAt": "2026-10-01T18:39:47.926Z"
+    },
+    {
+      "id": "acc-1790882880196-A",
+      "mosqueId": "test-mosque-a",
+      "name": "General Library Fund (Cash)",
+      "nameBn": "সাধারণ পাঠাগার তহবিল (ক্যাশ)",
+      "accountNumber": "ACC-LIB-01",
+      "accountType": "CASH",
+      "currentBalance": 48500,
+      "openingBalance": 50000,
+      "status": "ACTIVE",
+      "createdAt": "2026-10-01T19:28:00.196Z",
+      "updatedAt": "2026-10-01T19:28:00.196Z"
     }
   ],
   "incomeEntries": [
@@ -1767,6 +1780,25 @@
     }
   ],
   "expenseEntries": [
+    {
+      "id": "exp-acq-test-1790882880201",
+      "mosqueId": "test-mosque-a",
+      "voucherNumber": "EXP-2026-9999",
+      "date": "2026-03-28",
+      "mainHeadId": "head-exp-lib",
+      "mainHeadNameBn": "পাঠাগার ও কিতাব ক্রয়",
+      "amount": 1500,
+      "paymentMethod": "CASH",
+      "accountId": "acc-1790882880196-A",
+      "accountName": "সাধারণ পাঠাগার তহবিল (ক্যাশ)",
+      "paidTo": "আল-মাদানী লাইব্রেরি",
+      "description": "পাঠাগার বই ক্রয় (সীরাতুর রাসূল (সা.), অধিগ্রহণ #ACQ-2026-000139)",
+      "reference": "Acquisition: ACQ-2026-000139",
+      "createdBy": "usr-test-01",
+      "status": "APPROVED",
+      "createdAt": "2026-10-01T19:28:00.201Z",
+      "updatedAt": "2026-10-01T19:28:00.201Z"
+    },
     {
       "id": "exp-acq-test-1790879987932",
       "mosqueId": "test-mosque-a",
@@ -4873,6 +4905,38 @@
   "centralDocuments": [],
   "qrCodes": [],
   "auditLogs": [
+    {
+      "id": "aud-1790882885668-d2lml",
+      "mosqueId": "test-mosque-sabak-a",
+      "userId": "usr-admin-sbk-01",
+      "userName": "Hifz Admin",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "CREATE",
+      "module": "HIFZ",
+      "category": "HIFZ",
+      "recordId": "sbk-test-1790882885652-1",
+      "details": "নতুন সবক বরাদ্দ (SBK-2026-000001): মুহাম্মদ তালহা জুবায়ের -> 2:255 থেকে 2:257",
+      "timestamp": "2026-10-01T19:28:05.668Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "aud-1790882880202-xmokj",
+      "mosqueId": "test-mosque-a",
+      "userId": "usr-test-01",
+      "userName": "Test Librarian",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "SYSTEM_INITIALIZE",
+      "module": "LIBRARY",
+      "category": "LIBRARY",
+      "recordId": "bt-test-1790882880197",
+      "details": "পাঠাগার স্বয়ংক্রিয় ভ্যালিডেশন টেস্ট লগ: সীরাতুর রাসূল (সা.)",
+      "timestamp": "2026-10-01T19:28:00.202Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
     {
       "id": "aud-1790879993587-2vc1u",
       "mosqueId": "test-mosque-sabak-a",
@@ -11632,6 +11696,46 @@
         "remarks": "তাজভীদ সঠিক ছিল, ১টি সাধারণ হরকত সংশোধন হয়েছে।"
       },
       "createdAt": 1790879994688
+    },
+    "idem-sbk-1790882885660": {
+      "result": {
+        "status": 201,
+        "body": {
+          "success": true,
+          "sabakId": "SBK-2026-000001"
+        }
+      },
+      "createdAt": 1790882885660
+    },
+    "idem-sbki-1790882886835": {
+      "result": {
+        "id": "sbki-test-1790882886824-1",
+        "sabakiId": "SBKI-2026-000001",
+        "mosqueId": "test-mosque-sabaki-a",
+        "enrollmentId": "henr-sbki-act-1790882886822-1",
+        "studentProfileId": "stu-prof-sbki-1790882886821-1",
+        "studentId": "STU-000201",
+        "studentName": "মুহাম্মদ তালহা জুবায়ের",
+        "date": "2026-09-30",
+        "ustadId": "stf-sbki-1790882886821-1",
+        "ustadName": "হাফেজ ক্বারী মাও. মুহাম্মদ উসমান",
+        "sourceSabakId": "sbk-src-1790882886822-1",
+        "sourceSabakDisplayId": "SBK-2026-000101",
+        "startVerseKey": "2:255",
+        "endVerseKey": "2:257",
+        "totalAyahs": 3,
+        "startSurahNumber": 2,
+        "startSurahNameBn": "আল-বাকারা",
+        "endSurahNumber": 2,
+        "endSurahNameBn": "আল-বাকারা",
+        "status": "COMPLETED",
+        "createdAt": "2026-10-01T19:28:06.824Z",
+        "updatedAt": "2026-10-01T19:28:06.864Z",
+        "performance": "GOOD",
+        "mistakeCount": 1,
+        "remarks": "তাজভীদ সঠিক ছিল, ১টি সাধারণ হরকত সংশোধন হয়েছে।"
+      },
+      "createdAt": 1790882886835
     }
   },
   "backupRecords": [],
@@ -13797,6 +13901,26 @@
       "status": "ACTIVE",
       "createdAt": "2026-10-01T18:39:47.926Z",
       "updatedAt": "2026-10-01T18:39:47.926Z"
+    },
+    {
+      "id": "person-1790882880196-A",
+      "personCode": "PRS-00001",
+      "mosqueId": "test-mosque-a",
+      "fullName": "কারী আব্দুল্লাহ আল মামুন",
+      "mobile": "01711000001",
+      "status": "ACTIVE",
+      "createdAt": "2026-10-01T19:28:00.196Z",
+      "updatedAt": "2026-10-01T19:28:00.196Z"
+    },
+    {
+      "id": "person-1790882880196-B",
+      "personCode": "PRS-00002",
+      "mosqueId": "test-mosque-b",
+      "fullName": "মাওলানা ইউসুফ আলী",
+      "mobile": "01811000002",
+      "status": "ACTIVE",
+      "createdAt": "2026-10-01T19:28:00.196Z",
+      "updatedAt": "2026-10-01T19:28:00.196Z"
     }
   ],
   "donationPlans": [
@@ -14940,6 +15064,17 @@
       "status": "ACTIVE",
       "createdAt": "2026-10-01T18:39:47.927Z",
       "updatedAt": "2026-10-01T18:39:47.927Z",
+      "createdBy": "usr-test-01"
+    },
+    {
+      "id": "cat-test-1790882880196",
+      "mosqueId": "test-mosque-a",
+      "name": "ইসলামী অর্থনীতি ও ওয়াকফ বিধান",
+      "code": "ECN",
+      "sortOrder": 10,
+      "status": "ACTIVE",
+      "createdAt": "2026-10-01T19:28:00.196Z",
+      "updatedAt": "2026-10-01T19:28:00.196Z",
       "createdBy": "usr-test-01"
     }
   ],
@@ -16805,6 +16940,33 @@
       "status": "ACTIVE",
       "createdAt": "2026-10-01T18:39:47.927Z",
       "updatedAt": "2026-10-01T18:39:47.927Z",
+      "createdBy": "usr-test-01"
+    },
+    {
+      "id": "bt-cat-test-1790882880197",
+      "mosqueId": "test-mosque-a",
+      "title": "ইসলামী ব্যাংকিং নীতি",
+      "author": "ড. মাহমুদ",
+      "categoryId": "cat-test-1790882880196",
+      "language": "BENGALI",
+      "status": "ACTIVE",
+      "createdAt": "2026-10-01T19:28:00.197Z",
+      "updatedAt": "2026-10-01T19:28:00.197Z",
+      "createdBy": "usr-test-01"
+    },
+    {
+      "id": "bt-test-1790882880197",
+      "mosqueId": "test-mosque-a",
+      "title": "সীরাতুর রাসূল (সা.)",
+      "author": "আল্লামা শিবলী নোমানী",
+      "publisher": "ইসলামিক ফাউন্ডেশন",
+      "publicationYear": 2024,
+      "language": "BENGALI",
+      "isbn": "978-984-06-1234-5",
+      "categoryId": "cat-test-1790882880196",
+      "status": "ACTIVE",
+      "createdAt": "2026-10-01T19:28:00.197Z",
+      "updatedAt": "2026-10-01T19:28:00.197Z",
       "createdBy": "usr-test-01"
     }
   ],
@@ -18740,6 +18902,34 @@
       "createdAt": "2026-10-01T18:39:47.928Z",
       "updatedAt": "2026-10-01T18:39:47.928Z",
       "createdBy": "usr-test-01"
+    },
+    {
+      "id": "copy-1790882880198-1",
+      "mosqueId": "test-mosque-a",
+      "bookTitleId": "bt-test-1790882880197",
+      "bookTitleName": "সীরাতুর রাসূল (সা.)",
+      "bookId": "BOK-000139",
+      "copyNumber": 1,
+      "shelfLocationLabel": "আলমারি ০১, তাক ০২",
+      "condition": "NEW",
+      "status": "LOST",
+      "createdAt": "2026-10-01T19:28:00.198Z",
+      "updatedAt": "2026-10-01T19:28:00.198Z",
+      "createdBy": "usr-test-01"
+    },
+    {
+      "id": "copy-1790882880198-2",
+      "mosqueId": "test-mosque-a",
+      "bookTitleId": "bt-test-1790882880197",
+      "bookTitleName": "সীরাতুর রাসূল (সা.)",
+      "bookId": "BOK-000140",
+      "copyNumber": 2,
+      "shelfLocationLabel": "আলমারি ০১, তাক ০২",
+      "condition": "DAMAGED",
+      "status": "DAMAGED",
+      "createdAt": "2026-10-01T19:28:00.198Z",
+      "updatedAt": "2026-10-01T19:28:00.198Z",
+      "createdBy": "usr-test-01"
     }
   ],
   "libraryMembers": [
@@ -19846,9 +20036,86 @@
       "createdAt": "2026-10-01T18:39:47.931Z",
       "updatedAt": "2026-10-01T18:39:47.931Z",
       "createdBy": "usr-test-01"
+    },
+    {
+      "id": "lib-mem-1790882880200-A",
+      "mosqueId": "test-mosque-a",
+      "personId": "person-1790882880196-A",
+      "personName": "কারী আব্দুল্লাহ আল মামুন",
+      "personPhone": "01711000001",
+      "memberCode": "LIB-MEM-0070",
+      "membershipType": "GENERAL",
+      "membershipDate": "2026-01-01",
+      "maxAllowedBooks": 2,
+      "maxIssueDays": 14,
+      "status": "ACTIVE",
+      "createdAt": "2026-10-01T19:28:00.200Z",
+      "updatedAt": "2026-10-01T19:28:00.200Z",
+      "createdBy": "usr-test-01"
     }
   ],
   "bookIssues": [
+    {
+      "id": "iss-1790882880201-3",
+      "mosqueId": "test-mosque-a",
+      "issueNumber": "ISS-2026-000210",
+      "bookCopyId": "copy-1790882880198-1",
+      "bookId": "BOK-000139",
+      "bookTitle": "সীরাতুর রাসূল (সা.)",
+      "memberId": "lib-mem-1790882880200-A",
+      "personId": "person-1790882880196-A",
+      "borrowerName": "কারী আব্দুল্লাহ আল মামুন",
+      "issueDate": "2026-03-01",
+      "dueDate": "2026-03-15",
+      "status": "LOST",
+      "conditionAtIssue": "GOOD",
+      "issuedByUserId": "usr-test-01",
+      "createdAt": "2026-10-01T19:28:00.201Z",
+      "updatedAt": "2026-10-01T19:28:00.201Z"
+    },
+    {
+      "id": "iss-1790882880201-2",
+      "mosqueId": "test-mosque-a",
+      "issueNumber": "ISS-2026-000209",
+      "bookCopyId": "copy-1790882880198-2",
+      "bookId": "BOK-000140",
+      "bookTitle": "সীরাতুর রাসূল (সা.)",
+      "memberId": "lib-mem-1790882880200-A",
+      "personId": "person-1790882880196-A",
+      "borrowerName": "কারী আব্দুল্লাহ আল মামুন",
+      "issueDate": "2026-03-01",
+      "dueDate": "2026-03-15",
+      "status": "RETURNED",
+      "conditionAtIssue": "GOOD",
+      "issuedByUserId": "usr-test-01",
+      "createdAt": "2026-10-01T19:28:00.201Z",
+      "updatedAt": "2026-10-01T19:28:00.201Z",
+      "returnDate": "2026-03-12",
+      "conditionAtReturn": "DAMAGED"
+    },
+    {
+      "id": "iss-1790882880201-1",
+      "mosqueId": "test-mosque-a",
+      "issueNumber": "ISS-2026-000208",
+      "bookCopyId": "copy-1790882880198-1",
+      "bookId": "BOK-000139",
+      "bookTitle": "সীরাতুর রাসূল (সা.)",
+      "memberId": "lib-mem-1790882880200-A",
+      "personId": "person-1790882880196-A",
+      "borrowerName": "কারী আব্দুল্লাহ আল মামুন",
+      "issueDate": "2026-03-01",
+      "dueDate": "2026-03-15",
+      "status": "RETURNED",
+      "conditionAtIssue": "NEW",
+      "issuedByUserId": "usr-test-01",
+      "issuedByUserName": "Test Librarian",
+      "createdAt": "2026-10-01T19:28:00.201Z",
+      "updatedAt": "2026-10-01T19:28:00.201Z",
+      "returnDate": "2026-03-10",
+      "conditionAtReturn": "GOOD",
+      "returnedByUserId": "usr-test-01",
+      "returnedByUserName": "Test Librarian"
+    },
     {
       "id": "iss-1790879987931-3",
       "mosqueId": "test-mosque-a",
@@ -24060,6 +24327,37 @@
     }
   ],
   "bookAcquisitions": [
+    {
+      "id": "acq-don-1790882880202",
+      "mosqueId": "test-mosque-a",
+      "acquisitionNumber": "ACQ-2026-000140",
+      "bookTitleId": "bt-test-1790882880197",
+      "bookTitleName": "সীরাতুর রাসূল (সা.)",
+      "acquisitionDate": "2026-03-28",
+      "sourceType": "DONATED",
+      "quantity": 5,
+      "donorPersonId": "person-1790882880196-A",
+      "donorName": "কারী আব্দুল্লাহ আল মামুন",
+      "createdAt": "2026-10-01T19:28:00.202Z",
+      "createdBy": "usr-test-01"
+    },
+    {
+      "id": "acq-test-1790882880201",
+      "mosqueId": "test-mosque-a",
+      "acquisitionNumber": "ACQ-2026-000139",
+      "bookTitleId": "bt-test-1790882880197",
+      "bookTitleName": "সীরাতুর রাসূল (সা.)",
+      "acquisitionDate": "2026-03-28",
+      "sourceType": "PURCHASED",
+      "quantity": 3,
+      "unitPrice": 500,
+      "totalCost": 1500,
+      "supplierName": "আল-মাদানী লাইব্রেরি",
+      "expenseVoucherNumber": "EXP-2026-9999",
+      "expenseEntryId": "exp-acq-test-1790882880201",
+      "createdAt": "2026-10-01T19:28:00.201Z",
+      "createdBy": "usr-test-01"
+    },
     {
       "id": "acq-don-1790879987932",
       "mosqueId": "test-mosque-a",
