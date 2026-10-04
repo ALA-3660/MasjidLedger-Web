@@ -100,6 +100,14 @@ import {
   HifzResidenceBed,
   HifzResidentialAllocation,
   HifzResidentialTransfer,
+  LegalCase,
+  LegalCourt,
+  LegalParty,
+  LegalLawyer,
+  LegalHearing,
+  LegalAction,
+  LegalOrder,
+  LegalDashboardStats,
 } from '../types';
 import {
   OfficialDocument,
@@ -545,6 +553,13 @@ export class DatabaseStore {
   hifzResidenceBeds: HifzResidenceBed[] = [];
   hifzResidentialAllocations: HifzResidentialAllocation[] = [];
   hifzResidentialTransfers: HifzResidentialTransfer[] = [];
+  legalCases: LegalCase[] = [];
+  legalCourts: LegalCourt[] = [];
+  legalParties: LegalParty[] = [];
+  legalLawyers: LegalLawyer[] = [];
+  legalHearings: LegalHearing[] = [];
+  legalActions: LegalAction[] = [];
+  legalOrders: LegalOrder[] = [];
 
   constructor() {
     this.init();
@@ -800,6 +815,13 @@ export class DatabaseStore {
         this.hifzResidenceBeds = parsed.hifzResidenceBeds || [];
         this.hifzResidentialAllocations = parsed.hifzResidentialAllocations || [];
         this.hifzResidentialTransfers = parsed.hifzResidentialTransfers || [];
+        this.legalCases = parsed.legalCases || [];
+        this.legalCourts = parsed.legalCourts || [];
+        this.legalParties = parsed.legalParties || [];
+        this.legalLawyers = parsed.legalLawyers || [];
+        this.legalHearings = parsed.legalHearings || [];
+        this.legalActions = parsed.legalActions || [];
+        this.legalOrders = parsed.legalOrders || [];
 
         return;
       }
@@ -909,6 +931,13 @@ export class DatabaseStore {
         hifzResidenceBeds: this.hifzResidenceBeds,
         hifzResidentialAllocations: this.hifzResidentialAllocations,
         hifzResidentialTransfers: this.hifzResidentialTransfers,
+        legalCases: this.legalCases,
+        legalCourts: this.legalCourts,
+        legalParties: this.legalParties,
+        legalLawyers: this.legalLawyers,
+        legalHearings: this.legalHearings,
+        legalActions: this.legalActions,
+        legalOrders: this.legalOrders,
       };
       const tempPath = `${DB_FILE_PATH}.tmp.${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), 'utf-8');
@@ -3319,6 +3348,156 @@ export class DatabaseStore {
       incomeCount,
       expenseCount,
       totalCount: incomeCount + expenseCount,
+    };
+  }
+
+  // ==========================================
+  // ⚖️ LEGAL & LAND MANAGEMENT HELPERS
+  // ==========================================
+  generateNextLegalCaseId(mosqueId: string): string {
+    const year = new Date().getFullYear();
+    const mosqueCases = this.legalCases.filter(c => c.mosqueId === mosqueId);
+    let maxNum = 0;
+    mosqueCases.forEach(c => {
+      const match = c.caseId?.match(/^CASE-\d{4}-(\d+)$/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    return `CASE-${year}-${String(maxNum + 1).padStart(6, '0')}`;
+  }
+
+  generateNextLegalCourtId(mosqueId: string): string {
+    const year = new Date().getFullYear();
+    const mosqueCourts = this.legalCourts.filter(c => c.mosqueId === mosqueId);
+    let maxNum = 0;
+    mosqueCourts.forEach(c => {
+      const match = c.courtId?.match(/^CRT-\d{4}-(\d+)$/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    return `CRT-${year}-${String(maxNum + 1).padStart(6, '0')}`;
+  }
+
+  generateNextLegalPartyId(mosqueId: string): string {
+    const year = new Date().getFullYear();
+    const mosqueParties = this.legalParties.filter(p => p.mosqueId === mosqueId);
+    let maxNum = 0;
+    mosqueParties.forEach(p => {
+      const match = p.partyId?.match(/^LPT-\d{4}-(\d+)$/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    return `LPT-${year}-${String(maxNum + 1).padStart(6, '0')}`;
+  }
+
+  generateNextLegalLawyerId(mosqueId: string): string {
+    const year = new Date().getFullYear();
+    const mosqueLawyers = this.legalLawyers.filter(l => l.mosqueId === mosqueId);
+    let maxNum = 0;
+    mosqueLawyers.forEach(l => {
+      const match = l.lawyerId?.match(/^LLW-\d{4}-(\d+)$/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    return `LLW-${year}-${String(maxNum + 1).padStart(6, '0')}`;
+  }
+
+  generateNextLegalHearingId(mosqueId: string): string {
+    const year = new Date().getFullYear();
+    const mosqueHearings = this.legalHearings.filter(h => h.mosqueId === mosqueId);
+    let maxNum = 0;
+    mosqueHearings.forEach(h => {
+      const match = h.hearingId?.match(/^LHR-\d{4}-(\d+)$/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    return `LHR-${year}-${String(maxNum + 1).padStart(6, '0')}`;
+  }
+
+  generateNextLegalActionId(mosqueId: string): string {
+    const year = new Date().getFullYear();
+    const mosqueActions = this.legalActions.filter(a => a.mosqueId === mosqueId);
+    let maxNum = 0;
+    mosqueActions.forEach(a => {
+      const match = a.actionId?.match(/^LAC-\d{4}-(\d+)$/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    return `LAC-${year}-${String(maxNum + 1).padStart(6, '0')}`;
+  }
+
+  generateNextLegalOrderId(mosqueId: string): string {
+    const year = new Date().getFullYear();
+    const mosqueOrders = this.legalOrders.filter(o => o.mosqueId === mosqueId);
+    let maxNum = 0;
+    mosqueOrders.forEach(o => {
+      const match = o.orderId?.match(/^LOR-\d{4}-(\d+)$/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    return `LOR-${year}-${String(maxNum + 1).padStart(6, '0')}`;
+  }
+
+  getLegalDashboardStats(mosqueId: string): LegalDashboardStats {
+    const cases = this.legalCases.filter(c => c.mosqueId === mosqueId);
+    const hearings = this.legalHearings.filter(h => h.mosqueId === mosqueId);
+    const actions = this.legalActions.filter(a => a.mosqueId === mosqueId);
+    const today = new Date().toISOString().split('T')[0];
+
+    const totalCases = cases.length;
+    const activeCases = cases.filter(c => c.status === 'ACTIVE').length;
+    const hearingCases = cases.filter(c => c.status === 'HEARING').length;
+    const disposedCases = cases.filter(c => c.status === 'DISPOSED').length;
+    const stayedCases = cases.filter(c => c.status === 'STAYED').length;
+    const landDisputeCasesCount = cases.filter(c => c.caseType === 'LAND_DISPUTE' || c.caseType === 'PROPERTY_DISPUTE' || !!c.relatedPropertyId).length;
+
+    const upcomingHearingsCount = hearings.filter(h => h.hearingDate >= today).length;
+    const overdueActionsCount = actions.filter(a => a.status !== 'COMPLETED' && a.status !== 'CANCELLED' && a.dueDate < today).length;
+
+    return {
+      totalCases,
+      activeCases,
+      hearingCases,
+      disposedCases,
+      stayedCases,
+      upcomingHearingsCount,
+      overdueActionsCount,
+      landDisputeCasesCount,
+    };
+  }
+
+  getLegalCaseUsageCount(mosqueId: string, caseId: string): {
+    partiesCount: number;
+    hearingsCount: number;
+    actionsCount: number;
+    ordersCount: number;
+    totalCount: number;
+  } {
+    const partiesCount = this.legalParties.filter(p => p.mosqueId === mosqueId && p.caseId === caseId).length;
+    const hearingsCount = this.legalHearings.filter(h => h.mosqueId === mosqueId && h.caseId === caseId).length;
+    const actionsCount = this.legalActions.filter(a => a.mosqueId === mosqueId && a.caseId === caseId).length;
+    const ordersCount = this.legalOrders.filter(o => o.mosqueId === mosqueId && o.caseId === caseId).length;
+
+    return {
+      partiesCount,
+      hearingsCount,
+      actionsCount,
+      ordersCount,
+      totalCount: partiesCount + hearingsCount + actionsCount + ordersCount,
     };
   }
 }

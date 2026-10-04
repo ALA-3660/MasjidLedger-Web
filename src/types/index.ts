@@ -126,7 +126,16 @@ export type Permission =
   | 'CREATE_FINANCE_HEAD'
   | 'EDIT_FINANCE_HEAD'
   | 'DEACTIVATE_FINANCE_HEAD'
-  | 'ARCHIVE_FINANCE_HEAD';
+  | 'ARCHIVE_FINANCE_HEAD'
+  | 'VIEW_LEGAL_CASES'
+  | 'CREATE_LEGAL_CASE'
+  | 'EDIT_LEGAL_CASE'
+  | 'MANAGE_HEARINGS'
+  | 'MANAGE_LEGAL_PARTIES'
+  | 'MANAGE_LAWYERS'
+  | 'MANAGE_LEGAL_ORDERS'
+  | 'MANAGE_LEGAL_DOCUMENT_REFERENCES'
+  | 'VIEW_LEGAL_REPORTS';
 
 export interface User {
   id: string;
@@ -4521,6 +4530,219 @@ export interface HifzResidentialTransfer {
 
   createdAt: string;
   updatedAt: string;
+}
+
+// ==========================================
+// ⚖️ LEGAL & LAND DISPUTE MANAGEMENT TYPES
+// ==========================================
+
+export type LegalCaseType =
+  | 'LAND_DISPUTE'
+  | 'PROPERTY_DISPUTE'
+  | 'OWNERSHIP_TITLE'
+  | 'POSSESSION_DISPUTE'
+  | 'WAQF_DISPUTE'
+  | 'TENANT_EVICTION'
+  | 'CIVIL_SUIT'
+  | 'CRIMINAL_CASE'
+  | 'OTHER';
+
+export type LegalCaseStatus =
+  | 'ACTIVE'
+  | 'PENDING'
+  | 'HEARING'
+  | 'STAYED'
+  | 'DISPOSED'
+  | 'APPEAL'
+  | 'CLOSED';
+
+export type LegalCasePriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
+export interface LandDisputeDetails {
+  mouza?: string;
+  dagNumber?: string;
+  khatianNumber?: string;
+  landArea?: string;
+  landType?: string;
+  deedNumber?: string;
+  deedDate?: string;
+  ownershipWaqfRef?: string;
+  disputeType?: string;
+  opponent?: string;
+  currentPossessionStatus?: string;
+  description?: string;
+}
+
+export interface LegalCase {
+  id: string;
+  caseId: string; // System-generated 'CASE-YYYY-000001'
+  mosqueId: string;
+  caseNumber: string; // Court suit number e.g. দেওয়ানি মামলা ১২/২০২৪
+  caseTitle: string;
+  caseType: LegalCaseType;
+  caseTypeBn?: string;
+  subject: string;
+  status: LegalCaseStatus;
+  priority: LegalCasePriority;
+  filingDate: string;
+  courtId?: string;
+  courtName?: string;
+  caseDescription?: string;
+  relatedPropertyId?: string; // Links to existing MosqueProperty
+  landDisputeDetails?: LandDisputeDetails;
+  centralDocumentIds?: string[]; // Links to authoritative CentralDocument
+  expenseEntryIds?: string[]; // Links to canonical Finance ExpenseEntry
+  createdBy: string;
+  createdByName?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CourtType =
+  | 'ASSISTANT_JUDGE'
+  | 'SENIOR_ASSISTANT_JUDGE'
+  | 'JOINT_DISTRICT_JUDGE'
+  | 'ADDITIONAL_DISTRICT_JUDGE'
+  | 'DISTRICT_JUDGE'
+  | 'HIGH_COURT'
+  | 'SUPREME_COURT'
+  | 'LAND_SURVEY_TRIBUNAL'
+  | 'WAQF_ADMINISTRATOR'
+  | 'MAGISTRATE_COURT'
+  | 'OTHER';
+
+export interface LegalCourt {
+  id: string;
+  courtId: string; // System-generated 'CRT-YYYY-000001'
+  mosqueId: string;
+  courtName: string;
+  courtType: CourtType;
+  district: string;
+  division?: string;
+  address?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type PartyType = 'INDIVIDUAL' | 'INSTITUTION' | 'GOVT_AGENCY' | 'WAQF_AUTHORITY' | 'OTHER';
+
+export type PartyRoleInCase =
+  | 'PLAINTIFF'
+  | 'DEFENDANT'
+  | 'THIRD_PARTY'
+  | 'PETITIONER'
+  | 'RESPONDENT'
+  | 'OPPOSING_PARTY'
+  | 'WITNESS';
+
+export interface LegalParty {
+  id: string;
+  partyId: string; // System-generated 'LPT-YYYY-000001'
+  caseId: string;
+  mosqueId: string;
+  name: string;
+  type: PartyType;
+  phone?: string;
+  address?: string;
+  roleInCase: PartyRoleInCase;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type LawyerRole =
+  | 'PLAINTIFF_LAWYER'
+  | 'DEFENDANT_LAWYER'
+  | 'ADVISOR'
+  | 'LEGAL_REPRESENTATIVE';
+
+export interface LegalLawyer {
+  id: string;
+  lawyerId: string; // System-generated 'LLW-YYYY-000001'
+  caseId?: string;
+  mosqueId: string;
+  name: string;
+  chamberOrOrganization?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  barOrCourtInfo?: string;
+  role: LawyerRole;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LegalHearing {
+  id: string;
+  hearingId: string; // System-generated 'LHR-YYYY-000001'
+  caseId: string;
+  mosqueId: string;
+  hearingDate: string;
+  courtName?: string;
+  purpose: string;
+  outcome?: string;
+  nextDate?: string;
+  responsiblePerson?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ActionStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'OVERDUE' | 'CANCELLED';
+
+export interface LegalAction {
+  id: string;
+  actionId: string; // System-generated 'LAC-YYYY-000001'
+  caseId: string;
+  mosqueId: string;
+  actionDate: string;
+  actionType: string;
+  responsiblePerson: string;
+  dueDate: string;
+  status: ActionStatus;
+  completionDate?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type OrderType =
+  | 'INTERIM_ORDER'
+  | 'FINAL_JUDGMENT'
+  | 'INJUNCTION'
+  | 'STATUS_QUO'
+  | 'DISMISSAL'
+  | 'DIRECTION'
+  | 'DECREE'
+  | 'OTHER';
+
+export interface LegalOrder {
+  id: string;
+  orderId: string; // System-generated 'LOR-YYYY-000001'
+  caseId: string;
+  mosqueId: string;
+  orderDate: string;
+  orderType: OrderType;
+  summary: string;
+  outcome?: string;
+  nextAction?: string;
+  centralDocumentId?: string; // Reference to canonical CentralDocument
+  documentReference?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LegalDashboardStats {
+  totalCases: number;
+  activeCases: number;
+  hearingCases: number;
+  disposedCases: number;
+  stayedCases: number;
+  upcomingHearingsCount: number;
+  overdueActionsCount: number;
+  landDisputeCasesCount: number;
 }
 
 export * from './qrBarcodeTypes';

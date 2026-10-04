@@ -79,6 +79,7 @@ import { PropertyKhajnaModal } from './PropertyKhajnaModal';
 import { PropertyRentCollectionModal } from './PropertyRentCollectionModal';
 import { PropertyRentReceiptModal } from './PropertyRentReceiptModal';
 import { ConfirmDialog } from './common/ConfirmDialog';
+import { LegalManagementView } from './legal/LegalManagementView';
 
 export interface AssetWaqfManagementViewProps {
   assets: MosqueAsset[];
@@ -1204,6 +1205,29 @@ export const AssetWaqfManagementView: React.FC<AssetWaqfManagementViewProps> = (
                 ))}
               </div>
             </div>
+          )}
+
+          {/* 8. ⚖️ মামলা ও আইনি বিষয় / জমি ও সম্পত্তি বিরোধ Management */}
+          {[
+            'legal_cases',
+            'legal_land_disputes',
+            'legal_courts',
+            'legal_parties',
+            'legal_lawyers',
+            'legal_hearings',
+            'legal_orders',
+            'legal_documents',
+            'legal_reports',
+            'legal_register'
+          ].includes(activeSection) && (
+            <LegalManagementView
+              activeSection={activeSection}
+              onSelectSection={setActiveSection}
+              properties={properties}
+              currentMosque={currentMosque}
+              currentUser={currentUser}
+              language={language}
+            />
           )}
         </main>
       </div>

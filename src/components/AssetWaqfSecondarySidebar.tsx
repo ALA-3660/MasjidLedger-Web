@@ -15,7 +15,10 @@ import {
   Plus,
   Printer,
   ShieldCheck,
-  FolderOpen
+  FolderOpen,
+  Scale,
+  Landmark,
+  Calendar,
 } from 'lucide-react';
 import { Language } from '../lib/i18n';
 import { toBanglaNumber } from './CommitteeView';
@@ -27,7 +30,17 @@ export type AssetWaqfSubSection =
   | 'leases'
   | 'land_records'
   | 'documents'
-  | 'boundaries';
+  | 'boundaries'
+  | 'legal_cases'
+  | 'legal_land_disputes'
+  | 'legal_courts'
+  | 'legal_parties'
+  | 'legal_lawyers'
+  | 'legal_hearings'
+  | 'legal_orders'
+  | 'legal_documents'
+  | 'legal_reports'
+  | 'legal_register';
 
 export interface AssetWaqfSidebarItem {
   id: AssetWaqfSubSection;
@@ -124,6 +137,77 @@ export const AssetWaqfSecondarySidebar: React.FC<AssetWaqfSecondarySidebarProps>
       subLabel: isBn ? 'চতুঃসীমানা, মৌজা ও GPS ম্যাপ' : 'Boundaries, Mouza & GPS Map',
       icon: Compass,
       badgeColor: 'bg-rose-100 text-rose-800',
+    },
+    // ⚖️ মামলা ও আইনি বিষয় / জমি বিরোধ (LOCKED Navigation 1-10)
+    {
+      id: 'legal_cases',
+      label: isBn ? '⚖️ মামলা ও আইনি বিষয়' : 'Legal Cases & Matters',
+      subLabel: isBn ? 'মামলা রেজিস্টার ও কার্যক্রম' : 'Case Register & Proceedings',
+      icon: Scale,
+      badgeColor: 'bg-red-100 text-red-800',
+    },
+    {
+      id: 'legal_land_disputes',
+      label: isBn ? '🏞️ জমি ও সম্পত্তি বিরোধ' : 'Land & Property Disputes',
+      subLabel: isBn ? 'মৌজা, দাগ, খতিয়ান ও বিরোধ' : 'Plot, Title & Boundary Disputes',
+      icon: Layers,
+      badgeColor: 'bg-amber-100 text-amber-800',
+    },
+    {
+      id: 'legal_courts',
+      label: isBn ? '🏛️ আদালত ও মামলা তথ্য' : 'Courts & Jurisdiction',
+      subLabel: isBn ? 'দেওয়ানি, ফৌজদারি ও ট্রাইব্যুনাল' : 'Civil, Criminal & Tribunals',
+      icon: Landmark,
+      badgeColor: 'bg-slate-100 text-slate-800',
+    },
+    {
+      id: 'legal_parties',
+      label: isBn ? '👥 সংশ্লিষ্ট পক্ষ' : 'Parties to Case',
+      subLabel: isBn ? 'বাদী, বিবাদী ও প্রতিপক্ষ' : 'Plaintiffs, Defendants & Opponents',
+      icon: Users2,
+      badgeColor: 'bg-blue-100 text-blue-800',
+    },
+    {
+      id: 'legal_lawyers',
+      label: isBn ? '⚖️ আইনজীবী ও আইনি প্রতিনিধি' : 'Lawyers & Legal Counsel',
+      subLabel: isBn ? 'অ্যাডভোকেট ও চেম্বার তথ্য' : 'Advocates & Chambers',
+      icon: ShieldCheck,
+      badgeColor: 'bg-indigo-100 text-indigo-800',
+    },
+    {
+      id: 'legal_hearings',
+      label: isBn ? '📅 শুনানি ও পরবর্তী কার্যক্রম' : 'Hearings & Next Dates',
+      subLabel: isBn ? 'আদালতের ধার্য তারিখ ও এজেন্ডা' : 'Court Dates & Actions',
+      icon: Calendar,
+      badgeColor: 'bg-amber-100 text-amber-800',
+    },
+    {
+      id: 'legal_orders',
+      label: isBn ? '📜 আদেশ, রায় ও সিদ্ধান্ত' : 'Orders & Judgments',
+      subLabel: isBn ? 'অন্তর্বর্তীকালীন আদেশ ও ডিক্রি' : 'Interim Orders & Decrees',
+      icon: FileSpreadsheet,
+      badgeColor: 'bg-emerald-100 text-emerald-800',
+    },
+    {
+      id: 'legal_documents',
+      label: isBn ? '📁 সংশ্লিষ্ট নথিপত্র' : 'Case Documents',
+      subLabel: isBn ? 'সেন্ট্রাল আর্কাইভ রেফারেন্স' : 'Central Archive References',
+      icon: FolderOpen,
+      badgeColor: 'bg-purple-100 text-purple-800',
+    },
+    {
+      id: 'legal_reports',
+      label: isBn ? '📊 আইনি বিষয় ও মামলা রিপোর্ট' : 'Legal & Case Reports',
+      subLabel: isBn ? 'চলমান মামলা ও অগ্রগতি রিপোর্ট' : 'Case Analytics & Summary',
+      icon: FileText,
+      badgeColor: 'bg-cyan-100 text-cyan-800',
+    },
+    {
+      id: 'legal_register',
+      label: isBn ? '🖨️ মামলা রেজিস্টার ও প্রিন্ট' : 'Case Register & Print',
+      subLabel: isBn ? 'A4 প্রিন্টেবল রেজিস্টার' : 'A4 Printable Register',
+      icon: Printer,
+      badgeColor: 'bg-slate-100 text-slate-800',
     },
   ];
 

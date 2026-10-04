@@ -132,6 +132,23 @@ import {
   HifzResidentialAllocation,
   HifzResidentialTransfer,
   HifzResidentialTransferReason,
+  LegalCase,
+  LegalCaseType,
+  LegalCaseStatus,
+  LegalCasePriority,
+  LegalCourt,
+  CourtType,
+  LegalParty,
+  PartyType,
+  PartyRoleInCase,
+  LegalLawyer,
+  LawyerRole,
+  LegalHearing,
+  LegalAction,
+  ActionStatus,
+  LegalOrder,
+  OrderType,
+  LegalDashboardStats,
 } from './src/types';
 
 const app = express();
@@ -26365,6 +26382,1037 @@ app.get('/api/v1/quran/manzil/:manzilNumber', authenticate, (req: AuthRequest, r
   res.json({
     success: true,
     data: result
+  });
+});
+
+// ==========================================
+// ⚖️ LEGAL & LAND DISPUTE MANAGEMENT API
+// ==========================================
+
+// 1. Legal Cases — List
+app.get('/api/v1/legal/cases', authenticate, requirePermission('VIEW_LEGAL_CASES'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { status, caseType, courtId, propertyId, search } = req.query;
+
+  let cases = db.legalCases.filter(c => c.mosqueId === mosqueId);
+
+  if (status && typeof status === 'string') {
+    cases = cases.filter(c => c.status === status);
+  }
+  if (caseType && typeof caseType === 'string') {
+    cases = cases.filter(c => c.caseType === caseType);
+  }
+  if (courtId && typeof courtId === 'string') {
+    cases = cases.filter(c => c.courtId === courtId);
+  }
+  if (propertyId && typeof propertyId === 'string') {
+    cases = cases.filter(c => c.relatedPropertyId === propertyId);
+  }
+  if (search && typeof search === 'string') {
+    const q = search.trim().toLowerCase();
+    cases = cases.filter(c =>
+      c.caseTitle?.toLowerCase().includes(q) ||
+      c.caseNumber?.toLowerCase().includes(q) ||
+      c.caseId?.toLowerCase().includes(q) ||
+      c.subject?.toLowerCase().includes(q)
+    );
+  }
+
+  // Enrich each case with related entities summary
+  const enriched = cases.map(c => {
+    const property = c.relatedPropertyId ? db.properties.find(p => p.id === c.relatedPropertyId && p.mosqueId === mosqueId) : null;
+    const court = c.courtId ? db.legalCourts.find(crt => crt.id === c.courtId && crt.mosqueId === mosqueId) : null;
+    const hearings = db.legalHearings.filter(h => h.caseId === c.id && h.mosqueId === mosqueId);
+    const actions = db.legalActions.filter(a => a.caseId === c.id && a.mosqueId === mosqueId);
+    const orders = db.legalOrders.filter(o => o.caseId === c.id && o.mosqueId === mosqueId);
+    const parties = db.legalParties.filter(p => p.caseId === c.id && p.mosqueId === mosqueId);
+    const lawyers = db.legalLawyers.filter(l => l.caseId === c.id && l.mosqueId === mosqueId);
+
+    const upcomingHearing = hearings
+      .filter(h => h.hearingDate >= new Date().toISOString().split('T')[0])
+      .sort((a, b) => a.hearingDate.localeCompare(b.hearingDate))[0] || null;
+
+    const pendingAction = actions
+      .filter(a => a.status !== 'COMPLETED' && a.status !== 'CANCELLED')
+      .sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0] || null;
+
+    return {
+      ...c,
+      propertyName: property?.nameBn || property?.name || null,
+      propertyCode: property?.propertyCode || null,
+      courtName: court?.courtName || c.courtName || null,
+      hearingsCount: hearings.length,
+      upcomingHearingDate: upcomingHearing?.hearingDate || null,
+      upcomingHearingPurpose: upcomingHearing?.purpose || null,
+      pendingAction: pendingAction?.actionType || null,
+      pendingActionDueDate: pendingAction?.dueDate || null,
+      ordersCount: orders.length,
+      partiesCount: parties.length,
+      lawyersCount: lawyers.length,
+    };
+  });
+
+  enriched.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  res.json({ success: true, data: enriched });
+});
+
+// 2. Legal Case — Detail
+app.get('/api/v1/legal/cases/:id', authenticate, requirePermission('VIEW_LEGAL_CASES'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const targetId = req.params.id;
+
+  const c = db.legalCases.find(item => item.mosqueId === mosqueId && (item.id === targetId || item.caseId === targetId));
+  if (!c) {
+    return res.status(404).json({ success: false, error: { code: 'CASE_NOT_FOUND', message: 'মামলার রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  const property = c.relatedPropertyId ? db.properties.find(p => p.id === c.relatedPropertyId && p.mosqueId === mosqueId) : null;
+  const court = c.courtId ? db.legalCourts.find(crt => crt.id === c.courtId && crt.mosqueId === mosqueId) : null;
+  const parties = db.legalParties.filter(p => p.caseId === c.id && p.mosqueId === mosqueId);
+  const lawyers = db.legalLawyers.filter(l => l.caseId === c.id && l.mosqueId === mosqueId);
+  const hearings = db.legalHearings.filter(h => h.caseId === c.id && h.mosqueId === mosqueId).sort((a, b) => b.hearingDate.localeCompare(a.hearingDate));
+  const actions = db.legalActions.filter(a => a.caseId === c.id && a.mosqueId === mosqueId).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  const orders = db.legalOrders.filter(o => o.caseId === c.id && o.mosqueId === mosqueId).sort((a, b) => b.orderDate.localeCompare(a.orderDate));
+
+  // Link to canonical central documents without duplicate files
+  const linkedDocuments = (c.centralDocumentIds || [])
+    .map(docId => db.centralDocuments.find(d => d.id === docId && d.mosqueId === mosqueId))
+    .filter(Boolean);
+
+  // Link to canonical financial expense entries without shadow ledgers
+  const linkedExpenses = (c.expenseEntryIds || [])
+    .map(expId => db.expenseEntries.find(e => e.id === expId && e.mosqueId === mosqueId))
+    .filter(Boolean);
+
+  res.json({
+    success: true,
+    data: {
+      case: c,
+      property,
+      court,
+      parties,
+      lawyers,
+      hearings,
+      actions,
+      orders,
+      documents: linkedDocuments,
+      expenses: linkedExpenses,
+    }
+  });
+});
+
+// 3. Legal Case — Create
+app.post('/api/v1/legal/cases', authenticate, requirePermission('CREATE_LEGAL_CASE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const idempotencyKey = req.idempotencyKey;
+  if (idempotencyKey) {
+    const cached = db.checkIdempotency(idempotencyKey);
+    if (cached) return res.json(cached);
+  }
+
+  const {
+    caseNumber,
+    caseTitle,
+    caseType,
+    caseTypeBn,
+    subject,
+    status,
+    priority,
+    filingDate,
+    courtId,
+    courtName,
+    caseDescription,
+    relatedPropertyId,
+    landDisputeDetails,
+    centralDocumentIds,
+    expenseEntryIds,
+  } = req.body;
+
+  if (!caseTitle || typeof caseTitle !== 'string' || !caseTitle.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'মামলার শিরোনাম (caseTitle) প্রদান আবশ্যক।' } });
+  }
+  if (!caseNumber || typeof caseNumber !== 'string' || !caseNumber.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'মামলা নম্বর (caseNumber) প্রদান আবশ্যক।' } });
+  }
+
+  // Cross-tenant and relationship guards
+  if (relatedPropertyId) {
+    const prop = db.properties.find(p => p.id === relatedPropertyId && p.mosqueId === mosqueId);
+    if (!prop) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_PROPERTY', message: 'সংশ্লিষ্ট ওয়াকফ সম্পত্তি পাওয়া যায়নি বা অন্য মসজিদের অন্তর্গত।' } });
+    }
+  }
+
+  let resolvedCourtName = courtName || '';
+  if (courtId) {
+    const crt = db.legalCourts.find(c => c.id === courtId && c.mosqueId === mosqueId);
+    if (!crt) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_COURT', message: 'নির্বাচিত আদালত তথ্য পাওয়া যায়নি বা অন্য মসজিদের অন্তর্গত।' } });
+    }
+    if (!resolvedCourtName) resolvedCourtName = crt.courtName;
+  }
+
+  const now = new Date().toISOString();
+  const caseId = db.generateNextLegalCaseId(mosqueId);
+  const newCase: LegalCase = {
+    id: `case-${mosqueId}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
+    caseId,
+    mosqueId,
+    caseNumber: caseNumber.trim(),
+    caseTitle: caseTitle.trim(),
+    caseType: caseType || 'LAND_DISPUTE',
+    caseTypeBn: caseTypeBn || undefined,
+    subject: subject?.trim() || caseTitle.trim(),
+    status: status || 'ACTIVE',
+    priority: priority || 'MEDIUM',
+    filingDate: filingDate || now.split('T')[0],
+    courtId: courtId || undefined,
+    courtName: resolvedCourtName || undefined,
+    caseDescription: caseDescription?.trim() || '',
+    relatedPropertyId: relatedPropertyId || undefined,
+    landDisputeDetails: landDisputeDetails || undefined,
+    centralDocumentIds: Array.isArray(centralDocumentIds) ? centralDocumentIds : [],
+    expenseEntryIds: Array.isArray(expenseEntryIds) ? expenseEntryIds : [],
+    createdBy: req.user!.id,
+    createdByName: req.user!.name,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  db.legalCases.push(newCase);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'LEGAL_CASE',
+    `নতুন মামলা নথিভুক্ত করা হয়েছে: ${newCase.caseTitle} (#${newCase.caseId}, মামলা নং: ${newCase.caseNumber})`,
+    newCase.id
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'LEGAL_CASE_CREATED', newCase, { senderId: req.user!.id });
+
+  const responsePayload = {
+    success: true,
+    data: newCase,
+    message: `মামলা সফলভাবে নথিভুক্ত করা হয়েছে (#${newCase.caseId})।`
+  };
+
+  if (idempotencyKey) {
+    db.saveIdempotency(idempotencyKey, responsePayload);
+  }
+
+  res.status(201).json(responsePayload);
+});
+
+// 4. Legal Case — Update
+app.put('/api/v1/legal/cases/:id', authenticate, requirePermission('EDIT_LEGAL_CASE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const targetId = req.params.id;
+
+  const c = db.legalCases.find(item => item.mosqueId === mosqueId && (item.id === targetId || item.caseId === targetId));
+  if (!c) {
+    return res.status(404).json({ success: false, error: { code: 'CASE_NOT_FOUND', message: 'মামলা পাওয়া যায়নি।' } });
+  }
+
+  const {
+    caseNumber,
+    caseTitle,
+    caseType,
+    caseTypeBn,
+    subject,
+    status,
+    priority,
+    filingDate,
+    courtId,
+    courtName,
+    caseDescription,
+    relatedPropertyId,
+    landDisputeDetails,
+    centralDocumentIds,
+    expenseEntryIds,
+  } = req.body;
+
+  if (relatedPropertyId && relatedPropertyId !== c.relatedPropertyId) {
+    const prop = db.properties.find(p => p.id === relatedPropertyId && p.mosqueId === mosqueId);
+    if (!prop) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_PROPERTY', message: 'সংশ্লিষ্ট ওয়াকফ সম্পত্তি পাওয়া যায়নি বা অন্য মসজিদের।' } });
+    }
+    c.relatedPropertyId = relatedPropertyId;
+  } else if (relatedPropertyId === null) {
+    c.relatedPropertyId = undefined;
+  }
+
+  if (courtId && courtId !== c.courtId) {
+    const crt = db.legalCourts.find(item => item.id === courtId && item.mosqueId === mosqueId);
+    if (!crt) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_COURT', message: 'আদালত পাওয়া যায়নি বা অন্য মসজিদের।' } });
+    }
+    c.courtId = courtId;
+    c.courtName = crt.courtName;
+  } else if (courtId === null) {
+    c.courtId = undefined;
+  }
+
+  if (caseNumber !== undefined) c.caseNumber = caseNumber.trim();
+  if (caseTitle !== undefined) c.caseTitle = caseTitle.trim();
+  if (caseType !== undefined) c.caseType = caseType;
+  if (caseTypeBn !== undefined) c.caseTypeBn = caseTypeBn;
+  if (subject !== undefined) c.subject = subject.trim();
+  if (status !== undefined) c.status = status;
+  if (priority !== undefined) c.priority = priority;
+  if (filingDate !== undefined) c.filingDate = filingDate;
+  if (courtName !== undefined && !courtId) c.courtName = courtName;
+  if (caseDescription !== undefined) c.caseDescription = caseDescription;
+  if (landDisputeDetails !== undefined) c.landDisputeDetails = landDisputeDetails;
+  if (centralDocumentIds !== undefined && Array.isArray(centralDocumentIds)) c.centralDocumentIds = centralDocumentIds;
+  if (expenseEntryIds !== undefined && Array.isArray(expenseEntryIds)) c.expenseEntryIds = expenseEntryIds;
+
+  c.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'LEGAL_CASE',
+    `মামলার তথ্য আপডেট করা হয়েছে: ${c.caseTitle} (#${c.caseId}, স্ট্যাটাস: ${c.status})`,
+    c.id
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'LEGAL_CASE_UPDATED', c, { senderId: req.user!.id });
+
+  res.json({
+    success: true,
+    data: c,
+    message: 'মামলার তথ্য সফলভাবে সংরক্ষিত হয়েছে।'
+  });
+});
+
+// 5. Legal Case — Non-destructive Delete or Archive
+app.delete('/api/v1/legal/cases/:id', authenticate, requirePermission('EDIT_LEGAL_CASE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const targetId = req.params.id;
+
+  const c = db.legalCases.find(item => item.mosqueId === mosqueId && (item.id === targetId || item.caseId === targetId));
+  if (!c) {
+    return res.status(404).json({ success: false, error: { code: 'CASE_NOT_FOUND', message: 'মামলা পাওয়া যায়নি।' } });
+  }
+
+  const usage = db.getLegalCaseUsageCount(mosqueId, c.id);
+
+  if (usage.totalCount > 0 || c.status === 'DISPOSED' || (c.centralDocumentIds && c.centralDocumentIds.length > 0)) {
+    // Non-destructive historical preservation
+    c.status = 'CLOSED';
+    c.updatedAt = new Date().toISOString();
+    db.save();
+
+    db.logAudit(
+      mosqueId,
+      req.user!.id,
+      req.user!.name,
+      req.user!.role,
+      'ARCHIVE',
+      'LEGAL_CASE',
+      `মামলার ঐতিহাসিক রেকর্ড সংরক্ষণে ক্লোজ/আর্কাইভ করা হয়েছে (#${c.caseId}): ${c.caseTitle}`,
+      c.id
+    );
+
+    return res.json({
+      success: true,
+      data: c,
+      message: `এই মামলার অধীনে পূর্বের শুনানি বা আদেশ থাকায় আইনি তথ্যের শুদ্ধতা রক্ষার্থে এটি স্থায়ীভাবে মোছার পরিবর্তে 'CLOSED' করা হয়েছে।`
+    });
+  }
+
+  const idx = db.legalCases.findIndex(item => item.id === c.id);
+  if (idx !== -1) {
+    db.legalCases.splice(idx, 1);
+  }
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'DELETE',
+    'LEGAL_CASE',
+    `অব্যবহৃত মামলা রেকর্ড মুছে ফেলা হয়েছে: ${c.caseTitle} (#${c.caseId})`,
+    c.id
+  );
+
+  res.json({ success: true, message: 'মামলা সফলভাবে মুছে ফেলা হয়েছে।' });
+});
+
+// 6. Legal Courts — CRUD
+app.get('/api/v1/legal/courts', authenticate, requirePermission('VIEW_LEGAL_CASES'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const courts = db.legalCourts.filter(c => c.mosqueId === mosqueId);
+  res.json({ success: true, data: courts });
+});
+
+app.post('/api/v1/legal/courts', authenticate, requirePermission('EDIT_LEGAL_CASE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { courtName, courtType, district, division, address, notes } = req.body;
+
+  if (!courtName || !courtName.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'আদালতের নাম আবশ্যক।' } });
+  }
+
+  const now = new Date().toISOString();
+  const courtId = db.generateNextLegalCourtId(mosqueId);
+  const newCourt: LegalCourt = {
+    id: `crt-${mosqueId}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
+    courtId,
+    mosqueId,
+    courtName: courtName.trim(),
+    courtType: courtType || 'ASSISTANT_JUDGE',
+    district: district?.trim() || '',
+    division: division?.trim() || '',
+    address: address?.trim() || '',
+    notes: notes?.trim() || '',
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  db.legalCourts.push(newCourt);
+  db.save();
+
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'LEGAL_COURT', `নতুন আদালত যুক্ত: ${newCourt.courtName}`, newCourt.id);
+
+  res.status(201).json({ success: true, data: newCourt, message: 'আদালত সফলভাবে যুক্ত হয়েছে।' });
+});
+
+app.put('/api/v1/legal/courts/:id', authenticate, requirePermission('EDIT_LEGAL_CASE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const court = db.legalCourts.find(c => c.id === req.params.id && c.mosqueId === mosqueId);
+  if (!court) {
+    return res.status(404).json({ success: false, error: { code: 'COURT_NOT_FOUND', message: 'আদালত রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  const { courtName, courtType, district, division, address, notes } = req.body;
+  if (courtName !== undefined) court.courtName = courtName.trim();
+  if (courtType !== undefined) court.courtType = courtType;
+  if (district !== undefined) court.district = district.trim();
+  if (division !== undefined) court.division = division.trim();
+  if (address !== undefined) court.address = address.trim();
+  if (notes !== undefined) court.notes = notes.trim();
+
+  court.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'LEGAL_COURT', `আদালত তথ্য আপডেট: ${court.courtName}`, court.id);
+
+  res.json({ success: true, data: court, message: 'আদালত তথ্য হালনাগাদ করা হয়েছে।' });
+});
+
+app.delete('/api/v1/legal/courts/:id', authenticate, requirePermission('EDIT_LEGAL_CASE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const court = db.legalCourts.find(c => c.id === req.params.id && c.mosqueId === mosqueId);
+  if (!court) {
+    return res.status(404).json({ success: false, error: { code: 'COURT_NOT_FOUND', message: 'আদালত পাওয়া যায়নি।' } });
+  }
+
+  const hasCases = db.legalCases.some(c => c.courtId === court.id && c.mosqueId === mosqueId);
+  if (hasCases) {
+    return res.status(400).json({ success: false, error: { code: 'COURT_IN_USE', message: 'এই আদালতের অধীনে মামলা নথিভুক্ত থাকায় এটি মুছে ফেলা সম্ভব নয়।' } });
+  }
+
+  const idx = db.legalCourts.findIndex(c => c.id === court.id);
+  if (idx !== -1) db.legalCourts.splice(idx, 1);
+  db.save();
+
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'DELETE', 'LEGAL_COURT', `আদালত মুছে ফেলা হয়েছে: ${court.courtName}`, court.id);
+
+  res.json({ success: true, message: 'আদালত রেকর্ড মুছে ফেলা হয়েছে।' });
+});
+
+// 7. Legal Parties — CRUD
+app.get('/api/v1/legal/parties', authenticate, requirePermission('VIEW_LEGAL_CASES'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { caseId } = req.query;
+  let parties = db.legalParties.filter(p => p.mosqueId === mosqueId);
+  if (caseId && typeof caseId === 'string') {
+    parties = parties.filter(p => p.caseId === caseId);
+  }
+  res.json({ success: true, data: parties });
+});
+
+app.post('/api/v1/legal/parties', authenticate, requirePermission('MANAGE_LEGAL_PARTIES'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { caseId, name, type, phone, address, roleInCase, notes } = req.body;
+
+  if (!caseId || !name || !roleInCase) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'মামলা আইডি, পক্ষের নাম ও ভূমিকা প্রদান আবশ্যক।' } });
+  }
+
+  const targetCase = db.legalCases.find(c => c.id === caseId && c.mosqueId === mosqueId);
+  if (!targetCase) {
+    return res.status(404).json({ success: false, error: { code: 'CASE_NOT_FOUND', message: 'মামলা পাওয়া যায়নি বা অন্য মসজিদের।' } });
+  }
+
+  const now = new Date().toISOString();
+  const partyId = db.generateNextLegalPartyId(mosqueId);
+  const newParty: LegalParty = {
+    id: `lpt-${mosqueId}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
+    partyId,
+    caseId,
+    mosqueId,
+    name: name.trim(),
+    type: type || 'INDIVIDUAL',
+    phone: phone?.trim() || undefined,
+    address: address?.trim() || undefined,
+    roleInCase,
+    notes: notes?.trim() || '',
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  db.legalParties.push(newParty);
+  db.save();
+
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'LEGAL_PARTY', `মামলায় সংশ্লিষ্ট পক্ষ যুক্ত: ${newParty.name} (${newParty.roleInCase})`, newParty.id);
+
+  res.status(201).json({ success: true, data: newParty, message: 'সংশ্লিষ্ট পক্ষ যুক্ত করা হয়েছে।' });
+});
+
+app.put('/api/v1/legal/parties/:id', authenticate, requirePermission('MANAGE_LEGAL_PARTIES'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const party = db.legalParties.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (!party) {
+    return res.status(404).json({ success: false, error: { code: 'PARTY_NOT_FOUND', message: 'সংশ্লিষ্ট পক্ষ পাওয়া যায়নি।' } });
+  }
+
+  const { name, type, phone, address, roleInCase, notes } = req.body;
+  if (name !== undefined) party.name = name.trim();
+  if (type !== undefined) party.type = type;
+  if (phone !== undefined) party.phone = phone.trim();
+  if (address !== undefined) party.address = address.trim();
+  if (roleInCase !== undefined) party.roleInCase = roleInCase;
+  if (notes !== undefined) party.notes = notes.trim();
+
+  party.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'LEGAL_PARTY', `পক্ষ তথ্য আপডেট: ${party.name}`, party.id);
+
+  res.json({ success: true, data: party, message: 'পক্ষের তথ্য হালনাগাদ করা হয়েছে।' });
+});
+
+app.delete('/api/v1/legal/parties/:id', authenticate, requirePermission('MANAGE_LEGAL_PARTIES'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const party = db.legalParties.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
+  if (!party) {
+    return res.status(404).json({ success: false, error: { code: 'PARTY_NOT_FOUND', message: 'পক্ষ পাওয়া যায়নি।' } });
+  }
+
+  const idx = db.legalParties.findIndex(p => p.id === party.id);
+  if (idx !== -1) db.legalParties.splice(idx, 1);
+  db.save();
+
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'DELETE', 'LEGAL_PARTY', `পক্ষ মুছে ফেলা হয়েছে: ${party.name}`, party.id);
+
+  res.json({ success: true, message: 'সংশ্লিষ্ট পক্ষ মুছে ফেলা হয়েছে।' });
+});
+
+// 8. Legal Lawyers — CRUD
+app.get('/api/v1/legal/lawyers', authenticate, requirePermission('VIEW_LEGAL_CASES'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { caseId } = req.query;
+  let lawyers = db.legalLawyers.filter(l => l.mosqueId === mosqueId);
+  if (caseId && typeof caseId === 'string') {
+    lawyers = lawyers.filter(l => l.caseId === caseId);
+  }
+  res.json({ success: true, data: lawyers });
+});
+
+app.post('/api/v1/legal/lawyers', authenticate, requirePermission('MANAGE_LAWYERS'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { caseId, name, chamberOrOrganization, phone, email, address, barOrCourtInfo, role, notes } = req.body;
+
+  if (!name || !name.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'আইনজীবীর নাম আবশ্যক।' } });
+  }
+
+  if (caseId) {
+    const c = db.legalCases.find(item => item.id === caseId && item.mosqueId === mosqueId);
+    if (!c) {
+      return res.status(404).json({ success: false, error: { code: 'CASE_NOT_FOUND', message: 'মামলা পাওয়া যায়নি বা অন্য মসজিদের।' } });
+    }
+  }
+
+  const now = new Date().toISOString();
+  const lawyerId = db.generateNextLegalLawyerId(mosqueId);
+  const newLawyer: LegalLawyer = {
+    id: `llw-${mosqueId}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
+    lawyerId,
+    caseId: caseId || undefined,
+    mosqueId,
+    name: name.trim(),
+    chamberOrOrganization: chamberOrOrganization?.trim() || undefined,
+    phone: phone?.trim() || undefined,
+    email: email?.trim() || undefined,
+    address: address?.trim() || undefined,
+    barOrCourtInfo: barOrCourtInfo?.trim() || undefined,
+    role: role || 'PLAINTIFF_LAWYER',
+    notes: notes?.trim() || '',
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  db.legalLawyers.push(newLawyer);
+  db.save();
+
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'LEGAL_LAWYER', `আইনজীবী যুক্ত: অ্যাডভোকেট ${newLawyer.name}`, newLawyer.id);
+
+  res.status(201).json({ success: true, data: newLawyer, message: 'আইনজীবী সফলভাবে যুক্ত হয়েছেন।' });
+});
+
+app.put('/api/v1/legal/lawyers/:id', authenticate, requirePermission('MANAGE_LAWYERS'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const lawyer = db.legalLawyers.find(l => l.id === req.params.id && l.mosqueId === mosqueId);
+  if (!lawyer) {
+    return res.status(404).json({ success: false, error: { code: 'LAWYER_NOT_FOUND', message: 'আইনজীবী পাওয়া যায়নি।' } });
+  }
+
+  const { name, chamberOrOrganization, phone, email, address, barOrCourtInfo, role, notes } = req.body;
+  if (name !== undefined) lawyer.name = name.trim();
+  if (chamberOrOrganization !== undefined) lawyer.chamberOrOrganization = chamberOrOrganization.trim();
+  if (phone !== undefined) lawyer.phone = phone.trim();
+  if (email !== undefined) lawyer.email = email.trim();
+  if (address !== undefined) lawyer.address = address.trim();
+  if (barOrCourtInfo !== undefined) lawyer.barOrCourtInfo = barOrCourtInfo.trim();
+  if (role !== undefined) lawyer.role = role;
+  if (notes !== undefined) lawyer.notes = notes.trim();
+
+  lawyer.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'LEGAL_LAWYER', `আইনজীবীর তথ্য আপডেট: ${lawyer.name}`, lawyer.id);
+
+  res.json({ success: true, data: lawyer, message: 'আইনজীবীর তথ্য সংরক্ষিত হয়েছে।' });
+});
+
+app.delete('/api/v1/legal/lawyers/:id', authenticate, requirePermission('MANAGE_LAWYERS'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const lawyer = db.legalLawyers.find(l => l.id === req.params.id && l.mosqueId === mosqueId);
+  if (!lawyer) {
+    return res.status(404).json({ success: false, error: { code: 'LAWYER_NOT_FOUND', message: 'আইনজীবী পাওয়া যায়নি।' } });
+  }
+
+  const idx = db.legalLawyers.findIndex(l => l.id === lawyer.id);
+  if (idx !== -1) db.legalLawyers.splice(idx, 1);
+  db.save();
+
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'DELETE', 'LEGAL_LAWYER', `আইনজীবী মুছে ফেলা হয়েছে: ${lawyer.name}`, lawyer.id);
+
+  res.json({ success: true, message: 'আইনজীবী রেকর্ড মুছে ফেলা হয়েছে।' });
+});
+
+// 9. Legal Hearings — CRUD
+app.get('/api/v1/legal/hearings', authenticate, requirePermission('VIEW_LEGAL_CASES'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { caseId, upcomingOnly } = req.query;
+  let hearings = db.legalHearings.filter(h => h.mosqueId === mosqueId);
+  if (caseId && typeof caseId === 'string') {
+    hearings = hearings.filter(h => h.caseId === caseId);
+  }
+  if (upcomingOnly === 'true') {
+    const today = new Date().toISOString().split('T')[0];
+    hearings = hearings.filter(h => h.hearingDate >= today);
+  }
+  hearings.sort((a, b) => b.hearingDate.localeCompare(a.hearingDate));
+  res.json({ success: true, data: hearings });
+});
+
+app.post('/api/v1/legal/hearings', authenticate, requirePermission('MANAGE_HEARINGS'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { caseId, hearingDate, courtName, purpose, outcome, nextDate, responsiblePerson, notes } = req.body;
+
+  if (!caseId || !hearingDate || !purpose) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'মামলা আইডি, শুনানির তারিখ ও উদ্দেশ্য প্রদান আবশ্যক।' } });
+  }
+
+  const targetCase = db.legalCases.find(c => c.id === caseId && c.mosqueId === mosqueId);
+  if (!targetCase) {
+    return res.status(404).json({ success: false, error: { code: 'CASE_NOT_FOUND', message: 'মামলা পাওয়া যায়নি বা অন্য মসজিদের।' } });
+  }
+
+  const now = new Date().toISOString();
+  const hearingId = db.generateNextLegalHearingId(mosqueId);
+  const newHearing: LegalHearing = {
+    id: `lhr-${mosqueId}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
+    hearingId,
+    caseId,
+    mosqueId,
+    hearingDate,
+    courtName: courtName?.trim() || targetCase.courtName || undefined,
+    purpose: purpose.trim(),
+    outcome: outcome?.trim() || undefined,
+    nextDate: nextDate?.trim() || undefined,
+    responsiblePerson: responsiblePerson?.trim() || undefined,
+    notes: notes?.trim() || '',
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  db.legalHearings.push(newHearing);
+
+  // Automatically update case status and dates if active
+  if (targetCase.status === 'ACTIVE' || targetCase.status === 'PENDING') {
+    targetCase.status = 'HEARING';
+  }
+  targetCase.updatedAt = now;
+
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'LEGAL_HEARING',
+    `শুনানির রেকর্ড যুক্ত: মামলা ${targetCase.caseNumber} (#${newHearing.hearingId}, তারিখ: ${newHearing.hearingDate})`,
+    newHearing.id
+  );
+
+  res.status(201).json({ success: true, data: newHearing, message: 'শুনানির রেকর্ড যুক্ত করা হয়েছে।' });
+});
+
+app.put('/api/v1/legal/hearings/:id', authenticate, requirePermission('MANAGE_HEARINGS'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const hearing = db.legalHearings.find(h => h.id === req.params.id && h.mosqueId === mosqueId);
+  if (!hearing) {
+    return res.status(404).json({ success: false, error: { code: 'HEARING_NOT_FOUND', message: 'শুনানির রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  const { hearingDate, courtName, purpose, outcome, nextDate, responsiblePerson, notes } = req.body;
+  if (hearingDate !== undefined) hearing.hearingDate = hearingDate;
+  if (courtName !== undefined) hearing.courtName = courtName.trim();
+  if (purpose !== undefined) hearing.purpose = purpose.trim();
+  if (outcome !== undefined) hearing.outcome = outcome.trim();
+  if (nextDate !== undefined) hearing.nextDate = nextDate.trim();
+  if (responsiblePerson !== undefined) hearing.responsiblePerson = responsiblePerson.trim();
+  if (notes !== undefined) hearing.notes = notes.trim();
+
+  hearing.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'LEGAL_HEARING', `শুনানি আপডেট (#${hearing.hearingId})`, hearing.id);
+
+  res.json({ success: true, data: hearing, message: 'শুনানির রেকর্ড হালনাগাদ করা হয়েছে।' });
+});
+
+app.delete('/api/v1/legal/hearings/:id', authenticate, requirePermission('MANAGE_HEARINGS'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const hearing = db.legalHearings.find(h => h.id === req.params.id && h.mosqueId === mosqueId);
+  if (!hearing) {
+    return res.status(404).json({ success: false, error: { code: 'HEARING_NOT_FOUND', message: 'শুনানি পাওয়া যায়নি।' } });
+  }
+
+  const idx = db.legalHearings.findIndex(h => h.id === hearing.id);
+  if (idx !== -1) db.legalHearings.splice(idx, 1);
+  db.save();
+
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'DELETE', 'LEGAL_HEARING', `শুনানি রেকর্ড মুছে ফেলা হয়েছে (#${hearing.hearingId})`, hearing.id);
+
+  res.json({ success: true, message: 'শুনানি রেকর্ড মুছে ফেলা হয়েছে।' });
+});
+
+// 10. Legal Next Actions — CRUD
+app.get('/api/v1/legal/actions', authenticate, requirePermission('VIEW_LEGAL_CASES'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { caseId, status } = req.query;
+  let actions = db.legalActions.filter(a => a.mosqueId === mosqueId);
+  if (caseId && typeof caseId === 'string') {
+    actions = actions.filter(a => a.caseId === caseId);
+  }
+  if (status && typeof status === 'string') {
+    actions = actions.filter(a => a.status === status);
+  }
+  actions.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  res.json({ success: true, data: actions });
+});
+
+app.post('/api/v1/legal/actions', authenticate, requirePermission('EDIT_LEGAL_CASE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { caseId, actionDate, actionType, responsiblePerson, dueDate, status, notes } = req.body;
+
+  if (!caseId || !actionType || !responsiblePerson || !dueDate) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'মামলা আইডি, কার্যক্রমের ধরন, দায়িত্বপ্রাপ্ত ব্যক্তি ও নির্ধারিত তারিখ আবশ্যক।' } });
+  }
+
+  const targetCase = db.legalCases.find(c => c.id === caseId && c.mosqueId === mosqueId);
+  if (!targetCase) {
+    return res.status(404).json({ success: false, error: { code: 'CASE_NOT_FOUND', message: 'মামলা পাওয়া যায়নি বা অন্য মসজিদের।' } });
+  }
+
+  const now = new Date().toISOString();
+  const actionId = db.generateNextLegalActionId(mosqueId);
+  const newAction: LegalAction = {
+    id: `lac-${mosqueId}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
+    actionId,
+    caseId,
+    mosqueId,
+    actionDate: actionDate || now.split('T')[0],
+    actionType: actionType.trim(),
+    responsiblePerson: responsiblePerson.trim(),
+    dueDate,
+    status: status || 'PENDING',
+    notes: notes?.trim() || '',
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  db.legalActions.push(newAction);
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'LEGAL_ACTION',
+    `পরবর্তী কার্যক্রম যুক্ত: ${newAction.actionType} (#${newAction.actionId}, দায়িত্ব: ${newAction.responsiblePerson})`,
+    newAction.id
+  );
+
+  res.status(201).json({ success: true, data: newAction, message: 'পরবর্তী কার্যক্রম সফলভাবে যুক্ত হয়েছে।' });
+});
+
+app.put('/api/v1/legal/actions/:id', authenticate, requirePermission('EDIT_LEGAL_CASE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const action = db.legalActions.find(a => a.id === req.params.id && a.mosqueId === mosqueId);
+  if (!action) {
+    return res.status(404).json({ success: false, error: { code: 'ACTION_NOT_FOUND', message: 'কার্যক্রম রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  const { actionDate, actionType, responsiblePerson, dueDate, status, completionDate, notes } = req.body;
+  if (actionDate !== undefined) action.actionDate = actionDate;
+  if (actionType !== undefined) action.actionType = actionType.trim();
+  if (responsiblePerson !== undefined) action.responsiblePerson = responsiblePerson.trim();
+  if (dueDate !== undefined) action.dueDate = dueDate;
+  if (status !== undefined) {
+    action.status = status;
+    if (status === 'COMPLETED' && !action.completionDate) {
+      action.completionDate = new Date().toISOString().split('T')[0];
+    }
+  }
+  if (completionDate !== undefined) action.completionDate = completionDate;
+  if (notes !== undefined) action.notes = notes.trim();
+
+  action.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'LEGAL_ACTION', `কার্যক্রম আপডেট (#${action.actionId}, স্ট্যাটাস: ${action.status})`, action.id);
+
+  res.json({ success: true, data: action, message: 'কার্যক্রম সফলভাবে হালনাগাদ করা হয়েছে।' });
+});
+
+app.delete('/api/v1/legal/actions/:id', authenticate, requirePermission('EDIT_LEGAL_CASE'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const action = db.legalActions.find(a => a.id === req.params.id && a.mosqueId === mosqueId);
+  if (!action) {
+    return res.status(404).json({ success: false, error: { code: 'ACTION_NOT_FOUND', message: 'কার্যক্রম পাওয়া যায়নি।' } });
+  }
+
+  const idx = db.legalActions.findIndex(a => a.id === action.id);
+  if (idx !== -1) db.legalActions.splice(idx, 1);
+  db.save();
+
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'DELETE', 'LEGAL_ACTION', `কার্যক্রম মুছে ফেলা হয়েছে (#${action.actionId})`, action.id);
+
+  res.json({ success: true, message: 'কার্যক্রম মুছে ফেলা হয়েছে।' });
+});
+
+// 11. Legal Orders & Judgments — CRUD
+app.get('/api/v1/legal/orders', authenticate, requirePermission('VIEW_LEGAL_CASES'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { caseId } = req.query;
+  let orders = db.legalOrders.filter(o => o.mosqueId === mosqueId);
+  if (caseId && typeof caseId === 'string') {
+    orders = orders.filter(o => o.caseId === caseId);
+  }
+  orders.sort((a, b) => b.orderDate.localeCompare(a.orderDate));
+  res.json({ success: true, data: orders });
+});
+
+app.post('/api/v1/legal/orders', authenticate, requirePermission('MANAGE_LEGAL_ORDERS'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { caseId, orderDate, orderType, summary, outcome, nextAction, centralDocumentId, documentReference } = req.body;
+
+  if (!caseId || !orderDate || !summary) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'মামলা আইডি, আদেশের তারিখ ও সারসংক্ষেপ আবশ্যক।' } });
+  }
+
+  const targetCase = db.legalCases.find(c => c.id === caseId && c.mosqueId === mosqueId);
+  if (!targetCase) {
+    return res.status(404).json({ success: false, error: { code: 'CASE_NOT_FOUND', message: 'মামলা পাওয়া যায়নি বা অন্য মসজিদের।' } });
+  }
+
+  if (centralDocumentId) {
+    const doc = db.centralDocuments.find(d => d.id === centralDocumentId && d.mosqueId === mosqueId);
+    if (!doc) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_DOCUMENT', message: 'নির্দিষ্ট সেন্ট্রাল ডকুমেন্ট পাওয়া যায়নি বা অন্য মসজিদের।' } });
+    }
+  }
+
+  const now = new Date().toISOString();
+  const orderId = db.generateNextLegalOrderId(mosqueId);
+  const newOrder: LegalOrder = {
+    id: `lor-${mosqueId}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
+    orderId,
+    caseId,
+    mosqueId,
+    orderDate,
+    orderType: orderType || 'INTERIM_ORDER',
+    summary: summary.trim(),
+    outcome: outcome?.trim() || undefined,
+    nextAction: nextAction?.trim() || undefined,
+    centralDocumentId: centralDocumentId || undefined,
+    documentReference: documentReference?.trim() || undefined,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  db.legalOrders.push(newOrder);
+
+  // If final judgment or disposal order, update case status appropriately
+  if (orderType === 'FINAL_JUDGMENT' || orderType === 'DECREE' || orderType === 'DISMISSAL') {
+    targetCase.status = 'DISPOSED';
+  } else if (orderType === 'STATUS_QUO' || orderType === 'INJUNCTION') {
+    targetCase.status = 'STAYED';
+  }
+  targetCase.updatedAt = now;
+
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'LEGAL_ORDER',
+    `আদালতের আদেশ/রায় নথিভুক্ত: মামলা ${targetCase.caseNumber} (#${newOrder.orderId}, ধরন: ${newOrder.orderType})`,
+    newOrder.id
+  );
+
+  res.status(201).json({ success: true, data: newOrder, message: 'আদেশ/রায় সফলভাবে সংরক্ষিত হয়েছে।' });
+});
+
+app.put('/api/v1/legal/orders/:id', authenticate, requirePermission('MANAGE_LEGAL_ORDERS'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const order = db.legalOrders.find(o => o.id === req.params.id && o.mosqueId === mosqueId);
+  if (!order) {
+    return res.status(404).json({ success: false, error: { code: 'ORDER_NOT_FOUND', message: 'আদেশ রেকর্ড পাওয়া যায়নি।' } });
+  }
+
+  const { orderDate, orderType, summary, outcome, nextAction, centralDocumentId, documentReference } = req.body;
+  if (orderDate !== undefined) order.orderDate = orderDate;
+  if (orderType !== undefined) order.orderType = orderType;
+  if (summary !== undefined) order.summary = summary.trim();
+  if (outcome !== undefined) order.outcome = outcome.trim();
+  if (nextAction !== undefined) order.nextAction = nextAction.trim();
+  if (centralDocumentId !== undefined) order.centralDocumentId = centralDocumentId;
+  if (documentReference !== undefined) order.documentReference = documentReference.trim();
+
+  order.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'LEGAL_ORDER', `আদেশ আপডেট (#${order.orderId})`, order.id);
+
+  res.json({ success: true, data: order, message: 'আদেশ তথ্য সফলভাবে হালনাগাদ করা হয়েছে।' });
+});
+
+app.delete('/api/v1/legal/orders/:id', authenticate, requirePermission('MANAGE_LEGAL_ORDERS'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const order = db.legalOrders.find(o => o.id === req.params.id && o.mosqueId === mosqueId);
+  if (!order) {
+    return res.status(404).json({ success: false, error: { code: 'ORDER_NOT_FOUND', message: 'আদেশ পাওয়া যায়নি।' } });
+  }
+
+  const idx = db.legalOrders.findIndex(o => o.id === order.id);
+  if (idx !== -1) db.legalOrders.splice(idx, 1);
+  db.save();
+
+  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'DELETE', 'LEGAL_ORDER', `আদেশ মুছে ফেলা হয়েছে (#${order.orderId})`, order.id);
+
+  res.json({ success: true, message: 'আদেশ রেকর্ড মুছে ফেলা হয়েছে।' });
+});
+
+// 12. Legal Dashboard Stats & Printable Register
+app.get('/api/v1/legal/stats', authenticate, requirePermission('VIEW_LEGAL_CASES'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const stats = db.getLegalDashboardStats(mosqueId);
+  res.json({ success: true, data: stats });
+});
+
+app.get('/api/v1/legal/reports/register', authenticate, requirePermission('VIEW_LEGAL_REPORTS'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const { status, caseType } = req.query;
+
+  let cases = db.legalCases.filter(c => c.mosqueId === mosqueId);
+  if (status && typeof status === 'string') cases = cases.filter(c => c.status === status);
+  if (caseType && typeof caseType === 'string') cases = cases.filter(c => c.caseType === caseType);
+
+  const registerData = cases.map(c => {
+    const property = c.relatedPropertyId ? db.properties.find(p => p.id === c.relatedPropertyId && p.mosqueId === mosqueId) : null;
+    const court = c.courtId ? db.legalCourts.find(crt => crt.id === c.courtId && crt.mosqueId === mosqueId) : null;
+    const opposingParties = db.legalParties
+      .filter(p => p.caseId === c.id && p.mosqueId === mosqueId && (p.roleInCase === 'DEFENDANT' || p.roleInCase === 'OPPOSING_PARTY' || p.roleInCase === 'RESPONDENT'))
+      .map(p => p.name)
+      .join(', ');
+
+    const lawyers = db.legalLawyers
+      .filter(l => l.caseId === c.id && l.mosqueId === mosqueId)
+      .map(l => l.name)
+      .join(', ');
+
+    const upcomingHearing = db.legalHearings
+      .filter(h => h.caseId === c.id && h.mosqueId === mosqueId && h.hearingDate >= new Date().toISOString().split('T')[0])
+      .sort((a, b) => a.hearingDate.localeCompare(b.hearingDate))[0];
+
+    const nextAction = db.legalActions
+      .filter(a => a.caseId === c.id && a.mosqueId === mosqueId && a.status !== 'COMPLETED' && a.status !== 'CANCELLED')
+      .sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
+
+    return {
+      caseId: c.caseId,
+      caseNumber: c.caseNumber,
+      caseTitle: c.caseTitle,
+      caseType: c.caseType,
+      court: court?.courtName || c.courtName || 'আদালত নির্ধারিত নয়',
+      filingDate: c.filingDate,
+      status: c.status,
+      relatedProperty: property ? `${property.nameBn || property.name} (${property.propertyCode})` : 'সরাসরি জমি সংশ্লিষ্ট নয়',
+      opposingParty: opposingParties || 'নির্দিষ্ট নেই',
+      lawyer: lawyers || 'নিযুক্ত নেই',
+      nextHearingDate: upcomingHearing?.hearingDate || 'নির্ধারিত নেই',
+      nextHearingPurpose: upcomingHearing?.purpose || '',
+      nextAction: nextAction ? `${nextAction.actionType} (তারিখ: ${nextAction.dueDate})` : 'কোনো পেন্ডিং কার্যক্রম নেই',
+    };
+  });
+
+  registerData.sort((a, b) => a.filingDate.localeCompare(b.filingDate));
+
+  res.json({
+    success: true,
+    data: {
+      mosqueName: req.currentMosque!.nameBn || req.currentMosque!.name,
+      generatedAt: new Date().toISOString(),
+      casesCount: registerData.length,
+      cases: registerData,
+    }
   });
 });
 
