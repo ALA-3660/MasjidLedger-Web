@@ -1483,6 +1483,7 @@ export default function App() {
           meetings={meetings}
           notices={notices}
           auditLogs={auditLogs}
+          transfers={transfers}
           currentMosque={mosque}
           savedConfigs={savedReportConfigs}
           onSaveReportConfig={async (cfg) => {

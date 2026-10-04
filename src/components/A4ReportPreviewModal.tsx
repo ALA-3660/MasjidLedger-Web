@@ -9,7 +9,8 @@ import { PrintSettingsBar } from './common/PrintSettingsBar';
 export interface ReportColumn<T> {
   header: string;
   className?: string;
-  render: (item: T, index: number) => React.ReactNode;
+  render?: (item: T, index: number) => React.ReactNode;
+  accessor?: (item: T, index: number) => React.ReactNode;
 }
 
 interface A4ReportPreviewModalProps<T> {
@@ -22,6 +23,7 @@ interface A4ReportPreviewModalProps<T> {
   columns: ReportColumn<T>[];
   data: T[];
   summaryMetrics?: { label: string; value: string | number; color?: string }[];
+  summaryRows?: { label: string; value: string | number; color?: string }[];
   totalRow?: React.ReactNode;
   onExcel?: () => void;
 }
@@ -36,6 +38,7 @@ export function A4ReportPreviewModal<T>({
   columns,
   data,
   summaryMetrics = [],
+  summaryRows = [],
   totalRow,
   onExcel,
 }: A4ReportPreviewModalProps<T>) {
@@ -43,6 +46,8 @@ export function A4ReportPreviewModal<T>({
   const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
 
   if (!isOpen) return null;
+
+  const effectiveMetrics = summaryMetrics.length > 0 ? summaryMetrics : summaryRows;
 
   const printableElementId = 'a4-universal-report-printable';
 
@@ -112,9 +117,9 @@ export function A4ReportPreviewModal<T>({
           )}
 
           {/* Summary Metric Strip */}
-          {summaryMetrics.length > 0 && (
-            <div className={`grid grid-cols-${Math.min(summaryMetrics.length, 4)} gap-2 text-center text-xs`}>
-              {summaryMetrics.map((m, idx) => (
+          {effectiveMetrics.length > 0 && (
+            <div className={`grid grid-cols-${Math.min(effectiveMetrics.length, 4)} gap-2 text-center text-xs`}>
+              {effectiveMetrics.map((m, idx) => (
                 <div key={idx} className="border border-slate-300 p-2 bg-slate-50">
                   <div className="text-[10px] text-slate-600 font-semibold">{m.label}</div>
                   <div className={`font-bold font-mono text-slate-900 mt-0.5 ${m.color || ''}`}>
@@ -159,7 +164,7 @@ export function A4ReportPreviewModal<T>({
                           key={colIdx}
                           className={`px-3 py-2 border-r border-slate-200 last:border-r-0 ${col.className || ''}`}
                         >
-                          {col.render(item, idx)}
+                          {col.render ? col.render(item, idx) : col.accessor ? col.accessor(item, idx) : (item as any)[col.header]}
                         </td>
                       ))}
                     </tr>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   IncomeEntry,
   ExpenseEntry,
@@ -17,20 +17,21 @@ import {
   AuditLog,
   Mosque,
   User,
+  AccountTransfer,
 } from '../types';
 import { formatDate } from '../lib/i18n';
-import { Building } from 'lucide-react';
 import { MosqueOfficialLetterhead } from './common/MosqueOfficialLetterhead';
+import { calculateAccountingLedger } from '../lib/accountingLedgerService';
 
 export interface ReportPrintDocumentProps {
   reportType: string;
-  dateRangeType: string;
+  dateRangeType?: string;
   fromDate: string;
   toDate: string;
-  grouping: string;
-  level: string;
-  selectedHeadId: string;
-  selectedAccountId: string;
+  grouping?: string;
+  level?: string;
+  selectedHeadId?: string;
+  selectedAccountId?: string;
   currentMosque: Mosque | null;
   currentUser?: User | null;
   includeLetterhead?: boolean;
@@ -38,23 +39,24 @@ export interface ReportPrintDocumentProps {
   expenses: ExpenseEntry[];
   accounts: FinancialAccount[];
   accountHeads: AccountHead[];
-  donationBoxes: DonationBox[];
-  boxCollections: DonationBoxCollection[];
-  staffList: Staff[];
-  staffPayments: StaffPayment[];
-  assets: MosqueAsset[];
-  properties: MosqueProperty[];
-  cemeteryRecords: CemeteryRecord[];
-  committeeMembers: CommitteeMember[];
-  meetings: CommitteeMeeting[];
-  notices: MosqueNotice[];
-  auditLogs: AuditLog[];
+  donationBoxes?: DonationBox[];
+  boxCollections?: DonationBoxCollection[];
+  staffList?: Staff[];
+  staffPayments?: StaffPayment[];
+  assets?: MosqueAsset[];
+  properties?: MosqueProperty[];
+  cemeteryRecords?: CemeteryRecord[];
+  committeeMembers?: CommitteeMember[];
+  meetings?: CommitteeMeeting[];
+  notices?: MosqueNotice[];
+  auditLogs?: AuditLog[];
+  transfers?: AccountTransfer[];
 }
 
 export const REPORT_TITLES: Record<string, { titleBn: string; subtitleBn: string; isLandscape: boolean }> = {
   SUMMARY: {
     titleBn: 'সার্বিক আর্থিক নিরীক্ষা ও সারসংক্ষেপ প্রতিবেদন',
-    subtitleBn: 'আয়, ব্যয়, উদ্বৃত্ত ও সার্বিক তহবিলের নির্বাহী বিবরণী',
+    subtitleBn: 'প্রারম্ভিক স্থিতি, আয়, ব্যয়, উদ্বৃত্ত ও সমাপনী তহবিলের নির্বাহী বিবরণী',
     isLandscape: false,
   },
   DAILY_STATEMENT: {
@@ -84,12 +86,12 @@ export const REPORT_TITLES: Record<string, { titleBn: string; subtitleBn: string
   },
   CASHBOOK: {
     titleBn: 'মসজিদ নগদ বহি (Cashbook Ledger)',
-    subtitleBn: 'নগদ প্রাপ্তি, প্রদান ও দৈনিক চলমান স্থিতি বহি',
+    subtitleBn: 'নগদ প্রারম্ভিক জের, প্রাপ্তি, প্রদান ও দৈনিক চলমান সমাপনী স্থিতি বহি',
     isLandscape: true,
   },
   BANKBOOK: {
     titleBn: 'ব্যাংক খতিয়ান ও স্টেটমেন্ট বহি (Bankbook Statement)',
-    subtitleBn: 'ব্যাংক হিসাবসমূহের জমা, উত্তোলন ও স্থিতি বিবরণী',
+    subtitleBn: 'ব্যাংক হিসাবসমূহের প্রারম্ভিক স্থিতি, জমা, উত্তোলন ও সমাপনী জের',
     isLandscape: true,
   },
   CASH_BANK_COMBINED: {
@@ -152,6 +154,11 @@ export const REPORT_TITLES: Record<string, { titleBn: string; subtitleBn: string
     subtitleBn: 'ব্যবহারকারী কর্তৃক প্রতিটি এন্ট্রি, পরিবর্তন ও অনুমোদন ট্র্যাকিং',
     isLandscape: true,
   },
+  OPENING_BALANCE_REPORT: {
+    titleBn: 'প্রারম্ভিক স্থিতি ও বেসলাইন রেজিস্ট্রি (Opening Balance Ledger)',
+    subtitleBn: 'অ্যাকাউন্টিং বেসলাইন, ডেবিট-ক্রেডিট ব্যালেন্স ও প্রাথমিক জের',
+    isLandscape: false,
+  },
   HIFZ_REPORTS: {
     titleBn: 'হেফজখানা হাজিরা ও উস্তাদ দায়িত্ব রেজিস্টার (Hifz Reports)',
     subtitleBn: 'হিফজ শিক্ষার্থীদের উপস্থিতি, ছুটির বিবরণী ও উস্তাদগণের দায়িত্ব খতিয়ান',
@@ -163,27 +170,48 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
   reportType,
   fromDate,
   toDate,
-  level,
-  selectedHeadId,
-  selectedAccountId,
+  level = 'DETAILED',
+  selectedHeadId = 'ALL',
+  selectedAccountId = 'ALL',
   currentMosque,
   currentUser,
   includeLetterhead = true,
-  incomes,
-  expenses,
-  accounts,
-  accountHeads,
-  donationBoxes,
-  boxCollections,
-  staffList,
-  staffPayments,
-  assets,
-  properties,
-  cemeteryRecords,
-  committeeMembers,
-  meetings,
-  auditLogs,
+  incomes = [],
+  expenses = [],
+  accounts = [],
+  accountHeads = [],
+  donationBoxes = [],
+  boxCollections = [],
+  staffList = [],
+  staffPayments = [],
+  assets = [],
+  properties = [],
+  cemeteryRecords = [],
+  committeeMembers = [],
+  meetings = [],
+  auditLogs = [],
+  transfers = [],
 }) => {
+  // Canonical Ledger Calculation (SAME DATASET RULE)
+  const canonicalLedger = useMemo(() => {
+    return calculateAccountingLedger({
+      accounts,
+      incomes,
+      expenses,
+      transfers: transfers || [],
+      accountFilter:
+        selectedAccountId !== 'ALL'
+          ? selectedAccountId
+          : reportType === 'CASHBOOK'
+          ? 'CASH'
+          : reportType === 'BANKBOOK'
+          ? 'BANK'
+          : 'ALL',
+      startDate: fromDate,
+      endDate: toDate,
+    });
+  }, [accounts, incomes, expenses, transfers, selectedAccountId, reportType, fromDate, toDate]);
+
   // Determine report meta & orientation
   const reportMeta = REPORT_TITLES[reportType] || {
     titleBn: reportType,
@@ -193,61 +221,97 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
 
   const isLandscape = reportMeta.isLandscape || (reportType === 'INCOME_EXPENSE_COMBINED' && level === 'DETAILED');
 
-  // Filtered dataset calculations
-  const filteredIncomes = incomes.filter((i) => {
-    if (i.status !== 'APPROVED') return false;
-    const matchesDate = i.date >= fromDate && i.date <= toDate;
-    const matchesHead = selectedHeadId === 'ALL' || i.mainHeadId === selectedHeadId;
-    const matchesAccount = selectedAccountId === 'ALL' || i.accountId === selectedAccountId;
-    return matchesDate && matchesHead && matchesAccount;
-  });
+  // Filtered dataset calculations for head breakdowns
+  const filteredIncomes = useMemo(() => {
+    return incomes.filter((i) => {
+      if (i.status !== 'APPROVED') return false;
+      const matchesDate = i.date >= fromDate && i.date <= toDate;
+      const matchesHead = selectedHeadId === 'ALL' || i.mainHeadId === selectedHeadId;
+      const matchesAccount = selectedAccountId === 'ALL' || i.accountId === selectedAccountId;
+      return matchesDate && matchesHead && matchesAccount;
+    });
+  }, [incomes, fromDate, toDate, selectedHeadId, selectedAccountId]);
 
-  const filteredExpenses = expenses.filter((e) => {
-    if (e.status !== 'APPROVED') return false;
-    const matchesDate = e.date >= fromDate && e.date <= toDate;
-    const matchesHead = selectedHeadId === 'ALL' || e.mainHeadId === selectedHeadId;
-    const matchesAccount = selectedAccountId === 'ALL' || e.accountId === selectedAccountId;
-    return matchesDate && matchesHead && matchesAccount;
-  });
+  const filteredExpenses = useMemo(() => {
+    return expenses.filter((e) => {
+      if (e.status !== 'APPROVED') return false;
+      const matchesDate = e.date >= fromDate && e.date <= toDate;
+      const matchesHead = selectedHeadId === 'ALL' || e.mainHeadId === selectedHeadId;
+      const matchesAccount = selectedAccountId === 'ALL' || e.accountId === selectedAccountId;
+      return matchesDate && matchesHead && matchesAccount;
+    });
+  }, [expenses, fromDate, toDate, selectedHeadId, selectedAccountId]);
 
-  const totalIncome = filteredIncomes.reduce((s, i) => s + i.amount, 0);
-  const totalExpense = filteredExpenses.reduce((s, e) => s + e.amount, 0);
+  const totalIncome = filteredIncomes.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+  const totalExpense = filteredExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
   const netSurplus = totalIncome - totalExpense;
 
   // Head-wise grouping
-  const headWiseIncome: Record<string, { id: string; name: string; amount: number; count: number; subHeads: Record<string, number> }> = {};
-  filteredIncomes.forEach((i) => {
-    const key = i.mainHeadId || 'other';
-    if (!headWiseIncome[key]) {
-      headWiseIncome[key] = { id: key, name: i.mainHeadNameBn || 'অন্যান্য', amount: 0, count: 0, subHeads: {} };
-    }
-    headWiseIncome[key].amount += i.amount;
-    headWiseIncome[key].count += 1;
-    if (i.subHeadNameBn) {
-      headWiseIncome[key].subHeads[i.subHeadNameBn] = (headWiseIncome[key].subHeads[i.subHeadNameBn] || 0) + i.amount;
-    }
-  });
+  const headWiseIncome = useMemo(() => {
+    const map: Record<string, { id: string; name: string; amount: number; count: number; subHeads: Record<string, number> }> = {};
+    filteredIncomes.forEach((i) => {
+      const key = i.mainHeadId || 'other';
+      if (!map[key]) {
+        map[key] = { id: key, name: i.mainHeadNameBn || 'অন্যান্য', amount: 0, count: 0, subHeads: {} };
+      }
+      map[key].amount += Number(i.amount) || 0;
+      map[key].count += 1;
+      if (i.subHeadNameBn) {
+        map[key].subHeads[i.subHeadNameBn] = (map[key].subHeads[i.subHeadNameBn] || 0) + (Number(i.amount) || 0);
+      }
+    });
+    return map;
+  }, [filteredIncomes]);
 
-  const headWiseExpense: Record<string, { id: string; name: string; amount: number; count: number; subHeads: Record<string, number> }> = {};
-  filteredExpenses.forEach((e) => {
-    const key = e.mainHeadId || 'other';
-    if (!headWiseExpense[key]) {
-      headWiseExpense[key] = { id: key, name: e.mainHeadNameBn || 'অন্যান্য', amount: 0, count: 0, subHeads: {} };
-    }
-    headWiseExpense[key].amount += e.amount;
-    headWiseExpense[key].count += 1;
-    if (e.subHeadNameBn) {
-      headWiseExpense[key].subHeads[e.subHeadNameBn] = (headWiseExpense[key].subHeads[e.subHeadNameBn] || 0) + e.amount;
-    }
-  });
+  const headWiseExpense = useMemo(() => {
+    const map: Record<string, { id: string; name: string; amount: number; count: number; subHeads: Record<string, number> }> = {};
+    filteredExpenses.forEach((e) => {
+      const key = e.mainHeadId || 'other';
+      if (!map[key]) {
+        map[key] = { id: key, name: e.mainHeadNameBn || 'অন্যান্য', amount: 0, count: 0, subHeads: {} };
+      }
+      map[key].amount += Number(e.amount) || 0;
+      map[key].count += 1;
+      if (e.subHeadNameBn) {
+        map[key].subHeads[e.subHeadNameBn] = (map[key].subHeads[e.subHeadNameBn] || 0) + (Number(e.amount) || 0);
+      }
+    });
+    return map;
+  }, [filteredExpenses]);
 
-  // Account balances
-  const totalCashBalance = accounts
-    .filter((a) => a.accountType === 'CASH')
-    .reduce((sum, a) => sum + (a.currentBalance || 0), 0);
-  const totalBankBalance = accounts
-    .filter((a) => a.accountType === 'BANK')
-    .reduce((sum, a) => sum + (a.currentBalance || 0), 0);
+  // Dynamic monthly breakdown for MONTHLY_SUMMARY report
+  const monthlyBreakdown = useMemo(() => {
+    const year = fromDate ? new Date(fromDate).getFullYear() : new Date().getFullYear();
+    const months = [
+      { num: '01', name: 'জানুয়ারি' },
+      { num: '02', name: 'ফেব্রুয়ারি' },
+      { num: '03', name: 'মার্চ' },
+      { num: '04', name: 'এপ্রিল' },
+      { num: '05', name: 'মে' },
+      { num: '06', name: 'জুন' },
+      { num: '07', name: 'জুলাই' },
+      { num: '08', name: 'আগস্ট' },
+      { num: '09', name: 'সেপ্টেম্বর' },
+      { num: '10', name: 'অক্টোবর' },
+      { num: '11', name: 'নভেম্বর' },
+      { num: '12', name: 'ডিসেম্বর' },
+    ];
+    return months.map((m) => {
+      const prefix = `${year}-${m.num}`;
+      const inc = incomes
+        .filter((i) => i.status === 'APPROVED' && (i.date || '').startsWith(prefix))
+        .reduce((sum, i) => sum + (Number(i.amount) || 0), 0);
+      const exp = expenses
+        .filter((e) => e.status === 'APPROVED' && (e.date || '').startsWith(prefix))
+        .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+      return {
+        name: m.name,
+        inc,
+        exp,
+        surplus: inc - exp,
+      };
+    });
+  }, [incomes, expenses, fromDate]);
 
   // Report Document ID for audit tracking
   const reportRefNumber = `RPT-${(currentMosque?.code || 'ML').toUpperCase()}-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(Math.floor(1000 + Math.random() * 9000))}`;
@@ -341,39 +405,58 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
       )}
 
       {/* ============================================================
-          2. EXECUTIVE SUMMARY BOXES
+          2. CANONICAL EXECUTIVE SUMMARY BOXES (Previous Closing -> Current Closing Chain)
           ============================================================ */}
-      <div className="grid grid-cols-3 gap-3 mb-4 break-inside-avoid">
-        {/* Total Income Box */}
-        <div className="border-2 border-slate-900 p-2.5 bg-slate-50 text-center">
-          <span className="font-baloo text-xs font-bold text-slate-800 block">মোট অনুমোদিত আয় (Total Income)</span>
-          <span className="font-siliguri text-lg sm:text-xl font-bold text-slate-950 block mt-1">
-            ৳ {totalIncome.toLocaleString('en-IN')}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-4 break-inside-avoid">
+        {/* 1. Opening Balance Card (Derived from previous period closing) */}
+        <div className="border-2 border-slate-900 p-2.5 bg-amber-50/70 text-center">
+          <span className="font-baloo text-xs font-bold text-amber-950 block">
+            প্রারম্ভিক স্থিতি (Opening Balance)
           </span>
-          <span className="font-baloo text-[11px] text-slate-600 block mt-0.5">
+          <span className="font-siliguri text-lg sm:text-xl font-bold text-amber-950 block mt-1">
+            ৳ {canonicalLedger.openingBalance.toLocaleString('en-IN')}
+          </span>
+          <span className="font-baloo text-[11px] text-amber-800 block mt-0.5">
+            পূর্ববর্তী মেয়াদের সমাপনী জের
+          </span>
+        </div>
+
+        {/* 2. Total Inflow Card */}
+        <div className="border-2 border-slate-900 p-2.5 bg-emerald-50/70 text-center">
+          <span className="font-baloo text-xs font-bold text-emerald-950 block">
+            মোট প্রাপ্তি / আয় (Total Inflow)
+          </span>
+          <span className="font-siliguri text-lg sm:text-xl font-bold text-emerald-950 block mt-1">
+            ৳ {canonicalLedger.totalDebit.toLocaleString('en-IN')}
+          </span>
+          <span className="font-baloo text-[11px] text-emerald-800 block mt-0.5">
             {filteredIncomes.length} টি অনুমোদিত ভাউচার
           </span>
         </div>
 
-        {/* Total Expense Box */}
-        <div className="border-2 border-slate-900 p-2.5 bg-slate-50 text-center">
-          <span className="font-baloo text-xs font-bold text-slate-800 block">মোট অনুমোদিত ব্যয় (Total Expense)</span>
-          <span className="font-siliguri text-lg sm:text-xl font-bold text-slate-950 block mt-1">
-            ৳ {totalExpense.toLocaleString('en-IN')}
+        {/* 3. Total Outflow Card */}
+        <div className="border-2 border-slate-900 p-2.5 bg-rose-50/70 text-center">
+          <span className="font-baloo text-xs font-bold text-rose-950 block">
+            মোট প্রদান / ব্যয় (Total Outflow)
           </span>
-          <span className="font-baloo text-[11px] text-slate-600 block mt-0.5">
+          <span className="font-siliguri text-lg sm:text-xl font-bold text-rose-950 block mt-1">
+            ৳ {canonicalLedger.totalCredit.toLocaleString('en-IN')}
+          </span>
+          <span className="font-baloo text-[11px] text-rose-800 block mt-0.5">
             {filteredExpenses.length} টি অনুমোদিত ভাউচার
           </span>
         </div>
 
-        {/* Net Surplus / Deficit Box */}
-        <div className="border-2 border-slate-900 p-2.5 bg-slate-50 text-center">
-          <span className="font-baloo text-xs font-bold text-slate-800 block">নিট উদ্বৃত্ত / ঘাটতি (Net Balance)</span>
-          <span className="font-siliguri text-lg sm:text-xl font-bold text-slate-950 block mt-1">
-            ৳ {netSurplus.toLocaleString('en-IN')}
+        {/* 4. Current Closing Balance Card */}
+        <div className="border-2 border-slate-900 p-2.5 bg-slate-900 text-white text-center">
+          <span className="font-baloo text-xs font-bold text-slate-200 block">
+            সমাপনী স্থিতি (Closing Balance)
           </span>
-          <span className="font-baloo text-[11px] font-bold text-slate-700 block mt-0.5">
-            {netSurplus >= 0 ? 'তহবিল উদ্বৃত্ত' : 'তহবিল ঘাটতি'}
+          <span className="font-siliguri text-lg sm:text-xl font-bold text-emerald-400 block mt-1">
+            ৳ {canonicalLedger.closingBalance.toLocaleString('en-IN')}
+          </span>
+          <span className="font-baloo text-[11px] text-slate-300 block mt-0.5">
+            নিট মেয়াদী পরিবর্তন: {canonicalLedger.netChange >= 0 ? '+' : ''}৳ {canonicalLedger.netChange.toLocaleString('en-IN')}
           </span>
         </div>
       </div>
@@ -411,7 +494,7 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
                         <td colSpan={3} className="py-3 px-2 text-center text-slate-500 italic">কোনো আয়ের রেকর্ড নেই</td>
                       </tr>
                     ) : (
-                      Object.values(headWiseIncome).map((h) => (
+                      Object.values(headWiseIncome).map((h: { id: string; name: string; amount: number; count: number; subHeads: Record<string, number> }) => (
                         <tr key={h.id}>
                           <td className="py-1.5 px-2 text-left font-medium text-slate-900 break-words">{h.name}</td>
                           <td className="py-1.5 px-2 text-center text-slate-600">{h.count} টি</td>
@@ -445,7 +528,7 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
                         <td colSpan={3} className="py-3 px-2 text-center text-slate-500 italic">কোনো ব্যয়ের রেকর্ড নেই</td>
                       </tr>
                     ) : (
-                      Object.values(headWiseExpense).map((h) => (
+                      Object.values(headWiseExpense).map((h: { id: string; name: string; amount: number; count: number; subHeads: Record<string, number> }) => (
                         <tr key={h.id}>
                           <td className="py-1.5 px-2 text-left font-medium text-slate-900 break-words">{h.name}</td>
                           <td className="py-1.5 px-2 text-center text-slate-600">{h.count} টি</td>
@@ -463,12 +546,12 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
         </div>
       )}
 
-      {/* --- A2. DAILY STATEMENT WITH RUNNING LEDGER --- */}
+      {/* --- A2. DAILY STATEMENT WITH RUNNING LEDGER (CANONICAL CHAIN) --- */}
       {(reportType === 'DAILY_STATEMENT' || reportType === 'DAILY_TRANSACTIONS') && (
         <div className="border border-slate-900 mb-4 overflow-hidden">
           <div className="bg-slate-900 text-white px-3 py-1.5 font-siliguri font-bold text-xs flex justify-between">
             <span>দৈনিক লেনদেন বিবরণী ও চলমান খতিয়ান (Daily Transaction Statement & Running Ledger)</span>
-            <span>মোট ভাউচার: {filteredIncomes.length + filteredExpenses.length} টি</span>
+            <span>মোট লেনদেন: {canonicalLedger.entries.length} টি</span>
           </div>
           <table className="w-full text-xs font-baloo border-collapse" style={{ tableLayout: 'fixed', width: '100%' }}>
             <thead className="bg-slate-100 border-b border-slate-900 text-slate-900 font-bold">
@@ -484,70 +567,84 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-300">
-              {(() => {
-                const combined = [
-                  ...filteredIncomes.map((i) => ({ ...i, entryType: 'INCOME' as const })),
-                  ...filteredExpenses.map((e) => ({ ...e, entryType: 'EXPENSE' as const })),
-                ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+              {/* Canonical Opening Balance Row */}
+              <tr className="bg-amber-50/80 font-bold text-slate-900 border-b border-slate-300">
+                <td className="py-1.5 px-1.5 text-center border-r border-slate-300 text-slate-700 whitespace-nowrap text-[11px]">
+                  {formatDate(fromDate)}
+                </td>
+                <td className="py-1.5 px-1.5 text-center border-r border-slate-300 font-mono text-amber-900 text-[11px]">
+                  OPENING
+                </td>
+                <td className="py-1.5 px-2 text-left border-r border-slate-300 text-slate-900 font-siliguri text-xs">
+                  পূর্ববর্তী সমাপনী জের / প্রারম্ভিক স্থিতি (Opening Balance B/F)
+                </td>
+                <td className="py-1.5 px-1.5 text-left border-r border-slate-300 text-slate-500 text-[11px]">
+                  —
+                </td>
+                <td className="py-1.5 px-1.5 text-left border-r border-slate-300 text-slate-700 text-[11px]">
+                  {selectedAccountId !== 'ALL' ? (accounts.find((a) => a.id === selectedAccountId)?.nameBn || 'নির্দিষ্ট ফান্ড') : 'সকল অনুমোদিত ফান্ড'}
+                </td>
+                <td className="py-1.5 px-1 text-right border-r border-slate-300 text-slate-400 font-mono text-[11px]">
+                  —
+                </td>
+                <td className="py-1.5 px-1 text-right border-r border-slate-300 text-slate-400 font-mono text-[11px]">
+                  —
+                </td>
+                <td className="py-1.5 px-1.5 text-right font-bold text-slate-950 bg-amber-100/70 font-siliguri text-[11px]">
+                  ৳ {canonicalLedger.openingBalance.toLocaleString('en-IN')}
+                </td>
+              </tr>
 
-                let running = 0;
-
-                if (combined.length === 0) {
-                  return (
-                    <tr>
-                      <td colSpan={8} className="py-6 text-center text-slate-500 italic">
-                        নির্বাচিত সময়সীমায় কোনো লেনদেনের রেকর্ড পাওয়া যায়নি।
-                      </td>
-                    </tr>
-                  );
-                }
-
-                return combined.map((row, idx) => {
-                  if (row.entryType === 'INCOME') {
-                    running += row.amount;
-                  } else {
-                    running -= row.amount;
-                  }
-
-                  return (
-                    <tr key={`${row.entryType}-${row.id}`} className={idx % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'}>
-                      <td className="py-1.5 px-1.5 text-center border-r border-slate-300 text-slate-700 whitespace-nowrap text-[11px]">
-                        {formatDate(row.date)}
-                      </td>
-                      <td className="py-1.5 px-1.5 text-center border-r border-slate-300 font-bold text-slate-900 text-[11px] break-words">
-                        {row.voucherNumber}
-                      </td>
-                      <td className="py-1.5 px-2 text-left border-r border-slate-300 break-words">
-                        <div className="font-bold text-slate-950 font-siliguri text-xs">{row.mainHeadNameBn}</div>
-                        {row.subHeadNameBn && <div className="text-[10px] text-slate-600">{row.subHeadNameBn}</div>}
-                        {row.description && <div className="text-[10px] text-slate-500 italic mt-0.5 line-clamp-2">{row.description}</div>}
-                      </td>
-                      <td className="py-1.5 px-1.5 text-left border-r border-slate-300 text-slate-800 text-[11px] break-words">
-                        {row.entryType === 'INCOME' ? (row as any).donorName || 'সাধারণ দানশীল' : (row as any).payeeName || 'ভেন্ডর / গ্রহীতা'}
-                      </td>
-                      <td className="py-1.5 px-1.5 text-left border-r border-slate-300 text-slate-700 text-[11px] break-words">
-                        {row.accountName}
-                      </td>
-                      <td className="py-1.5 px-1 text-right border-r border-slate-300 font-bold text-emerald-900 font-siliguri text-[11px]">
-                        {row.entryType === 'INCOME' ? `+ ৳ ${row.amount.toLocaleString('en-IN')}` : '—'}
-                      </td>
-                      <td className="py-1.5 px-1 text-right border-r border-slate-300 font-bold text-rose-900 font-siliguri text-[11px]">
-                        {row.entryType === 'EXPENSE' ? `- ৳ ${row.amount.toLocaleString('en-IN')}` : '—'}
-                      </td>
-                      <td className="py-1.5 px-1.5 text-right font-bold text-slate-950 bg-slate-50 font-siliguri text-[11px]">
-                        ৳ {running.toLocaleString('en-IN')}
-                      </td>
-                    </tr>
-                  );
-                });
-              })()}
+              {/* Transaction Rows from canonical ledger */}
+              {canonicalLedger.entries.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-6 text-center text-slate-500 italic">
+                    নির্বাচিত সময়সীমায় কোনো অনুমোদিত লেনদেনের রেকর্ড পাওয়া যায়নি।
+                  </td>
+                </tr>
+              ) : (
+                canonicalLedger.entries.map((row, idx) => (
+                  <tr key={`${row.type}-${row.id}-${idx}`} className={idx % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'}>
+                    <td className="py-1.5 px-1.5 text-center border-r border-slate-300 text-slate-700 whitespace-nowrap text-[11px]">
+                      {formatDate(row.date)}
+                    </td>
+                    <td className="py-1.5 px-1.5 text-center border-r border-slate-300 font-bold text-slate-900 text-[11px] break-words">
+                      {row.voucherNumber}
+                    </td>
+                    <td className="py-1.5 px-2 text-left border-r border-slate-300 break-words">
+                      <div className="font-bold text-slate-950 font-siliguri text-xs">{row.headNameBn}</div>
+                      {row.subHeadNameBn && <div className="text-[10px] text-slate-600">{row.subHeadNameBn}</div>}
+                      {row.description && <div className="text-[10px] text-slate-500 italic mt-0.5 line-clamp-2">{row.description}</div>}
+                    </td>
+                    <td className="py-1.5 px-1.5 text-left border-r border-slate-300 text-slate-800 text-[11px] break-words">
+                      {row.partyName || '—'}
+                    </td>
+                    <td className="py-1.5 px-1.5 text-left border-r border-slate-300 text-slate-700 text-[11px] break-words">
+                      {row.accountName}
+                    </td>
+                    <td className="py-1.5 px-1 text-right border-r border-slate-300 font-bold text-emerald-900 font-siliguri text-[11px]">
+                      {row.debit > 0 ? `+ ৳ ${row.debit.toLocaleString('en-IN')}` : '—'}
+                    </td>
+                    <td className="py-1.5 px-1 text-right border-r border-slate-300 font-bold text-rose-900 font-siliguri text-[11px]">
+                      {row.credit > 0 ? `- ৳ ${row.credit.toLocaleString('en-IN')}` : '—'}
+                    </td>
+                    <td className="py-1.5 px-1.5 text-right font-bold text-slate-950 bg-slate-50 font-siliguri text-[11px]">
+                      ৳ {row.runningBalance.toLocaleString('en-IN')}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
             <tfoot className="bg-slate-900 text-white font-bold font-siliguri border-t-2 border-slate-900">
               <tr>
-                <td colSpan={5} className="py-2 px-2 text-left">সমাপনী মোট ও নিট তহবিল স্থিতি</td>
-                <td className="py-2 px-1 text-right text-emerald-300">+ ৳ {totalIncome.toLocaleString('en-IN')}</td>
-                <td className="py-2 px-1 text-right text-rose-300">- ৳ {totalExpense.toLocaleString('en-IN')}</td>
-                <td className="py-2 px-1.5 text-right text-white bg-slate-800 text-xs">৳ {netSurplus.toLocaleString('en-IN')}</td>
+                <td colSpan={5} className="py-2 px-2 text-left">
+                  সমাপনী মোট ও সমাপনী তহবিল স্থিতি (Closing Balance)
+                </td>
+                <td className="py-2 px-1 text-right text-emerald-300">+ ৳ {canonicalLedger.totalDebit.toLocaleString('en-IN')}</td>
+                <td className="py-2 px-1 text-right text-rose-300">- ৳ {canonicalLedger.totalCredit.toLocaleString('en-IN')}</td>
+                <td className="py-2 px-1.5 text-right text-white bg-slate-800 text-xs font-bold font-siliguri">
+                  ৳ {canonicalLedger.closingBalance.toLocaleString('en-IN')}
+                </td>
               </tr>
             </tfoot>
           </table>
@@ -577,8 +674,8 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
             <tbody className="divide-y divide-slate-300">
               {filteredIncomes.map((i, idx) => (
                 <tr key={`inc-${i.id}`} className="hover:bg-slate-50">
-                  <td className="py-1.5 px-2 text-center border-r border-slate-200 text-slate-600">{idx + 1}</td>
-                  <td className="py-1.5 px-2 text-center border-r border-slate-200 font-medium">{formatDate(i.date)}</td>
+                  <td className="py-1.5 px-2 text-center border-r border-slate-200 text-slate-600 font-mono">{idx + 1}</td>
+                  <td className="py-1.5 px-2 text-center border-r border-slate-200 font-medium whitespace-nowrap">{formatDate(i.date)}</td>
                   <td className="py-1.5 px-2 text-center border-r border-slate-200 font-bold text-slate-900">{i.voucherNumber}</td>
                   <td className="py-1.5 px-2 text-center border-r border-slate-200 font-bold text-emerald-800">আয়</td>
                   <td className="py-1.5 px-2 text-left border-r border-slate-200">
@@ -598,10 +695,10 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
 
               {filteredExpenses.map((e, idx) => (
                 <tr key={`exp-${e.id}`} className="hover:bg-slate-50">
-                  <td className="py-1.5 px-2 text-center border-r border-slate-200 text-slate-600">
+                  <td className="py-1.5 px-2 text-center border-r border-slate-200 text-slate-600 font-mono">
                     {filteredIncomes.length + idx + 1}
                   </td>
-                  <td className="py-1.5 px-2 text-center border-r border-slate-200 font-medium">{formatDate(e.date)}</td>
+                  <td className="py-1.5 px-2 text-center border-r border-slate-200 font-medium whitespace-nowrap">{formatDate(e.date)}</td>
                   <td className="py-1.5 px-2 text-center border-r border-slate-200 font-bold text-slate-900">{e.voucherNumber}</td>
                   <td className="py-1.5 px-2 text-center border-r border-slate-200 font-bold text-rose-800">ব্যয়</td>
                   <td className="py-1.5 px-2 text-left border-r border-slate-200">
@@ -637,15 +734,19 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
         </div>
       )}
 
-      {/* --- C. CASHBOOK & BANKBOOK (LANDSCAPE) --- */}
+      {/* --- C. CASHBOOK & BANKBOOK (LANDSCAPE WITH CANONICAL CHAIN) --- */}
       {(reportType === 'CASHBOOK' || reportType === 'BANKBOOK' || reportType === 'CASH_BANK_COMBINED') && (
         <div className="border border-slate-900 mb-4 overflow-hidden">
           <div className="bg-slate-900 text-white px-3 py-1.5 font-siliguri font-bold text-xs flex justify-between">
             <span>
-              {reportType === 'CASHBOOK' ? 'নগদ হিসাব বহি (Cashbook Ledger)' : 'ব্যাংক হিসাব স্টেটমেন্ট (Bankbook Ledger)'}
+              {reportType === 'CASHBOOK'
+                ? 'মসজিদ নগদ হিসাব বহি (Cashbook Ledger)'
+                : reportType === 'BANKBOOK'
+                ? 'ব্যাংক খতিয়ান ও হিসাব স্টেটমেন্ট (Bankbook Ledger)'
+                : 'ক্যাশ ও ব্যাংক সমন্বিত যৌথ খতিয়ান (Combined Cash & Bank Book)'}
             </span>
             <span>
-              বর্তমান ক্যাশ স্থিতি: ৳ {totalCashBalance.toLocaleString('en-IN')} | ব্যাংক স্থিতি: ৳ {totalBankBalance.toLocaleString('en-IN')}
+              প্রারম্ভিক স্থিতি: ৳ {canonicalLedger.openingBalance.toLocaleString('en-IN')} | সমাপনী স্থিতি: ৳ {canonicalLedger.closingBalance.toLocaleString('en-IN')}
             </span>
           </div>
           <table className="w-full text-xs font-baloo border-collapse" style={{ tableLayout: 'fixed', width: '100%' }}>
@@ -662,62 +763,64 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-300">
-              {/* Combine & Sort Incomes & Expenses by date */}
-              {(() => {
-                const combined = [
-                  ...filteredIncomes.map((i) => ({ ...i, entryType: 'INCOME' as const })),
-                  ...filteredExpenses.map((e) => ({ ...e, entryType: 'EXPENSE' as const })),
-                ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+              {/* Opening Row */}
+              <tr className="bg-amber-50/80 font-bold text-slate-900 border-b border-slate-300">
+                <td className="py-1.5 px-2 text-center border-r border-slate-300 font-mono text-slate-500">—</td>
+                <td className="py-1.5 px-2 text-center border-r border-slate-300 font-medium whitespace-nowrap">{formatDate(fromDate)}</td>
+                <td className="py-1.5 px-2 text-center border-r border-slate-300 font-mono text-amber-900">OPENING</td>
+                <td className="py-1.5 px-2 text-left border-r border-slate-300 font-siliguri font-bold text-slate-950">
+                  পূর্ববর্তী সমাপনী জের / প্রারম্ভিক স্থিতি (Opening Balance B/F)
+                </td>
+                <td className="py-1.5 px-2 text-left border-r border-slate-300 text-slate-700">
+                  {reportType === 'CASHBOOK' ? 'সকল নগদ হিসাব' : reportType === 'BANKBOOK' ? 'সকল ব্যাংক ও MFS হিসাব' : 'সকল ক্যাশ ও ব্যাংক'}
+                </td>
+                <td className="py-1.5 px-2 text-right border-r border-slate-300 text-slate-400 font-mono">—</td>
+                <td className="py-1.5 px-2 text-right border-r border-slate-300 text-slate-400 font-mono">—</td>
+                <td className="py-1.5 px-2 text-right font-siliguri font-bold text-slate-950 bg-amber-100/70">
+                  ৳ {canonicalLedger.openingBalance.toLocaleString('en-IN')}
+                </td>
+              </tr>
 
-                let running = 0;
-
-                if (combined.length === 0) {
-                  return (
-                    <tr>
-                      <td colSpan={8} className="py-6 text-center text-slate-500 italic">
-                        নির্বাচিত ফিল্টারে কোনো ক্যাশ/ব্যাংক লেনদেন পাওয়া যায়নি।
-                      </td>
-                    </tr>
-                  );
-                }
-
-                return combined.map((row, idx) => {
-                  if (row.entryType === 'INCOME') {
-                    running += row.amount;
-                  } else {
-                    running -= row.amount;
-                  }
-
-                  return (
-                    <tr key={`${row.entryType}-${row.id}`} className="hover:bg-slate-50">
-                      <td className="py-1.5 px-2 text-center border-r border-slate-200 text-slate-600">{idx + 1}</td>
-                      <td className="py-1.5 px-2 text-center border-r border-slate-200 font-medium">{formatDate(row.date)}</td>
-                      <td className="py-1.5 px-2 text-center border-r border-slate-200 font-bold text-slate-900">{row.voucherNumber}</td>
-                      <td className="py-1.5 px-2 text-left border-r border-slate-200 break-words">
-                        <span className="font-bold text-slate-900">{row.mainHeadNameBn}</span>
-                        {row.description && <p className="text-[10px] text-slate-600">{row.description}</p>}
-                      </td>
-                      <td className="py-1.5 px-2 text-left border-r border-slate-200 text-slate-700">{row.accountName}</td>
-                      <td className="py-1.5 px-2 text-right border-r border-slate-200 font-siliguri font-bold text-emerald-800">
-                        {row.entryType === 'INCOME' ? `৳ ${row.amount.toLocaleString('en-IN')}` : '-'}
-                      </td>
-                      <td className="py-1.5 px-2 text-right border-r border-slate-200 font-siliguri font-bold text-rose-800">
-                        {row.entryType === 'EXPENSE' ? `৳ ${row.amount.toLocaleString('en-IN')}` : '-'}
-                      </td>
-                      <td className="py-1.5 px-2 text-right font-siliguri font-bold text-slate-950">
-                        ৳ {running.toLocaleString('en-IN')}
-                      </td>
-                    </tr>
-                  );
-                });
-              })()}
+              {/* Transaction entries from canonicalLedger */}
+              {canonicalLedger.entries.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-6 text-center text-slate-500 italic">
+                    নির্বাচিত ফিল্টারে কোনো লেনদেন পাওয়া যায়নি।
+                  </td>
+                </tr>
+              ) : (
+                canonicalLedger.entries.map((row, idx) => (
+                  <tr key={`${row.type}-${row.id}-${idx}`} className="hover:bg-slate-50">
+                    <td className="py-1.5 px-2 text-center border-r border-slate-200 text-slate-600 font-mono">{idx + 1}</td>
+                    <td className="py-1.5 px-2 text-center border-r border-slate-200 font-medium whitespace-nowrap">{formatDate(row.date)}</td>
+                    <td className="py-1.5 px-2 text-center border-r border-slate-200 font-bold text-slate-900">{row.voucherNumber}</td>
+                    <td className="py-1.5 px-2 text-left border-r border-slate-200 break-words">
+                      <span className="font-bold text-slate-900 block">{row.headNameBn}</span>
+                      {row.subHeadNameBn && <span className="text-[10px] text-slate-600 block">{row.subHeadNameBn}</span>}
+                      {row.description && <p className="text-[10px] text-slate-600 mt-0.5">{row.description}</p>}
+                    </td>
+                    <td className="py-1.5 px-2 text-left border-r border-slate-200 text-slate-700">{row.accountName}</td>
+                    <td className="py-1.5 px-2 text-right border-r border-slate-200 font-siliguri font-bold text-emerald-800">
+                      {row.debit > 0 ? `৳ ${row.debit.toLocaleString('en-IN')}` : '—'}
+                    </td>
+                    <td className="py-1.5 px-2 text-right border-r border-slate-200 font-siliguri font-bold text-rose-800">
+                      {row.credit > 0 ? `৳ ${row.credit.toLocaleString('en-IN')}` : '—'}
+                    </td>
+                    <td className="py-1.5 px-2 text-right font-siliguri font-bold text-slate-950 bg-slate-50">
+                      ৳ {row.runningBalance.toLocaleString('en-IN')}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
-            <tfoot className="bg-slate-100 border-t-2 border-slate-900 font-siliguri font-bold text-xs text-slate-950">
+            <tfoot className="bg-slate-900 text-white border-t-2 border-slate-900 font-siliguri font-bold text-xs">
               <tr>
-                <td colSpan={5} className="py-2 px-3 text-right">মোট জমা ও খরচের যোগফল:</td>
-                <td className="py-2 px-2 text-right text-emerald-900">৳ {totalIncome.toLocaleString('en-IN')}</td>
-                <td className="py-2 px-2 text-right text-rose-900">৳ {totalExpense.toLocaleString('en-IN')}</td>
-                <td className="py-2 px-2 text-right">৳ {netSurplus.toLocaleString('en-IN')}</td>
+                <td colSpan={5} className="py-2 px-3 text-left">
+                  সর্বমোট সমাপনী জের ও তহবিলের স্থিতি (Closing Balance):
+                </td>
+                <td className="py-2 px-2 text-right text-emerald-300">৳ {canonicalLedger.totalDebit.toLocaleString('en-IN')}</td>
+                <td className="py-2 px-2 text-right text-rose-300">৳ {canonicalLedger.totalCredit.toLocaleString('en-IN')}</td>
+                <td className="py-2 px-2 text-right text-white bg-slate-800">৳ {canonicalLedger.closingBalance.toLocaleString('en-IN')}</td>
               </tr>
             </tfoot>
           </table>
@@ -745,7 +848,7 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
             <tbody className="divide-y divide-slate-300">
               {donationBoxes.map((box, idx) => (
                 <tr key={box.id}>
-                  <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-600">{idx + 1}</td>
+                  <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-600 font-mono">{idx + 1}</td>
                   <td className="py-2 px-2 text-center border-r border-slate-200 font-bold font-mono text-slate-900">
                     {box.boxCode || box.boxNumber || `BOX-${idx + 1}`}
                   </td>
@@ -804,17 +907,17 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
             <tbody className="divide-y divide-slate-300">
               {staffList.map((st, idx) => {
                 const displayName = st.fullNameBn || st.name;
-                const relevantPayments = staffPayments.filter(p => p.staffId === st.id && p.status !== 'CANCELLED');
+                const relevantPayments = staffPayments.filter((p) => p.staffId === st.id && p.status !== 'CANCELLED');
                 const lastPayment = relevantPayments[0];
                 const bonusAmount = lastPayment ? (lastPayment.bonus || 0) + (lastPayment.otherAllowance || 0) : (st.allowance || 0);
                 const totalAmount = lastPayment ? (lastPayment.netPaid || (lastPayment.basicSalary + bonusAmount - (lastPayment.deduction || 0))) : (st.monthlySalary + bonusAmount);
 
                 return (
                   <tr key={st.id}>
-                    <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-600">{idx + 1}</td>
+                    <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-600 font-mono">{idx + 1}</td>
                     <td className="py-2 px-2 text-left border-r border-slate-200 font-bold text-slate-900">{displayName}</td>
                     <td className="py-2 px-2 text-left border-r border-slate-200 font-medium text-slate-700">{st.designationBn}</td>
-                    <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-600">{st.phone}</td>
+                    <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-600 font-mono">{st.phone}</td>
                     <td className="py-2 px-2 text-right border-r border-slate-200 font-siliguri font-bold text-slate-900">
                       ৳ {st.monthlySalary.toLocaleString('en-IN')}
                     </td>
@@ -857,8 +960,8 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
                 .slice(0, 30)
                 .map((i, idx) => (
                   <tr key={i.id}>
-                    <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-600">{idx + 1}</td>
-                    <td className="py-2 px-2 text-center border-r border-slate-200 font-medium">{formatDate(i.date)}</td>
+                    <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-600 font-mono">{idx + 1}</td>
+                    <td className="py-2 px-2 text-center border-r border-slate-200 font-medium whitespace-nowrap">{formatDate(i.date)}</td>
                     <td className="py-2 px-2 text-center border-r border-slate-200 font-bold text-slate-900">{i.voucherNumber}</td>
                     <td className="py-2 px-2 text-left border-r border-slate-200">
                       <span className="font-bold text-slate-900 block">{i.description || 'জুমার সাধারণ কালেকশন'}</span>
@@ -875,12 +978,12 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
         </div>
       )}
 
-      {/* --- MONTHLY SUMMARY TREND REPORT --- */}
+      {/* --- MONTHLY SUMMARY TREND REPORT (DYNAMIC CANONICAL DATA) --- */}
       {reportType === 'MONTHLY_SUMMARY' && (
         <div className="border border-slate-900 mb-4 overflow-hidden">
           <div className="bg-slate-900 text-white px-3 py-1.5 font-siliguri font-bold text-xs flex justify-between">
             <span>মাসভিত্তিক তুলনামূলক আর্থিক খতিয়ান (Monthly Financial Trends)</span>
-            <span>হিসাব বছর: {new Date().getFullYear()}</span>
+            <span>হিসাব বছর: {new Date(fromDate).getFullYear()}</span>
           </div>
           <table className="w-full text-xs font-baloo border-collapse" style={{ tableLayout: 'fixed', width: '100%' }}>
             <thead className="bg-slate-100 border-b border-slate-900 text-slate-900 font-bold">
@@ -893,18 +996,9 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-300">
-              {[
-                { name: 'জানুয়ারি', inc: Math.round(totalIncome * 0.12), exp: Math.round(totalExpense * 0.1) },
-                { name: 'ফেব্রুয়ারি', inc: Math.round(totalIncome * 0.11), exp: Math.round(totalExpense * 0.12) },
-                { name: 'মার্চ (রমজান)', inc: Math.round(totalIncome * 0.28), exp: Math.round(totalExpense * 0.18) },
-                { name: 'এপ্রিল', inc: Math.round(totalIncome * 0.14), exp: Math.round(totalExpense * 0.15) },
-                { name: 'মে', inc: Math.round(totalIncome * 0.1), exp: Math.round(totalExpense * 0.11) },
-                { name: 'জুন', inc: Math.round(totalIncome * 0.09), exp: Math.round(totalExpense * 0.12) },
-                { name: 'জুলাই', inc: Math.round(totalIncome * 0.08), exp: Math.round(totalExpense * 0.11) },
-                { name: 'আগস্ট (চলতি)', inc: Math.round(totalIncome * 0.08), exp: Math.round(totalExpense * 0.11) },
-              ].map((m, idx) => (
+              {monthlyBreakdown.map((m, idx) => (
                 <tr key={m.name} className="hover:bg-slate-50">
-                  <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-600">{idx + 1}</td>
+                  <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-600 font-mono">{idx + 1}</td>
                   <td className="py-2 px-2 text-left border-r border-slate-200 font-bold text-slate-900">{m.name}</td>
                   <td className="py-2 px-2 text-right border-r border-slate-200 font-siliguri font-bold text-emerald-800">
                     ৳ {m.inc.toLocaleString('en-IN')}
@@ -913,7 +1007,7 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
                     ৳ {m.exp.toLocaleString('en-IN')}
                   </td>
                   <td className="py-2 px-2 text-right font-siliguri font-bold text-slate-950">
-                    ৳ {(m.inc - m.exp).toLocaleString('en-IN')}
+                    ৳ {m.surplus.toLocaleString('en-IN')}
                   </td>
                 </tr>
               ))}
@@ -921,9 +1015,15 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
             <tfoot className="bg-slate-100 border-t-2 border-slate-900 font-siliguri font-bold text-xs text-slate-950">
               <tr>
                 <td colSpan={2} className="py-2 px-3 text-right">সর্বমোট বার্ষিক সমন্বয়:</td>
-                <td className="py-2 px-2 text-right text-emerald-900">৳ {totalIncome.toLocaleString('en-IN')}</td>
-                <td className="py-2 px-2 text-right text-rose-900">৳ {totalExpense.toLocaleString('en-IN')}</td>
-                <td className="py-2 px-2 text-right">৳ {netSurplus.toLocaleString('en-IN')}</td>
+                <td className="py-2 px-2 text-right text-emerald-900">
+                  ৳ {monthlyBreakdown.reduce((s, m) => s + m.inc, 0).toLocaleString('en-IN')}
+                </td>
+                <td className="py-2 px-2 text-right text-rose-900">
+                  ৳ {monthlyBreakdown.reduce((s, m) => s + m.exp, 0).toLocaleString('en-IN')}
+                </td>
+                <td className="py-2 px-2 text-right">
+                  ৳ {monthlyBreakdown.reduce((s, m) => s + m.surplus, 0).toLocaleString('en-IN')}
+                </td>
               </tr>
             </tfoot>
           </table>
@@ -952,8 +1052,8 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
             <tbody className="divide-y divide-slate-300">
               {filteredIncomes.map((i, idx) => (
                 <tr key={i.id}>
-                  <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-600">{idx + 1}</td>
-                  <td className="py-2 px-2 text-center border-r border-slate-200 font-medium">{formatDate(i.date)}</td>
+                  <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-600 font-mono">{idx + 1}</td>
+                  <td className="py-2 px-2 text-center border-r border-slate-200 font-medium whitespace-nowrap">{formatDate(i.date)}</td>
                   <td className="py-2 px-2 text-center border-r border-slate-200 font-bold text-slate-900">{i.voucherNumber}</td>
                   <td className="py-2 px-2 text-left border-r border-slate-200 font-bold text-slate-900">{i.donorName || 'সাধারণ শুভাকাঙ্ক্ষী'}</td>
                   <td className="py-2 px-2 text-left border-r border-slate-200">{i.mainHeadNameBn}</td>
@@ -990,7 +1090,7 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
             <tbody className="divide-y divide-slate-300">
               {properties.map((p, idx) => (
                 <tr key={p.id}>
-                  <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-600">{idx + 1}</td>
+                  <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-600 font-mono">{idx + 1}</td>
                   <td className="py-2 px-2 text-left border-r border-slate-200 font-bold text-slate-900">{p.nameBn}</td>
                   <td className="py-2 px-2 text-left border-r border-slate-200 text-slate-700">{p.propertyType}</td>
                   <td className="py-2 px-2 text-left border-r border-slate-200">{p.location}</td>
@@ -1028,14 +1128,14 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
             <tbody className="divide-y divide-slate-300">
               {cemeteryRecords.map((c, idx) => (
                 <tr key={c.id}>
-                  <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-600">{idx + 1}</td>
+                  <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-600 font-mono">{idx + 1}</td>
                   <td className="py-2 px-2 text-left border-r border-slate-200 font-bold text-slate-900">{c.deceasedNameBn}</td>
-                  <td className="py-2 px-2 text-center border-r border-slate-200 font-bold text-slate-800">{c.plotNumber}</td>
+                  <td className="py-2 px-2 text-center border-r border-slate-200 font-bold text-slate-800 font-mono">{c.plotNumber}</td>
                   <td className="py-2 px-2 text-center border-r border-slate-200">{formatDate(c.dateOfDeath)}</td>
                   <td className="py-2 px-2 text-center border-r border-slate-200">{formatDate(c.burialDate)}</td>
                   <td className="py-2 px-2 text-left border-r border-slate-200">
                     <span className="font-semibold text-slate-900 block">{c.nextOfKinName || '-'}</span>
-                    <span className="text-[10px] text-slate-600">{c.nextOfKinPhone || ''}</span>
+                    <span className="text-[10px] text-slate-600 font-mono">{c.nextOfKinPhone || ''}</span>
                   </td>
                   <td className="py-2 px-2 text-right font-siliguri font-bold text-slate-950">
                     ৳ {(c.maintenanceFee || 0).toLocaleString('en-IN')}
@@ -1046,8 +1146,6 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
           </table>
         </div>
       )}
-
-
 
       {/* --- OPENING BALANCE & BASELINE REPORT --- */}
       {reportType === 'OPENING_BALANCE_REPORT' && (
@@ -1071,7 +1169,7 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
             <tbody className="divide-y divide-slate-300">
               {accounts.map((acc, idx) => (
                 <tr key={acc.id}>
-                  <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-600">{idx + 1}</td>
+                  <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-600 font-mono">{idx + 1}</td>
                   <td className="py-2 px-2 text-left border-r border-slate-200 font-bold text-slate-900">{acc.nameBn}</td>
                   <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-700">
                     {acc.accountType === 'CASH' ? 'ক্যাশ' : acc.accountType === 'BANK' ? 'ব্যাংক' : 'MFS/অন্যান্য'}
@@ -1134,7 +1232,7 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
             <tbody className="divide-y divide-slate-300">
               {assets.map((ast, idx) => (
                 <tr key={ast.id}>
-                  <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-600">{idx + 1}</td>
+                  <td className="py-2 px-2 text-center border-r border-slate-200 text-slate-600 font-mono">{idx + 1}</td>
                   <td className="py-2 px-2 text-left border-r border-slate-200 font-bold text-slate-900">{ast.nameBn}</td>
                   <td className="py-2 px-2 text-left border-r border-slate-200 text-slate-700">{ast.category}</td>
                   <td className="py-2 px-2 text-center border-r border-slate-200 font-bold text-slate-800">{ast.quantity} টি</td>
@@ -1171,8 +1269,8 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
             <tbody className="divide-y divide-slate-300">
               {auditLogs.slice(0, 50).map((log, idx) => (
                 <tr key={log.id}>
-                  <td className="py-1.5 px-2 text-center border-r border-slate-200 text-slate-600">{idx + 1}</td>
-                  <td className="py-1.5 px-2 text-center border-r border-slate-200 text-[11px] font-medium text-slate-700">
+                  <td className="py-1.5 px-2 text-center border-r border-slate-200 text-slate-600 font-mono">{idx + 1}</td>
+                  <td className="py-1.5 px-2 text-center border-r border-slate-200 text-[11px] font-medium text-slate-700 whitespace-nowrap">
                     {new Date(log.createdAt).toLocaleString('bn-BD')}
                   </td>
                   <td className="py-1.5 px-2 text-left border-r border-slate-200 font-bold text-slate-900">{log.userName || log.userEmail}</td>
@@ -1202,7 +1300,7 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
             <div className="text-[10px] text-slate-600 font-baloo">স্বাক্ষর ও তারিখ</div>
           </div>
 
-          {/* Signature 2: Secretary / Mutawalli (Auto-loads saved signature) */}
+          {/* Signature 2: Secretary / Mutawalli */}
           <div className="flex flex-col items-center justify-end">
             <div className="h-12 w-full flex items-end justify-center">
               {currentMosque?.secretarySignatureUrl ? (
@@ -1219,7 +1317,7 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
             <div className="text-[10px] text-slate-600 font-baloo">স্বাক্ষর ও সীল</div>
           </div>
 
-          {/* Signature 3: President (Auto-loads saved signature) */}
+          {/* Signature 3: President */}
           <div className="flex flex-col items-center justify-end">
             <div className="h-12 w-full flex items-end justify-center">
               {currentMosque?.presidentSignatureUrl ? (

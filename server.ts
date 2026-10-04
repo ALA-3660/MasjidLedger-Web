@@ -273,7 +273,8 @@ const ALL_VALID_PERMISSIONS: Set<string> = new Set([
   'VIEW_HIFZ_RESIDENTIAL', 'CREATE_HIFZ_RESIDENTIAL', 'EDIT_HIFZ_RESIDENTIAL',
   'VIEW_HIFZ_RESIDENTIAL_ALLOCATION', 'CREATE_HIFZ_RESIDENTIAL_ALLOCATION', 'EDIT_HIFZ_RESIDENTIAL_ALLOCATION',
   'CHECKIN_HIFZ_RESIDENTIAL', 'CHECKOUT_HIFZ_RESIDENTIAL',
-  'VIEW_HIFZ_RESIDENTIAL_TRANSFER', 'CREATE_HIFZ_RESIDENTIAL_TRANSFER'
+  'VIEW_HIFZ_RESIDENTIAL_TRANSFER', 'CREATE_HIFZ_RESIDENTIAL_TRANSFER',
+  'VIEW_FINANCE_HEADS', 'CREATE_FINANCE_HEAD', 'EDIT_FINANCE_HEAD', 'DEACTIVATE_FINANCE_HEAD', 'ARCHIVE_FINANCE_HEAD'
 ]);
 
 const getAuthoritativeRolePermissions = (targetRole: UserRole): Permission[] => {
@@ -3016,37 +3017,297 @@ app.get('/api/v1/dashboard/stats', authenticate, (req: AuthRequest, res: Respons
 // ==========================================
 app.get('/api/v1/accounting/account-heads', authenticate, (req: AuthRequest, res: Response) => {
   const mosqueId = req.currentMosque!.id;
-  const heads = db.accountHeads.filter(h => h.mosqueId === mosqueId);
-  res.json({ success: true, data: heads });
+  const { activeOnly, type } = req.query;
+
+  let heads = db.accountHeads.filter(h => h.mosqueId === mosqueId);
+
+  if (type === 'INCOME' || type === 'EXPENSE') {
+    heads = heads.filter(h => h.type === type);
+  }
+
+  if (activeOnly === 'true') {
+    heads = heads.filter(h => h.isActive !== false && h.status !== 'INACTIVE' && h.status !== 'ARCHIVED');
+  }
+
+  // Enrich with normalized status, timestamps and usage stats
+  const enrichedHeads = heads.map(h => {
+    const usage = db.getAccountHeadUsageCount(mosqueId, h.id);
+    const resolvedStatus = h.status || (h.isActive === false ? 'INACTIVE' : 'ACTIVE');
+    const resolvedIsActive = resolvedStatus === 'ACTIVE' && h.isActive !== false;
+
+    return {
+      ...h,
+      status: resolvedStatus,
+      isActive: resolvedIsActive,
+      usageCount: usage.totalCount,
+      incomeUsageCount: usage.incomeCount,
+      expenseUsageCount: usage.expenseCount,
+    };
+  });
+
+  res.json({ success: true, data: enrichedHeads });
 });
 
 app.post('/api/v1/accounting/account-heads', authenticate, requirePermission('MANAGE_ACCOUNTS'), (req: AuthRequest, res: Response) => {
-  const { nameBn, nameEn, type, parentId } = req.body;
-  if (!nameBn || !type) {
-    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'খাতের নাম এবং ধরন প্রদান আবশ্যক।' } });
+  const { nameBn, nameEn, type, parentId, description } = req.body;
+  const mosqueId = req.currentMosque!.id;
+
+  if (!nameBn || typeof nameBn !== 'string' || !nameBn.trim()) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'হিসাব খাতের বাংলা নাম প্রদান আবশ্যক।' } });
   }
 
-  const mosqueId = req.currentMosque!.id;
-  const count = db.accountHeads.filter(h => h.mosqueId === mosqueId && h.type === type).length + 1;
-  const code = `${type === 'INCOME' ? 'INC' : 'EXP'}-${100 + count * 10}`;
+  if (type !== 'INCOME' && type !== 'EXPENSE') {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'খাতের ধরন অবশ্যই "INCOME" অথবা "EXPENSE" হতে হবে।' } });
+  }
+
+  // Strict Max Depth = 2 Hierarchy Enforcement
+  let parentHead: any = null;
+  if (parentId) {
+    parentHead = db.accountHeads.find(h => h.id === parentId && h.mosqueId === mosqueId);
+    if (!parentHead) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_PARENT', message: 'নির্বাচিত প্রধান হিসাব খাতটি পাওয়া যায়নি।' } });
+    }
+    if (parentHead.type !== type) {
+      return res.status(400).json({ success: false, error: { code: 'TYPE_MISMATCH', message: 'উপ-খাতের ধরন প্রধান খাতের ধরনের সাথে মিল থাকতে হবে।' } });
+    }
+    if (parentHead.parentId) {
+      return res.status(400).json({ success: false, error: { code: 'MAX_DEPTH_EXCEEDED', message: 'উপ-খাতের অধীনে আর কোনো সাব-উপখাত তৈরি করা যাবে না (সর্বোচ্চ স্তর ২)।' } });
+    }
+  }
+
+  // Canonical Code Generation (INC-100 / INC-101 or EXP-100 / EXP-101)
+  const code = db.generateAccountHeadCode(mosqueId, type, parentId);
 
   const newHead = {
-    id: `head-${Date.now()}`,
+    id: `head-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
     mosqueId,
     code,
-    nameBn,
-    nameEn: nameEn || nameBn,
+    nameBn: nameBn.trim(),
+    nameEn: nameEn && typeof nameEn === 'string' && nameEn.trim() ? nameEn.trim() : nameBn.trim(),
     type,
     parentId: parentId || null,
+    description: description && typeof description === 'string' ? description.trim() : '',
+    isSystem: false,
+    status: 'ACTIVE' as const,
     isActive: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    createdBy: req.user!.name,
   };
 
-  db.accountHeads.push(newHead);
+  db.accountHeads.push(newHead as any);
   db.save();
-  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'ACCOUNT_HEAD', `নতুন খাত তৈরি: ${nameBn}`);
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'CREATE',
+    'ACCOUNT_HEAD',
+    `নতুন ${type === 'INCOME' ? 'আয়ের' : 'ব্যয়ের'} হিসাব খাত যুক্ত করা হয়েছে: ${newHead.nameBn} (${newHead.code})${parentHead ? ` [প্রধান খাত: ${parentHead.nameBn}]` : ' [প্রধান খাত]'}`,
+    newHead.id,
+    req.ip,
+    { newState: JSON.stringify(newHead), status: 'SUCCESS' }
+  );
+
   realtime.broadcastToMosque(mosqueId, 'ACCOUNT_HEAD_CREATED', newHead, { senderId: req.user!.id });
 
-  res.json({ success: true, data: newHead, message: 'নতুন হিসাব খাত সফলভাবে তৈরি হয়েছে।' });
+  res.status(201).json({
+    success: true,
+    data: newHead,
+    message: `নতুন ${type === 'INCOME' ? 'আয়ের' : 'ব্যয়ের'} হিসাব খাত সফলভাবে যুক্ত হয়েছে।`
+  });
+});
+
+app.put('/api/v1/accounting/account-heads/:id', authenticate, requirePermission('MANAGE_ACCOUNTS'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const headId = req.params.id;
+  const targetHead = db.accountHeads.find(h => h.id === headId && h.mosqueId === mosqueId);
+
+  if (!targetHead) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'হিসাব খাত পাওয়া যায়নি।' } });
+  }
+
+  const { nameBn, nameEn, description, status, isActive, parentId } = req.body;
+  const previousState = { ...targetHead };
+
+  // Update Name
+  if (nameBn !== undefined) {
+    if (typeof nameBn !== 'string' || !nameBn.trim()) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'হিসাব খাতের বাংলা নাম খালি রাখা যাবে না।' } });
+    }
+    targetHead.nameBn = nameBn.trim();
+  }
+
+  if (nameEn !== undefined) {
+    targetHead.nameEn = typeof nameEn === 'string' ? nameEn.trim() : targetHead.nameBn;
+  }
+
+  if (description !== undefined) {
+    targetHead.description = typeof description === 'string' ? description.trim() : '';
+  }
+
+  // Update Parent relationship if requested
+  if (parentId !== undefined && parentId !== targetHead.parentId) {
+    if (parentId) {
+      // Check if this head has sub-heads of its own
+      const hasSubHeads = db.accountHeads.some(h => h.parentId === targetHead.id && h.mosqueId === mosqueId);
+      if (hasSubHeads) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'CANNOT_NEST_PARENT', message: 'এই খাতের অধীনে ইতিমধ্যে উপ-খাত রয়েছে। এটিকে অন্য খাতের উপ-খাতে রূপান্তর করা যাবে না।' }
+        });
+      }
+
+      const parentCandidate = db.accountHeads.find(h => h.id === parentId && h.mosqueId === mosqueId);
+      if (!parentCandidate) {
+        return res.status(400).json({ success: false, error: { code: 'INVALID_PARENT', message: 'নির্বাচিত প্রধান হিসাব খাত পাওয়া যায়নি।' } });
+      }
+      if (parentCandidate.type !== targetHead.type) {
+        return res.status(400).json({ success: false, error: { code: 'TYPE_MISMATCH', message: 'প্রধান খাতের ধরনের সাথে মিল থাকতে হবে।' } });
+      }
+      if (parentCandidate.parentId) {
+        return res.status(400).json({ success: false, error: { code: 'MAX_DEPTH_EXCEEDED', message: 'উপ-খাতের অধীনে আর কোনো সাব-উপখাত তৈরি করা যাবে না।' } });
+      }
+      targetHead.parentId = parentId;
+    } else {
+      // Removing parentId makes it a Main Head
+      targetHead.parentId = null;
+    }
+  }
+
+  // Synchronize Status & Active states
+  if (status !== undefined || isActive !== undefined) {
+    let resolvedStatus = status || targetHead.status || 'ACTIVE';
+    if (isActive === false && status === undefined) {
+      resolvedStatus = 'INACTIVE';
+    } else if (isActive === true && status === undefined) {
+      resolvedStatus = 'ACTIVE';
+    }
+
+    if (!['ACTIVE', 'INACTIVE', 'ARCHIVED'].includes(resolvedStatus)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_STATUS', message: 'অবৈধ স্ট্যাটাস মান।' } });
+    }
+
+    targetHead.status = resolvedStatus as any;
+    targetHead.isActive = resolvedStatus === 'ACTIVE';
+
+    // If a main head is deactivated/archived, also cascade or alert for sub-heads
+    if (resolvedStatus !== 'ACTIVE' && !targetHead.parentId) {
+      const childHeads = db.accountHeads.filter(h => h.parentId === targetHead.id && h.mosqueId === mosqueId);
+      childHeads.forEach(ch => {
+        ch.status = resolvedStatus as any;
+        ch.isActive = false;
+        ch.updatedAt = new Date().toISOString();
+      });
+    }
+  }
+
+  targetHead.updatedAt = new Date().toISOString();
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'UPDATE',
+    'ACCOUNT_HEAD',
+    `হিসাব খাত আপডেট করা হয়েছে: ${targetHead.nameBn} (${targetHead.code}) [স্ট্যাটাস: ${targetHead.status}]`,
+    targetHead.id,
+    req.ip,
+    { previousState: JSON.stringify(previousState), newState: JSON.stringify(targetHead), status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'ACCOUNT_HEAD_UPDATED', targetHead, { senderId: req.user!.id });
+
+  res.json({
+    success: true,
+    data: targetHead,
+    message: 'হিসাব খাতের তথ্য সফলভাবে সংরক্ষিত হয়েছে।'
+  });
+});
+
+app.delete('/api/v1/accounting/account-heads/:id', authenticate, requirePermission('MANAGE_ACCOUNTS'), (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const headId = req.params.id;
+  const targetHead = db.accountHeads.find(h => h.id === headId && h.mosqueId === mosqueId);
+
+  if (!targetHead) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'হিসাব খাত পাওয়া যায়নি।' } });
+  }
+
+  // Check for child sub-heads
+  const childSubHeads = db.accountHeads.filter(h => h.parentId === targetHead.id && h.mosqueId === mosqueId);
+  if (childSubHeads.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: 'CHILD_HEADS_EXIST',
+        message: `এই প্রধান খাতের অধীনে ${childSubHeads.length}টি উপ-খাত রয়েছে। প্রধান খাত মুছে ফেলার আগে উপ-খাতগুলো ডিলিট বা স্থানান্তর করুন।`
+      }
+    });
+  }
+
+  // Check usage in financial transactions
+  const usage = db.getAccountHeadUsageCount(mosqueId, targetHead.id);
+
+  if (usage.totalCount > 0) {
+    // Non-destructive fallback: Preserve financial ledger history and archive/deactivate
+    targetHead.status = 'ARCHIVED';
+    targetHead.isActive = false;
+    targetHead.updatedAt = new Date().toISOString();
+    db.save();
+
+    db.logAudit(
+      mosqueId,
+      req.user!.id,
+      req.user!.name,
+      req.user!.role,
+      'ARCHIVE',
+      'ACCOUNT_HEAD',
+      `হিসাব খাত আর্কাইভ করা হয়েছে (পূর্বের ${usage.totalCount}টি লেনদেনের ইতিহাস সংরক্ষিত): ${targetHead.nameBn} (${targetHead.code})`,
+      targetHead.id,
+      req.ip,
+      { previousState: 'ACTIVE', newState: 'ARCHIVED', status: 'SUCCESS' }
+    );
+
+    realtime.broadcastToMosque(mosqueId, 'ACCOUNT_HEAD_UPDATED', targetHead, { senderId: req.user!.id });
+
+    return res.json({
+      success: true,
+      data: targetHead,
+      message: `এই খাতে পূর্ববর্তী ${usage.totalCount}টি লেনদেন থাকায় হিসাবের নির্ভুলতা রক্ষার স্বার্থে এটি স্থায়ীভাবে মোছার পরিবর্তে "আর্কাইভ/নিষ্ক্রিয়" করা হয়েছে। নতুন কোনো লেনদেনে এটি ব্যবহৃত হবে না।`
+    });
+  }
+
+  // Zero usage: safe to remove
+  const index = db.accountHeads.findIndex(h => h.id === targetHead.id);
+  if (index !== -1) {
+    db.accountHeads.splice(index, 1);
+  }
+  db.save();
+
+  db.logAudit(
+    mosqueId,
+    req.user!.id,
+    req.user!.name,
+    req.user!.role,
+    'DELETE',
+    'ACCOUNT_HEAD',
+    `হিসাব খাত মুছে ফেলা হয়েছে (অব্যবহৃত খাত): ${targetHead.nameBn} (${targetHead.code})`,
+    targetHead.id,
+    req.ip,
+    { previousState: JSON.stringify(targetHead), newState: 'DELETED', status: 'SUCCESS' }
+  );
+
+  realtime.broadcastToMosque(mosqueId, 'ACCOUNT_HEAD_DELETED', { id: targetHead.id, code: targetHead.code }, { senderId: req.user!.id });
+
+  res.json({
+    success: true,
+    message: `হিসাব খাত (${targetHead.nameBn}) সফলভাবে মুছে ফেলা হয়েছে।`
+  });
 });
 
 app.get('/api/v1/accounting/accounts', authenticate, (req: AuthRequest, res: Response) => {

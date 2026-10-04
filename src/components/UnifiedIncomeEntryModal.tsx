@@ -1794,11 +1794,14 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
                     </label>
                     <select
                       value={selectedMainHeadId}
-                      onChange={(e) => setSelectedMainHeadId(e.target.value)}
+                      onChange={(e) => {
+                        setSelectedMainHeadId(e.target.value);
+                        setSelectedSubHeadId('');
+                      }}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-siliguri focus:bg-white focus:ring-2 focus:ring-amber-500 cursor-pointer"
                     >
                       {accountHeads
-                        .filter((h) => h.type === 'INCOME')
+                        .filter((h) => h.type === 'INCOME' && !h.parentId && h.isActive !== false && h.status !== 'INACTIVE' && h.status !== 'ARCHIVED')
                         .map((h) => (
                           <option key={h.id} value={h.id}>
                             {h.nameBn} ({h.code})
@@ -1819,10 +1822,10 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
                     >
                       <option value="">-- কোনো উপ-খাত নেই --</option>
                       {accountHeads
-                        .filter((h) => (h.parentId === selectedMainHeadId || (!h.parentId && h.type === 'INCOME')) && h.id !== selectedMainHeadId)
+                        .filter((h) => h.type === 'INCOME' && h.parentId === selectedMainHeadId && h.isActive !== false && h.status !== 'INACTIVE' && h.status !== 'ARCHIVED')
                         .map((h) => (
                           <option key={h.id} value={h.id}>
-                            {h.nameBn}
+                            {h.nameBn} ({h.code})
                           </option>
                         ))}
                     </select>

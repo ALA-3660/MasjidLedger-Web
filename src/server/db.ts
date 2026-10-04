@@ -3251,6 +3251,76 @@ export class DatabaseStore {
     });
     return `HRT-${year}-${String(maxNum + 1).padStart(6, '0')}`;
   }
+
+  generateAccountHeadCode(mosqueId: string, type: 'INCOME' | 'EXPENSE', parentId?: string | null): string {
+    const prefix = type === 'INCOME' ? 'INC' : 'EXP';
+    const mosqueHeads = this.accountHeads.filter(h => h.mosqueId === mosqueId && h.type === type);
+
+    if (!parentId) {
+      // Main head: INC-100, INC-200, INC-300 ...
+      const mainHeads = mosqueHeads.filter(h => !h.parentId);
+      let maxHundreds = 0;
+      mainHeads.forEach(h => {
+        const match = h.code?.match(/^(?:INC|EXP)-(\d+)$/i);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (num >= 100 && num % 100 === 0 && num > maxHundreds) {
+            maxHundreds = num;
+          } else if (num > maxHundreds) {
+            maxHundreds = Math.floor(num / 100) * 100;
+          }
+        }
+      });
+      const nextNum = maxHundreds > 0 ? maxHundreds + 100 : 100;
+      let candidate = `${prefix}-${nextNum}`;
+      let counter = nextNum;
+      while (this.accountHeads.some(h => h.mosqueId === mosqueId && h.code === candidate)) {
+        counter += 100;
+        candidate = `${prefix}-${counter}`;
+      }
+      return candidate;
+    } else {
+      // Sub-head: INC-101, INC-102, INC-103 ...
+      const parent = this.accountHeads.find(h => h.id === parentId && h.mosqueId === mosqueId);
+      let baseNumber = 100;
+      if (parent && parent.code) {
+        const parentMatch = parent.code.match(/^(?:INC|EXP)-(\d+)$/i);
+        if (parentMatch) {
+          baseNumber = parseInt(parentMatch[1], 10);
+        }
+      }
+      const existingSubHeads = mosqueHeads.filter(h => h.parentId === parentId);
+      let maxSubNum = baseNumber;
+      existingSubHeads.forEach(h => {
+        const match = h.code?.match(/^(?:INC|EXP)-(\d+)$/i);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (num > maxSubNum) maxSubNum = num;
+        }
+      });
+      let nextNum = maxSubNum + 1;
+      let candidate = `${prefix}-${nextNum}`;
+      while (this.accountHeads.some(h => h.mosqueId === mosqueId && h.code === candidate)) {
+        nextNum++;
+        candidate = `${prefix}-${nextNum}`;
+      }
+      return candidate;
+    }
+  }
+
+  getAccountHeadUsageCount(mosqueId: string, headId: string): { incomeCount: number; expenseCount: number; totalCount: number } {
+    const incomeCount = this.incomeEntries.filter(
+      i => i.mosqueId === mosqueId && (i.mainHeadId === headId || i.subHeadId === headId)
+    ).length;
+    const expenseCount = this.expenseEntries.filter(
+      e => e.mosqueId === mosqueId && (e.mainHeadId === headId || e.subHeadId === headId)
+    ).length;
+    return {
+      incomeCount,
+      expenseCount,
+      totalCount: incomeCount + expenseCount,
+    };
+  }
 }
 
 export const db = new DatabaseStore();

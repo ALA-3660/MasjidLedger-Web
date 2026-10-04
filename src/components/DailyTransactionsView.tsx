@@ -38,7 +38,7 @@ import {
   exportDailyLedgerToExcel,
   UnifiedLedgerEntry,
 } from '../lib/accountingLedgerService';
-import { ReportPrintDocument } from './ReportPrintDocument';
+import { A4ReportPreviewModal } from './A4ReportPreviewModal';
 
 interface DailyTransactionsViewProps {
   incomes: IncomeEntry[];
@@ -776,21 +776,21 @@ export const DailyTransactionsView: React.FC<DailyTransactionsViewProps> = ({
 
       {/* Standardized Print Document Dialog */}
       {isPrintModalOpen && (
-        <ReportPrintDocument
+        <A4ReportPreviewModal
           isOpen={isPrintModalOpen}
           onClose={() => setIsPrintModalOpen(false)}
           currentMosque={currentMosque}
           reportTitle="দৈনিক কেন্দ্রীয় লেনদেন ও খতিয়ান বিবরণী"
           periodLabel={`${formatDate(startDate)} হতে ${formatDate(endDate)}`}
           columns={[
-            { header: 'তারিখ', accessor: (item) => formatDate(item.date) },
-            { header: 'ভাউচার নং', accessor: (item) => item.voucherNumber },
-            { header: 'খাত ও বিবরণ', accessor: (item) => item.headNameBn },
-            { header: 'হিসাব / ফান্ড', accessor: (item) => item.accountName },
-            { header: 'পার্টি / দাতা / প্রাপক', accessor: (item) => item.partyName },
-            { header: 'প্রাপ্তি / জমা (৳)', accessor: (item) => (item.debit > 0 ? `৳ ${item.debit.toLocaleString('en-IN')}` : '-') },
-            { header: 'ব্যয় / খরচ (৳)', accessor: (item) => (item.credit > 0 ? `৳ ${item.credit.toLocaleString('en-IN')}` : '-') },
-            { header: 'চলমান স্থিতি (৳)', accessor: (item) => `৳ ${item.runningBalance.toLocaleString('en-IN')}` },
+            { header: 'তারিখ', accessor: (item: any) => formatDate(item.date) },
+            { header: 'ভাউচার নং', accessor: (item: any) => item.voucherNumber },
+            { header: 'খাত ও বিবরণ', accessor: (item: any) => item.headNameBn },
+            { header: 'হিসাব / ফান্ড', accessor: (item: any) => item.accountName },
+            { header: 'পার্টি / দাতা / প্রাপক', accessor: (item: any) => item.partyName },
+            { header: 'প্রাপ্তি / জমা (৳)', accessor: (item: any) => (item.debit > 0 ? `৳ ${item.debit.toLocaleString('en-IN')}` : '-') },
+            { header: 'ব্যয় / খরচ (৳)', accessor: (item: any) => (item.credit > 0 ? `৳ ${item.credit.toLocaleString('en-IN')}` : '-') },
+            { header: 'চলমান স্থিতি (৳)', accessor: (item: any) => `৳ ${item.runningBalance.toLocaleString('en-IN')}` },
           ]}
           data={ledgerResult.displayEntries}
           summaryRows={[

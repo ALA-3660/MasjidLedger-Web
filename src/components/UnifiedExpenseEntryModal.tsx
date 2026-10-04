@@ -185,14 +185,14 @@ export const UnifiedExpenseEntryModal: React.FC<UnifiedExpenseEntryModalProps> =
     }
   }, [isOpen]);
 
-  // Derived expense main heads and sub heads
+  // Derived expense main heads and sub heads (active only)
   const expenseMainHeads = useMemo(() => {
-    return accountHeads.filter((h) => h.type === 'EXPENSE' && !h.parentId);
+    return accountHeads.filter((h) => h.type === 'EXPENSE' && !h.parentId && h.isActive !== false && h.status !== 'INACTIVE' && h.status !== 'ARCHIVED');
   }, [accountHeads]);
 
   const activeSubHeads = useMemo(() => {
     if (!mainHeadId) return [];
-    return accountHeads.filter((h) => h.type === 'EXPENSE' && h.parentId === mainHeadId);
+    return accountHeads.filter((h) => h.type === 'EXPENSE' && h.parentId === mainHeadId && h.isActive !== false && h.status !== 'INACTIVE' && h.status !== 'ARCHIVED');
   }, [accountHeads, mainHeadId]);
 
   // Filtered accounts according to payment method

@@ -28,7 +28,7 @@ import {
   exportCashbookToExcel,
   UnifiedLedgerEntry,
 } from '../lib/accountingLedgerService';
-import { ReportPrintDocument } from './ReportPrintDocument';
+import { A4ReportPreviewModal } from './A4ReportPreviewModal';
 
 interface CashBookViewProps {
   accounts: FinancialAccount[];
@@ -895,20 +895,20 @@ export const CashBookView: React.FC<CashBookViewProps> = ({
 
       {/* Standardized Print Document Dialog */}
       {isPrintModalOpen && (
-        <ReportPrintDocument
+        <A4ReportPreviewModal
           isOpen={isPrintModalOpen}
           onClose={() => setIsPrintModalOpen(false)}
           currentMosque={currentMosque}
           reportTitle="নগদ ক্যাশ বুক খতিয়ান (Cash Book Ledger)"
           periodLabel={`${formatDate(startDate)} হতে ${formatDate(endDate)}`}
           columns={[
-            { header: 'তারিখ', accessor: (item) => formatDate(item.date) },
-            { header: 'ভাউচার নং', accessor: (item) => item.voucherNumber },
-            { header: 'বিবরণ / খাত', accessor: (item) => item.headNameBn },
-            { header: 'পার্টি / দাতা / প্রাপক', accessor: (item) => item.partyName },
-            { header: 'নগদ জমা (৳)', accessor: (item) => (item.debit > 0 ? `৳ ${item.debit.toLocaleString('en-IN')}` : '-') },
-            { header: 'নগদ খরচ (৳)', accessor: (item) => (item.credit > 0 ? `৳ ${item.credit.toLocaleString('en-IN')}` : '-') },
-            { header: 'চলমান স্থিতি (৳)', accessor: (item) => `৳ ${item.runningBalance.toLocaleString('en-IN')}` },
+            { header: 'তারিখ', accessor: (item: any) => formatDate(item.date) },
+            { header: 'ভাউচার নং', accessor: (item: any) => item.voucherNumber },
+            { header: 'বিবরণ / খাত', accessor: (item: any) => item.headNameBn },
+            { header: 'পার্টি / দাতা / প্রাপক', accessor: (item: any) => item.partyName },
+            { header: 'নগদ জমা (৳)', accessor: (item: any) => (item.debit > 0 ? `৳ ${item.debit.toLocaleString('en-IN')}` : '-') },
+            { header: 'নগদ খরচ (৳)', accessor: (item: any) => (item.credit > 0 ? `৳ ${item.credit.toLocaleString('en-IN')}` : '-') },
+            { header: 'চলমান স্থিতি (৳)', accessor: (item: any) => `৳ ${item.runningBalance.toLocaleString('en-IN')}` },
           ]}
           data={ledgerResult.displayEntries}
           summaryRows={[

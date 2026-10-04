@@ -22,7 +22,7 @@ import { FinancialAccount, Mosque, AccountOpeningBalancePayload } from '../types
 import { Language, translations, formatDate, formatCurrency } from '../lib/i18n';
 import { OpeningBalanceModal } from './OpeningBalanceModal';
 import { FinancialSecondarySidebar, SecondarySidebarItem } from './FinancialSecondarySidebar';
-import { ReportPrintDocument } from './ReportPrintDocument';
+import { A4ReportPreviewModal } from './A4ReportPreviewModal';
 
 interface OpeningBalanceViewProps {
   accounts: FinancialAccount[];
@@ -559,7 +559,7 @@ export const OpeningBalanceView: React.FC<OpeningBalanceViewProps> = ({
 
       {/* Print Modal */}
       {isPrintModalOpen && (
-        <ReportPrintDocument
+        <A4ReportPreviewModal
           isOpen={isPrintModalOpen}
           onClose={() => setIsPrintModalOpen(false)}
           currentMosque={currentMosque}

@@ -121,7 +121,12 @@ export type Permission =
   | 'CHECKIN_HIFZ_RESIDENTIAL'
   | 'CHECKOUT_HIFZ_RESIDENTIAL'
   | 'VIEW_HIFZ_RESIDENTIAL_TRANSFER'
-  | 'CREATE_HIFZ_RESIDENTIAL_TRANSFER';
+  | 'CREATE_HIFZ_RESIDENTIAL_TRANSFER'
+  | 'VIEW_FINANCE_HEADS'
+  | 'CREATE_FINANCE_HEAD'
+  | 'EDIT_FINANCE_HEAD'
+  | 'DEACTIVATE_FINANCE_HEAD'
+  | 'ARCHIVE_FINANCE_HEAD';
 
 export interface User {
   id: string;
@@ -671,6 +676,8 @@ export type MosqueProfile = Mosque;
 
 export type AccountType = 'ASSET' | 'LIABILITY' | 'INCOME' | 'EXPENSE' | 'EQUITY';
 
+export type AccountHeadStatus = 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
+
 export interface AccountHead {
   id: string;
   mosqueId: string;
@@ -679,9 +686,14 @@ export interface AccountHead {
   nameEn: string;
   type: 'INCOME' | 'EXPENSE';
   parentId?: string | null;
+  description?: string;
   isSystem?: boolean;
+  status?: AccountHeadStatus;
   isActive: boolean;
   subHeads?: AccountHead[];
+  createdAt?: string;
+  updatedAt?: string;
+  createdBy?: string;
 }
 
 export type PaymentMethod =

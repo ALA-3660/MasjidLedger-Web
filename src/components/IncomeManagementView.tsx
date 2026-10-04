@@ -231,9 +231,9 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
   const [reversalTarget, setReversalTarget] = useState<IncomeEntry | null>(null);
   const [reversalReason, setReversalReason] = useState('');
 
-  // Create Form State
+  // Create Form State (Active heads only for new entries)
   const incomeMainHeads = useMemo(
-    () => accountHeads.filter((h) => h.type === 'INCOME' && !h.parentId),
+    () => accountHeads.filter((h) => h.type === 'INCOME' && !h.parentId && h.isActive !== false && h.status !== 'INACTIVE' && h.status !== 'ARCHIVED'),
     [accountHeads]
   );
   const [mainHeadId, setMainHeadId] = useState(incomeMainHeads[0]?.id || '');
@@ -252,7 +252,7 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const activeSubHeads = useMemo(
-    () => accountHeads.filter((h) => h.parentId === mainHeadId),
+    () => accountHeads.filter((h) => h.parentId === mainHeadId && h.isActive !== false && h.status !== 'INACTIVE' && h.status !== 'ARCHIVED'),
     [accountHeads, mainHeadId]
   );
 

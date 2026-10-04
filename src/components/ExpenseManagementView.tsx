@@ -223,9 +223,9 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
   const [reversalTarget, setReversalTarget] = useState<ExpenseEntry | null>(null);
   const [reversalReason, setReversalReason] = useState('');
 
-  // Form State
+  // Form State (Active heads only for new expenses)
   const expenseMainHeads = useMemo(
-    () => accountHeads.filter((h) => h.type === 'EXPENSE' && !h.parentId),
+    () => accountHeads.filter((h) => h.type === 'EXPENSE' && !h.parentId && h.isActive !== false && h.status !== 'INACTIVE' && h.status !== 'ARCHIVED'),
     [accountHeads]
   );
   const [mainHeadId, setMainHeadId] = useState(expenseMainHeads[0]?.id || '');
@@ -243,7 +243,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const activeSubHeads = useMemo(
-    () => accountHeads.filter((h) => h.parentId === mainHeadId),
+    () => accountHeads.filter((h) => h.parentId === mainHeadId && h.isActive !== false && h.status !== 'INACTIVE' && h.status !== 'ARCHIVED'),
     [accountHeads, mainHeadId]
   );
 

@@ -73,6 +73,7 @@ interface ReportCenterViewProps {
   meetings: CommitteeMeeting[];
   notices: MosqueNotice[];
   auditLogs: AuditLog[];
+  transfers?: any[];
   currentMosque: Mosque | null;
   currentUser?: User | null;
   savedConfigs?: SavedReportConfig[];
@@ -122,6 +123,7 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
   meetings,
   notices,
   auditLogs,
+  transfers = [],
   currentMosque,
   currentUser,
   savedConfigs = [],
@@ -808,6 +810,7 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
               meetings={meetings}
               notices={notices}
               auditLogs={auditLogs}
+              transfers={transfers}
             />
           </div>
         )}

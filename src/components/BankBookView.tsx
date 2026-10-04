@@ -50,7 +50,7 @@ import {
   exportBankLedgerToExcel,
   UnifiedLedgerEntry,
 } from '../lib/accountingLedgerService';
-import { ReportPrintDocument } from './ReportPrintDocument';
+import { A4ReportPreviewModal } from './A4ReportPreviewModal';
 import { FinancialAccountModal } from './FinancialAccountModal';
 
 interface BankBookViewProps {
@@ -2349,28 +2349,28 @@ export const BankBookView: React.FC<BankBookViewProps> = ({
 
       {/* Print / PDF Document Modal */}
       {isPrintModalOpen && (
-        <ReportPrintDocument
-          title="ব্যাংক খতিয়ান ও স্থিতি বিবরণী"
-          subtitle={`হিসাব: ${activeAccountObj?.nameBn || 'সকল ব্যাংক হিসাব'} (${maskAccountNumber(activeAccountObj?.accountNumber)})`}
-          period={`${formatDate(startDate)} হতে ${formatDate(endDate)}`}
-          mosque={currentMosque}
+        <A4ReportPreviewModal
+          isOpen={isPrintModalOpen}
           onClose={() => setIsPrintModalOpen(false)}
-          summaryCards={[
+          reportTitle="ব্যাংক খতিয়ান ও স্থিতি বিবরণী"
+          reportSubtitle={`হিসাব: ${activeAccountObj?.nameBn || 'সকল ব্যাংক হিসাব'} (${maskAccountNumber(activeAccountObj?.accountNumber)})`}
+          periodLabel={`${formatDate(startDate)} হতে ${formatDate(endDate)}`}
+          currentMosque={currentMosque}
+          summaryMetrics={[
             { label: 'প্রারম্ভিক স্থিতি', value: `৳ ${ledgerResult.openingBalance.toLocaleString('en-IN')}` },
-            { label: 'মোট ব্যাংক জমা', value: `৳ ${ledgerResult.totalDebit.toLocaleString('en-IN')}`, color: 'emerald' },
-            { label: 'মোট ব্যাংক উত্তোলন', value: `৳ ${ledgerResult.totalCredit.toLocaleString('en-IN')}`, color: 'rose' },
-            { label: 'সমাপনী স্থিতি', value: `৳ ${ledgerResult.closingBalance.toLocaleString('en-IN')}`, color: 'indigo' },
+            { label: 'মোট ব্যাংক জমা', value: `৳ ${ledgerResult.totalDebit.toLocaleString('en-IN')}` },
+            { label: 'মোট ব্যাংক উত্তোলন', value: `৳ ${ledgerResult.totalCredit.toLocaleString('en-IN')}` },
+            { label: 'সমাপনী স্থিতি', value: `৳ ${ledgerResult.closingBalance.toLocaleString('en-IN')}` },
           ]}
           columns={[
-            { header: 'ক্রম', key: 'sl', align: 'center', width: '40px' },
-            { header: 'তারিখ', key: 'date', align: 'left', width: '80px' },
-            { header: 'ভাউচার / চেক', key: 'voucher', align: 'left', width: '100px' },
-            { header: 'খাত ও বিবরণ', key: 'head', align: 'left' },
-            { header: 'প্রাপক / দাতা', key: 'party', align: 'left' },
-            { header: 'হিসাব', key: 'account', align: 'left' },
-            { header: 'জমা (৳)', key: 'debit', align: 'right' },
-            { header: 'উত্তোলন (৳)', key: 'credit', align: 'right' },
-            { header: 'চলমান জের (৳)', key: 'balance', align: 'right' },
+            { header: 'তারিখ', render: (item: any) => item.date },
+            { header: 'ভাউচার / চেক', render: (item: any) => item.voucher },
+            { header: 'খাত ও বিবরণ', render: (item: any) => item.head },
+            { header: 'প্রাপক / দাতা', render: (item: any) => item.party },
+            { header: 'হিসাব', render: (item: any) => item.account },
+            { header: 'জমা (৳)', render: (item: any) => item.debit },
+            { header: 'উত্তোলন (৳)', render: (item: any) => item.credit },
+            { header: 'চলমান জের (৳)', render: (item: any) => item.balance },
           ]}
           data={[
             {
