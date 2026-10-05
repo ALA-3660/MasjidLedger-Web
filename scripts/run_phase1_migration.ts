@@ -8,7 +8,7 @@
  * 3. Idempotent rerun verification (asserts no errors and zero duplicate executions).
  * 4. Structural verification:
  *    - Exact 99 tables in information_schema.tables.
- *    - Exact 102 foreign keys in information_schema.table_constraints.
+ *    - Exact 207 foreign keys in information_schema.table_constraints (97 tenant isolation FKs + 110 domain entity FKs).
  *    - 99 primary keys.
  *    - Exact 55 NUMERIC(14,2) monetary columns.
  *    - Self-referential account_heads.parent_id FK.
@@ -90,11 +90,13 @@ async function runPhase1CRuntimeMigration() {
     `);
     const fkCount = fkRes.rows[0]?.count;
     console.log(`   Discovered ${fkCount} foreign keys in PostgreSQL.`);
-    if (fkCount !== 102) {
-      console.error(`❌ [FK COUNT MISMATCH]: Expected exactly 102 foreign keys, found ${fkCount}`);
+    // Reconciled Schema Reality: 99 tables contain 207 physical FK constraints (97 mosque tenancy FKs + 110 domain entity FKs).
+    // The previous 102 expectation was a historical/partial domain-only subset that omitted tenancy and secondary child FKs.
+    if (fkCount !== 207) {
+      console.error(`❌ [FK COUNT MISMATCH]: Expected exactly 207 foreign keys, found ${fkCount}`);
       process.exit(1);
     }
-    console.log('   ✅ Foreign Keys: Exactly 102 foreign keys verified.');
+    console.log('   ✅ Foreign Keys: Exactly 207 foreign keys verified.');
 
     // 4.4 Monetary Precision NUMERIC(14,2)
     const moneyRes = await pool.query(`
