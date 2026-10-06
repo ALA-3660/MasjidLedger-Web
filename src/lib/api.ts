@@ -134,25 +134,33 @@ import {
 
 class ApiService {
   private token: string | null = null;
+  private refreshToken: string | null = null;
   private currentUserId: string = '';
   private currentMosqueId: string = '';
   private inFlightRequests = new Map<string, Promise<ApiResponse<any>>>();
+  private refreshPromise: Promise<boolean> | null = null;
 
   constructor() {
     const savedUser = localStorage.getItem('ml_user_id');
     const savedMosque = localStorage.getItem('ml_mosque_id');
     const savedToken = localStorage.getItem('ml_token');
+    const savedRefreshToken = localStorage.getItem('ml_refresh_token');
     if (savedUser) this.currentUserId = savedUser;
     if (savedMosque) this.currentMosqueId = savedMosque;
     if (savedToken) this.token = savedToken;
+    if (savedRefreshToken) this.refreshToken = savedRefreshToken;
   }
 
-  setAuth(userId: string, mosqueId: string, token?: string) {
+  setAuth(userId: string, mosqueId: string, token?: string, refreshToken?: string) {
     this.currentUserId = userId;
     this.currentMosqueId = mosqueId;
     if (token) {
       this.token = token;
       localStorage.setItem('ml_token', token);
+    }
+    if (refreshToken) {
+      this.refreshToken = refreshToken;
+      localStorage.setItem('ml_refresh_token', refreshToken);
     }
     localStorage.setItem('ml_user_id', userId);
     localStorage.setItem('ml_mosque_id', mosqueId);
@@ -160,12 +168,54 @@ class ApiService {
 
   clearAuth() {
     this.token = null;
+    this.refreshToken = null;
     this.currentUserId = '';
     this.currentMosqueId = '';
     localStorage.removeItem('ml_token');
+    localStorage.removeItem('ml_refresh_token');
     localStorage.removeItem('ml_user_id');
     localStorage.removeItem('ml_mosque_id');
     this.inFlightRequests.clear();
+    this.refreshPromise = null;
+  }
+
+  private async refreshAccessToken(): Promise<boolean> {
+    if (!this.refreshToken) return false;
+    if (this.refreshPromise) return this.refreshPromise;
+
+    this.refreshPromise = (async () => {
+      try {
+        const response = await fetch('/api/v1/auth/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken: this.refreshToken }),
+        });
+
+        if (!response.ok) {
+          this.clearAuth();
+          return false;
+        }
+
+        const res = await response.json();
+        if (res.success && res.data?.token) {
+          this.token = res.data.token;
+          localStorage.setItem('ml_token', res.data.token);
+          if (res.data.refreshToken) {
+            this.refreshToken = res.data.refreshToken;
+            localStorage.setItem('ml_refresh_token', res.data.refreshToken);
+          }
+          return true;
+        }
+        this.clearAuth();
+        return false;
+      } catch (err) {
+        return false;
+      } finally {
+        this.refreshPromise = null;
+      }
+    })();
+
+    return this.refreshPromise;
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
@@ -242,6 +292,14 @@ class ApiService {
 
       clearTimeout(timeoutId);
 
+      // Handle 401 Token Expiry with automatic refresh and single-shot retry
+      if (response.status === 401 && !endpoint.startsWith('/auth/login') && !endpoint.startsWith('/auth/refresh') && retryCount === 0) {
+        const refreshed = await this.refreshAccessToken();
+        if (refreshed) {
+          return this.executeRequest<T>(endpoint, options, 1);
+        }
+      }
+
       const contentType = response.headers.get('content-type') || '';
       if (contentType.includes('application/json')) {
         const json = await response.json();
@@ -295,7 +353,7 @@ class ApiService {
   }
 
   // Auth & Mosque
-  async login(credentials: { identifier?: string; phone?: string; phoneOrEmail?: string; password: string; mosqueId?: string }): Promise<{ user: User; token: string }> {
+  async login(credentials: { identifier?: string; phone?: string; phoneOrEmail?: string; password: string; mosqueId?: string }): Promise<{ user: User; token: string; refreshToken?: string }> {
     const payload = {
       identifier: credentials.identifier || credentials.phone || credentials.phoneOrEmail || '',
       phone: credentials.phone || credentials.identifier || '',
@@ -303,14 +361,16 @@ class ApiService {
       password: credentials.password,
       mosqueId: credentials.mosqueId,
     };
-    const res = await this.request<{ user: User; token: string }>('/auth/login', {
+    const res = await this.request<{ user: User; token: string; refreshToken?: string; accessToken?: string }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
     if (!res.success || !res.data) {
       throw new Error(res.error?.message || 'লগইন ব্যর্থ হয়েছে। সঠিক তথ্য প্রদান করুন।');
     }
-    this.setAuth(res.data.user.id, res.data.user.mosqueId, res.data.token);
+    const accessToken = res.data.token || res.data.accessToken || '';
+    const refreshToken = res.data.refreshToken;
+    this.setAuth(res.data.user.id, res.data.user.mosqueId, accessToken, refreshToken);
     return res.data;
   }
 
