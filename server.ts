@@ -1,6 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import http from 'http';
 import path from 'path';
+import fs from 'fs';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { GoogleGenAI } from '@google/genai';
@@ -1012,6 +1013,19 @@ app.get('/api/v1/files/:fileId', (req: Request, res: Response) => {
   }
 
   res.redirect(302, file.url);
+});
+
+// Direct canonical database download route
+app.get('/api/v1/export/canonical-database', (req: Request, res: Response) => {
+  const filePath = path.join(process.cwd(), 'data', 'masjidledger_db.json');
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ success: false, error: 'Database file not found' });
+  }
+  const fileContent = fs.readFileSync(filePath);
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="masjidledger_db.json"');
+  res.setHeader('Content-Length', fileContent.length);
+  return res.send(fileContent);
 });
 
 app.put('/api/v1/mosques/current', authenticate, requirePermission('MANAGE_SETTINGS'), (req: AuthRequest, res: Response) => {
