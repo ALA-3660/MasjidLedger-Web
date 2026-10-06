@@ -2,6 +2,7 @@ import { Server as HttpServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { parse } from 'url';
 import { db } from './db';
+import { verifyAccessToken } from './auth/jwt';
 
 export interface WsMessage<T = any> {
   type: string;
@@ -23,6 +24,7 @@ export interface ClientConnection {
   userRole: string;
   mosqueId: string;
   isAlive: boolean;
+  isAuthenticated: boolean;
   connectedAt: string;
 }
 
@@ -54,26 +56,48 @@ class RealtimeServer {
 
       const token = (query.token as string) || '';
       const mosqueIdParam = (query.mosqueId as string) || (query['x-mosque-id'] as string) || '';
-      const userIdParam = (query.userId as string) || (query['x-user-id'] as string) || '';
 
-      // Find user from query or fallback to default admin
-      const user = db.users.find(u => u.id === userIdParam || (token && token.includes(u.id))) || db.users[0];
-      const mosqueId = mosqueIdParam || user?.mosqueId || db.mosques[0]?.id || 'mosque-main';
+      let userId = 'usr-guest';
+      let userName = 'Guest User';
+      let userRole = 'VIEWER';
+      let mosqueId = db.mosques[0]?.id || 'mosque-main';
+      let isAuthenticated = false;
+
+      // Verify signed JWT token if provided
+      if (token) {
+        const verifyResult = verifyAccessToken(token);
+        if (verifyResult.valid && verifyResult.payload) {
+          const user = db.users.find(u => u.id === verifyResult.payload?.sub);
+          if (user && user.status === 'ACTIVE') {
+            userId = user.id;
+            userName = user.name;
+            userRole = user.role;
+            mosqueId = user.mosqueId;
+            isAuthenticated = true;
+
+            // Allow SUPER_ADMIN to switch mosque scope
+            if (user.role === 'SUPER_ADMIN' && mosqueIdParam) {
+              mosqueId = mosqueIdParam;
+            }
+          }
+        }
+      }
 
       const clientId = `ws-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       const client: ClientConnection = {
         id: clientId,
         ws,
-        userId: user?.id || 'usr-guest',
-        userName: user?.name || 'Guest User',
-        userRole: user?.role || 'VIEWER',
+        userId,
+        userName,
+        userRole,
         mosqueId,
         isAlive: true,
+        isAuthenticated,
         connectedAt: new Date().toISOString(),
       };
 
       this.clients.set(clientId, client);
-      console.log(`[WS] Client connected: ${clientId} (User: ${client.userName}, Mosque: ${client.mosqueId})`);
+      console.log(`[WS] Client connected: ${clientId} (User: ${client.userName}, Role: ${client.userRole}, Mosque: ${client.mosqueId}, Auth: ${isAuthenticated})`);
 
       // Send initial connection ack
       this.sendToClient(client, {
@@ -83,7 +107,9 @@ class RealtimeServer {
           clientId,
           userId: client.userId,
           userName: client.userName,
+          userRole: client.userRole,
           mosqueId: client.mosqueId,
+          isAuthenticated: client.isAuthenticated,
           serverTime: new Date().toISOString(),
           status: 'CONNECTED',
         }
@@ -147,34 +173,56 @@ class RealtimeServer {
         break;
 
       case 'SUBSCRIBE_MOSQUE':
+        // Only SUPER_ADMIN or client's own mosque is permitted
         if (msg.mosqueId) {
-          client.mosqueId = msg.mosqueId;
-          this.sendToClient(client, {
-            type: 'SUBSCRIBED',
-            mosqueId: client.mosqueId,
-            data: { mosqueId: client.mosqueId }
-          });
+          if (client.userRole === 'SUPER_ADMIN' || msg.mosqueId === client.mosqueId) {
+            client.mosqueId = msg.mosqueId;
+            this.sendToClient(client, {
+              type: 'SUBSCRIBED',
+              mosqueId: client.mosqueId,
+              data: { mosqueId: client.mosqueId }
+            });
+          } else {
+            this.sendToClient(client, {
+              type: 'ERROR',
+              data: { code: 'TENANT_FORBIDDEN', message: 'অননুমোদিত মসজিদ সাবস্ক্রিপশন নিষিদ্ধ।' }
+            });
+          }
         }
         break;
 
       case 'AUTH':
-        if (msg.token || msg.userId) {
-          const user = db.users.find(u => u.id === msg.userId || (msg.token && msg.token.includes(u.id)));
-          if (user) {
-            client.userId = user.id;
-            client.userName = user.name;
-            client.userRole = user.role;
-            client.mosqueId = msg.mosqueId || user.mosqueId;
-            this.sendToClient(client, {
-              type: 'AUTH_SUCCESS',
-              data: {
-                userId: user.id,
-                userName: user.name,
-                role: user.role,
-                mosqueId: client.mosqueId,
+        if (msg.token) {
+          const verifyResult = verifyAccessToken(msg.token);
+          if (verifyResult.valid && verifyResult.payload) {
+            const user = db.users.find(u => u.id === verifyResult.payload?.sub);
+            if (user && user.status === 'ACTIVE') {
+              client.userId = user.id;
+              client.userName = user.name;
+              client.userRole = user.role;
+              client.mosqueId = user.mosqueId;
+              client.isAuthenticated = true;
+
+              if (user.role === 'SUPER_ADMIN' && msg.mosqueId) {
+                client.mosqueId = msg.mosqueId;
               }
-            });
+
+              this.sendToClient(client, {
+                type: 'AUTH_SUCCESS',
+                data: {
+                  userId: user.id,
+                  userName: user.name,
+                  role: user.role,
+                  mosqueId: client.mosqueId,
+                }
+              });
+              return;
+            }
           }
+          this.sendToClient(client, {
+            type: 'AUTH_FAILED',
+            data: { message: 'টোকেন যাচাইকরণ ব্যর্থ হয়েছে।' }
+          });
         }
         break;
 

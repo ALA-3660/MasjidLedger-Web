@@ -1,0 +1,235 @@
+import jwt, { SignOptions, VerifyOptions } from 'jsonwebtoken';
+import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
+import { User, UserRole } from '../../types';
+
+// Production secrets and timing from environment with safe fallback for dev / testing
+const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'ml-prod-access-secret-3660-masjidledger-pro-v26-auth-hardened';
+const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'ml-prod-refresh-secret-3660-masjidledger-pro-v26-refresh-lifecycle';
+
+export const JWT_ACCESS_EXPIRES_IN = process.env.JWT_ACCESS_EXPIRES_IN || '15m'; // 15 minutes
+export const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d'; // 7 days
+
+export const ACCESS_TOKEN_TTL_SECONDS = 15 * 60; // 900 seconds
+export const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60; // 604800 seconds
+
+export interface JwtAccessPayload {
+  sub: string;
+  mosqueId: string;
+  role: UserRole;
+  name: string;
+  type: 'access';
+  jti?: string;
+  iat?: number;
+  exp?: number;
+}
+
+export interface JwtRefreshPayload {
+  sub: string;
+  mosqueId: string;
+  role: UserRole;
+  type: 'refresh';
+  jti: string;
+  iat?: number;
+  exp?: number;
+}
+
+export interface TokenVerificationResult<T> {
+  valid: boolean;
+  payload?: T;
+  error?: string;
+  code?: 'EXPIRED' | 'INVALID_SIGNATURE' | 'MALFORMED' | 'INVALID_TYPE' | 'REVOKED' | 'UNKNOWN';
+}
+
+/**
+ * In-memory secure store for active refresh token sessions & revocation.
+ * Keys are SHA-256 hashes of JTI or JTI strings to prevent plaintext exposure.
+ */
+interface RefreshSession {
+  jti: string;
+  userId: string;
+  mosqueId: string;
+  createdAt: number;
+  expiresAt: number;
+  revoked: boolean;
+}
+
+class TokenSessionManager {
+  private sessions = new Map<string, RefreshSession>();
+
+  register(jti: string, userId: string, mosqueId: string, ttlSeconds: number = REFRESH_TOKEN_TTL_SECONDS) {
+    const now = Date.now();
+    this.sessions.set(jti, {
+      jti,
+      userId,
+      mosqueId,
+      createdAt: now,
+      expiresAt: now + ttlSeconds * 1000,
+      revoked: false,
+    });
+  }
+
+  isValid(jti: string): boolean {
+    const session = this.sessions.get(jti);
+    if (!session) return false;
+    if (session.revoked) return false;
+    if (Date.now() > session.expiresAt) {
+      this.sessions.delete(jti);
+      return false;
+    }
+    return true;
+  }
+
+  revoke(jti: string) {
+    const session = this.sessions.get(jti);
+    if (session) {
+      session.revoked = true;
+    }
+  }
+
+  revokeAllForUser(userId: string) {
+    this.sessions.forEach((session) => {
+      if (session.userId === userId) {
+        session.revoked = true;
+      }
+    });
+  }
+
+  clear() {
+    this.sessions.clear();
+  }
+}
+
+export const tokenSessionManager = new TokenSessionManager();
+
+/**
+ * Generate cryptographically signed short-lived access token
+ */
+export function generateAccessToken(user: User): { token: string; expiresIn: number } {
+  const jti = `acc-${crypto.randomBytes(12).toString('hex')}`;
+  const payload: Omit<JwtAccessPayload, 'iat' | 'exp'> = {
+    sub: user.id,
+    mosqueId: user.mosqueId,
+    role: user.role,
+    name: user.name,
+    type: 'access',
+    jti,
+  };
+
+  const options: SignOptions = {
+    expiresIn: JWT_ACCESS_EXPIRES_IN as any,
+  };
+
+  const token = jwt.sign(payload, ACCESS_SECRET, options);
+  return {
+    token,
+    expiresIn: ACCESS_TOKEN_TTL_SECONDS,
+  };
+}
+
+/**
+ * Generate cryptographically signed long-lived refresh token
+ */
+export function generateRefreshToken(user: User): { token: string; jti: string; expiresIn: number } {
+  const jti = `ref-${crypto.randomBytes(16).toString('hex')}`;
+  const payload: Omit<JwtRefreshPayload, 'iat' | 'exp'> = {
+    sub: user.id,
+    mosqueId: user.mosqueId,
+    role: user.role,
+    type: 'refresh',
+    jti,
+  };
+
+  const options: SignOptions = {
+    expiresIn: JWT_REFRESH_EXPIRES_IN as any,
+  };
+
+  const token = jwt.sign(payload, REFRESH_SECRET, options);
+  tokenSessionManager.register(jti, user.id, user.mosqueId, REFRESH_TOKEN_TTL_SECONDS);
+
+  return {
+    token,
+    jti,
+    expiresIn: REFRESH_TOKEN_TTL_SECONDS,
+  };
+}
+
+/**
+ * Verify access token signature, expiration, and claims
+ */
+export function verifyAccessToken(token: string): TokenVerificationResult<JwtAccessPayload> {
+  if (!token || typeof token !== 'string') {
+    return { valid: false, error: 'টোকেন প্রদান করা হয়নি (Token missing)', code: 'MALFORMED' };
+  }
+
+  try {
+    const decoded = jwt.verify(token, ACCESS_SECRET) as JwtAccessPayload;
+    if (decoded.type !== 'access') {
+      return { valid: false, error: 'অননুমোদিত টোকেন প্রকার (Invalid token type)', code: 'INVALID_TYPE' };
+    }
+    return { valid: true, payload: decoded };
+  } catch (err: any) {
+    if (err.name === 'TokenExpiredError') {
+      return { valid: false, error: 'টোকেনের মেয়াদ শেষ হয়েছে (Token expired)', code: 'EXPIRED' };
+    }
+    if (err.name === 'JsonWebTokenError') {
+      if (err.message && err.message.includes('signature')) {
+        return { valid: false, error: 'টোকেন সিগনেচার অকার্যকর (Invalid signature)', code: 'INVALID_SIGNATURE' };
+      }
+      return { valid: false, error: 'ত্রুটিপূর্ণ টোকেন ফরম্যাট (Malformed token)', code: 'MALFORMED' };
+    }
+    return { valid: false, error: err.message || 'টোকেন যাচাইকরণ ব্যর্থ হয়েছে', code: 'UNKNOWN' };
+  }
+}
+
+/**
+ * Verify refresh token signature, expiration, revocation, and claims
+ */
+export function verifyRefreshToken(token: string): TokenVerificationResult<JwtRefreshPayload> {
+  if (!token || typeof token !== 'string') {
+    return { valid: false, error: 'রিফ্রেশ টোকেন প্রদান করা হয়নি (Refresh token missing)', code: 'MALFORMED' };
+  }
+
+  try {
+    const decoded = jwt.verify(token, REFRESH_SECRET) as JwtRefreshPayload;
+    if (decoded.type !== 'refresh') {
+      return { valid: false, error: 'অননুমোদিত রিফ্রেশ টোকেন প্রকার (Invalid refresh token type)', code: 'INVALID_TYPE' };
+    }
+
+    if (!decoded.jti || !tokenSessionManager.isValid(decoded.jti)) {
+      return { valid: false, error: 'রিফ্রেশ টোকেন বাতিল বা ব্যবহার অনুপযোগী (Token revoked/invalid)', code: 'REVOKED' };
+    }
+
+    return { valid: true, payload: decoded };
+  } catch (err: any) {
+    if (err.name === 'TokenExpiredError') {
+      return { valid: false, error: 'রিফ্রেশ টোকেনের মেয়াদ শেষ হয়েছে (Refresh token expired)', code: 'EXPIRED' };
+    }
+    if (err.name === 'JsonWebTokenError') {
+      if (err.message && err.message.includes('signature')) {
+        return { valid: false, error: 'রিফ্রেশ টোকেন সিগনেচার অকার্যকর (Invalid signature)', code: 'INVALID_SIGNATURE' };
+      }
+      return { valid: false, error: 'ত্রুটিপূর্ণ রিফ্রেশ টোকেন ফরম্যাট (Malformed refresh token)', code: 'MALFORMED' };
+    }
+    return { valid: false, error: err.message || 'রিফ্রেশ টোকেন যাচাইকরণ ব্যর্থ হয়েছে', code: 'UNKNOWN' };
+  }
+}
+
+/**
+ * Password Hashing & Verification via bcryptjs
+ */
+export function hashPassword(plain: string): string {
+  return bcrypt.hashSync(plain, 10);
+}
+
+export function verifyPassword(plain: string, hash: string): boolean {
+  if (!plain || !hash) return false;
+  if (hash.startsWith('$2a$') || hash.startsWith('$2b$')) {
+    try {
+      return bcrypt.compareSync(plain, hash);
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}

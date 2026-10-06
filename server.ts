@@ -11,6 +11,18 @@ import { quranReferenceService } from './src/server/quranReferenceService';
 import { buildDailyPrayerSchedule, buildMonthlyPrayerCalendar } from './src/lib/prayerEngine';
 import { DEFAULT_DOCUMENT_TEMPLATES } from './src/lib/officialDocumentTemplates';
 import {
+  generateAccessToken,
+  generateRefreshToken,
+  verifyAccessToken,
+  verifyRefreshToken,
+  hashPassword,
+  verifyPassword,
+  tokenSessionManager,
+  ACCESS_TOKEN_TTL_SECONDS,
+  REFRESH_TOKEN_TTL_SECONDS,
+  JwtAccessPayload,
+} from './src/server/auth/jwt';
+import {
   User,
   UserRole,
   Mosque,
@@ -174,36 +186,69 @@ const authenticate = (req: AuthRequest, res: Response, next: NextFunction) => {
 
   req.idempotencyKey = idempotencyKey;
 
-  // Extract user from token or header or fallback to authenticated session
+  // Extract user strictly from verified Signed JWT access token
   let user: User | undefined;
+  let tokenPayload: JwtAccessPayload | undefined;
+
   if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.substring(7);
-    user = db.users.find(u => token.includes(u.id));
-  }
-  if (!user && userHeader) {
-    user = db.users.find(u => u.id === userHeader);
-  }
-  if (!user) {
-    user = db.users[0];
+    const token = authHeader.substring(7).trim();
+    const verifyResult = verifyAccessToken(token);
+
+    if (!verifyResult.valid) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: verifyResult.code === 'EXPIRED' ? 'TOKEN_EXPIRED' : 'UNAUTHORIZED',
+          message: verifyResult.error || 'অননুমোদিত অ্যাক্সেস। অনুগ্রহ করে পুনরায় লগইন করুন।',
+        },
+      });
+    }
+
+    tokenPayload = verifyResult.payload;
+    user = db.users.find((u) => u.id === tokenPayload?.sub);
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'USER_NOT_FOUND',
+          message: 'ব্যবহারকারীর তথ্য সিস্টেমে পাওয়া যায়নি।',
+        },
+      });
+    }
+
+    if (user.status === 'INACTIVE' || user.status === 'SUSPENDED' || user.status === 'BLOCKED') {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: 'ACCOUNT_DISABLED',
+          message: 'আপনার অ্যাকাউন্টটি বর্তমানে নিষ্ক্রিয় বা স্থগিত রয়েছে।',
+        },
+      });
+    }
+  } else if (userHeader && process.env.NODE_ENV !== 'production') {
+    // Development fallback for testing suites if explicit header passed
+    user = db.users.find((u) => u.id === userHeader);
   }
 
   // Security: Authoritative Mosque Determination
   // Non-SuperAdmin users can NEVER access another mosque's records by manipulating headers!
-  let mosqueId = user?.mosqueId || db.mosques[0]?.id;
+  let mosqueId = user ? (tokenPayload?.mosqueId || user.mosqueId) : (db.mosques[0]?.id || 'mosque-main');
+
   if (user?.role === 'SUPER_ADMIN' && mosqueHeader) {
     mosqueId = mosqueHeader;
-  } else if (mosqueHeader && user && user.role !== 'SUPER_ADMIN' && mosqueHeader !== user.mosqueId) {
+  } else if (mosqueHeader && user && user.role !== 'SUPER_ADMIN' && mosqueHeader !== (tokenPayload?.mosqueId || user.mosqueId)) {
     // Cross-tenant access attempt blocked
     return res.status(403).json({
       success: false,
       error: {
         code: 'TENANT_FORBIDDEN',
-        message: 'অননুমোদিত মসজিদ অ্যাক্সেস নিষিদ্ধ। আপনি শুধুমাত্র আপনার অনুমোদিত মসজিদের ডাটা ব্যবহার করতে পারেন।'
-      }
+        message: 'অননুমোদিত মসজিদ অ্যাক্সেস নিষিদ্ধ। আপনি শুধুমাত্র আপনার অনুমোদিত মসজিদের ডাটা ব্যবহার করতে পারেন।',
+      },
     });
   }
 
-  const mosque = db.mosques.find(m => m.id === mosqueId) || db.mosques[0];
+  const mosque = db.mosques.find((m) => m.id === mosqueId) || db.mosques[0];
 
   req.user = user;
   req.currentMosque = mosque;
@@ -351,22 +396,6 @@ const getAuthoritativeRolePermissions = (targetRole: UserRole): Permission[] => 
   }
 };
 
-const hashPassword = (plain: string): string => {
-  return bcrypt.hashSync(plain, 10);
-};
-
-const verifyPassword = (plain: string, hash: string): boolean => {
-  if (!plain || !hash) return false;
-  if (hash.startsWith('$2a$') || hash.startsWith('$2b$')) {
-    try {
-      return bcrypt.compareSync(plain, hash);
-    } catch {
-      return false;
-    }
-  }
-  return false;
-};
-
 // ==========================================
 // 1. AUTH & USER ENDPOINTS
 // ==========================================
@@ -403,8 +432,8 @@ app.post('/api/v1/auth/login', (req: Request, res: Response) => {
     });
   }
 
-  const token = `ml-jwt-${user.id}-${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
-  const refreshToken = `ml-refresh-${user.id}-${Date.now()}-${crypto.randomBytes(12).toString('hex')}`;
+  const accessTokenResult = generateAccessToken(user);
+  const refreshTokenResult = generateRefreshToken(user);
   const mosque = db.mosques.find(m => m.id === user.mosqueId) || db.mosques[0];
 
   db.logAudit(user.mosqueId, user.id, user.name, user.role, 'LOGIN', 'AUTH', 'সফলভাবে লগইন করেছেন');
@@ -412,9 +441,10 @@ app.post('/api/v1/auth/login', (req: Request, res: Response) => {
   res.json({
     success: true,
     data: {
-      token,
-      refreshToken,
-      expiresIn: 86400 * 7,
+      token: accessTokenResult.token,
+      accessToken: accessTokenResult.token,
+      refreshToken: refreshTokenResult.token,
+      expiresIn: accessTokenResult.expiresIn,
       user: {
         id: user.id,
         name: user.name,
@@ -435,30 +465,66 @@ app.post('/api/v1/auth/login', (req: Request, res: Response) => {
 
 app.post('/api/v1/auth/refresh', (req: Request, res: Response) => {
   const { refreshToken } = req.body;
-  if (!refreshToken) {
-    return res.status(400).json({ success: false, error: { code: 'MISSING_TOKEN', message: 'রিফ্রেশ টোকেন প্রয়োজন।' } });
+  if (!refreshToken || typeof refreshToken !== 'string') {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'MISSING_TOKEN', message: 'রিফ্রেশ টোকেন প্রদান আবশ্যক।' }
+    });
   }
 
-  const userIdMatch = refreshToken.match(/ml-refresh-(usr-[a-z0-9-]+)-/);
-  const userId = userIdMatch ? userIdMatch[1] : null;
-  const user = db.users.find(u => u.id === userId) || db.users[0];
+  const verifyResult = verifyRefreshToken(refreshToken);
+  if (!verifyResult.valid || !verifyResult.payload) {
+    return res.status(401).json({
+      success: false,
+      error: {
+        code: verifyResult.code === 'EXPIRED' ? 'REFRESH_TOKEN_EXPIRED' : 'INVALID_REFRESH_TOKEN',
+        message: verifyResult.error || 'অকার্যকর রিফ্রেশ টোকেন।'
+      }
+    });
+  }
 
-  const newToken = `ml-jwt-${user.id}-${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
-  const newRefreshToken = `ml-refresh-${user.id}-${Date.now()}-${crypto.randomBytes(12).toString('hex')}`;
+  const refreshPayload = verifyResult.payload;
+  const user = db.users.find(u => u.id === refreshPayload.sub);
+
+  if (!user) {
+    return res.status(401).json({
+      success: false,
+      error: { code: 'USER_NOT_FOUND', message: 'ব্যবহারকারীর তথ্য সিস্টেমে পাওয়া যায়নি।' }
+    });
+  }
+
+  if (user.status === 'INACTIVE' || user.status === 'SUSPENDED' || user.status === 'BLOCKED') {
+    return res.status(403).json({
+      success: false,
+      error: { code: 'ACCOUNT_DISABLED', message: 'আপনার অ্যাকাউন্টটি বর্তমানে নিষ্ক্রিয় রয়েছে।' }
+    });
+  }
+
+  // Token rotation: revoke previous refresh session
+  if (refreshPayload.jti) {
+    tokenSessionManager.revoke(refreshPayload.jti);
+  }
+
+  const newAccessToken = generateAccessToken(user);
+  const newRefreshToken = generateRefreshToken(user);
 
   res.json({
     success: true,
     data: {
-      token: newToken,
-      refreshToken: newRefreshToken,
-      expiresIn: 86400 * 7,
+      token: newAccessToken.token,
+      accessToken: newAccessToken.token,
+      refreshToken: newRefreshToken.token,
+      expiresIn: newAccessToken.expiresIn,
     },
     message: 'টোকেন সফলভাবে নবায়ন করা হয়েছে।'
   });
 });
 
 app.post('/api/v1/auth/logout', authenticate, (req: AuthRequest, res: Response) => {
-  db.logAudit(req.currentMosque!.id, req.user!.id, req.user!.name, req.user!.role, 'LOGOUT', 'AUTH', 'সফলভাবে লগআউট করেছেন');
+  if (req.user) {
+    tokenSessionManager.revokeAllForUser(req.user.id);
+    db.logAudit(req.currentMosque!.id, req.user.id, req.user.name, req.user.role, 'LOGOUT', 'AUTH', 'সফলভাবে লগআউট করেছেন');
+  }
   res.json({ success: true, message: 'লগআউট সফল হয়েছে।' });
 });
 
