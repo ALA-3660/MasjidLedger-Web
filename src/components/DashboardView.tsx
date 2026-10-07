@@ -476,6 +476,79 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const canCreateExpense = !currentUser || hasPermission(currentUser, 'CREATE_EXPENSE');
   const canViewReports = !currentUser || hasPermission(currentUser, 'VIEW_REPORT');
 
+  // Deterministic, data-driven AI financial audit observations
+  const aiAuditInsights = useMemo(() => {
+    const notes: string[] = [];
+
+    // 1. Operating Net Balance Observation (Rules A, B, C)
+    if (effectiveStats.totalIncome > effectiveStats.totalExpense) {
+      notes.push(
+        language === 'bn'
+          ? `✅ বর্তমান সময়ে আয় ব্যয়ের তুলনায় বেশি। নিট উদ্বৃত্ত ${formatCurrency(effectiveStats.netBalance, language)}।`
+          : `✅ Current income exceeds expenses. Net surplus is ${formatCurrency(effectiveStats.netBalance, language)}.`
+      );
+    } else if (effectiveStats.totalIncome === effectiveStats.totalExpense && effectiveStats.totalIncome > 0) {
+      notes.push(
+        language === 'bn'
+          ? 'ℹ️ বর্তমান সময়ে মোট আয় ও ব্যয় সমান।'
+          : 'ℹ️ Current total income and expenses are equal.'
+      );
+    } else if (effectiveStats.totalIncome < effectiveStats.totalExpense) {
+      notes.push(
+        language === 'bn'
+          ? `⚠️ বর্তমান সময়ে ব্যয় আয়কে ছাড়িয়ে গেছে। নিট ঘাটতি ${formatCurrency(Math.abs(effectiveStats.netBalance), language)}।`
+          : `⚠️ Current expenses exceed income. Net deficit is ${formatCurrency(Math.abs(effectiveStats.netBalance), language)}.`
+      );
+    }
+
+    // 2. Liquidity & Account Position Observation (Rules D, E)
+    if (effectiveStats.currentBalance < 0) {
+      notes.push(
+        language === 'bn'
+          ? `⚠️ বর্তমান মোট স্থিতি ঋণাত্মক (${formatCurrency(effectiveStats.currentBalance, language)})। সংশ্লিষ্ট হিসাব ও লেনদেন যাচাই প্রয়োজন।`
+          : `⚠️ Current total balance is negative (${formatCurrency(effectiveStats.currentBalance, language)}). Verification of accounts and transactions is required.`
+      );
+    }
+
+    if (effectiveStats.cashBalance < 0) {
+      notes.push(
+        language === 'bn'
+          ? `⚠️ নগদ ক্যাশ ব্যালেন্স ঋণাত্মক (${formatCurrency(effectiveStats.cashBalance, language)})। ক্যাশবুক ও নগদ লেনদেন যাচাই করুন।`
+          : `⚠️ Cash balance is negative (${formatCurrency(effectiveStats.cashBalance, language)}). Check cashbook and cash transactions.`
+      );
+    } else if (
+      effectiveStats.cashBalance > 50000 &&
+      effectiveStats.cashBalance > effectiveStats.bankBalance &&
+      effectiveStats.currentBalance >= 0
+    ) {
+      notes.push(
+        language === 'bn'
+          ? `⚠️ নগদ ক্যাশ ব্যালেন্সের পরিমাণ তুলনামূলক বেশি (${formatCurrency(effectiveStats.cashBalance, language)})। নিরাপত্তার স্বার্থে উদ্বৃত্ত অর্থ নিয়মিত ব্যাংক হিসাবে স্থানান্তর করা সুপারিশযোগ্য।`
+          : `⚠️ Cash balance is relatively high (${formatCurrency(effectiveStats.cashBalance, language)}). Consider depositing surplus funds into the bank account.`
+      );
+    }
+
+    // 3. Pending Workflow Warnings
+    if (remindersData.pendingCount > 0) {
+      notes.push(
+        language === 'bn'
+          ? `• ${remindersData.pendingCount}টি অনিষ্পন্ন ভাউচার অনুমোদনের অপেক্ষায় রয়েছে।`
+          : `• ${remindersData.pendingCount} pending vouchers require approval.`
+      );
+    }
+
+    // 4. Default healthy state only if everything is verified positive
+    if (notes.length === 0) {
+      notes.push(
+        language === 'bn'
+          ? '✅ আয় ও ব্যয়ের অনুপাত সন্তোষজনক। তহবিল স্থিতি যথারীতি সমন্বিত আছে।'
+          : '✅ Income and expense ratio is healthy. Fund balances are properly aligned.'
+      );
+    }
+
+    return notes;
+  }, [effectiveStats, remindersData, language]);
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12 font-siliguri">
       {/* ========================================================================= */}
@@ -572,8 +645,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </h4>
             <p className="mt-0.5">
               {language === 'bn'
-                ? `মসজিদ তহবিলের মোট বর্তমান স্থিতি ${formatCurrency(effectiveStats.currentBalance, language)}। অবিলম্বে তহবিল পুনঃসংস্থান ও অডিট যাচাই প্রয়োজন।`
-                : `Total funds are in negative balance (${formatCurrency(effectiveStats.currentBalance, language)}). Immediate replenishment is required.`}
+                ? `মসজিদ তহবিলের মোট বর্তমান স্থিতি ${formatCurrency(effectiveStats.currentBalance, language)}। সংশ্লিষ্ট হিসাব, ক্যাশবুক ও লেনদেন যাচাই করুন।`
+                : `Total funds are in negative balance (${formatCurrency(effectiveStats.currentBalance, language)}). Please verify associated accounts, cashbook and transactions.`}
             </p>
           </div>
         </div>
@@ -588,8 +661,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </h4>
             <p className="mt-0.5">
               {language === 'bn'
-                ? `নগদ ক্যাশ ব্যালেন্স ${formatCurrency(effectiveStats.cashBalance, language)}। নগদ আয়ের হিসাব ও ক্যাশবই এন্ট্রি যাচাই করুন।`
-                : `Cash balance is negative (${formatCurrency(effectiveStats.cashBalance, language)}). Verify cash book entries.`}
+                ? `নগদ ক্যাশ ব্যালেন্স ${formatCurrency(effectiveStats.cashBalance, language)}। ক্যাশবুক ও সংশ্লিষ্ট নগদ লেনদেন যাচাই করুন।`
+                : `Cash balance is negative (${formatCurrency(effectiveStats.cashBalance, language)}). Please check the cashbook and related cash entries.`}
             </p>
           </div>
         </div>
@@ -1180,16 +1253,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
 
             <div className="mt-3 text-xs text-slate-300 space-y-2 leading-relaxed">
-              <p>
-                {effectiveStats.cashBalance > 50000 && effectiveStats.cashBalance > effectiveStats.bankBalance
-                  ? '⚠️ নগদ ক্যাশ ব্যালেন্সের পরিমাণ তুলনামূলক বেশি। নিরাপত্তার স্বার্থে উদ্বৃত্ত অর্থ নিয়মিত ব্যাংক হিসাবে স্থানান্তর করা সুপারিশযোগ্য।'
-                  : '✅ আয় ও ব্যয়ের অনুপাত সন্তোষজনক। তহবিল স্থিতি যথারীতি সমন্বিত আছে।'}
-              </p>
-              {remindersData.pendingCount > 0 && (
-                <p className="text-amber-300 font-medium">
-                  • {remindersData.pendingCount}টি অনিষ্পন্ন ভাউচার রয়েছে যা দ্রুত অনুমোদন প্রয়োজন।
+              {aiAuditInsights.map((insight, idx) => (
+                <p
+                  key={idx}
+                  className={
+                    insight.startsWith('⚠️')
+                      ? 'text-amber-300 font-medium'
+                      : insight.startsWith('✅')
+                      ? 'text-emerald-300 font-medium'
+                      : 'text-slate-300'
+                  }
+                >
+                  {insight}
                 </p>
-              )}
+              ))}
             </div>
 
             {onOpenAi && (
