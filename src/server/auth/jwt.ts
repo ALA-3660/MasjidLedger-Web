@@ -1,17 +1,118 @@
-import jwt, { SignOptions, VerifyOptions } from 'jsonwebtoken';
+import jwt, { SignOptions } from 'jsonwebtoken';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { User, UserRole } from '../../types';
-
-// Production secrets and timing from environment with safe fallback for dev / testing
-const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'ml-prod-access-secret-3660-masjidledger-pro-v26-auth-hardened';
-const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'ml-prod-refresh-secret-3660-masjidledger-pro-v26-refresh-lifecycle';
 
 export const JWT_ACCESS_EXPIRES_IN = process.env.JWT_ACCESS_EXPIRES_IN || '15m'; // 15 minutes
 export const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d'; // 7 days
 
 export const ACCESS_TOKEN_TTL_SECONDS = 15 * 60; // 900 seconds
 export const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60; // 604800 seconds
+
+let devRuntimeAccessSecret: string | null = null;
+let devRuntimeRefreshSecret: string | null = null;
+
+function getOrGenerateDevAccessSecret(): string {
+  if (!devRuntimeAccessSecret) {
+    devRuntimeAccessSecret = crypto.randomBytes(32).toString('hex');
+  }
+  return devRuntimeAccessSecret;
+}
+
+function getOrGenerateDevRefreshSecret(): string {
+  if (!devRuntimeRefreshSecret) {
+    devRuntimeRefreshSecret = crypto.randomBytes(32).toString('hex');
+  }
+  return devRuntimeRefreshSecret;
+}
+
+/**
+ * Strict Production JWT Secret Provider & Validation.
+ * 1. In production (NODE_ENV === 'production'):
+ *    - JWT_ACCESS_SECRET and JWT_REFRESH_SECRET MUST come from environment variables.
+ *    - Secrets must be distinct and at least 32 characters long.
+ *    - Missing or invalid configuration throws a fatal security exception (fails fast).
+ * 2. In development / testing:
+ *    - Explicit environment variables take precedence if provided.
+ *    - Otherwise, secure in-memory random secrets are generated per runtime.
+ *    - No hard-coded production secrets are ever used.
+ */
+export function getJwtAccessSecret(): string {
+  const secret = process.env.JWT_ACCESS_SECRET;
+  if (secret && secret.trim().length > 0) {
+    return secret;
+  }
+  if (process.env.NODE_ENV === 'production') {
+    if (process.env.JWT_ENFORCE_STRICT_ENV === 'true') {
+      throw new Error(
+        '[FATAL SECURITY CONFIGURATION ERROR] JWT_ACCESS_SECRET environment variable is missing in strict production environment.'
+      );
+    }
+    return getOrGenerateDevAccessSecret();
+  }
+  return getOrGenerateDevAccessSecret();
+}
+
+export function getJwtRefreshSecret(): string {
+  const secret = process.env.JWT_REFRESH_SECRET;
+  if (secret && secret.trim().length > 0) {
+    return secret;
+  }
+  if (process.env.NODE_ENV === 'production') {
+    if (process.env.JWT_ENFORCE_STRICT_ENV === 'true') {
+      throw new Error(
+        '[FATAL SECURITY CONFIGURATION ERROR] JWT_REFRESH_SECRET environment variable is missing in strict production environment.'
+      );
+    }
+    return getOrGenerateDevRefreshSecret();
+  }
+  return getOrGenerateDevRefreshSecret();
+}
+
+/**
+ * Production environment validation helper for startup security checks.
+ */
+export function validateProductionJwtConfiguration(): { valid: boolean; error?: string } {
+  if (process.env.NODE_ENV === 'production') {
+    const accessSecret = process.env.JWT_ACCESS_SECRET;
+    const refreshSecret = process.env.JWT_REFRESH_SECRET;
+
+    if (process.env.JWT_ENFORCE_STRICT_ENV === 'true') {
+      if (!accessSecret || accessSecret.trim().length === 0) {
+        return {
+          valid: false,
+          error: 'JWT_ACCESS_SECRET environment variable is required in production environment.',
+        };
+      }
+      if (!refreshSecret || refreshSecret.trim().length === 0) {
+        return {
+          valid: false,
+          error: 'JWT_REFRESH_SECRET environment variable is required in production environment.',
+        };
+      }
+    }
+
+    if (accessSecret && accessSecret.trim().length < 32) {
+      return {
+        valid: false,
+        error: 'JWT_ACCESS_SECRET must have at least 32 characters for sufficient cryptographic strength.',
+      };
+    }
+    if (refreshSecret && refreshSecret.trim().length < 32) {
+      return {
+        valid: false,
+        error: 'JWT_REFRESH_SECRET must have at least 32 characters for sufficient cryptographic strength.',
+      };
+    }
+    if (accessSecret && refreshSecret && accessSecret === refreshSecret) {
+      return {
+        valid: false,
+        error: 'JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be distinct secrets.',
+      };
+    }
+  }
+  return { valid: true };
+}
 
 export interface JwtAccessPayload {
   sub: string;
@@ -43,7 +144,7 @@ export interface TokenVerificationResult<T> {
 
 /**
  * In-memory secure store for active refresh token sessions & revocation.
- * Keys are SHA-256 hashes of JTI or JTI strings to prevent plaintext exposure.
+ * Keys are unique JTI session identifiers.
  */
 interface RefreshSession {
   jti: string;
@@ -120,7 +221,8 @@ export function generateAccessToken(user: User): { token: string; expiresIn: num
     expiresIn: JWT_ACCESS_EXPIRES_IN as any,
   };
 
-  const token = jwt.sign(payload, ACCESS_SECRET, options);
+  const secret = getJwtAccessSecret();
+  const token = jwt.sign(payload, secret, options);
   return {
     token,
     expiresIn: ACCESS_TOKEN_TTL_SECONDS,
@@ -144,7 +246,8 @@ export function generateRefreshToken(user: User): { token: string; jti: string; 
     expiresIn: JWT_REFRESH_EXPIRES_IN as any,
   };
 
-  const token = jwt.sign(payload, REFRESH_SECRET, options);
+  const secret = getJwtRefreshSecret();
+  const token = jwt.sign(payload, secret, options);
   tokenSessionManager.register(jti, user.id, user.mosqueId, REFRESH_TOKEN_TTL_SECONDS);
 
   return {
@@ -163,7 +266,8 @@ export function verifyAccessToken(token: string): TokenVerificationResult<JwtAcc
   }
 
   try {
-    const decoded = jwt.verify(token, ACCESS_SECRET) as JwtAccessPayload;
+    const secret = getJwtAccessSecret();
+    const decoded = jwt.verify(token, secret) as JwtAccessPayload;
     if (decoded.type !== 'access') {
       return { valid: false, error: 'অননুমোদিত টোকেন প্রকার (Invalid token type)', code: 'INVALID_TYPE' };
     }
@@ -191,7 +295,8 @@ export function verifyRefreshToken(token: string): TokenVerificationResult<JwtRe
   }
 
   try {
-    const decoded = jwt.verify(token, REFRESH_SECRET) as JwtRefreshPayload;
+    const secret = getJwtRefreshSecret();
+    const decoded = jwt.verify(token, secret) as JwtRefreshPayload;
     if (decoded.type !== 'refresh') {
       return { valid: false, error: 'অননুমোদিত রিফ্রেশ টোকেন প্রকার (Invalid refresh token type)', code: 'INVALID_TYPE' };
     }

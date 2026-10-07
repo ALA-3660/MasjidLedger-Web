@@ -18,6 +18,7 @@ import {
   hashPassword,
   verifyPassword,
   tokenSessionManager,
+  validateProductionJwtConfiguration,
   ACCESS_TOKEN_TTL_SECONDS,
   REFRESH_TOKEN_TTL_SECONDS,
   JwtAccessPayload,
@@ -27500,6 +27501,14 @@ app.get('/api/v1/legal/reports/register', authenticate, requirePermission('VIEW_
 // HTTP SERVER & VITE INTEGRATION
 // ==========================================
 async function startApp() {
+  // Validate production JWT security configuration before binding HTTP listeners
+  const jwtValidation = validateProductionJwtConfiguration();
+  if (!jwtValidation.valid) {
+    console.error(`\n❌ [FATAL SECURITY ERROR]: ${jwtValidation.error}`);
+    console.error('Server cannot start in production mode without valid distinct JWT secrets.\n');
+    process.exit(1);
+  }
+
   const httpServer = http.createServer(app);
 
   // Initialize WebSockets on HTTP server
