@@ -1104,19 +1104,28 @@ export default function App() {
           expenses={expenses}
           donations={donations}
           donationBoxes={donationBoxes}
+          boxCollections={boxCollections}
+          staff={staff}
+          staffPayments={staffPayments}
+          terms={terms}
+          meetings={meetings}
           notices={notices}
+          currentUser={currentUser}
           language={language}
           onNavigate={(tab) => setCurrentTab(tab)}
           onQuickAction={(act) => {
             if (act === 'income') setCurrentTab('income');
             else if (act === 'expense') setCurrentTab('expense');
             else if (act === 'donation') setCurrentTab('donations');
+            else if (act === 'juma') setIsGlobalJumaModalOpen(true);
+            else if (act === 'donationBox') setCurrentTab('donationBox');
+            else if (act === 'transfer') setCurrentTab('bank');
+            else if (act === 'report') setCurrentTab('reports');
           }}
           onOpenAi={() => setIsAiOpen(true)}
           onOpenScanner={() => setIsScannerOpen(true)}
           onOpenActionQrHub={() => setIsActionCardHubOpen(true)}
-          onOpenDisplayScreen={() => setCurrentTab('publicPortal')}
-          onOpenPrintSchedule={() => setCurrentTab('prayerTimes')}
+          onOpenJumaModal={() => setIsGlobalJumaModalOpen(true)}
           onRefresh={() => loadData(false)}
         />
       )}
