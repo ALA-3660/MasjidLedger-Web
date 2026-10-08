@@ -172,6 +172,13 @@ export interface MosqueLetterheadSettings {
   showSignatures?: boolean;
 }
 
+export interface MosqueReceiptVoucherSettings {
+  receiptPrefix: string;
+  voucherPrefix: string;
+  defaultPrinterSize: 'POS_80' | 'POS_58' | 'A4' | string;
+  autoOpenPrintDialog: boolean;
+}
+
 export interface Mosque {
   id: string;
   code: string;
@@ -212,6 +219,7 @@ export interface Mosque {
   secretarySignatureUrl?: string;
   establishedDate?: string;
   letterheadSettings?: MosqueLetterheadSettings;
+  receiptVoucherSettings?: MosqueReceiptVoucherSettings;
   status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
   qrSettings?: {
     bkashNumber?: string;

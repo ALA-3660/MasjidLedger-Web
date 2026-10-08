@@ -5,7 +5,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { GoogleGenAI } from '@google/genai';
-import { db, getStarterLibraryCategories, getStarterEducationPrograms, getStarterEducationLevels, getStarterMaktabClasses, getStarterMaktabFeeSchedules } from './src/server/db';
+import { db, getStarterLibraryCategories, getStarterEducationPrograms, getStarterEducationLevels, getStarterMaktabClasses, getStarterMaktabFeeSchedules } from './src/server/db.ts';
 import { realtime } from './src/server/ws';
 import { quranReferenceService } from './src/server/quranReferenceService';
 import { buildDailyPrayerSchedule, buildMonthlyPrayerCalendar } from './src/lib/prayerEngine';
@@ -1460,6 +1460,48 @@ app.put('/api/v1/mosques/current', authenticate, requirePermission('MANAGE_SETTI
     );
   }
 
+  // Validate & Track Receipt and Voucher Printing Settings
+  if (body.receiptVoucherSettings !== undefined) {
+    const rawRvs = body.receiptVoucherSettings;
+    if (typeof rawRvs === 'object' && rawRvs !== null) {
+      const receiptPrefix = typeof rawRvs.receiptPrefix === 'string' && rawRvs.receiptPrefix.trim()
+        ? rawRvs.receiptPrefix.trim()
+        : 'MR-';
+      const voucherPrefix = typeof rawRvs.voucherPrefix === 'string' && rawRvs.voucherPrefix.trim()
+        ? rawRvs.voucherPrefix.trim()
+        : 'VCH-';
+      const validPrinterSizes = ['POS_80', 'POS_58', 'A4'];
+      const defaultPrinterSize = validPrinterSizes.includes(rawRvs.defaultPrinterSize)
+        ? rawRvs.defaultPrinterSize
+        : 'POS_80';
+      const autoOpenPrintDialog = Boolean(rawRvs.autoOpenPrintDialog);
+
+      body.receiptVoucherSettings = {
+        receiptPrefix,
+        voucherPrefix,
+        defaultPrinterSize,
+        autoOpenPrintDialog,
+      };
+
+      db.logAudit(
+        m.id,
+        req.user!.id,
+        req.user!.name,
+        req.user!.role,
+        'RECEIPT_VOUCHER_SETTINGS_UPDATED',
+        'SETTINGS',
+        'রশিদ ও ভাউচার মুদ্রণ সেটিংস আপডেট করা হয়েছে',
+        m.id,
+        req.ip,
+        {
+          previousState: JSON.stringify(m.receiptVoucherSettings || {}),
+          newState: JSON.stringify(body.receiptVoucherSettings),
+          status: 'SUCCESS',
+        }
+      );
+    }
+  }
+
   // SEC-MSQ-01: Explicit Whitelist of Client-Editable Fields
   // System-controlled identity fields (id, code, createdAt) MUST NEVER be client-overwritable.
   const EDITABLE_FIELDS: (keyof Mosque)[] = [
@@ -1492,6 +1534,7 @@ app.put('/api/v1/mosques/current', authenticate, requirePermission('MANAGE_SETTI
     'secretarySignatureUrl',
     'establishedDate',
     'letterheadSettings',
+    'receiptVoucherSettings',
     'status',
     'qrSettings',
     'committeeEvaluationSettings',

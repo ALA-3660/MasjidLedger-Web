@@ -42,6 +42,7 @@ import {
 } from 'lucide-react';
 import { Mosque, User, MosqueLetterheadSettings } from '../types';
 import { Language, translations } from '../lib/i18n';
+import { hasPermission } from '../lib/permissions';
 import { api } from '../lib/api';
 import {
   BANGLADESH_DIVISIONS,
@@ -97,7 +98,7 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
   initialSubTab = 'identity',
 }) => {
   const t = translations[language] || translations.bn;
-  const canEdit = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'MOSQUE_ADMIN';
+  const canEdit = hasPermission(currentUser, 'MANAGE_SETTINGS');
 
   // Subtab selection
   const [activeSubTab, setActiveSubTab] = useState<MosqueSettingsSubTab>(initialSubTab);
@@ -111,10 +112,10 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
     waqfEstateName: '',
     registrationNumber: '',
     descriptionBn: '',
-    division: 'চট্টগ্রাম',
-    district: 'কক্সবাজার',
-    upazila: 'কক্সবাজার সদর',
-    union: 'খুরুশকুল',
+    division: '',
+    district: '',
+    upazila: '',
+    union: '',
     ward: '',
     village: '',
     address: '',
@@ -136,8 +137,8 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
       layout: 'CLASSICAL_WAQF',
       showBismillah: true,
       bismillahText: 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ',
-      subtitleBn: 'গায়েবী মসজিদ নামে পরিচিত খুরুশকুলে সবচেয়ে পুরাতন মসজিদ',
-      footerNoteBn: 'ওয়াকফ এস্টেটের সকল দান ও আয়-ব্যয় সরকারি ও শরীয়াহ অডিট সাপেক্ষে সংরক্ষিত।',
+      subtitleBn: '',
+      footerNoteBn: '',
       showWatermark: true,
       presidentNameBn: '',
       presidentDesignationBn: 'সভাপতি',
@@ -151,6 +152,12 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
       bankAccountInfo: '',
       onlinePaymentUrl: '',
       instructionsBn: '',
+    },
+    receiptVoucherSettings: {
+      receiptPrefix: 'MR-',
+      voucherPrefix: 'VCH-',
+      defaultPrinterSize: 'POS_80',
+      autoOpenPrintDialog: false,
     },
   });
 
@@ -198,10 +205,10 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
         waqfEstateName: currentMosque.waqfEstateName || '',
         registrationNumber: currentMosque.registrationNumber || '',
         descriptionBn: currentMosque.descriptionBn || '',
-        division: currentMosque.division || 'চট্টগ্রাম',
-        district: currentMosque.district || 'কক্সবাজার',
-        upazila: currentMosque.upazila || 'কক্সবাজার সদর',
-        union: currentMosque.union || 'খুরুশকুল',
+        division: currentMosque.division || '',
+        district: currentMosque.district || '',
+        upazila: currentMosque.upazila || '',
+        union: currentMosque.union || '',
         ward: currentMosque.ward || '',
         village: currentMosque.village || '',
         address: currentMosque.address || '',
@@ -224,8 +231,8 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
           layout: currentMosque.letterheadSettings?.layout || 'CLASSICAL_WAQF',
           showBismillah: currentMosque.letterheadSettings?.showBismillah !== false,
           bismillahText: currentMosque.letterheadSettings?.bismillahText || 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ',
-          subtitleBn: currentMosque.letterheadSettings?.subtitleBn || 'গায়েবী মসজিদ নামে পরিচিত খুরুশকুলে সবচেয়ে পুরাতন মসজিদ',
-          footerNoteBn: currentMosque.letterheadSettings?.footerNoteBn || 'ওয়াকফ এস্টেটের সকল দান ও আয়-ব্যয় সরকারি ও শরীয়াহ অডিট সাপেক্ষে সংরক্ষিত।',
+          subtitleBn: currentMosque.letterheadSettings?.subtitleBn || '',
+          footerNoteBn: currentMosque.letterheadSettings?.footerNoteBn || '',
           showWatermark: currentMosque.letterheadSettings?.showWatermark !== false,
           presidentNameBn: currentMosque.letterheadSettings?.presidentNameBn || '',
           presidentDesignationBn: (currentMosque.letterheadSettings?.presidentDesignationBn && currentMosque.letterheadSettings.presidentDesignationBn !== 'সভাপতি / মোতাওয়াল্লী' && currentMosque.letterheadSettings.presidentDesignationBn !== 'সভাপতি / মোতাওয়াল্লী স্বাক্ষর')
@@ -244,6 +251,12 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
           onlinePaymentUrl: '',
           instructionsBn: '',
         },
+        receiptVoucherSettings: {
+          receiptPrefix: currentMosque.receiptVoucherSettings?.receiptPrefix || 'MR-',
+          voucherPrefix: currentMosque.receiptVoucherSettings?.voucherPrefix || 'VCH-',
+          defaultPrinterSize: currentMosque.receiptVoucherSettings?.defaultPrinterSize || 'POS_80',
+          autoOpenPrintDialog: currentMosque.receiptVoucherSettings?.autoOpenPrintDialog === true,
+        },
       });
 
       if (currentMosque.latitude && currentMosque.longitude) {
@@ -252,31 +265,27 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
     }
   }, [currentMosque]);
 
-  // Update Cascading Dropdowns when Division changes
+  // Load district options when division changes
   useEffect(() => {
-    const districts = getDistrictsByDivision(formData.division).map(d => d.nameBn);
-    setDistrictList(districts);
-
-    if (formData.district && !districts.includes(formData.district)) {
-      setFormData(prev => ({ ...prev, district: districts[0] || '', upazila: '', union: '' }));
+    if (formData.division) {
+      const districts = getDistrictsByDivision(formData.division).map(d => d.nameBn);
+      setDistrictList(districts);
+    } else {
+      setDistrictList([]);
     }
   }, [formData.division]);
 
-  // Update Cascading Dropdowns when District changes
+  // Load upazila options when district changes
   useEffect(() => {
     if (formData.district) {
       const upazilas = getUpazilasByDistrict(formData.district);
       setUpazilaList(upazilas);
-
-      if (formData.upazila && !upazilas.includes(formData.upazila)) {
-        setFormData(prev => ({ ...prev, upazila: upazilas[0] || '', union: '' }));
-      }
     } else {
       setUpazilaList([]);
     }
   }, [formData.district]);
 
-  // Update Cascading Dropdowns when Upazila changes
+  // Load union options when upazila changes
   useEffect(() => {
     if (formData.upazila) {
       const unions = getUnionsByUpazila(formData.upazila, formData.district);
@@ -287,7 +296,7 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
     } else {
       setUnionList([]);
     }
-  }, [formData.upazila]);
+  }, [formData.upazila, formData.district]);
 
   // Clear messages after 5 seconds
   useEffect(() => {
@@ -349,6 +358,12 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
         establishedDate: formData.establishedDate,
         letterheadSettings: formData.letterheadSettings,
         qrSettings: formData.qrSettings,
+        receiptVoucherSettings: {
+          receiptPrefix: (formData.receiptVoucherSettings?.receiptPrefix || 'MR-').trim() || 'MR-',
+          voucherPrefix: (formData.receiptVoucherSettings?.voucherPrefix || 'VCH-').trim() || 'VCH-',
+          defaultPrinterSize: formData.receiptVoucherSettings?.defaultPrinterSize || 'POS_80',
+          autoOpenPrintDialog: formData.receiptVoucherSettings?.autoOpenPrintDialog === true,
+        },
       };
 
       await onSaveMosque(payload);
@@ -925,10 +940,21 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">বিভাগ (Division)</label>
                     <select
                       disabled={!canEdit}
-                      value={formData.division || 'চট্টগ্রাম'}
-                      onChange={(e) => handleInputChange('division', e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:ring-2 focus:ring-emerald-600"
+                      value={formData.division || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormData((prev) => ({
+                          ...prev,
+                          division: val,
+                          district: '',
+                          upazila: '',
+                          union: '',
+                        }));
+                        setCustomUnionInput('');
+                      }}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:ring-2 focus:ring-emerald-600 disabled:bg-slate-100 disabled:text-slate-400"
                     >
+                      <option value="">-- বিভাগ নির্বাচন করুন --</option>
                       {BANGLADESH_DIVISIONS.map((d) => (
                         <option key={d.id} value={d.nameBn}>
                           {d.nameBn} ({d.nameEn})
@@ -941,11 +967,21 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">জেলা (District)</label>
                     <select
-                      disabled={!canEdit}
-                      value={formData.district || 'কক্সবাজার'}
-                      onChange={(e) => handleInputChange('district', e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:ring-2 focus:ring-emerald-600"
+                      disabled={!canEdit || !formData.division}
+                      value={formData.district || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormData((prev) => ({
+                          ...prev,
+                          district: val,
+                          upazila: '',
+                          union: '',
+                        }));
+                        setCustomUnionInput('');
+                      }}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:ring-2 focus:ring-emerald-600 disabled:bg-slate-100 disabled:text-slate-400"
                     >
+                      <option value="">-- জেলা নির্বাচন করুন --</option>
                       {districtList.map((d) => (
                         <option key={d} value={d}>
                           {d}
@@ -958,11 +994,20 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">উপজেলা / থানা (Upazila)</label>
                     <select
-                      disabled={!canEdit}
-                      value={formData.upazila || 'কক্সবাজার সদর'}
-                      onChange={(e) => handleInputChange('upazila', e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:ring-2 focus:ring-emerald-600"
+                      disabled={!canEdit || !formData.district}
+                      value={formData.upazila || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormData((prev) => ({
+                          ...prev,
+                          upazila: val,
+                          union: '',
+                        }));
+                        setCustomUnionInput('');
+                      }}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:ring-2 focus:ring-emerald-600 disabled:bg-slate-100 disabled:text-slate-400"
                     >
+                      <option value="">-- উপজেলা / থানা নির্বাচন করুন --</option>
                       {upazilaList.map((u) => (
                         <option key={u} value={u}>
                           {u}
@@ -975,14 +1020,19 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">ইউনিয়ন / পৌর এলাকা (Union)</label>
                     <select
-                      disabled={!canEdit}
-                      value={formData.union || 'খুরুশকুল'}
+                      disabled={!canEdit || !formData.upazila}
+                      value={formData.union || ''}
                       onChange={(e) => {
-                        handleInputChange('union', e.target.value);
+                        const val = e.target.value;
+                        setFormData((prev) => ({
+                          ...prev,
+                          union: val,
+                        }));
                         setCustomUnionInput('');
                       }}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:ring-2 focus:ring-emerald-600"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:ring-2 focus:ring-emerald-600 disabled:bg-slate-100 disabled:text-slate-400"
                     >
+                      <option value="">-- ইউনিয়ন / পৌর এলাকা নির্বাচন করুন --</option>
                       {unionList.map((un) => (
                         <option key={un} value={un}>
                           {un}
@@ -1002,7 +1052,7 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
                     disabled={!canEdit}
                     value={customUnionInput}
                     onChange={(e) => setCustomUnionInput(e.target.value)}
-                    placeholder="যেমন: খুরুশকুল বা বিশেষ ওয়ার্ড"
+                    placeholder="যেমন: বিশেষ ওয়ার্ড / এলাকা"
                     className="w-full sm:w-80 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs"
                   />
                 </div>
@@ -2080,8 +2130,19 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
                     <input
                       type="text"
                       disabled={!canEdit}
-                      defaultValue="MR-"
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono"
+                      value={formData.receiptVoucherSettings?.receiptPrefix ?? 'MR-'}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          receiptVoucherSettings: {
+                            receiptPrefix: e.target.value,
+                            voucherPrefix: prev.receiptVoucherSettings?.voucherPrefix ?? 'VCH-',
+                            defaultPrinterSize: prev.receiptVoucherSettings?.defaultPrinterSize ?? 'POS_80',
+                            autoOpenPrintDialog: prev.receiptVoucherSettings?.autoOpenPrintDialog ?? false,
+                          },
+                        }))
+                      }
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono focus:ring-2 focus:ring-emerald-600 focus:outline-none"
                     />
                   </div>
                   <div>
@@ -2089,8 +2150,19 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
                     <input
                       type="text"
                       disabled={!canEdit}
-                      defaultValue="VCH-"
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono"
+                      value={formData.receiptVoucherSettings?.voucherPrefix ?? 'VCH-'}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          receiptVoucherSettings: {
+                            receiptPrefix: prev.receiptVoucherSettings?.receiptPrefix ?? 'MR-',
+                            voucherPrefix: e.target.value,
+                            defaultPrinterSize: prev.receiptVoucherSettings?.defaultPrinterSize ?? 'POS_80',
+                            autoOpenPrintDialog: prev.receiptVoucherSettings?.autoOpenPrintDialog ?? false,
+                          },
+                        }))
+                      }
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono focus:ring-2 focus:ring-emerald-600 focus:outline-none"
                     />
                   </div>
                 </div>
@@ -2101,21 +2173,73 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
                     <label className="block text-[11px] text-slate-600 mb-1">ডিফল্ট প্রিন্টার সাইজ</label>
                     <select
                       disabled={!canEdit}
-                      defaultValue="POS_80"
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs"
+                      value={formData.receiptVoucherSettings?.defaultPrinterSize ?? 'POS_80'}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          receiptVoucherSettings: {
+                            receiptPrefix: prev.receiptVoucherSettings?.receiptPrefix ?? 'MR-',
+                            voucherPrefix: prev.receiptVoucherSettings?.voucherPrefix ?? 'VCH-',
+                            defaultPrinterSize: e.target.value,
+                            autoOpenPrintDialog: prev.receiptVoucherSettings?.autoOpenPrintDialog ?? false,
+                          },
+                        }))
+                      }
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-emerald-600 focus:outline-none"
                     >
                       <option value="POS_80">POS থার্মাল রিসিট (80mm)</option>
+                      <option value="POS_58">POS থার্মাল রিসিট (58mm)</option>
                       <option value="A4">A4 অফিসিয়াল ভাউচার প্যাড</option>
                     </select>
                   </div>
                   <div className="pt-2">
                     <label className="flex items-center space-x-2 text-xs cursor-pointer">
-                      <input type="checkbox" defaultChecked className="rounded text-emerald-600" />
+                      <input
+                        type="checkbox"
+                        disabled={!canEdit}
+                        checked={formData.receiptVoucherSettings?.autoOpenPrintDialog ?? false}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            receiptVoucherSettings: {
+                              receiptPrefix: prev.receiptVoucherSettings?.receiptPrefix ?? 'MR-',
+                              voucherPrefix: prev.receiptVoucherSettings?.voucherPrefix ?? 'VCH-',
+                              defaultPrinterSize: prev.receiptVoucherSettings?.defaultPrinterSize ?? 'POS_80',
+                              autoOpenPrintDialog: e.target.checked,
+                            },
+                          }))
+                        }
+                        className="rounded text-emerald-600 focus:ring-emerald-500"
+                      />
                       <span>অর্থ গ্রহণের সাথে সাথে প্রিন্ট ডায়লগ খুলুন</span>
                     </label>
                   </div>
                 </div>
               </div>
+
+              {/* Module 06 Local Save Action */}
+              {canEdit && (
+                <div className="pt-2 flex items-center justify-end">
+                  <button
+                    type="button"
+                    disabled={isSaving}
+                    onClick={() => handleSave()}
+                    className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-md flex items-center space-x-2 transition-all cursor-pointer active:scale-95"
+                  >
+                    {isSaving ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>সংরক্ষণ হচ্ছে...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4" />
+                        <span>রশিদ ও ভাউচার সেটিংস সংরক্ষণ</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -2305,6 +2429,85 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
           )}
         </div>
       </div>
+
+      {/* Sticky Bottom Action Bar */}
+      {canEdit && (
+        <div className="sticky bottom-4 z-30 bg-slate-900/95 backdrop-blur-md text-white px-5 py-3.5 rounded-2xl shadow-2xl border border-slate-700/80 flex flex-col sm:flex-row items-center justify-between gap-3 animate-in slide-in-from-bottom duration-300">
+          <div className="flex items-center space-x-2.5 text-xs text-slate-300">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="font-medium">
+              {currentMosque?.nameBn || currentMosque?.name || 'মসজিদ প্রোফাইল'} — পরিবর্তন সংরক্ষণের জন্য প্রস্তুত
+            </span>
+          </div>
+
+          <div className="flex items-center space-x-3 w-full sm:w-auto justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                if (currentMosque) {
+                  setFormData({
+                    name: currentMosque.name || '',
+                    nameBn: currentMosque.nameBn || '',
+                    nameEn: currentMosque.nameEn || '',
+                    waqfEstateName: currentMosque.waqfEstateName || '',
+                    registrationNumber: currentMosque.registrationNumber || '',
+                    descriptionBn: currentMosque.descriptionBn || '',
+                    division: currentMosque.division || '',
+                    district: currentMosque.district || '',
+                    upazila: currentMosque.upazila || '',
+                    union: currentMosque.union || '',
+                    ward: currentMosque.ward || '',
+                    village: currentMosque.village || '',
+                    address: currentMosque.address || '',
+                    country: currentMosque.country || 'বাংলাদেশ',
+                    phone: currentMosque.phone || '',
+                    altPhone: currentMosque.altPhone || '',
+                    email: currentMosque.email || '',
+                    website: currentMosque.website || '',
+                    latitude: currentMosque.latitude ?? 21.4272,
+                    longitude: currentMosque.longitude ?? 92.0058,
+                    logoUrl: currentMosque.logoUrl || '',
+                    logoAssetId: currentMosque.logoAssetId || '',
+                    logoMetadata: currentMosque.logoMetadata,
+                    photoUrl: currentMosque.photoUrl || '',
+                    coverPhotoUrl: currentMosque.coverPhotoUrl || '',
+                    presidentSignatureUrl: currentMosque.presidentSignatureUrl || '',
+                    secretarySignatureUrl: currentMosque.secretarySignatureUrl || '',
+                    establishedDate: currentMosque.establishedDate || '',
+                    letterheadSettings: currentMosque.letterheadSettings,
+                    qrSettings: currentMosque.qrSettings,
+                    receiptVoucherSettings: currentMosque.receiptVoucherSettings,
+                  });
+                  setCustomUnionInput('');
+                }
+              }}
+              disabled={isSaving}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+            >
+              বাতিল / রিসেট
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSave()}
+              disabled={isSaving}
+              className="px-5 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-md flex items-center space-x-2 transition-all cursor-pointer active:scale-95"
+            >
+              {isSaving ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>সংরক্ষণ হচ্ছে...</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  <span>পরিবর্তন সংরক্ষণ করুন</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Confirmation Dialog */}
       {confirmDialog && (

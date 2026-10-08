@@ -166,7 +166,13 @@
         "themeColor": "emerald"
       },
       "createdAt": "2026-01-01T00:00:00.000Z",
-      "updatedAt": "2026-09-28T13:26:00.485Z"
+      "updatedAt": "2026-10-08T11:11:41.853Z",
+      "receiptVoucherSettings": {
+        "receiptPrefix": "MR-",
+        "voucherPrefix": "VCH-",
+        "defaultPrinterSize": "POS_80",
+        "autoOpenPrintDialog": false
+      }
     },
     {
       "id": "mosque-baitul-002",
@@ -2527,6 +2533,72 @@
   "centralDocuments": [],
   "qrCodes": [],
   "auditLogs": [
+    {
+      "id": "aud-1791457901856-fi7al",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "SETTINGS_CHANGE",
+      "module": "MOSQUE",
+      "category": "MOSQUE",
+      "details": "মসজিদের সাধারণ তথ্য ও সেটিংস আপডেট করা হয়েছে",
+      "timestamp": "2026-10-08T11:11:41.856Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "aud-1791457901850-yspxv",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "RECEIPT_VOUCHER_SETTINGS_UPDATED",
+      "module": "SETTINGS",
+      "category": "SETTINGS",
+      "recordId": "mosque-mamun-001",
+      "details": "রশিদ ও ভাউচার মুদ্রণ সেটিংস আপডেট করা হয়েছে",
+      "previousState": "{\"receiptPrefix\":\"MR-2026-\",\"voucherPrefix\":\"VCH-2026-\",\"defaultPrinterSize\":\"POS_80\",\"autoOpenPrintDialog\":true}",
+      "newState": "{\"receiptPrefix\":\"MR-\",\"voucherPrefix\":\"VCH-\",\"defaultPrinterSize\":\"POS_80\",\"autoOpenPrintDialog\":false}",
+      "timestamp": "2026-10-08T11:11:41.850Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "aud-1791457882248-l6eaz",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "SETTINGS_CHANGE",
+      "module": "MOSQUE",
+      "category": "MOSQUE",
+      "details": "মসজিদের সাধারণ তথ্য ও সেটিংস আপডেট করা হয়েছে",
+      "timestamp": "2026-10-08T11:11:22.248Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "aud-1791457882243-uc75u",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "RECEIPT_VOUCHER_SETTINGS_UPDATED",
+      "module": "SETTINGS",
+      "category": "SETTINGS",
+      "recordId": "mosque-mamun-001",
+      "details": "রশিদ ও ভাউচার মুদ্রণ সেটিংস আপডেট করা হয়েছে",
+      "previousState": "{}",
+      "newState": "{\"receiptPrefix\":\"MR-2026-\",\"voucherPrefix\":\"VCH-2026-\",\"defaultPrinterSize\":\"POS_80\",\"autoOpenPrintDialog\":true}",
+      "timestamp": "2026-10-08T11:11:22.243Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
     {
       "id": "aud-1791205072444-nhxio",
       "mosqueId": "mosque-mamun-001",
