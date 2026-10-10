@@ -60,7 +60,7 @@ class RealtimeServer {
       let userId = 'usr-guest';
       let userName = 'Guest User';
       let userRole = 'VIEWER';
-      let mosqueId = db.mosques[0]?.id || 'mosque-main';
+      let mosqueId = ''; // Strict isolation: Unauthenticated connections have NO tenant identity
       let isAuthenticated = false;
 
       // Verify signed JWT token if provided
@@ -75,9 +75,12 @@ class RealtimeServer {
             mosqueId = user.mosqueId;
             isAuthenticated = true;
 
-            // Allow SUPER_ADMIN to switch mosque scope
+            // Allow SUPER_ADMIN to switch mosque scope if valid mosque exists
             if (user.role === 'SUPER_ADMIN' && mosqueIdParam) {
-              mosqueId = mosqueIdParam;
+              const targetMosque = db.mosques.find(m => m.id === mosqueIdParam);
+              if (targetMosque) {
+                mosqueId = targetMosque.id;
+              }
             }
           }
         }
@@ -97,18 +100,18 @@ class RealtimeServer {
       };
 
       this.clients.set(clientId, client);
-      console.log(`[WS] Client connected: ${clientId} (User: ${client.userName}, Role: ${client.userRole}, Mosque: ${client.mosqueId}, Auth: ${isAuthenticated})`);
+      console.log(`[WS] Client connected: ${clientId} (User: ${client.userName}, Role: ${client.userRole}, Mosque: ${client.mosqueId || 'NONE'}, Auth: ${isAuthenticated})`);
 
       // Send initial connection ack
       this.sendToClient(client, {
         type: 'CONNECTION_ACK',
-        mosqueId: client.mosqueId,
+        mosqueId: client.mosqueId || undefined,
         data: {
           clientId,
           userId: client.userId,
           userName: client.userName,
           userRole: client.userRole,
-          mosqueId: client.mosqueId,
+          mosqueId: client.mosqueId || undefined,
           isAuthenticated: client.isAuthenticated,
           serverTime: new Date().toISOString(),
           status: 'CONNECTED',
@@ -173,10 +176,33 @@ class RealtimeServer {
         break;
 
       case 'SUBSCRIBE_MOSQUE':
+        // Guests cannot subscribe to mosque-scoped events
+        if (!client.isAuthenticated || !client.userId || client.userId === 'usr-guest') {
+          this.sendToClient(client, {
+            type: 'ERROR',
+            data: { code: 'UNAUTHORIZED', message: 'মসজিদ ইভেন্ট সাবস্ক্রিপশনের জন্য লগইন আবশ্যক।' }
+          });
+          break;
+        }
+
         // Only SUPER_ADMIN or client's own mosque is permitted
         if (msg.mosqueId) {
-          if (client.userRole === 'SUPER_ADMIN' || msg.mosqueId === client.mosqueId) {
-            client.mosqueId = msg.mosqueId;
+          if (client.userRole === 'SUPER_ADMIN') {
+            const targetMosque = db.mosques.find(m => m.id === msg.mosqueId);
+            if (targetMosque) {
+              client.mosqueId = targetMosque.id;
+              this.sendToClient(client, {
+                type: 'SUBSCRIBED',
+                mosqueId: client.mosqueId,
+                data: { mosqueId: client.mosqueId }
+              });
+            } else {
+              this.sendToClient(client, {
+                type: 'ERROR',
+                data: { code: 'TENANT_NOT_FOUND', message: 'অনুরোধকৃত মসজিদ পাওয়া যায়নি।' }
+              });
+            }
+          } else if (msg.mosqueId === client.mosqueId) {
             this.sendToClient(client, {
               type: 'SUBSCRIBED',
               mosqueId: client.mosqueId,
@@ -204,7 +230,10 @@ class RealtimeServer {
               client.isAuthenticated = true;
 
               if (user.role === 'SUPER_ADMIN' && msg.mosqueId) {
-                client.mosqueId = msg.mosqueId;
+                const targetMosque = db.mosques.find(m => m.id === msg.mosqueId);
+                if (targetMosque) {
+                  client.mosqueId = targetMosque.id;
+                }
               }
 
               this.sendToClient(client, {
@@ -249,6 +278,8 @@ class RealtimeServer {
   }
 
   broadcastToMosque(mosqueId: string, eventType: string, data: any, meta?: any, excludeClientId?: string) {
+    if (!mosqueId) return;
+
     const payload: WsMessage = {
       type: eventType,
       mosqueId,
@@ -260,8 +291,8 @@ class RealtimeServer {
     this.clients.forEach((client) => {
       if (excludeClientId && client.id === excludeClientId) return;
 
-      // Deliver if client belongs to this mosque OR is Super Admin
-      if (client.mosqueId === mosqueId || client.userRole === 'SUPER_ADMIN') {
+      // Deliver only to authenticated clients belonging to this mosque OR authenticated Super Admin
+      if (client.isAuthenticated && (client.mosqueId === mosqueId || client.userRole === 'SUPER_ADMIN')) {
         this.sendToClient(client, payload);
         deliveredCount++;
       }

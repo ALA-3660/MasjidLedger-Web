@@ -21,12 +21,13 @@ export interface PostgresIncomeEntryRow {
   description: string | null;
   attachment_url: string | null;
   denomination_data: any | null;
-  status: 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED';
+  status: 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
   created_by: string;
   created_by_name: string | null;
   approved_by: string | null;
   approved_by_name: string | null;
   approved_at: Date | null;
+  rejection_reason?: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -50,12 +51,22 @@ export interface CreateIncomeEntryDTO {
   description?: string | null;
   attachmentUrl?: string | null;
   denominationData?: any | null;
-  status?: 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED';
+  status?: 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
   createdBy: string;
   createdByName?: string | null;
   approvedBy?: string | null;
   approvedByName?: string | null;
   approvedAt?: string | null;
+}
+
+export interface ReverseIncomeDTO {
+  entryId: string;
+  mosqueId: string;
+  reason: string;
+  actorId: string;
+  actorName?: string;
+  actorRole?: string;
+  ipAddress?: string;
 }
 
 export interface IncomeFilterOptions {
@@ -219,6 +230,102 @@ export class PostgresIncomeRepository {
       }
 
       return res.rows[0];
+    };
+
+    if (clientOverride) {
+      return executeLogic(clientOverride);
+    } else {
+      return withTransaction(executeLogic, this.pool);
+    }
+  }
+
+  /**
+   * Atomically reverse an APPROVED income entry.
+   * Performs:
+   * 1. Row-level pessimistic locking on income entry FOR UPDATE.
+   * 2. Verification of APPROVED status and tenant scope.
+   * 3. Mutating status to 'CANCELLED' and setting rejection_reason.
+   * 4. Deducting the voucher amount from financial_accounts current_balance with row-locking.
+   * 5. Appending an immutable forensic audit log inside the SAME transaction.
+   */
+  async reverseWithTransaction(
+    dto: ReverseIncomeDTO,
+    clientOverride?: pg.PoolClient
+  ): Promise<PostgresIncomeEntryRow> {
+    const executeLogic = async (client: pg.PoolClient) => {
+      // 1. Lock and fetch target Income Entry
+      const entryRes = await client.query<PostgresIncomeEntryRow>(
+        `SELECT * FROM income_entries WHERE id = $1 AND mosque_id = $2 FOR UPDATE`,
+        [dto.entryId, dto.mosqueId]
+      );
+
+      const entry = entryRes.rows[0];
+      if (!entry) {
+        throw new Error(`[IncomeRepository] Income entry [${dto.entryId}] not found in mosque [${dto.mosqueId}]`);
+      }
+
+      if (entry.status !== 'APPROVED') {
+        throw new Error(`[IncomeRepository] Only APPROVED income entries can be reversed. Entry [${dto.entryId}] has status [${entry.status}].`);
+      }
+
+      const numAmount = parseFloat(entry.amount || '0');
+      if (isNaN(numAmount) || numAmount <= 0) {
+        throw new Error(`[IncomeRepository] Invalid entry amount for reversal: ${entry.amount}`);
+      }
+
+      // 2. Lock Account and deduct balance
+      const accRes = await client.query(
+        `SELECT id, current_balance, mosque_id FROM financial_accounts WHERE id = $1 AND mosque_id = $2 FOR UPDATE`,
+        [entry.account_id, dto.mosqueId]
+      );
+
+      if (accRes.rows.length === 0) {
+        throw new Error(`[IncomeRepository] Financial account [${entry.account_id}] not found in mosque [${dto.mosqueId}]`);
+      }
+
+      // Deduct balance
+      await client.query(
+        `UPDATE financial_accounts
+         SET current_balance = current_balance - $1,
+             updated_at = NOW()
+         WHERE id = $2 AND mosque_id = $3`,
+        [String(numAmount), entry.account_id, dto.mosqueId]
+      );
+
+      // 3. Update Income Entry status to CANCELLED
+      const updateRes = await client.query<PostgresIncomeEntryRow>(
+        `UPDATE income_entries
+         SET status = 'CANCELLED',
+             rejection_reason = $1,
+             updated_at = NOW()
+         WHERE id = $2 AND mosque_id = $3
+         RETURNING *`,
+        [dto.reason, dto.entryId, dto.mosqueId]
+      );
+
+      // 4. Append Audit Log inside the SAME SQL transaction
+      await client.query(
+        `INSERT INTO audit_logs (
+          id, mosque_id, user_id, user_name, user_role, action,
+          entity_type, entity_id, entity_voucher_or_name, details,
+          ip_address, timestamp
+        ) VALUES (
+          $1, $2, $3, $4, $5, 'REVERSE_INCOME', 'INCOME_ENTRY', $6, $7, $8, $9, NOW()
+        )`,
+        [
+          `aud-rev-inc-${Date.now()}`,
+          dto.mosqueId,
+          dto.actorId,
+          dto.actorName || dto.actorId,
+          dto.actorRole || 'ADMIN',
+          dto.entryId,
+          entry.voucher_number,
+          `Income voucher ${entry.voucher_number} reversed (৳${entry.amount}). Reason: ${dto.reason}`,
+          dto.ipAddress || '127.0.0.1',
+        ]
+      );
+
+      return updateRes.rows[0];
     };
 
     if (clientOverride) {

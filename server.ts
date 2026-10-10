@@ -6,8 +6,8 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { GoogleGenAI } from '@google/genai';
 import { db, getStarterLibraryCategories, getStarterEducationPrograms, getStarterEducationLevels, getStarterMaktabClasses, getStarterMaktabFeeSchedules } from './src/server/db.ts';
-import { realtime } from './src/server/ws';
-import { quranReferenceService } from './src/server/quranReferenceService';
+import { realtime } from './src/server/ws.ts';
+import { quranReferenceService } from './src/server/quranReferenceService.ts';
 import { buildDailyPrayerSchedule, buildMonthlyPrayerCalendar } from './src/lib/prayerEngine';
 import { DEFAULT_DOCUMENT_TEMPLATES } from './src/lib/officialDocumentTemplates';
 import {
@@ -171,6 +171,18 @@ const PORT = Number(process.env.PORT) || 3000;
 app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
+// Health Check Endpoint (Production Readiness & Monitoring)
+app.get('/api/v1/health', (req: Request, res: Response) => {
+  res.json({
+    status: 'UP',
+    app: 'MasjidLedger Pro',
+    version: '2.6.0',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+    storage: 'JSON',
+  });
+});
+
 // Multi-tenant Auth Context Middleware Interface
 export interface AuthRequest extends Request {
   user?: User;
@@ -230,15 +242,41 @@ const authenticate = (req: AuthRequest, res: Response, next: NextFunction) => {
   } else if (userHeader && process.env.NODE_ENV !== 'production') {
     // Development fallback for testing suites if explicit header passed
     user = db.users.find((u) => u.id === userHeader);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'USER_NOT_FOUND',
+          message: 'ব্যবহারকারীর তথ্য সিস্টেমে পাওয়া যায়নি।',
+        },
+      });
+    }
+    if (user.status === 'INACTIVE' || user.status === 'SUSPENDED' || user.status === 'BLOCKED') {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: 'ACCOUNT_DISABLED',
+          message: 'আপনার অ্যাকাউন্টটি বর্তমানে নিষ্ক্রিয় বা স্থগিত রয়েছে।',
+        },
+      });
+    }
+  } else {
+    // Missing or invalid Authorization header
+    return res.status(401).json({
+      success: false,
+      error: {
+        code: 'UNAUTHORIZED',
+        message: 'অননুমোদিত অ্যাক্সেস। অনুগ্রহ করে টোকেনসহ পুনরায় লগইন করুন।',
+      },
+    });
   }
 
-  // Security: Authoritative Mosque Determination
-  // Non-SuperAdmin users can NEVER access another mosque's records by manipulating headers!
-  let mosqueId = user ? (tokenPayload?.mosqueId || user.mosqueId) : (db.mosques[0]?.id || 'mosque-main');
+  // Authoritative Mosque Determination derived strictly from validated session/user
+  let mosqueId = tokenPayload?.mosqueId || user.mosqueId;
 
-  if (user?.role === 'SUPER_ADMIN' && mosqueHeader) {
+  if (user.role === 'SUPER_ADMIN' && mosqueHeader) {
     mosqueId = mosqueHeader;
-  } else if (mosqueHeader && user && user.role !== 'SUPER_ADMIN' && mosqueHeader !== (tokenPayload?.mosqueId || user.mosqueId)) {
+  } else if (mosqueHeader && user.role !== 'SUPER_ADMIN' && mosqueHeader !== mosqueId) {
     // Cross-tenant access attempt blocked
     return res.status(403).json({
       success: false,
@@ -249,7 +287,16 @@ const authenticate = (req: AuthRequest, res: Response, next: NextFunction) => {
     });
   }
 
-  const mosque = db.mosques.find((m) => m.id === mosqueId) || db.mosques[0];
+  const mosque = db.mosques.find((m) => m.id === mosqueId);
+  if (!mosque) {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: 'TENANT_NOT_FOUND',
+        message: 'ব্যবহারকারীর নির্ধারিত মসজিদ সিস্টেমে পাওয়া যায়নি।',
+      },
+    });
+  }
 
   req.user = user;
   req.currentMosque = mosque;
@@ -1082,12 +1129,58 @@ app.get('/api/v1/files/:fileId', (req: Request, res: Response) => {
   res.redirect(302, file.url);
 });
 
-// Direct canonical database download route
-app.get('/api/v1/export/canonical-database', (req: Request, res: Response) => {
+// Direct canonical database download route (Strict SUPER_ADMIN Privilege Guarded)
+app.get('/api/v1/export/canonical-database', authenticate, (req: AuthRequest, res: Response) => {
+  const user = req.user!;
+  const currentMosque = req.currentMosque!;
+
+  // Strict Authorization: Full canonical multi-tenant database export is restricted strictly to SUPER_ADMIN
+  if (user.role !== 'SUPER_ADMIN') {
+    db.logAudit(
+      currentMosque.id,
+      user.id,
+      user.name,
+      user.role,
+      'EXPORT',
+      'SYSTEM',
+      'অননুমোদিত ক্যানোনিকাল ডাটাবেজ ডাউনলোড প্রচেষ্টা প্রতিহত করা হয়েছে',
+      undefined,
+      req.ip,
+      { status: 'FAILED' }
+    );
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: 'FORBIDDEN',
+        message: 'ক্যানোনিকাল সম্পূর্ণ ডাটাবেজ রপ্তানি করার অনুমতি শুধুমাত্র সিস্টেম সুপার অ্যাডমিনের রয়েছে।',
+      },
+    });
+  }
+
   const filePath = path.join(process.cwd(), 'data', 'masjidledger_db.json');
   if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ success: false, error: 'Database file not found' });
+    return res.status(404).json({
+      success: false,
+      error: {
+        code: 'NOT_FOUND',
+        message: 'ডাটাবেজ ফাইল পাওয়া যায়নি।',
+      },
+    });
   }
+
+  db.logAudit(
+    currentMosque.id,
+    user.id,
+    user.name,
+    user.role,
+    'EXPORT',
+    'SYSTEM',
+    'সিস্টেম সুপার অ্যাডমিন কর্তৃক ক্যানোনিকাল ডাটাবেজ সফলভাবে রপ্তানি করা হয়েছে',
+    undefined,
+    req.ip,
+    { status: 'SUCCESS' }
+  );
+
   const fileContent = fs.readFileSync(filePath);
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="masjidledger_db.json"');
@@ -2457,7 +2550,7 @@ app.get('/api/v1/mosques/public/:code', (req: Request, res: Response) => {
 // ==========================================
 // GOOGLE DRIVE ENCRYPTED BACKUP & RESTORE API (PHASE 3B)
 // ==========================================
-import { encryptBackupPayload, decryptAndVerifyBackupPayload } from './src/server/backupCrypto';
+import { encryptBackupPayload, decryptAndVerifyBackupPayload } from './src/server/backupCrypto.ts';
 
 // 1. Generate Encrypted Backup Package
 app.post('/api/v1/cloud/backup/create-encrypted', authenticate, (req: AuthRequest, res: Response) => {
@@ -14777,7 +14870,27 @@ app.get('/api/v1/search/global', authenticate, (req: AuthRequest, res: Response)
 const handleFinancialAuditRequest = async (req: AuthRequest, res: Response) => {
   try {
     const { question, language = 'bn' } = req.body;
-    const mosque = req.currentMosque!;
+    const mosque = req.currentMosque;
+    if (!mosque || !mosque.id) {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: 'TENANT_REQUIRED',
+          message: 'কার্যক্রম পরিচালনার জন্য বৈধ মসজিদ সনাক্তকরণ আবশ্যক।',
+        },
+      });
+    }
+
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'অননুমোদিত অনুরোধ। লগইন করা আবশ্যক।',
+        },
+      });
+    }
+
     const stats = db.getDashboardStats(mosque.id);
     const recentIncomes = db.incomeEntries.filter(i => i.mosqueId === mosque.id && i.status === 'APPROVED').slice(0, 15);
     const recentExpenses = db.expenseEntries.filter(e => e.mosqueId === mosque.id && e.status === 'APPROVED').slice(0, 15);
@@ -27544,6 +27657,16 @@ app.get('/api/v1/legal/reports/register', authenticate, requirePermission('VIEW_
 // HTTP SERVER & VITE INTEGRATION
 // ==========================================
 async function startApp() {
+  // If compiled production bundle exists and this is raw TypeScript execution under node without tsx, transfer execution
+  if (path.extname(import.meta.filename || process.argv[1] || '') === '.ts' && process.env.NODE_ENV === 'production') {
+    const compiledBundle = path.join(process.cwd(), 'dist', 'server.js');
+    if (fs.existsSync(compiledBundle) && process.argv[1] !== compiledBundle) {
+      const { pathToFileURL } = await import('url');
+      await import(pathToFileURL(compiledBundle).href);
+      return;
+    }
+  }
+
   // Validate production JWT security configuration before binding HTTP listeners
   const jwtValidation = validateProductionJwtConfiguration();
   if (!jwtValidation.valid) {
@@ -27570,7 +27693,7 @@ async function startApp() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
+    app.get(/^(?!\/api\/).*/, (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

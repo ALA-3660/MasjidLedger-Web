@@ -67,12 +67,13 @@ CREATE TABLE IF NOT EXISTS idempotency_records (
   mosque_id VARCHAR(64) REFERENCES mosques(id) ON DELETE CASCADE,
   idempotency_key VARCHAR(128) NOT NULL,
   endpoint VARCHAR(255) NOT NULL,
+  request_hash VARCHAR(64),
   response_payload JSONB NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   expires_at TIMESTAMPTZ NOT NULL,
-  CONSTRAINT uq_idempotency_key UNIQUE (idempotency_key)
+  CONSTRAINT uq_idempotency_scope UNIQUE (mosque_id, endpoint, idempotency_key)
 );
-CREATE INDEX IF NOT EXISTS idx_idempotency_lookup ON idempotency_records(idempotency_key);
+CREATE INDEX IF NOT EXISTS idx_idempotency_lookup ON idempotency_records(mosque_id, endpoint, idempotency_key);
 CREATE INDEX IF NOT EXISTS idx_idempotency_expiry ON idempotency_records(expires_at);
 
 -- ============================================================================

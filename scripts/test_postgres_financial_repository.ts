@@ -378,7 +378,7 @@ async function runBehaviouralTestSuite() {
           responsePayload: { success: true, txnId: 'txn-1001' },
         });
 
-        const cached = await idempotencyRepo.getRecord(idemKey, TEST_MOSQUE_A);
+        const cached = await idempotencyRepo.getRecord(idemKey, '/api/v1/accounting/income', TEST_MOSQUE_A);
         const isDuplicatePrevented = cached !== null && cached.response_payload.txnId === 'txn-1001';
 
         t9Pass = isDuplicatePrevented;

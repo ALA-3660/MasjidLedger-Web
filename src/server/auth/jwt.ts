@@ -51,14 +51,9 @@ export function getJwtAccessSecret(): string {
     return secret;
   }
   if (process.env.NODE_ENV === 'production') {
-    if (process.env.JWT_ENFORCE_STRICT_ENV === 'true') {
-      if (!secret || secret === 'JWT_ACCESS_SECRET' || secret.trim().length < 32) {
-        throw new Error(
-          '[FATAL SECURITY CONFIGURATION ERROR] JWT_ACCESS_SECRET environment variable is missing or under 32 characters in strict production environment.'
-        );
-      }
-    }
-    return getOrGenerateDevAccessSecret();
+    throw new Error(
+      '[FATAL SECURITY CONFIGURATION ERROR] JWT_ACCESS_SECRET environment variable is missing, using placeholder, or under 32 characters in production environment.'
+    );
   }
   return getOrGenerateDevAccessSecret();
 }
@@ -69,14 +64,9 @@ export function getJwtRefreshSecret(): string {
     return secret;
   }
   if (process.env.NODE_ENV === 'production') {
-    if (process.env.JWT_ENFORCE_STRICT_ENV === 'true') {
-      if (!secret || secret === 'JWT_REFRESH_SECRET' || secret.trim().length < 32) {
-        throw new Error(
-          '[FATAL SECURITY CONFIGURATION ERROR] JWT_REFRESH_SECRET environment variable is missing or under 32 characters in strict production environment.'
-        );
-      }
-    }
-    return getOrGenerateDevRefreshSecret();
+    throw new Error(
+      '[FATAL SECURITY CONFIGURATION ERROR] JWT_REFRESH_SECRET environment variable is missing, using placeholder, or under 32 characters in production environment.'
+    );
   }
   return getOrGenerateDevRefreshSecret();
 }
@@ -89,34 +79,32 @@ export function validateProductionJwtConfiguration(): { valid: boolean; error?: 
     const accessSecret = process.env.JWT_ACCESS_SECRET;
     const refreshSecret = process.env.JWT_REFRESH_SECRET;
 
-    if (process.env.JWT_ENFORCE_STRICT_ENV === 'true') {
-      if (!accessSecret || accessSecret === 'JWT_ACCESS_SECRET' || accessSecret.trim().length === 0) {
-        return {
-          valid: false,
-          error: 'JWT_ACCESS_SECRET environment variable is required in production environment.',
-        };
-      }
-      if (!refreshSecret || refreshSecret === 'JWT_REFRESH_SECRET' || refreshSecret.trim().length === 0) {
-        return {
-          valid: false,
-          error: 'JWT_REFRESH_SECRET environment variable is required in production environment.',
-        };
-      }
+    if (!accessSecret || accessSecret === 'JWT_ACCESS_SECRET' || accessSecret.trim().length === 0) {
+      return {
+        valid: false,
+        error: 'JWT_ACCESS_SECRET environment variable is required in production environment.',
+      };
+    }
+    if (!refreshSecret || refreshSecret === 'JWT_REFRESH_SECRET' || refreshSecret.trim().length === 0) {
+      return {
+        valid: false,
+        error: 'JWT_REFRESH_SECRET environment variable is required in production environment.',
+      };
     }
 
-    if (accessSecret && accessSecret !== 'JWT_ACCESS_SECRET' && accessSecret.trim().length < 32) {
+    if (accessSecret.trim().length < 32) {
       return {
         valid: false,
         error: 'JWT_ACCESS_SECRET must have at least 32 characters for sufficient cryptographic strength.',
       };
     }
-    if (refreshSecret && refreshSecret !== 'JWT_REFRESH_SECRET' && refreshSecret.trim().length < 32) {
+    if (refreshSecret.trim().length < 32) {
       return {
         valid: false,
         error: 'JWT_REFRESH_SECRET must have at least 32 characters for sufficient cryptographic strength.',
       };
     }
-    if (accessSecret && refreshSecret && accessSecret !== 'JWT_ACCESS_SECRET' && refreshSecret !== 'JWT_REFRESH_SECRET' && accessSecret === refreshSecret) {
+    if (accessSecret === refreshSecret) {
       return {
         valid: false,
         error: 'JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be distinct secrets.',

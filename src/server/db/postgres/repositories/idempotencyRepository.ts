@@ -6,6 +6,7 @@ export interface PostgresIdempotencyRow {
   mosque_id: string | null;
   idempotency_key: string;
   endpoint: string;
+  request_hash: string | null;
   response_payload: any;
   created_at: Date;
   expires_at: Date;
@@ -13,9 +14,10 @@ export interface PostgresIdempotencyRow {
 
 export interface SaveIdempotencyDTO {
   id: string;
-  mosqueId?: string | null;
+  mosqueId: string;
   idempotencyKey: string;
   endpoint: string;
+  requestHash?: string | null;
   responsePayload: any;
   ttlSeconds?: number;
 }
@@ -24,32 +26,29 @@ export class PostgresIdempotencyRepository {
   constructor(private pool: pg.Pool = getPostgresPool()) {}
 
   /**
-   * Get an active idempotency record by key and mosqueId.
+   * Get an active idempotency record by key, endpoint, and mosqueId.
    */
   async getRecord(
     idempotencyKey: string,
-    mosqueId?: string | null,
+    endpoint: string,
+    mosqueId: string,
     client?: pg.PoolClient
   ): Promise<PostgresIdempotencyRow | null> {
     const executor = client || this.pool;
-    let query = `
+    const query = `
       SELECT * FROM idempotency_records
-      WHERE idempotency_key = $1
+      WHERE mosque_id = $1
+        AND endpoint = $2
+        AND idempotency_key = $3
         AND expires_at > NOW()
     `;
-    const params: any[] = [idempotencyKey];
-
-    if (mosqueId) {
-      query += ` AND (mosque_id = $2 OR mosque_id IS NULL)`;
-      params.push(mosqueId);
-    }
-
-    const res = await executor.query<PostgresIdempotencyRow>(query, params);
+    const res = await executor.query<PostgresIdempotencyRow>(query, [mosqueId, endpoint, idempotencyKey]);
     return res.rows[0] || null;
   }
 
   /**
    * Save an idempotency record with expiration TTL (defaults to 24 hours).
+   * Enforces composite unique constraint uq_idempotency_scope ON (mosque_id, endpoint, idempotency_key).
    */
   async saveRecord(
     dto: SaveIdempotencyDTO,
@@ -60,21 +59,23 @@ export class PostgresIdempotencyRepository {
 
     const query = `
       INSERT INTO idempotency_records (
-        id, mosque_id, idempotency_key, endpoint, response_payload, created_at, expires_at
+        id, mosque_id, idempotency_key, endpoint, request_hash, response_payload, created_at, expires_at
       ) VALUES (
-        $1, $2, $3, $4, $5, NOW(), NOW() + ($6 || ' seconds')::INTERVAL
+        $1, $2, $3, $4, $5, $6, NOW(), NOW() + ($7 || ' seconds')::INTERVAL
       )
-      ON CONFLICT (idempotency_key) DO UPDATE
+      ON CONFLICT (mosque_id, endpoint, idempotency_key) DO UPDATE
       SET response_payload = EXCLUDED.response_payload,
+          request_hash = EXCLUDED.request_hash,
           expires_at = EXCLUDED.expires_at
       RETURNING *
     `;
 
     const params = [
       dto.id,
-      dto.mosqueId || null,
+      dto.mosqueId,
       dto.idempotencyKey,
       dto.endpoint,
+      dto.requestHash || null,
       JSON.stringify(dto.responsePayload),
       String(ttlSeconds),
     ];
