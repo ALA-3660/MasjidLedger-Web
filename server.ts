@@ -5,7 +5,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { GoogleGenAI } from '@google/genai';
-import { db, getStarterLibraryCategories, getStarterEducationPrograms, getStarterEducationLevels, getStarterMaktabClasses, getStarterMaktabFeeSchedules } from './src/server/db.ts';
+import { db, StoragePersistenceError, getStarterLibraryCategories, getStarterEducationPrograms, getStarterEducationLevels, getStarterMaktabClasses, getStarterMaktabFeeSchedules } from './src/server/db.ts';
 import { realtime } from './src/server/ws.ts';
 import { quranReferenceService } from './src/server/quranReferenceService.ts';
 import { buildDailyPrayerSchedule, buildMonthlyPrayerCalendar } from './src/lib/prayerEngine';
@@ -165,7 +165,7 @@ import {
   LegalDashboardStats,
 } from './src/types';
 
-const app = express();
+export const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: '15mb' }));
@@ -195,9 +195,9 @@ const authenticate = (req: AuthRequest, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
   const mosqueHeader = (req.headers['x-mosque-id'] as string) || '';
   const userHeader = (req.headers['x-user-id'] as string) || '';
-  const idempotencyKey = (req.headers['idempotency-key'] as string) || (req.headers['x-idempotency-key'] as string);
+  const rawIdempotencyKey = (req.headers['idempotency-key'] as string) || (req.headers['x-idempotency-key'] as string);
 
-  req.idempotencyKey = idempotencyKey;
+  req.idempotencyKey = undefined;
 
   // Extract user strictly from verified Signed JWT access token
   let user: User | undefined;
@@ -300,6 +300,17 @@ const authenticate = (req: AuthRequest, res: Response, next: NextFunction) => {
 
   req.user = user;
   req.currentMosque = mosque;
+
+  if (rawIdempotencyKey && typeof rawIdempotencyKey === 'string' && rawIdempotencyKey.trim()) {
+    req.idempotencyKey = db.buildScopedKey(rawIdempotencyKey.trim(), {
+      mosqueId: mosque.id,
+      method: req.method,
+      route: req.path
+    });
+  } else {
+    req.idempotencyKey = undefined;
+  }
+
   next();
 };
 
@@ -3705,66 +3716,111 @@ app.put('/api/v1/accounting/accounts/:id', authenticate, requirePermission('MANA
 });
 
 // Dedicated Opening Balance Management Route
-app.post('/api/v1/accounting/accounts/opening-balance', authenticate, requirePermission('MANAGE_ACCOUNTS'), (req: AuthRequest, res: Response) => {
-  const mosqueId = req.currentMosque!.id;
-  const { accountId, openingBalance, openingBalanceDate, openingBalanceType, openingBalanceSource, openingBalanceNote } = req.body;
+const handleOpeningBalance = async (req: AuthRequest, res: Response) => {
+  const cached = db.checkIdempotency(req.idempotencyKey);
+  if (cached) {
+    return res.json(cached);
+  }
 
-  if (!accountId) {
+  const mosqueId = req.currentMosque!.id;
+  const targetAccountId = req.params?.id || req.body?.accountId;
+  const { openingBalance, openingBalanceDate, openingBalanceType, openingBalanceSource, openingBalanceNote } = req.body;
+
+  if (!targetAccountId) {
     return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'হিসাব বা অ্যাকাউন্ট নির্বাচন করুন।' } });
   }
 
-  const account = db.accounts.find(a => a.id === accountId && a.mosqueId === mosqueId);
-  if (!account) {
+  const initialAccCheck = db.accounts.find(a => a.id === targetAccountId && a.mosqueId === mosqueId);
+  if (!initialAccCheck) {
     return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'নির্বাচিত অ্যাকাউন্ট পাওয়া যায়নি।' } });
   }
 
-  const prevOpening = account.openingBalance || 0;
-  const newOpening = Number(openingBalance) || 0;
+  const numOpening = Number(openingBalance);
+  if (openingBalance !== undefined && isNaN(numOpening)) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'প্রারম্ভিক স্থিতির সঠিক সংখ্যা লিখুন।' } });
+  }
 
-  account.openingBalance = newOpening;
-  account.openingBalanceDate = openingBalanceDate || new Date().toISOString().split('T')[0];
-  account.openingBalanceType = openingBalanceType || 'DEBIT';
-  account.openingBalanceSource = openingBalanceSource || 'INITIAL_SETUP';
-  account.openingBalanceNote = openingBalanceNote || '';
-  account.updatedAt = new Date().toISOString();
+  try {
+    const responsePayload = await db.runTransaction((tx) => {
+      const cachedInside = db.checkIdempotency(req.idempotencyKey);
+      if (cachedInside) {
+        return { ...cachedInside, __isCached: true };
+      }
 
-  // Recalculate Current Balance safely using all approved transactions & transfers
-  const totalIn = db.incomeEntries
-    .filter(i => i.mosqueId === mosqueId && i.accountId === account.id && i.status === 'APPROVED')
-    .reduce((s, i) => s + i.amount, 0);
+      // Re-fetch account inside transaction lock
+      const account = db.accounts.find(a => a.id === targetAccountId && a.mosqueId === mosqueId);
+      if (!account) {
+        throw new StoragePersistenceError('NOT_FOUND', 'নির্বাচিত অ্যাকাউন্ট পাওয়া যায়নি।');
+      }
 
-  const totalOut = db.expenseEntries
-    .filter(e => e.mosqueId === mosqueId && e.accountId === account.id && e.status === 'APPROVED')
-    .reduce((s, e) => s + e.amount, 0);
+      const prevOpening = account.openingBalance || 0;
+      const newOpening = !isNaN(numOpening) ? numOpening : prevOpening;
 
-  const transfersIn = db.transfers
-    .filter(t => t.mosqueId === mosqueId && t.toAccountId === account.id)
-    .reduce((s, t) => s + t.amount, 0);
+      account.openingBalance = newOpening;
+      account.openingBalanceDate = openingBalanceDate || account.openingBalanceDate || new Date().toISOString().split('T')[0];
+      account.openingBalanceType = openingBalanceType || account.openingBalanceType || 'DEBIT';
+      account.openingBalanceSource = openingBalanceSource || account.openingBalanceSource || 'INITIAL_SETUP';
+      account.openingBalanceNote = openingBalanceNote !== undefined ? openingBalanceNote : (account.openingBalanceNote || '');
+      account.updatedAt = new Date().toISOString();
 
-  const transfersOut = db.transfers
-    .filter(t => t.mosqueId === mosqueId && t.fromAccountId === account.id)
-    .reduce((s, t) => s + t.amount, 0);
+      // Recalculate Current Balance safely using all approved transactions & transfers
+      const totalIn = db.incomeEntries
+        .filter(i => i.mosqueId === mosqueId && i.accountId === account.id && i.status === 'APPROVED')
+        .reduce((s, i) => s + i.amount, 0);
 
-  const baseOpening = account.openingBalanceType === 'CREDIT' ? -newOpening : newOpening;
-  account.currentBalance = baseOpening + totalIn - totalOut + transfersIn - transfersOut;
+      const totalOut = db.expenseEntries
+        .filter(e => e.mosqueId === mosqueId && e.accountId === account.id && e.status === 'APPROVED')
+        .reduce((s, e) => s + e.amount, 0);
 
-  db.save();
-  db.logAudit(
-    mosqueId,
-    req.user!.id,
-    req.user!.name,
-    req.user!.role,
-    'UPDATE',
-    'OPENING_BALANCE',
-    `প্রারম্ভিক স্থিতি সমন্বয়: ${account.nameBn} (পূর্বের স্থিতি: ৳ ${prevOpening.toLocaleString('en-IN')}, নতুন স্থিতি: ৳ ${newOpening.toLocaleString('en-IN')}, কার্যকর তারিখ: ${account.openingBalanceDate}, উৎস: ${account.openingBalanceSource}, নোট: ${account.openingBalanceNote || 'N/A'})`
-  );
-  realtime.broadcastToMosque(mosqueId, 'ACCOUNT_UPDATED', account, { senderId: req.user!.id });
+      const transfersIn = db.transfers
+        .filter(t => t.mosqueId === mosqueId && t.toAccountId === account.id)
+        .reduce((s, t) => s + t.amount, 0);
 
-  res.json({ success: true, data: account, message: 'প্রারম্ভিক স্থিতি সফলভাবে সংরক্ষণ ও খতিয়ানে প্রয়োগ করা হয়েছে।' });
-});
+      const transfersOut = db.transfers
+        .filter(t => t.mosqueId === mosqueId && t.fromAccountId === account.id)
+        .reduce((s, t) => s + t.amount, 0);
+
+      const baseOpening = account.openingBalanceType === 'CREDIT' ? -newOpening : newOpening;
+      account.currentBalance = baseOpening + totalIn - totalOut + transfersIn - transfersOut;
+
+      tx.logAudit(
+        mosqueId,
+        req.user!.id,
+        req.user!.name,
+        req.user!.role,
+        'UPDATE',
+        'OPENING_BALANCE',
+        `প্রারম্ভিক স্থিতি সমন্বয়: ${account.nameBn} (পূর্বের স্থিতি: ৳ ${prevOpening.toLocaleString('en-IN')}, নতুন স্থিতি: ৳ ${newOpening.toLocaleString('en-IN')}, কার্যকর তারিখ: ${account.openingBalanceDate}, উৎস: ${account.openingBalanceSource}, নোট: ${account.openingBalanceNote || 'N/A'})`
+      );
+
+      const payload = { success: true, data: account, message: 'প্রারম্ভিক স্থিতি সফলভাবে সংরক্ষণ ও খতিয়ানে প্রয়োগ করা হয়েছে।' };
+      tx.saveIdempotency(req.idempotencyKey, payload);
+
+      return payload;
+    });
+
+    if (!responsePayload.__isCached) {
+      realtime.broadcastToMosque(mosqueId, 'ACCOUNT_UPDATED', responsePayload.data, { senderId: req.user!.id });
+    }
+
+    const { __isCached, ...cleanResponse } = responsePayload;
+    res.json(cleanResponse);
+  } catch (err: any) {
+    if (err.code === 'NOT_FOUND' || err.cause?.code === 'NOT_FOUND') {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: err.message } });
+    }
+    if (err instanceof StoragePersistenceError) {
+      return res.status(500).json({ success: false, error: { code: 'PERSISTENCE_FAILED', message: 'প্রারম্ভিক স্থিতি সংরক্ষণ ব্যর্থ হয়েছে। ডেটাবেজ রোলব্যাক সম্পন্ন।' } });
+    }
+    throw err;
+  }
+};
+
+app.post('/api/v1/accounting/accounts/opening-balance', authenticate, requirePermission('MANAGE_ACCOUNTS'), handleOpeningBalance);
+app.post('/api/v1/accounting/accounts/:id/opening-balance', authenticate, requirePermission('MANAGE_ACCOUNTS'), handleOpeningBalance);
 
 // Inter-Account Fund Transfer (Cash <-> Bank with double-entry safety)
-app.post('/api/v1/accounting/accounts/transfer', authenticate, requirePermission('MANAGE_ACCOUNTS'), (req: AuthRequest, res: Response) => {
+app.post('/api/v1/accounting/accounts/transfer', authenticate, requirePermission('MANAGE_ACCOUNTS'), async (req: AuthRequest, res: Response) => {
   const { fromAccountId, toAccountId, amount, date, description, reference, purpose, attachmentUrl } = req.body;
   const numAmount = Number(amount);
   const mosqueId = req.currentMosque!.id;
@@ -3787,40 +3843,51 @@ app.post('/api/v1/accounting/accounts/transfer', authenticate, requirePermission
     return res.status(400).json({ success: false, error: { code: 'INSUFFICIENT_BALANCE', message: `উৎস অ্যাকাউন্টে পর্যাপ্ত স্থিতি নেই (বর্তমান স্থিতি: ৳ ${fromAcc.currentBalance})` } });
   }
 
-  // Atomic Transfer
-  fromAcc.currentBalance -= numAmount;
-  toAcc.currentBalance += numAmount;
+  try {
+    const transfer = await db.runTransaction((tx) => {
+      // Atomic Transfer
+      fromAcc.currentBalance -= numAmount;
+      toAcc.currentBalance += numAmount;
 
-  const count = db.transfers.filter(t => t.mosqueId === mosqueId).length + 1;
-  const transferNumber = `TRF-${new Date().getFullYear()}-${String(count).padStart(6, '0')}`;
+      const count = db.transfers.filter(t => t.mosqueId === mosqueId).length + 1;
+      const transferNumber = `TRF-${new Date().getFullYear()}-${String(count).padStart(6, '0')}`;
 
-  const transfer = {
-    id: `trf-${Date.now()}`,
-    mosqueId,
-    transferNumber,
-    fromAccountId: fromAcc.id,
-    fromAccountName: fromAcc.nameBn,
-    toAccountId: toAcc.id,
-    toAccountName: toAcc.nameBn,
-    amount: numAmount,
-    date: date || new Date().toISOString().split('T')[0],
-    purpose: purpose || 'GENERAL_TRANSFER',
-    description,
-    reference,
-    attachmentUrl,
-    createdBy: req.user!.id,
-    createdByName: req.user!.name,
-    createdAt: new Date().toISOString()
-  };
+      const tRecord = {
+        id: `trf-${Date.now()}`,
+        mosqueId,
+        transferNumber,
+        fromAccountId: fromAcc.id,
+        fromAccountName: fromAcc.nameBn,
+        toAccountId: toAcc.id,
+        toAccountName: toAcc.nameBn,
+        amount: numAmount,
+        date: date || new Date().toISOString().split('T')[0],
+        purpose: purpose || 'GENERAL_TRANSFER',
+        description,
+        reference,
+        attachmentUrl,
+        createdBy: req.user!.id,
+        createdByName: req.user!.name,
+        createdAt: new Date().toISOString()
+      };
 
-  db.transfers.unshift(transfer);
-  db.save();
+      db.transfers.unshift(tRecord);
 
-  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'ACCOUNT_TRANSFER', `তহবিল স্থানান্তর (${transferNumber}): ${fromAcc.nameBn} -> ${toAcc.nameBn} (৳ ${numAmount})`);
-  realtime.broadcastToMosque(mosqueId, 'ACCOUNT_TRANSFER', { transfer, fromAccount: fromAcc, toAccount: toAcc }, { senderId: req.user!.id });
-  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+      tx.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'ACCOUNT_TRANSFER', `তহবিল স্থানান্তর (${transferNumber}): ${fromAcc.nameBn} -> ${toAcc.nameBn} (৳ ${numAmount})`);
 
-  res.json({ success: true, data: transfer, message: 'তহবিল সফলভাবে স্থানান্তর ও সমন্বয় করা হয়েছে।' });
+      return tRecord;
+    });
+
+    realtime.broadcastToMosque(mosqueId, 'ACCOUNT_TRANSFER', { transfer, fromAccount: fromAcc, toAccount: toAcc }, { senderId: req.user!.id });
+    realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+    res.json({ success: true, data: transfer, message: 'তহবিল সফলভাবে স্থানান্তর ও সমন্বয় করা হয়েছে।' });
+  } catch (err: any) {
+    if (err instanceof StoragePersistenceError) {
+      return res.status(500).json({ success: false, error: { code: 'PERSISTENCE_FAILED', message: 'তহবিল স্থানান্তর সংরক্ষণ ব্যর্থ হয়েছে। ডেটাবেজ রোলব্যাক সম্পন্ন।' } });
+    }
+    throw err;
+  }
 });
 
 app.get('/api/v1/accounting/accounts/transfers', authenticate, (req: AuthRequest, res: Response) => {
@@ -3848,7 +3915,7 @@ app.get('/api/v1/accounting/income/:id', authenticate, (req: AuthRequest, res: R
   res.json({ success: true, data: item });
 });
 
-app.post('/api/v1/accounting/income', authenticate, requirePermission('CREATE_INCOME'), (req: AuthRequest, res: Response) => {
+app.post('/api/v1/accounting/income', authenticate, requirePermission('CREATE_INCOME'), async (req: AuthRequest, res: Response) => {
   // Idempotency check
   const cached = db.checkIdempotency(req.idempotencyKey);
   if (cached) {
@@ -3899,86 +3966,188 @@ app.post('/api/v1/accounting/income', authenticate, requirePermission('CREATE_IN
     updatedAt: new Date().toISOString()
   };
 
-  // Update account balance
-  if (account) {
-    account.currentBalance += numAmount;
+  try {
+    const responsePayload = await db.runTransaction((tx) => {
+      // Update account balance
+      if (account) {
+        account.currentBalance += numAmount;
+      }
+
+      db.incomeEntries.unshift(entry);
+
+      tx.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'INCOME', `আয় ভাউচার তৈরি (${voucherNumber}): ৳ ${numAmount}${denominationData ? ' (ডিনোমিনেশন সহ)' : ''}`, entry.id);
+
+      const payload = { success: true, data: entry, message: 'আয় ভাউচার সফলভাবে সংরক্ষণ ও অ্যাকাউন্টে পোস্টিং করা হয়েছে।' };
+      tx.saveIdempotency(req.idempotencyKey, payload);
+
+      return payload;
+    });
+
+    // Broadcast WebSocket event
+    realtime.broadcastToMosque(mosqueId, 'INCOME_CREATED', entry, { senderId: req.user!.id });
+    realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+    res.json(responsePayload);
+  } catch (err: any) {
+    if (err instanceof StoragePersistenceError) {
+      return res.status(500).json({ success: false, error: { code: 'PERSISTENCE_FAILED', message: 'আয় ভাউচার সংরক্ষণ ব্যর্থ হয়েছে। ডেটাবেজ রোলব্যাক সম্পন্ন।' } });
+    }
+    throw err;
   }
-
-  db.incomeEntries.unshift(entry);
-  db.save();
-
-  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'INCOME', `আয় ভাউচার তৈরি (${voucherNumber}): ৳ ${numAmount}${denominationData ? ' (ডিনোমিনেশন সহ)' : ''}`, entry.id);
-
-  const responsePayload = { success: true, data: entry, message: 'আয় ভাউচার সফলভাবে সংরক্ষণ ও অ্যাকাউন্টে পোস্টিং করা হয়েছে।' };
-  db.saveIdempotency(req.idempotencyKey, responsePayload);
-
-  // Broadcast WebSocket event
-  realtime.broadcastToMosque(mosqueId, 'INCOME_CREATED', entry, { senderId: req.user!.id });
-  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
-
-  res.json(responsePayload);
 });
 
 // Update Income Entry
-app.put('/api/v1/accounting/income/:id', authenticate, requirePermission('CREATE_INCOME'), (req: AuthRequest, res: Response) => {
-  const item = db.incomeEntries.find(i => i.id === req.params.id && i.mosqueId === req.currentMosque!.id);
-  if (!item) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'আয় ভাউচার পাওয়া যায়নি।' } });
+app.put('/api/v1/accounting/income/:id', authenticate, requirePermission('CREATE_INCOME'), async (req: AuthRequest, res: Response) => {
+  const cached = db.checkIdempotency(req.idempotencyKey);
+  if (cached) {
+    return res.json(cached);
+  }
+
+  const mosqueId = req.currentMosque!.id;
+  const initialCheck = db.incomeEntries.find(i => i.id === req.params.id && i.mosqueId === mosqueId);
+  if (!initialCheck) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'আয় ভাউচার পাওয়া যায়নি।' } });
+
+  if (initialCheck.status === 'CANCELLED') {
+    return res.status(400).json({ success: false, error: { code: 'ALREADY_CANCELLED', message: 'বাতিলকৃত আয় ভাউচার সংশোধন করা সম্ভব নয়।' } });
+  }
 
   const { amount, donorName, donorPhone, reference, description, date, denominationData, accountId, mainHeadId, subHeadId } = req.body;
-  const mosqueId = req.currentMosque!.id;
-  const oldAmount = item.amount;
-  const oldAccountId = item.accountId;
 
+  // Validation
   if (amount !== undefined) {
     const numAmount = Number(amount);
-    if (!numAmount || numAmount <= 0) {
+    if (isNaN(numAmount) || numAmount <= 0) {
       return res.status(400).json({ success: false, error: { code: 'INVALID_AMOUNT', message: 'আয়ের পরিমাণ অবশ্যই শূন্যের চেয়ে বেশি হতে হবে।' } });
     }
+  }
 
-    if (oldAccountId === accountId || !accountId) {
-      const account = db.accounts.find(a => a.id === item.accountId);
-      if (account) {
-        account.currentBalance -= oldAmount;
-        account.currentBalance += numAmount;
-      }
-    } else {
-      const oldAccount = db.accounts.find(a => a.id === oldAccountId);
-      if (oldAccount) oldAccount.currentBalance -= oldAmount;
-
-      const newAccount = db.accounts.find(a => a.id === accountId);
-      if (newAccount) {
-        newAccount.currentBalance += numAmount;
-        item.accountId = newAccount.id;
-        item.accountName = newAccount.nameBn;
-      }
+  if (accountId && accountId !== initialCheck.accountId) {
+    const targetAcc = db.accounts.find(a => a.id === accountId && a.mosqueId === mosqueId);
+    if (!targetAcc) {
+      return res.status(404).json({ success: false, error: { code: 'ACCOUNT_NOT_FOUND', message: 'নির্দিষ্ট অ্যাকাউন্ট পাওয়া যায়নি বা এটি এই মসজিদের আওতাধীন নয়।' } });
     }
-    item.amount = numAmount;
   }
 
   if (mainHeadId !== undefined) {
-    item.mainHeadId = mainHeadId;
-    const mh = db.accountHeads.find(h => h.id === mainHeadId);
-    if (mh) item.mainHeadNameBn = mh.nameBn;
+    const mh = db.accountHeads.find(h => h.id === mainHeadId && (h.mosqueId === mosqueId || !h.mosqueId));
+    if (!mh) {
+      return res.status(404).json({ success: false, error: { code: 'HEAD_NOT_FOUND', message: 'প্রধান আয় খাত পাওয়া যায়নি।' } });
+    }
   }
+
   if (subHeadId !== undefined) {
-    item.subHeadId = subHeadId;
-    const sh = db.accountHeads.find(h => h.id === subHeadId);
-    if (sh) item.subHeadNameBn = sh.nameBn;
+    const sh = db.accountHeads.find(h => h.id === subHeadId && (h.mosqueId === mosqueId || !h.mosqueId));
+    if (!sh) {
+      return res.status(404).json({ success: false, error: { code: 'SUBHEAD_NOT_FOUND', message: 'উপ-আয় খাত পাওয়া যায়নি।' } });
+    }
   }
-  if (donorName !== undefined) item.donorName = donorName;
-  if (donorPhone !== undefined) item.donorPhone = donorPhone;
-  if (reference !== undefined) item.reference = reference;
-  if (description !== undefined) item.description = description;
-  if (date !== undefined) item.date = date;
-  if (denominationData !== undefined) item.denominationData = denominationData;
-  item.updatedAt = new Date().toISOString();
 
-  db.save();
-  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'INCOME', `আয় ভাউচার আপডেট (${item.voucherNumber}): পরিমাণ ৳ ${oldAmount} → ৳ ${item.amount}`, item.id);
-  realtime.broadcastToMosque(mosqueId, 'INCOME_UPDATED', item, { senderId: req.user!.id });
-  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+  try {
+    const responsePayload = await db.runTransaction((tx) => {
+      // Re-check idempotency inside transaction lock
+      const cachedInside = db.checkIdempotency(req.idempotencyKey);
+      if (cachedInside) {
+        return { ...cachedInside, __isCached: true };
+      }
 
-  res.json({ success: true, data: item, message: 'আয় ভাউচার সফলভাবে হালনাগাদ ও হিসাব সমন্বয় করা হয়েছে।' });
+      // Re-fetch item inside transaction lock
+      const item = db.incomeEntries.find(i => i.id === req.params.id && i.mosqueId === mosqueId);
+      if (!item) {
+        throw new StoragePersistenceError('NOT_FOUND', 'আয় ভাউচার পাওয়া যায়নি।');
+      }
+
+      if (item.status === 'CANCELLED') {
+        throw new StoragePersistenceError('ALREADY_CANCELLED', 'বাতিলকৃত আয় ভাউচার সংশোধন করা সম্ভব নয়।');
+      }
+
+      const oldAmount = item.amount;
+      const oldAccountId = item.accountId;
+
+      if (amount !== undefined || accountId !== undefined) {
+        const targetAmount = amount !== undefined ? Number(amount) : oldAmount;
+        const targetAccountId = accountId !== undefined ? accountId : oldAccountId;
+
+        if (oldAccountId === targetAccountId) {
+          const account = db.accounts.find(a => a.id === item.accountId && a.mosqueId === mosqueId);
+          if (account && item.status === 'APPROVED') {
+            account.currentBalance -= oldAmount;
+            account.currentBalance += targetAmount;
+            account.updatedAt = new Date().toISOString();
+          }
+        } else {
+          const oldAccount = db.accounts.find(a => a.id === oldAccountId && a.mosqueId === mosqueId);
+          if (oldAccount && item.status === 'APPROVED') {
+            oldAccount.currentBalance -= oldAmount;
+            oldAccount.updatedAt = new Date().toISOString();
+          }
+
+          const newAccount = db.accounts.find(a => a.id === targetAccountId && a.mosqueId === mosqueId);
+          if (newAccount) {
+            if (item.status === 'APPROVED') {
+              newAccount.currentBalance += targetAmount;
+              newAccount.updatedAt = new Date().toISOString();
+            }
+            item.accountId = newAccount.id;
+            item.accountName = newAccount.nameBn;
+          }
+        }
+        item.amount = targetAmount;
+      }
+
+      if (mainHeadId !== undefined) {
+        item.mainHeadId = mainHeadId;
+        const mh = db.accountHeads.find(h => h.id === mainHeadId && (h.mosqueId === mosqueId || !h.mosqueId));
+        if (mh) item.mainHeadNameBn = mh.nameBn;
+      }
+      if (subHeadId !== undefined) {
+        item.subHeadId = subHeadId;
+        const sh = db.accountHeads.find(h => h.id === subHeadId && (h.mosqueId === mosqueId || !h.mosqueId));
+        if (sh) item.subHeadNameBn = sh.nameBn;
+      }
+      if (donorName !== undefined) item.donorName = donorName;
+      if (donorPhone !== undefined) item.donorPhone = donorPhone;
+      if (reference !== undefined) item.reference = reference;
+      if (description !== undefined) item.description = description;
+      if (date !== undefined) item.date = date;
+      if (denominationData !== undefined) item.denominationData = denominationData;
+      item.updatedAt = new Date().toISOString();
+
+      tx.logAudit(
+        mosqueId,
+        req.user!.id,
+        req.user!.name,
+        req.user!.role,
+        'UPDATE',
+        'INCOME',
+        `আয় ভাউচার আপডেট (${item.voucherNumber}): পরিমাণ ৳ ${oldAmount} → ৳ ${item.amount}`,
+        item.id
+      );
+
+      const payload = { success: true, data: item, message: 'আয় ভাউচার সফলভাবে হালনাগাদ ও হিসাব সমন্বয় করা হয়েছে।' };
+      tx.saveIdempotency(req.idempotencyKey, payload);
+
+      return payload;
+    });
+
+    if (!responsePayload.__isCached) {
+      realtime.broadcastToMosque(mosqueId, 'INCOME_UPDATED', responsePayload.data, { senderId: req.user!.id });
+      realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+    }
+
+    const { __isCached, ...cleanResponse } = responsePayload;
+    res.json(cleanResponse);
+  } catch (err: any) {
+    if (err.code === 'NOT_FOUND' || err.cause?.code === 'NOT_FOUND') {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: err.message } });
+    }
+    if (err.code === 'ALREADY_CANCELLED' || err.cause?.code === 'ALREADY_CANCELLED') {
+      return res.status(400).json({ success: false, error: { code: 'ALREADY_CANCELLED', message: err.message } });
+    }
+    if (err instanceof StoragePersistenceError) {
+      return res.status(500).json({ success: false, error: { code: 'PERSISTENCE_FAILED', message: 'আয় ভাউচার হালনাগাদ সংরক্ষণ ব্যর্থ হয়েছে। ডেটাবেজ রোলব্যাক সম্পন্ন।' } });
+    }
+    throw err;
+  }
 });
 
 // Update Income Denomination Breakdown
@@ -4012,7 +4181,7 @@ app.put('/api/v1/accounting/income/:id/denomination', authenticate, requirePermi
 });
 
 // Reverse / Cancel Income Voucher
-app.post('/api/v1/accounting/income/:id/reverse', authenticate, requirePermission('APPROVE_INCOME'), (req: AuthRequest, res: Response) => {
+app.post('/api/v1/accounting/income/:id/reverse', authenticate, requirePermission('APPROVE_INCOME'), async (req: AuthRequest, res: Response) => {
   const { reason } = req.body;
   const item = db.incomeEntries.find(i => i.id === req.params.id && i.mosqueId === req.currentMosque!.id);
   if (!item) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ভাউচার পাওয়া যায়নি।' } });
@@ -4021,22 +4190,30 @@ app.post('/api/v1/accounting/income/:id/reverse', authenticate, requirePermissio
     return res.status(400).json({ success: false, error: { code: 'ALREADY_CANCELLED', message: 'এই ভাউচার ইতিমধ্যে বাতিল করা হয়েছে।' } });
   }
 
-  const account = db.accounts.find(a => a.id === item.accountId);
-  if (account && item.status === 'APPROVED') {
-    account.currentBalance -= item.amount;
+  try {
+    await db.runTransaction((tx) => {
+      const account = db.accounts.find(a => a.id === item.accountId);
+      if (account && item.status === 'APPROVED') {
+        account.currentBalance -= item.amount;
+      }
+
+      item.status = 'CANCELLED';
+      item.rejectionReason = reason || 'অ্যাডমিন কর্তৃক রিভার্সাল';
+      item.updatedAt = new Date().toISOString();
+
+      tx.logAudit(req.currentMosque!.id, req.user!.id, req.user!.name, req.user!.role, 'CANCEL', 'INCOME', `আয় ভাউচার বাতিল (${item.voucherNumber}): ৳ ${item.amount} - কারণ: ${reason}`, item.id);
+    });
+
+    realtime.broadcastToMosque(req.currentMosque!.id, 'INCOME_REVERSED', item, { senderId: req.user!.id });
+    realtime.broadcastToMosque(req.currentMosque!.id, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(req.currentMosque!.id));
+
+    res.json({ success: true, data: item, message: 'ভাউচার সফলভাবে রিভার্স/বাতিল করা হয়েছে এবং ব্যালেন্স সমন্বয় করা হয়েছে।' });
+  } catch (err: any) {
+    if (err instanceof StoragePersistenceError) {
+      return res.status(500).json({ success: false, error: { code: 'PERSISTENCE_FAILED', message: 'আয় ভাউচার বাতিলকরণ সংরক্ষণ ব্যর্থ হয়েছে। ডেটাবেজ রোলব্যাক সম্পন্ন।' } });
+    }
+    throw err;
   }
-
-  item.status = 'CANCELLED';
-  item.rejectionReason = reason || 'অ্যাডমিন কর্তৃক রিভার্সাল';
-  item.updatedAt = new Date().toISOString();
-  db.save();
-
-  db.logAudit(req.currentMosque!.id, req.user!.id, req.user!.name, req.user!.role, 'CANCEL', 'INCOME', `আয় ভাউচার বাতিল (${item.voucherNumber}): ৳ ${item.amount} - কারণ: ${reason}`, item.id);
-
-  realtime.broadcastToMosque(req.currentMosque!.id, 'INCOME_REVERSED', item, { senderId: req.user!.id });
-  realtime.broadcastToMosque(req.currentMosque!.id, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(req.currentMosque!.id));
-
-  res.json({ success: true, data: item, message: 'ভাউচার সফলভাবে রিভার্স/বাতিল করা হয়েছে এবং ব্যালেন্স সমন্বয় করা হয়েছে।' });
 });
 
 // ==========================================
@@ -4056,7 +4233,7 @@ app.get('/api/v1/accounting/expense/:id', authenticate, (req: AuthRequest, res: 
   res.json({ success: true, data: item });
 });
 
-app.post('/api/v1/accounting/expense', authenticate, requirePermission('CREATE_EXPENSE'), (req: AuthRequest, res: Response) => {
+app.post('/api/v1/accounting/expense', authenticate, requirePermission('CREATE_EXPENSE'), async (req: AuthRequest, res: Response) => {
   const cached = db.checkIdempotency(req.idempotencyKey);
   if (cached) {
     return res.json(cached);
@@ -4166,34 +4343,44 @@ app.post('/api/v1/accounting/expense', authenticate, requirePermission('CREATE_E
     updatedAt: new Date().toISOString()
   };
 
-  // Atomic Balance Deduction
-  account.currentBalance -= numAmount;
+  try {
+    const responsePayload = await db.runTransaction((tx) => {
+      // Atomic Balance Deduction
+      account.currentBalance -= numAmount;
 
-  db.expenseEntries.unshift(entry);
-  db.save();
+      db.expenseEntries.unshift(entry);
 
-  db.logAudit(
-    mosqueId,
-    req.user!.id,
-    req.user!.name,
-    req.user!.role,
-    'CREATE',
-    'EXPENSE',
-    `ব্যয় ভাউচার তৈরি (${voucherNumber}): ৳${numAmount} [খাত: ${mainHead.nameBn}${subHead ? ` > ${subHead.nameBn}` : ''}, হিসাব: ${account.nameBn}, মাধ্যম: ${paymentMethod || 'CASH'}, উৎস: ${sourceModule || 'GENERAL_EXPENSE'}]`,
-    entry.id
-  );
+      tx.logAudit(
+        mosqueId,
+        req.user!.id,
+        req.user!.name,
+        req.user!.role,
+        'CREATE',
+        'EXPENSE',
+        `ব্যয় ভাউচার তৈরি (${voucherNumber}): ৳${numAmount} [খাত: ${mainHead.nameBn}${subHead ? ` > ${subHead.nameBn}` : ''}, হিসাব: ${account.nameBn}, মাধ্যম: ${paymentMethod || 'CASH'}, উৎস: ${sourceModule || 'GENERAL_EXPENSE'}]`,
+        entry.id
+      );
 
-  const responsePayload = { success: true, data: entry, message: 'ব্যয় ভাউচার সফলভাবে অনুমোদিত ও পরিশোধ রেকর্ড করা হয়েছে।' };
-  db.saveIdempotency(req.idempotencyKey, responsePayload);
+      const payload = { success: true, data: entry, message: 'ব্যয় ভাউচার সফলভাবে অনুমোদিত ও পরিশোধ রেকর্ড করা হয়েছে।' };
+      tx.saveIdempotency(req.idempotencyKey, payload);
 
-  realtime.broadcastToMosque(mosqueId, 'EXPENSE_CREATED', entry, { senderId: req.user!.id });
-  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+      return payload;
+    });
 
-  res.json(responsePayload);
+    realtime.broadcastToMosque(mosqueId, 'EXPENSE_CREATED', entry, { senderId: req.user!.id });
+    realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+    res.json(responsePayload);
+  } catch (err: any) {
+    if (err instanceof StoragePersistenceError) {
+      return res.status(500).json({ success: false, error: { code: 'PERSISTENCE_FAILED', message: 'ব্যয় ভাউচার সংরক্ষণ ব্যর্থ হয়েছে। ডেটাবেজ রোলব্যাক সম্পন্ন।' } });
+    }
+    throw err;
+  }
 });
 
 // Reverse / Cancel Expense Voucher
-app.post('/api/v1/accounting/expense/:id/reverse', authenticate, requirePermission('APPROVE_EXPENSE'), (req: AuthRequest, res: Response) => {
+app.post('/api/v1/accounting/expense/:id/reverse', authenticate, requirePermission('APPROVE_EXPENSE'), async (req: AuthRequest, res: Response) => {
   const { reason } = req.body;
   const item = db.expenseEntries.find(e => e.id === req.params.id && e.mosqueId === req.currentMosque!.id);
   if (!item) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ভাউচার পাওয়া যায়নি।' } });
@@ -4202,103 +4389,191 @@ app.post('/api/v1/accounting/expense/:id/reverse', authenticate, requirePermissi
     return res.status(400).json({ success: false, error: { code: 'ALREADY_CANCELLED', message: 'এই ভাউচার ইতিমধ্যে বাতিল করা হয়েছে।' } });
   }
 
-  const account = db.accounts.find(a => a.id === item.accountId && a.mosqueId === req.currentMosque!.id);
-  if (account && item.status === 'APPROVED') {
-    account.currentBalance += item.amount;
+  try {
+    await db.runTransaction((tx) => {
+      const account = db.accounts.find(a => a.id === item.accountId && a.mosqueId === req.currentMosque!.id);
+      if (account && item.status === 'APPROVED') {
+        account.currentBalance += item.amount;
+      }
+
+      item.status = 'CANCELLED';
+      item.isReversal = true;
+      item.rejectionReason = reason || 'অ্যাডমিন কর্তৃক রিভার্সাল';
+      item.updatedAt = new Date().toISOString();
+
+      tx.logAudit(
+        req.currentMosque!.id,
+        req.user!.id,
+        req.user!.name,
+        req.user!.role,
+        'CANCEL',
+        'EXPENSE',
+        `ব্যয় ভাউচার বাতিল (${item.voucherNumber}): ৳${item.amount} ফেরত প্রদান করা হয়েছে (${account ? account.nameBn : 'হিসাব'}). কারণ: ${reason || 'রিভার্সাল'}`,
+        item.id
+      );
+    });
+
+    realtime.broadcastToMosque(req.currentMosque!.id, 'EXPENSE_REVERSED', item, { senderId: req.user!.id });
+    realtime.broadcastToMosque(req.currentMosque!.id, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(req.currentMosque!.id));
+
+    res.json({ success: true, data: item, message: 'ব্যয় ভাউচার সফলভাবে রিভার্স/বাতিল করা হয়েছে এবং ব্যালেন্স ফিরিয়ে দেওয়া হয়েছে।' });
+  } catch (err: any) {
+    if (err instanceof StoragePersistenceError) {
+      return res.status(500).json({ success: false, error: { code: 'PERSISTENCE_FAILED', message: 'ব্যয় ভাউচার বাতিলকরণ সংরক্ষণ ব্যর্থ হয়েছে। ডেটাবেজ রোলব্যাক সম্পন্ন।' } });
+    }
+    throw err;
   }
-
-  item.status = 'CANCELLED';
-  item.isReversal = true;
-  item.rejectionReason = reason || 'অ্যাডমিন কর্তৃক রিভার্সাল';
-  item.updatedAt = new Date().toISOString();
-  db.save();
-
-  db.logAudit(
-    req.currentMosque!.id,
-    req.user!.id,
-    req.user!.name,
-    req.user!.role,
-    'CANCEL',
-    'EXPENSE',
-    `ব্যয় ভাউচার বাতিল (${item.voucherNumber}): ৳${item.amount} ফেরত প্রদান করা হয়েছে (${account ? account.nameBn : 'হিসাব'}). কারণ: ${reason || 'রিভার্সাল'}`,
-    item.id
-  );
-
-  realtime.broadcastToMosque(req.currentMosque!.id, 'EXPENSE_REVERSED', item, { senderId: req.user!.id });
-  realtime.broadcastToMosque(req.currentMosque!.id, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(req.currentMosque!.id));
-
-  res.json({ success: true, data: item, message: 'ব্যয় ভাউচার সফলভাবে রিভার্স/বাতিল করা হয়েছে এবং ব্যালেন্স ফিরিয়ে দেওয়া হয়েছে।' });
 });
 
 // Update Expense Entry with Financial Recalculation
-app.put('/api/v1/accounting/expense/:id', authenticate, requirePermission('CREATE_EXPENSE'), (req: AuthRequest, res: Response) => {
-  const item = db.expenseEntries.find(e => e.id === req.params.id && e.mosqueId === req.currentMosque!.id);
-  if (!item) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ব্যয় ভাউচার পাওয়া যায়নি।' } });
+app.put('/api/v1/accounting/expense/:id', authenticate, requirePermission('CREATE_EXPENSE'), async (req: AuthRequest, res: Response) => {
+  const cached = db.checkIdempotency(req.idempotencyKey);
+  if (cached) {
+    return res.json(cached);
+  }
+
+  const mosqueId = req.currentMosque!.id;
+  const initialCheck = db.expenseEntries.find(e => e.id === req.params.id && e.mosqueId === mosqueId);
+  if (!initialCheck) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ব্যয় ভাউচার পাওয়া যায়নি।' } });
+
+  if (initialCheck.status === 'CANCELLED') {
+    return res.status(400).json({ success: false, error: { code: 'ALREADY_CANCELLED', message: 'বাতিলকৃত ব্যয় ভাউচার সংশোধন করা সম্ভব নয়।' } });
+  }
 
   const { amount, mainHeadId, subHeadId, accountId, payeeName, payeePhone, reference, description, date } = req.body;
-  const mosqueId = req.currentMosque!.id;
-  const oldAmount = item.amount;
-  const oldAccountId = item.accountId;
 
+  // Validation
   if (amount !== undefined) {
     const numAmount = Number(amount);
-    if (!numAmount || numAmount <= 0) {
+    if (isNaN(numAmount) || numAmount <= 0) {
       return res.status(400).json({ success: false, error: { code: 'INVALID_AMOUNT', message: 'খরচের পরিমাণ অবশ্যই শূন্যের চেয়ে বেশি হতে হবে।' } });
     }
+  }
 
-    if (oldAccountId === accountId || !accountId) {
-      const account = db.accounts.find(a => a.id === item.accountId);
-      if (account) {
-        account.currentBalance += oldAmount;
-        account.currentBalance -= numAmount;
-      }
-    } else {
-      const oldAccount = db.accounts.find(a => a.id === oldAccountId);
-      if (oldAccount) oldAccount.currentBalance += oldAmount;
-
-      const newAccount = db.accounts.find(a => a.id === accountId);
-      if (newAccount) {
-        newAccount.currentBalance -= numAmount;
-        item.accountId = newAccount.id;
-        item.accountName = newAccount.nameBn;
-      }
+  if (accountId && accountId !== initialCheck.accountId) {
+    const targetAcc = db.accounts.find(a => a.id === accountId && a.mosqueId === mosqueId);
+    if (!targetAcc) {
+      return res.status(404).json({ success: false, error: { code: 'ACCOUNT_NOT_FOUND', message: 'নির্দিষ্ট অ্যাকাউন্ট পাওয়া যায়নি বা এটি এই মসজিদের আওতাধীন নয়।' } });
     }
-    item.amount = numAmount;
   }
 
   if (mainHeadId !== undefined) {
-    item.mainHeadId = mainHeadId;
-    const mh = db.accountHeads.find(h => h.id === mainHeadId);
-    if (mh) item.mainHeadNameBn = mh.nameBn;
+    const mh = db.accountHeads.find(h => h.id === mainHeadId && (h.mosqueId === mosqueId || !h.mosqueId));
+    if (!mh) {
+      return res.status(404).json({ success: false, error: { code: 'HEAD_NOT_FOUND', message: 'প্রধান ব্যয় খাত পাওয়া যায়নি।' } });
+    }
   }
+
   if (subHeadId !== undefined) {
-    item.subHeadId = subHeadId;
-    const sh = db.accountHeads.find(h => h.id === subHeadId);
-    if (sh) item.subHeadNameBn = sh.nameBn;
+    const sh = db.accountHeads.find(h => h.id === subHeadId && (h.mosqueId === mosqueId || !h.mosqueId));
+    if (!sh) {
+      return res.status(404).json({ success: false, error: { code: 'SUBHEAD_NOT_FOUND', message: 'উপ-ব্যয় খাত পাওয়া যায়নি।' } });
+    }
   }
-  if (payeeName !== undefined) item.payeeName = payeeName;
-  if (payeePhone !== undefined) item.payeePhone = payeePhone;
-  if (reference !== undefined) item.reference = reference;
-  if (description !== undefined) item.description = description;
-  if (date !== undefined) item.date = date;
-  item.updatedAt = new Date().toISOString();
 
-  db.save();
-  db.logAudit(
-    mosqueId,
-    req.user!.id,
-    req.user!.name,
-    req.user!.role,
-    'UPDATE',
-    'EXPENSE',
-    `ব্যয় ভাউচার আপডেট (${item.voucherNumber}): পরিমাণ ৳ ${oldAmount} → ৳ ${item.amount}`,
-    item.id
-  );
+  try {
+    const responsePayload = await db.runTransaction((tx) => {
+      const cachedInside = db.checkIdempotency(req.idempotencyKey);
+      if (cachedInside) {
+        return { ...cachedInside, __isCached: true };
+      }
 
-  realtime.broadcastToMosque(mosqueId, 'EXPENSE_UPDATED', item, { senderId: req.user!.id });
-  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+      const item = db.expenseEntries.find(e => e.id === req.params.id && e.mosqueId === mosqueId);
+      if (!item) {
+        throw new StoragePersistenceError('NOT_FOUND', 'ব্যয় ভাউচার পাওয়া যায়নি।');
+      }
 
-  res.json({ success: true, data: item, message: 'ব্যয় ভাউচার সফলভাবে হালনাগাদ ও হিসাব সমন্বয় করা হয়েছে।' });
+      if (item.status === 'CANCELLED') {
+        throw new StoragePersistenceError('ALREADY_CANCELLED', 'বাতিলকৃত ব্যয় ভাউচার সংশোধন করা সম্ভব নয়।');
+      }
+
+      const oldAmount = item.amount;
+      const oldAccountId = item.accountId;
+
+      if (amount !== undefined || accountId !== undefined) {
+        const targetAmount = amount !== undefined ? Number(amount) : oldAmount;
+        const targetAccountId = accountId !== undefined ? accountId : oldAccountId;
+
+        if (oldAccountId === targetAccountId) {
+          const account = db.accounts.find(a => a.id === item.accountId && a.mosqueId === mosqueId);
+          if (account && item.status === 'APPROVED') {
+            account.currentBalance += oldAmount;
+            account.currentBalance -= targetAmount;
+            account.updatedAt = new Date().toISOString();
+          }
+        } else {
+          const oldAccount = db.accounts.find(a => a.id === oldAccountId && a.mosqueId === mosqueId);
+          if (oldAccount && item.status === 'APPROVED') {
+            oldAccount.currentBalance += oldAmount;
+            oldAccount.updatedAt = new Date().toISOString();
+          }
+
+          const newAccount = db.accounts.find(a => a.id === targetAccountId && a.mosqueId === mosqueId);
+          if (newAccount) {
+            if (item.status === 'APPROVED') {
+              newAccount.currentBalance -= targetAmount;
+              newAccount.updatedAt = new Date().toISOString();
+            }
+            item.accountId = newAccount.id;
+            item.accountName = newAccount.nameBn;
+          }
+        }
+        item.amount = targetAmount;
+      }
+
+      if (mainHeadId !== undefined) {
+        item.mainHeadId = mainHeadId;
+        const mh = db.accountHeads.find(h => h.id === mainHeadId && (h.mosqueId === mosqueId || !h.mosqueId));
+        if (mh) item.mainHeadNameBn = mh.nameBn;
+      }
+      if (subHeadId !== undefined) {
+        item.subHeadId = subHeadId;
+        const sh = db.accountHeads.find(h => h.id === subHeadId && (h.mosqueId === mosqueId || !h.mosqueId));
+        if (sh) item.subHeadNameBn = sh.nameBn;
+      }
+      if (payeeName !== undefined) item.payeeName = payeeName;
+      if (payeePhone !== undefined) item.payeePhone = payeePhone;
+      if (reference !== undefined) item.reference = reference;
+      if (description !== undefined) item.description = description;
+      if (date !== undefined) item.date = date;
+      item.updatedAt = new Date().toISOString();
+
+      tx.logAudit(
+        mosqueId,
+        req.user!.id,
+        req.user!.name,
+        req.user!.role,
+        'UPDATE',
+        'EXPENSE',
+        `ব্যয় ভাউচার আপডেট (${item.voucherNumber}): পরিমাণ ৳ ${oldAmount} → ৳ ${item.amount}`,
+        item.id
+      );
+
+      const payload = { success: true, data: item, message: 'ব্যয় ভাউচার সফলভাবে হালনাগাদ ও হিসাব সমন্বয় করা হয়েছে।' };
+      tx.saveIdempotency(req.idempotencyKey, payload);
+
+      return payload;
+    });
+
+    if (!responsePayload.__isCached) {
+      realtime.broadcastToMosque(mosqueId, 'EXPENSE_UPDATED', responsePayload.data, { senderId: req.user!.id });
+      realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+    }
+
+    const { __isCached, ...cleanResponse } = responsePayload;
+    res.json(cleanResponse);
+  } catch (err: any) {
+    if (err.code === 'NOT_FOUND' || err.cause?.code === 'NOT_FOUND') {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: err.message } });
+    }
+    if (err.code === 'ALREADY_CANCELLED' || err.cause?.code === 'ALREADY_CANCELLED') {
+      return res.status(400).json({ success: false, error: { code: 'ALREADY_CANCELLED', message: err.message } });
+    }
+    if (err instanceof StoragePersistenceError) {
+      return res.status(500).json({ success: false, error: { code: 'PERSISTENCE_FAILED', message: 'ব্যয় ভাউচার হালনাগাদ সংরক্ষণ ব্যর্থ হয়েছে। ডেটাবেজ রোলব্যাক সম্পন্ন।' } });
+    }
+    throw err;
+  }
 });
 
 // ============================================================================
@@ -4422,7 +4697,7 @@ app.get('/api/v1/donations/:id', authenticate, (req: AuthRequest, res: Response)
   res.json({ success: true, data: donation });
 });
 
-app.post('/api/v1/donations', authenticate, requirePermission('CREATE_INCOME'), (req: AuthRequest, res: Response) => {
+app.post('/api/v1/donations', authenticate, requirePermission('CREATE_INCOME'), async (req: AuthRequest, res: Response) => {
   const cached = db.checkIdempotency(req.idempotencyKey);
   if (cached) {
     return res.json(cached);
@@ -4635,42 +4910,6 @@ app.post('/api/v1/donations', authenticate, requirePermission('CREATE_INCOME'), 
     createdAt: new Date().toISOString(),
   };
 
-  account.currentBalance += numAmount;
-  db.donations.unshift(donation);
-
-  // Sync Donation Collection status if collectionId was provided (Phase B6-C Integration)
-  if (verifiedCollectionId && targetCollection) {
-    const validColDonations = db.donations.filter(
-      (d) => d.collectionId === verifiedCollectionId && d.status !== 'CANCELLED' && d.mosqueId === mosqueId
-    );
-    const totalCollected = validColDonations.reduce((sum, d) => sum + (d.amount || 0), 0);
-    targetCollection.collectedAmount = totalCollected;
-    targetCollection.lastCollectionDate = donation.date;
-    targetCollection.updatedAt = new Date().toISOString();
-    targetCollection.updatedBy = req.user!.id;
-    targetCollection.updatedByName = req.user!.name;
-
-    if (targetCollection.status !== 'CANCELLED') {
-      if (totalCollected >= targetCollection.plannedAmount) {
-        targetCollection.status = 'COLLECTED';
-      } else if (totalCollected > 0) {
-        targetCollection.status = 'PARTIALLY_COLLECTED';
-      } else {
-        targetCollection.status = 'PENDING';
-      }
-    }
-
-    db.logAudit(
-      mosqueId,
-      req.user!.id,
-      req.user!.name,
-      req.user!.role,
-      'UPDATE',
-      'DONATION_COLLECTION',
-      `সংগ্রহ কার্যক্রমে অনুদান সমন্বয় (${targetCollection.id}): সংগৃহীত ৳ ${totalCollected} / ৳ ${targetCollection.plannedAmount} (অবস্থা: ${targetCollection.status})`
-    );
-  }
-
   // Auto-create income entry for double entry consistency
   const incVoucherNumber = `INC-${year}-${String(db.incomeEntries.filter((i) => i.mosqueId === mosqueId).length + 1).padStart(6, '0')}`;
   const isJumaRecord = Boolean(
@@ -4705,34 +4944,86 @@ app.post('/api/v1/donations', authenticate, requirePermission('CREATE_INCOME'), 
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
-  db.incomeEntries.unshift(incEntry);
-  db.save();
 
-  db.logAudit(
-    mosqueId,
-    req.user!.id,
-    req.user!.name,
-    req.user!.role,
-    'CREATE',
-    'DONATION',
-    `দান রসিদ প্রস্তুত (${receiptNumber}): ৳ ${numAmount} - ${donation.donorName}${verifiedPlanCode ? ` [প্ল্যান: ${verifiedPlanCode}]` : ''}${denominationData ? ' (ডিনোমিনেশন সহ)' : ''}`
-  );
+  try {
+    const responsePayload = await db.runTransaction((tx) => {
+      account.currentBalance += numAmount;
+      db.donations.unshift(donation);
 
-  const responsePayload = { success: true, data: donation, message: 'অনুদানের মানি রিসিট প্রস্তুত ও ফান্ডে যোগ করা হয়েছে।' };
-  db.saveIdempotency(req.idempotencyKey, responsePayload);
+      // Sync Donation Collection status if collectionId was provided (Phase B6-C Integration)
+      if (verifiedCollectionId && targetCollection) {
+        const validColDonations = db.donations.filter(
+          (d) => d.collectionId === verifiedCollectionId && d.status !== 'CANCELLED' && d.mosqueId === mosqueId
+        );
+        const totalCollected = validColDonations.reduce((sum, d) => sum + (d.amount || 0), 0);
+        targetCollection.collectedAmount = totalCollected;
+        targetCollection.lastCollectionDate = donation.date;
+        targetCollection.updatedAt = new Date().toISOString();
+        targetCollection.updatedBy = req.user!.id;
+        targetCollection.updatedByName = req.user!.name;
 
-  realtime.broadcastToMosque(mosqueId, 'DONATION_CREATED', donation, { senderId: req.user!.id });
-  realtime.broadcastToMosque(mosqueId, 'INCOME_CREATED', incEntry, { senderId: req.user!.id });
-  if (verifiedCollectionId && targetCollection) {
-    realtime.broadcastToMosque(mosqueId, 'COLLECTION_UPDATED', targetCollection, { senderId: req.user!.id });
+        if (targetCollection.status !== 'CANCELLED') {
+          if (totalCollected >= targetCollection.plannedAmount) {
+            targetCollection.status = 'COLLECTED';
+          } else if (totalCollected > 0) {
+            targetCollection.status = 'PARTIALLY_COLLECTED';
+          } else {
+            targetCollection.status = 'PENDING';
+          }
+        }
+
+        tx.logAudit(
+          mosqueId,
+          req.user!.id,
+          req.user!.name,
+          req.user!.role,
+          'UPDATE',
+          'DONATION_COLLECTION',
+          `সংগ্রহ কার্যক্রমে অনুদান সমন্বয় (${targetCollection.id}): সংগৃহীত ৳ ${totalCollected} / ৳ ${targetCollection.plannedAmount} (অবস্থা: ${targetCollection.status})`
+        );
+      }
+
+      db.incomeEntries.unshift(incEntry);
+
+      tx.logAudit(
+        mosqueId,
+        req.user!.id,
+        req.user!.name,
+        req.user!.role,
+        'CREATE',
+        'DONATION',
+        `দান রসিদ প্রস্তুত (${receiptNumber}): ৳ ${numAmount} - ${donation.donorName}${verifiedPlanCode ? ` [প্ল্যান: ${verifiedPlanCode}]` : ''}${denominationData ? ' (ডিনোমিনেশন সহ)' : ''}`
+      );
+
+      const payload = { success: true, data: donation, message: 'অনুদানের মানি রিসিট প্রস্তুত ও ফান্ডে যোগ করা হয়েছে।' };
+      tx.saveIdempotency(req.idempotencyKey, payload);
+
+      return payload;
+    });
+
+    realtime.broadcastToMosque(mosqueId, 'DONATION_CREATED', donation, { senderId: req.user!.id });
+    realtime.broadcastToMosque(mosqueId, 'INCOME_CREATED', incEntry, { senderId: req.user!.id });
+    if (verifiedCollectionId && targetCollection) {
+      realtime.broadcastToMosque(mosqueId, 'COLLECTION_UPDATED', targetCollection, { senderId: req.user!.id });
+    }
+    realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+    res.json(responsePayload);
+  } catch (err: any) {
+    if (err instanceof StoragePersistenceError) {
+      return res.status(500).json({ success: false, error: { code: 'PERSISTENCE_FAILED', message: 'অনুদান মানি রিসিট সংরক্ষণ ব্যর্থ হয়েছে। ডেটাবেজ রোলব্যাক সম্পন্ন।' } });
+    }
+    throw err;
   }
-  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
-
-  res.json(responsePayload);
 });
 
 // Cancel / Void Donation Endpoint
-app.post('/api/v1/donations/:id/cancel', authenticate, requirePermission('CREATE_INCOME'), (req: AuthRequest, res: Response) => {
+app.post('/api/v1/donations/:id/cancel', authenticate, requirePermission('CREATE_INCOME'), async (req: AuthRequest, res: Response) => {
+  const cached = db.checkIdempotency(req.idempotencyKey);
+  if (cached) {
+    return res.json(cached);
+  }
+
   const mosqueId = req.currentMosque!.id;
   const donation = db.donations.find((d) => d.id === req.params.id && d.mosqueId === mosqueId);
   if (!donation) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'দান রসিদ পাওয়া যায়নি।' } });
@@ -4744,94 +5035,115 @@ app.post('/api/v1/donations/:id/cancel', authenticate, requirePermission('CREATE
   const { reason } = req.body;
   const cancelReason = reason || 'ভুল এন্ট্রি বা হিসাব সংশোধন';
 
-  // Reverse Account Balance
-  const account = db.accounts.find((a) => a.id === donation.accountId && a.mosqueId === mosqueId);
-  if (account) {
-    account.currentBalance -= donation.amount;
-  }
-
-  // Reverse matching IncomeEntry
-  const incEntry = db.incomeEntries.find(
-    (i) => (i.id === donation.incomeEntryId || i.reference === `Receipt: ${donation.receiptNumber}`) && i.mosqueId === mosqueId
-  );
-  if (incEntry) {
-    incEntry.status = 'CANCELLED' as const;
-    incEntry.rejectionReason = cancelReason;
-    incEntry.updatedAt = new Date().toISOString();
-  }
-
-  donation.status = 'CANCELLED';
-  donation.cancellationReason = cancelReason;
-  donation.cancelledAt = new Date().toISOString();
-  donation.cancelledBy = req.user!.id;
-  donation.updatedAt = new Date().toISOString();
-  donation.updatedBy = req.user!.id;
-
-  // Sync Donation Collection status upon cancellation (Phase B6-C Integration)
-  let updatedCollection: any = undefined;
-  const col = donation.collectionId
-    ? db.donationCollections.find((c) => c.id === donation.collectionId && c.mosqueId === mosqueId)
-    : (donation.donationPlanId && donation.personId
-        ? db.donationCollections.find(
-            (c) => c.donationPlanId === donation.donationPlanId && c.personId === donation.personId && (donation.date || '').startsWith(c.collectionPeriod.substring(0, 7)) && c.mosqueId === mosqueId
-          )
-        : undefined);
-
-  if (col) {
-    const remainingDonations = db.donations.filter(
-      (d) => (d.collectionId === col.id || (d.donationPlanId === col.donationPlanId && d.personId === col.personId && d.date.startsWith(col.collectionPeriod.substring(0, 7)))) && d.id !== donation.id && d.status !== 'CANCELLED' && d.mosqueId === mosqueId
-    );
-    const totalCollected = remainingDonations.reduce((sum, d) => sum + (d.amount || 0), 0);
-    col.collectedAmount = totalCollected;
-    col.updatedAt = new Date().toISOString();
-    col.updatedBy = req.user!.id;
-    col.updatedByName = req.user!.name;
-
-    if (col.status !== 'CANCELLED') {
-      if (totalCollected >= col.plannedAmount) {
-        col.status = 'COLLECTED';
-      } else if (totalCollected > 0) {
-        col.status = 'PARTIALLY_COLLECTED';
-      } else {
-        if (col.status !== 'PAUSED') {
-          col.status = 'PENDING';
-        }
+  try {
+    const { payload, incEntry, updatedCollection } = await db.runTransaction((tx) => {
+      // Re-verify cancellation guard inside serialized transaction lock
+      if (donation.status === 'CANCELLED') {
+        throw new StoragePersistenceError('ALREADY_CANCELLED', 'এই রসিদটি ইতিমধ্যে বাতিল করা হয়েছে।');
       }
+
+      // Reverse Account Balance
+      const account = db.accounts.find((a) => a.id === donation.accountId && a.mosqueId === mosqueId);
+      if (account) {
+        account.currentBalance -= donation.amount;
+      }
+
+      // Reverse matching IncomeEntry
+      const incEntry = db.incomeEntries.find(
+        (i) => (i.id === donation.incomeEntryId || i.reference === `Receipt: ${donation.receiptNumber}`) && i.mosqueId === mosqueId
+      );
+      if (incEntry) {
+        incEntry.status = 'CANCELLED' as const;
+        incEntry.rejectionReason = cancelReason;
+        incEntry.updatedAt = new Date().toISOString();
+      }
+
+      donation.status = 'CANCELLED';
+      donation.cancellationReason = cancelReason;
+      donation.cancelledAt = new Date().toISOString();
+      donation.cancelledBy = req.user!.id;
+      donation.updatedAt = new Date().toISOString();
+      donation.updatedBy = req.user!.id;
+
+      // Sync Donation Collection status upon cancellation (Phase B6-C Integration)
+      let updatedCollection: any = undefined;
+      const col = donation.collectionId
+        ? db.donationCollections.find((c) => c.id === donation.collectionId && c.mosqueId === mosqueId)
+        : (donation.donationPlanId && donation.personId
+            ? db.donationCollections.find(
+                (c) => c.donationPlanId === donation.donationPlanId && c.personId === donation.personId && (donation.date || '').startsWith(c.collectionPeriod.substring(0, 7)) && c.mosqueId === mosqueId
+              )
+            : undefined);
+
+      if (col) {
+        const remainingDonations = db.donations.filter(
+          (d) => (d.collectionId === col.id || (d.donationPlanId === col.donationPlanId && d.personId === col.personId && d.date.startsWith(col.collectionPeriod.substring(0, 7)))) && d.id !== donation.id && d.status !== 'CANCELLED' && d.mosqueId === mosqueId
+        );
+        const totalCollected = remainingDonations.reduce((sum, d) => sum + (d.amount || 0), 0);
+        col.collectedAmount = totalCollected;
+        col.updatedAt = new Date().toISOString();
+        col.updatedBy = req.user!.id;
+        col.updatedByName = req.user!.name;
+
+        if (col.status !== 'CANCELLED') {
+          if (totalCollected >= col.plannedAmount) {
+            col.status = 'COLLECTED';
+          } else if (totalCollected > 0) {
+            col.status = 'PARTIALLY_COLLECTED';
+          } else {
+            if (col.status !== 'PAUSED') {
+              col.status = 'PENDING';
+            }
+          }
+        }
+        updatedCollection = col;
+
+        tx.logAudit(
+          mosqueId,
+          req.user!.id,
+          req.user!.name,
+          req.user!.role,
+          'UPDATE',
+          'DONATION_COLLECTION',
+          `সংগ্রহ কার্যক্রমে অনুদান বাতিল সমন্বয় (${col.id}): সংগৃহীত হ্রাস পেয়ে ৳ ${totalCollected} / ৳ ${col.plannedAmount} (অবস্থা: ${col.status})`
+        );
+      }
+
+      tx.logAudit(
+        mosqueId,
+        req.user!.id,
+        req.user!.name,
+        req.user!.role,
+        'CANCEL',
+        'DONATION',
+        `দান রসিদ বাতিল (${donation.receiptNumber}): ৳ ${donation.amount} - ${donation.donorName}. কারণ: ${cancelReason}`
+      );
+
+      const payload = { success: true, data: donation, message: 'দান রসিদ সফলভাবে বাতিল ও আর্থিক সমন্বয় সম্পন্ন হয়েছে।' };
+      tx.saveIdempotency(req.idempotencyKey, payload);
+
+      return { payload, incEntry, updatedCollection };
+    });
+
+    realtime.broadcastToMosque(mosqueId, 'DONATION_UPDATED', donation, { senderId: req.user!.id });
+    if (incEntry) {
+      realtime.broadcastToMosque(mosqueId, 'INCOME_UPDATED', incEntry, { senderId: req.user!.id });
     }
-    updatedCollection = col;
+    if (updatedCollection) {
+      realtime.broadcastToMosque(mosqueId, 'COLLECTION_UPDATED', updatedCollection, { senderId: req.user!.id });
+    }
+    realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
 
-    db.logAudit(
-      mosqueId,
-      req.user!.id,
-      req.user!.name,
-      req.user!.role,
-      'UPDATE',
-      'DONATION_COLLECTION',
-      `সংগ্রহ কার্যক্রমে অনুদান বাতিল সমন্বয় (${col.id}): সংগৃহীত হ্রাস পেয়ে ৳ ${totalCollected} / ৳ ${col.plannedAmount} (অবস্থা: ${col.status})`
-    );
+    res.json(payload);
+  } catch (err: any) {
+    if (err.code === 'ALREADY_CANCELLED' || err.cause?.code === 'ALREADY_CANCELLED') {
+      return res.status(400).json({ success: false, error: { code: 'ALREADY_CANCELLED', message: err.message } });
+    }
+    if (err instanceof StoragePersistenceError) {
+      return res.status(500).json({ success: false, error: { code: 'PERSISTENCE_FAILED', message: 'দান রসিদ বাতিল সংরক্ষণ ব্যর্থ হয়েছে। ডেটাবেজ রোলব্যাক সম্পন্ন।' } });
+    }
+    throw err;
   }
-
-  db.save();
-  db.logAudit(
-    mosqueId,
-    req.user!.id,
-    req.user!.name,
-    req.user!.role,
-    'CANCEL',
-    'DONATION',
-    `দান রসিদ বাতিল (${donation.receiptNumber}): ৳ ${donation.amount} - ${donation.donorName}. কারণ: ${cancelReason}`
-  );
-
-  realtime.broadcastToMosque(mosqueId, 'DONATION_UPDATED', donation, { senderId: req.user!.id });
-  if (incEntry) {
-    realtime.broadcastToMosque(mosqueId, 'INCOME_UPDATED', incEntry, { senderId: req.user!.id });
-  }
-  if (updatedCollection) {
-    realtime.broadcastToMosque(mosqueId, 'COLLECTION_UPDATED', updatedCollection, { senderId: req.user!.id });
-  }
-  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
-
-  res.json({ success: true, data: donation, message: 'দান রসিদ সফলভাবে বাতিল ও আর্থিক সমন্বয় সম্পন্ন হয়েছে।' });
 });
 
 // Update Donation Denomination Breakdown
@@ -4959,7 +5271,7 @@ app.delete('/api/v1/donation-boxes/:id', authenticate, requirePermission('MANAGE
   res.json({ success: true, message: 'দানবাক্স সফলভাবে মুছে ফেলা হয়েছে।' });
 });
 
-app.post('/api/v1/donation-boxes/collect', authenticate, requirePermission('CREATE_INCOME'), (req: AuthRequest, res: Response) => {
+app.post('/api/v1/donation-boxes/collect', authenticate, requirePermission('CREATE_INCOME'), async (req: AuthRequest, res: Response) => {
   // Idempotency check
   const cached = db.checkIdempotency(req.idempotencyKey);
   if (cached) {
@@ -5006,59 +5318,70 @@ app.post('/api/v1/donation-boxes/collect', authenticate, requirePermission('CREA
     createdAt: new Date().toISOString()
   };
 
-  if (box) {
-    box.lastCollectedDate = colDate;
-    box.totalCollected = (box.totalCollected || 0) + numAmount;
+  let incEntry: any = null;
+  try {
+    const responsePayload = await db.runTransaction((tx) => {
+      if (box) {
+        box.lastCollectedDate = colDate;
+        box.totalCollected = (box.totalCollected || 0) + numAmount;
+      }
+      account.currentBalance += numAmount;
+
+      // Auto-create income voucher for collection
+      incEntry = {
+        id: `inc-box-${Date.now()}`,
+        mosqueId,
+        voucherNumber: incVoucherNumber,
+        date: colDate,
+        mainHeadId: 'head-inc-01',
+        mainHeadNameBn: 'দান ও অনুদান',
+        subHeadId: 'head-inc-01-2',
+        subHeadNameBn: `দানবাক্স খোলা কালেকশন (${box?.boxCode || 'বাক্স'})`,
+        amount: numAmount,
+        paymentMethod: 'CASH' as const,
+        accountId: account.id,
+        accountName: account.nameBn,
+        donorName: `দানবাক্স সংগ্রাহক (${collectionNumber})`,
+        description: `দানবাক্স কালেকশন ভাউচার ${collectionNumber}`,
+        denominationData: denominationData || undefined,
+        createdBy: req.user!.id,
+        createdByName: req.user!.name,
+        status: 'APPROVED' as const,
+        approvedBy: req.user!.id,
+        approvedByName: req.user!.name,
+        approvedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      db.donationBoxCollections.unshift(collection);
+      db.incomeEntries.unshift(incEntry);
+
+      tx.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'DONATION_BOX_COLLECT', `দানবাক্স খোলা ও জমা (${collectionNumber}): ৳ ${numAmount}${denominationData ? ' (ডিনোমিনেশন সহ)' : ''}`);
+
+      const payload = {
+        success: true,
+        data: collection,
+        box,
+        incomeVoucher: incEntry,
+        message: 'দানবাক্সের টাকা সফলভাবে গণনা ও তহবিলে জমা করা হয়েছে।'
+      };
+      tx.saveIdempotency(req.idempotencyKey, payload);
+
+      return payload;
+    });
+
+    realtime.broadcastToMosque(mosqueId, 'DONATION_BOX_COLLECTED', { collection, box }, { senderId: req.user!.id });
+    realtime.broadcastToMosque(mosqueId, 'INCOME_CREATED', incEntry, { senderId: req.user!.id });
+    realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+    res.json(responsePayload);
+  } catch (err: any) {
+    if (err instanceof StoragePersistenceError) {
+      return res.status(500).json({ success: false, error: { code: 'PERSISTENCE_FAILED', message: 'দানবাক্স কালেকশন সংরক্ষণ ব্যর্থ হয়েছে। ডেটাবেজ রোলব্যাক সম্পন্ন।' } });
+    }
+    throw err;
   }
-  account.currentBalance += numAmount;
-
-  // Auto-create income voucher for collection
-  const incEntry = {
-    id: `inc-box-${Date.now()}`,
-    mosqueId,
-    voucherNumber: incVoucherNumber,
-    date: colDate,
-    mainHeadId: 'head-inc-01',
-    mainHeadNameBn: 'দান ও অনুদান',
-    subHeadId: 'head-inc-01-2',
-    subHeadNameBn: `দানবাক্স খোলা কালেকশন (${box?.boxCode || 'বাক্স'})`,
-    amount: numAmount,
-    paymentMethod: 'CASH' as const,
-    accountId: account.id,
-    accountName: account.nameBn,
-    donorName: `দানবাক্স সংগ্রাহক (${collectionNumber})`,
-    description: `দানবাক্স কালেকশন ভাউচার ${collectionNumber}`,
-    denominationData: denominationData || undefined,
-    createdBy: req.user!.id,
-    createdByName: req.user!.name,
-    status: 'APPROVED' as const,
-    approvedBy: req.user!.id,
-    approvedByName: req.user!.name,
-    approvedAt: new Date().toISOString(),
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  };
-
-  db.donationBoxCollections.unshift(collection);
-  db.incomeEntries.unshift(incEntry);
-  db.save();
-
-  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'DONATION_BOX_COLLECT', `দানবাক্স খোলা ও জমা (${collectionNumber}): ৳ ${numAmount}${denominationData ? ' (ডিনোমিনেশন সহ)' : ''}`);
-
-  realtime.broadcastToMosque(mosqueId, 'DONATION_BOX_COLLECTED', { collection, box }, { senderId: req.user!.id });
-  realtime.broadcastToMosque(mosqueId, 'INCOME_CREATED', incEntry, { senderId: req.user!.id });
-  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
-
-  const responsePayload = {
-    success: true,
-    data: collection,
-    box,
-    incomeVoucher: incEntry,
-    message: 'দানবাক্সের টাকা সফলভাবে গণনা ও তহবিলে জমা করা হয়েছে।'
-  };
-  db.saveIdempotency(req.idempotencyKey, responsePayload);
-
-  res.json(responsePayload);
 });
 
 // Update Donation Box Collection Denomination
@@ -9801,7 +10124,7 @@ app.post('/api/v1/staff/:id/salary-revision', authenticate, requirePermission('M
 });
 
 // Staff Advance Disbursal (Staff Advance Management)
-app.post('/api/v1/staff/:id/advance', authenticate, requirePermission('MANAGE_STAFF'), (req: AuthRequest, res: Response) => {
+app.post('/api/v1/staff/:id/advance', authenticate, requirePermission('MANAGE_STAFF'), async (req: AuthRequest, res: Response) => {
   const mosqueId = req.currentMosque!.id;
   const staff = db.staffList.find(s => s.id === req.params.id && s.mosqueId === mosqueId);
   if (!staff) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'স্টাফ পাওয়া যায়নি।' } });
@@ -9820,96 +10143,106 @@ app.post('/api/v1/staff/:id/advance', authenticate, requirePermission('MANAGE_ST
   const payDate = advanceDate || new Date().toISOString().split('T')[0];
   const activeTerm = db.committeeTerms.find(t => t.mosqueId === mosqueId && t.status === 'ACTIVE');
 
-  // Deduct balance from account
-  account.currentBalance -= numAmount;
+  try {
+    const { advanceRecord, updatedStaff } = await db.runTransaction((tx) => {
+      // Deduct balance from account
+      account.currentBalance -= numAmount;
 
-  const expVoucher = `EXP-ADV-${currentYear}-${String(db.expenseEntries.filter(e => e.mosqueId === mosqueId).length + 1).padStart(5, '0')}`;
-  const expEntryId = `exp-adv-${Date.now()}`;
+      const expVoucher = `EXP-ADV-${currentYear}-${String(db.expenseEntries.filter(e => e.mosqueId === mosqueId).length + 1).padStart(5, '0')}`;
+      const expEntryId = `exp-adv-${Date.now()}`;
 
-  const advanceRecord: StaffAdvanceRecord = {
-    id: `adv-${Date.now()}`,
-    mosqueId,
-    staffId: staff.id,
-    staffName: staff.name,
-    designationBn: staff.designationBn,
-    advanceDate: payDate,
-    amount: numAmount,
-    reason: reason || 'জরুরি প্রয়োজনে অগ্রিম গ্রহণ',
-    paymentMethod: paymentMethod as any,
-    accountId: account.id,
-    accountNameBn: account.nameBn,
-    expenseVoucherNumber: expVoucher,
-    adjustedAmount: 0,
-    outstandingAmount: numAmount,
-    adjustmentHistory: [],
-    status: 'ACTIVE',
-    approvedBy: req.user!.id,
-    approvedByName: req.user!.name,
-    notes,
-    createdAt: new Date().toISOString()
-  };
+      const advanceRec: StaffAdvanceRecord = {
+        id: `adv-${Date.now()}`,
+        mosqueId,
+        staffId: staff.id,
+        staffName: staff.name,
+        designationBn: staff.designationBn,
+        advanceDate: payDate,
+        amount: numAmount,
+        reason: reason || 'জরুরি প্রয়োজনে অগ্রিম গ্রহণ',
+        paymentMethod: paymentMethod as any,
+        accountId: account.id,
+        accountNameBn: account.nameBn,
+        expenseVoucherNumber: expVoucher,
+        adjustedAmount: 0,
+        outstandingAmount: numAmount,
+        adjustmentHistory: [],
+        status: 'ACTIVE',
+        approvedBy: req.user!.id,
+        approvedByName: req.user!.name,
+        notes,
+        createdAt: new Date().toISOString()
+      };
 
-  if (!staff.advanceRecords) staff.advanceRecords = [];
-  staff.advanceRecords.unshift(advanceRecord);
+      if (!staff.advanceRecords) staff.advanceRecords = [];
+      staff.advanceRecords.unshift(advanceRec);
 
-  if (!staff.employmentHistory) staff.employmentHistory = [];
-  staff.employmentHistory.unshift({
-    id: `eh-${Date.now()}`,
-    date: payDate,
-    eventType: 'OTHER',
-    eventTitle: 'বেতন অগ্রিম গ্রহণ',
-    description: `অগ্রিম ঋণ গ্রহণ: ৳${numAmount} (${reason || 'প্রয়োজনে'}), ভাউচার: ${expVoucher}`,
-    performedBy: req.user!.id,
-    performedByName: req.user!.name,
-    createdAt: new Date().toISOString()
-  });
+      if (!staff.employmentHistory) staff.employmentHistory = [];
+      staff.employmentHistory.unshift({
+        id: `eh-${Date.now()}`,
+        date: payDate,
+        eventType: 'OTHER',
+        eventTitle: 'বেতন অগ্রিম গ্রহণ',
+        description: `অগ্রিম ঋণ গ্রহণ: ৳${numAmount} (${reason || 'প্রয়োজনে'}), ভাউচার: ${expVoucher}`,
+        performedBy: req.user!.id,
+        performedByName: req.user!.name,
+        createdAt: new Date().toISOString()
+      });
 
-  staff.updatedAt = new Date().toISOString();
+      staff.updatedAt = new Date().toISOString();
 
-  // Create Accounting Expense Entry for Advance
-  db.expenseEntries.unshift({
-    id: expEntryId,
-    mosqueId,
-    termId: activeTerm ? activeTerm.id : undefined,
-    voucherNumber: expVoucher,
-    date: payDate,
-    mainHeadId: 'head-exp-01',
-    mainHeadNameBn: 'ইমাম ও স্টাফ বেতন-ভাতা (Staff Salary)',
-    subHeadId: 'head-exp-01-adv',
-    subHeadNameBn: `স্টাফ বেতন অগ্রিম প্রদান (${staff.name})`,
-    amount: numAmount,
-    paymentMethod: paymentMethod as any,
-    accountId: account.id,
-    accountName: account.nameBn,
-    payeeName: staff.name,
-    payeePhone: staff.phone,
-    reference: `Staff Advance - ${staff.staffCode || staff.name}`,
-    description: `${staff.name} (${staff.designationBn}) কে বেতন বাবদ অগ্রিম প্রদান: ৳${numAmount} [কারণ: ${reason || 'জরুরি প্রয়োজন'}, ভাউচার: ${expVoucher}]`,
-    createdBy: req.user!.id,
-    createdByName: req.user!.name,
-    approvedBy: req.user!.id,
-    approvedByName: req.user!.name,
-    approvedAt: new Date().toISOString(),
-    status: 'APPROVED',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  });
+      // Create Accounting Expense Entry for Advance
+      db.expenseEntries.unshift({
+        id: expEntryId,
+        mosqueId,
+        termId: activeTerm ? activeTerm.id : undefined,
+        voucherNumber: expVoucher,
+        date: payDate,
+        mainHeadId: 'head-exp-01',
+        mainHeadNameBn: 'ইমাম ও স্টাফ বেতন-ভাতা (Staff Salary)',
+        subHeadId: 'head-exp-01-adv',
+        subHeadNameBn: `স্টাফ বেতন অগ্রিম প্রদান (${staff.name})`,
+        amount: numAmount,
+        paymentMethod: paymentMethod as any,
+        accountId: account.id,
+        accountName: account.nameBn,
+        payeeName: staff.name,
+        payeePhone: staff.phone,
+        reference: `Staff Advance - ${staff.staffCode || staff.name}`,
+        description: `${staff.name} (${staff.designationBn}) কে বেতন বাবদ অগ্রিম প্রদান: ৳${numAmount} [কারণ: ${reason || 'জরুরি প্রয়োজন'}, ভাউচার: ${expVoucher}]`,
+        createdBy: req.user!.id,
+        createdByName: req.user!.name,
+        approvedBy: req.user!.id,
+        approvedByName: req.user!.name,
+        approvedAt: new Date().toISOString(),
+        status: 'APPROVED',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
 
-  db.save();
-  db.logAudit(
-    mosqueId,
-    req.user!.id,
-    req.user!.name,
-    req.user!.role,
-    'CREATE',
-    'STAFF_ADVANCE',
-    `${staff.name} কে ৳${numAmount} অগ্রিম প্রদান (${expVoucher})`
-  );
+      tx.logAudit(
+        mosqueId,
+        req.user!.id,
+        req.user!.name,
+        req.user!.role,
+        'CREATE',
+        'STAFF_ADVANCE',
+        `${staff.name} কে ৳${numAmount} অগ্রিম প্রদান (${expVoucher})`
+      );
 
-  realtime.broadcastToMosque(mosqueId, 'STAFF_UPDATED', staff, { senderId: req.user!.id });
-  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+      return { advanceRecord: advanceRec, updatedStaff: staff };
+    });
 
-  res.json({ success: true, data: advanceRecord, staff, message: 'স্টাফকে অগ্রিম প্রদান সফলভাবে হিসাবভুক্ত হয়েছে।' });
+    realtime.broadcastToMosque(mosqueId, 'STAFF_UPDATED', updatedStaff, { senderId: req.user!.id });
+    realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+    res.json({ success: true, data: advanceRecord, staff: updatedStaff, message: 'স্টাফকে অগ্রিম প্রদান সফলভাবে হিসাবভুক্ত হয়েছে।' });
+  } catch (err: any) {
+    if (err instanceof StoragePersistenceError) {
+      return res.status(500).json({ success: false, error: { code: 'PERSISTENCE_FAILED', message: 'স্টাফ অগ্রিম প্রদান সংরক্ষণ ব্যর্থ হয়েছে। ডেটাবেজ রোলব্যাক সম্পন্ন।' } });
+    }
+    throw err;
+  }
 });
 
 // Staff Leave Management
@@ -10091,7 +10424,7 @@ app.post('/api/v1/staff/attendance/bulk', authenticate, requirePermission('MANAG
 });
 
 // Staff Final Settlement (অবসর / পদত্যাগ / সমাপ্তি চূড়ান্ত হিসাব নিষ্পত্তি)
-app.post('/api/v1/staff/:id/final-settlement', authenticate, requirePermission('MANAGE_STAFF'), (req: AuthRequest, res: Response) => {
+app.post('/api/v1/staff/:id/final-settlement', authenticate, requirePermission('MANAGE_STAFF'), async (req: AuthRequest, res: Response) => {
   const mosqueId = req.currentMosque!.id;
   const staff = db.staffList.find(s => s.id === req.params.id && s.mosqueId === mosqueId);
   if (!staff) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'স্টাফ পাওয়া যায়নি।' } });
@@ -10123,118 +10456,128 @@ app.post('/api/v1/staff/:id/final-settlement', authenticate, requirePermission('
 
   const activeTerm = db.committeeTerms.find(t => t.mosqueId === mosqueId && t.status === 'ACTIVE');
 
-  let expVoucher = '';
-  if (netAmount > 0) {
-    account.currentBalance -= netAmount;
-    expVoucher = `EXP-SETTLE-${currentYear}-${String(db.expenseEntries.filter(e => e.mosqueId === mosqueId).length + 1).padStart(5, '0')}`;
-    const expEntryId = `exp-settle-${Date.now()}`;
+  try {
+    const { finalSettlementRecord, updatedStaff } = await db.runTransaction((tx) => {
+      let expVoucher = '';
+      if (netAmount > 0) {
+        account.currentBalance -= netAmount;
+        expVoucher = `EXP-SETTLE-${currentYear}-${String(db.expenseEntries.filter(e => e.mosqueId === mosqueId).length + 1).padStart(5, '0')}`;
+        const expEntryId = `exp-settle-${Date.now()}`;
 
-    // Expense Entry for Final Settlement
-    db.expenseEntries.unshift({
-      id: expEntryId,
-      mosqueId,
-      termId: activeTerm ? activeTerm.id : undefined,
-      voucherNumber: expVoucher,
-      date: setDate,
-      mainHeadId: 'head-exp-01',
-      mainHeadNameBn: 'ইমাম ও স্টাফ বেতন-ভাতা (Staff Salary)',
-      subHeadId: 'head-exp-01-settle',
-      subHeadNameBn: `স্টাফ চূড়ান্ত নিষ্পত্তি ও বিদায়ী সম্মাননা (${staff.name})`,
-      amount: netAmount,
-      paymentMethod: paymentMethod as any,
-      accountId: account.id,
-      accountName: account.nameBn,
-      payeeName: staff.name,
-      payeePhone: staff.phone,
-      reference: `Final Settlement - ${staff.staffCode || staff.name}`,
-      description: `${staff.name} (${staff.designationBn}) এর চাকুরির চূড়ান্ত নিষ্পত্তি ও পাওনা পরিশোধ: ৳${netAmount} [ভাউচার: ${expVoucher}]`,
-      createdBy: req.user!.id,
-      createdByName: req.user!.name,
-      approvedBy: req.user!.id,
-      approvedByName: req.user!.name,
-      approvedAt: new Date().toISOString(),
-      status: 'APPROVED',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    });
-  }
-
-  const finalSettlementRecord: StaffFinalSettlement = {
-    id: `settle-${Date.now()}`,
-    mosqueId,
-    staffId: staff.id,
-    staffName: staff.name,
-    settlementDate: setDate,
-    resignationOrTerminationDate: lastDate,
-    lastMonthlySalary: Number(lastMonthlySalary) || staff.monthlySalary,
-    dueSalaryAmount: Number(dueSalaryAmount) || 0,
-    unadjustedAdvanceAmount: Number(unadjustedAdvanceAmount) || 0,
-    gratuityOrHonorarium: Number(gratuityOrHonorarium) || 0,
-    otherAllowances: Number(otherAllowances) || 0,
-    totalDeduction: Number(totalDeduction) || 0,
-    netSettlementAmount: netAmount,
-    paymentMethod: paymentMethod as any,
-    accountId: account.id,
-    accountNameBn: account.nameBn,
-    expenseVoucherNumber: expVoucher || undefined,
-    notes,
-    status: 'SETTLED',
-    settledBy: req.user!.id,
-    settledByName: req.user!.name,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  };
-
-  staff.finalSettlement = finalSettlementRecord;
-  if (settleAndEndEmployment) {
-    staff.status = 'EMPLOYMENT_ENDED';
-    staff.resignationDate = lastDate;
-  }
-
-  // Mark advances as adjusted
-  if (staff.advanceRecords) {
-    staff.advanceRecords.forEach(a => {
-      if (a.status === 'ACTIVE') {
-        a.status = 'FULLY_ADJUSTED';
-        a.adjustedAmount = a.amount;
-        a.outstandingAmount = 0;
+        // Expense Entry for Final Settlement
+        db.expenseEntries.unshift({
+          id: expEntryId,
+          mosqueId,
+          termId: activeTerm ? activeTerm.id : undefined,
+          voucherNumber: expVoucher,
+          date: setDate,
+          mainHeadId: 'head-exp-01',
+          mainHeadNameBn: 'ইমাম ও স্টাফ বেতন-ভাতা (Staff Salary)',
+          subHeadId: 'head-exp-01-settle',
+          subHeadNameBn: `স্টাফ চূড়ান্ত নিষ্পত্তি ও বিদায়ী সম্মাননা (${staff.name})`,
+          amount: netAmount,
+          paymentMethod: paymentMethod as any,
+          accountId: account.id,
+          accountName: account.nameBn,
+          payeeName: staff.name,
+          payeePhone: staff.phone,
+          reference: `Final Settlement - ${staff.staffCode || staff.name}`,
+          description: `${staff.name} (${staff.designationBn}) এর চাকুরির চূড়ান্ত নিষ্পত্তি ও পাওনা পরিশোধ: ৳${netAmount} [ভাউচার: ${expVoucher}]`,
+          createdBy: req.user!.id,
+          createdByName: req.user!.name,
+          approvedBy: req.user!.id,
+          approvedByName: req.user!.name,
+          approvedAt: new Date().toISOString(),
+          status: 'APPROVED',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
       }
+
+      const settlementRec: StaffFinalSettlement = {
+        id: `settle-${Date.now()}`,
+        mosqueId,
+        staffId: staff.id,
+        staffName: staff.name,
+        settlementDate: setDate,
+        resignationOrTerminationDate: lastDate,
+        lastMonthlySalary: Number(lastMonthlySalary) || staff.monthlySalary,
+        dueSalaryAmount: Number(dueSalaryAmount) || 0,
+        unadjustedAdvanceAmount: Number(unadjustedAdvanceAmount) || 0,
+        gratuityOrHonorarium: Number(gratuityOrHonorarium) || 0,
+        otherAllowances: Number(otherAllowances) || 0,
+        totalDeduction: Number(totalDeduction) || 0,
+        netSettlementAmount: netAmount,
+        paymentMethod: paymentMethod as any,
+        accountId: account.id,
+        accountNameBn: account.nameBn,
+        expenseVoucherNumber: expVoucher || undefined,
+        notes,
+        status: 'SETTLED',
+        settledBy: req.user!.id,
+        settledByName: req.user!.name,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      staff.finalSettlement = settlementRec;
+      if (settleAndEndEmployment) {
+        staff.status = 'EMPLOYMENT_ENDED';
+        staff.resignationDate = lastDate;
+      }
+
+      // Mark advances as adjusted
+      if (staff.advanceRecords) {
+        staff.advanceRecords.forEach(a => {
+          if (a.status === 'ACTIVE') {
+            a.status = 'FULLY_ADJUSTED';
+            a.adjustedAmount = a.amount;
+            a.outstandingAmount = 0;
+          }
+        });
+      }
+
+      if (!staff.employmentHistory) staff.employmentHistory = [];
+      staff.employmentHistory.unshift({
+        id: `eh-${Date.now()}`,
+        date: setDate,
+        eventType: 'SETTLEMENT',
+        eventTitle: 'চাকুরির চূড়ান্ত হিসাব নিষ্পত্তি',
+        description: `চাকুরির সমাপ্তি ও চূড়ান্ত পাওনা নিষ্পত্তি: ৳${netAmount} পরিশোধিত (ভাউচার: ${expVoucher || 'N/A'})`,
+        performedBy: req.user!.id,
+        performedByName: req.user!.name,
+        createdAt: new Date().toISOString()
+      });
+
+      staff.updatedAt = new Date().toISOString();
+
+      tx.logAudit(
+        mosqueId,
+        req.user!.id,
+        req.user!.name,
+        req.user!.role,
+        'UPDATE',
+        'STAFF_SETTLEMENT',
+        `${staff.name} এর চূড়ান্ত নিষ্পত্তি সম্পন্ন: মোট পরিশোধ ৳${netAmount}`
+      );
+
+      return { finalSettlementRecord: settlementRec, updatedStaff: staff };
     });
+
+    realtime.broadcastToMosque(mosqueId, 'STAFF_UPDATED', updatedStaff, { senderId: req.user!.id });
+    realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+    res.json({ success: true, data: finalSettlementRecord, staff: updatedStaff, message: 'স্টাফের চূড়ান্ত হিসাব নিষ্পত্তি সফলভাবে সম্পন্ন হয়েছে।' });
+  } catch (err: any) {
+    if (err instanceof StoragePersistenceError) {
+      return res.status(500).json({ success: false, error: { code: 'PERSISTENCE_FAILED', message: 'স্টাফ চূড়ান্ত নিষ্পত্তি সংরক্ষণ ব্যর্থ হয়েছে। ডেটাবেজ রোলব্যাক সম্পন্ন।' } });
+    }
+    throw err;
   }
-
-  if (!staff.employmentHistory) staff.employmentHistory = [];
-  staff.employmentHistory.unshift({
-    id: `eh-${Date.now()}`,
-    date: setDate,
-    eventType: 'SETTLEMENT',
-    eventTitle: 'চাকুরির চূড়ান্ত হিসাব নিষ্পত্তি',
-    description: `চাকুরির সমাপ্তি ও চূড়ান্ত পাওনা নিষ্পত্তি: ৳${netAmount} পরিশোধিত (ভাউচার: ${expVoucher || 'N/A'})`,
-    performedBy: req.user!.id,
-    performedByName: req.user!.name,
-    createdAt: new Date().toISOString()
-  });
-
-  staff.updatedAt = new Date().toISOString();
-  db.save();
-
-  db.logAudit(
-    mosqueId,
-    req.user!.id,
-    req.user!.name,
-    req.user!.role,
-    'UPDATE',
-    'STAFF_SETTLEMENT',
-    `${staff.name} এর চূড়ান্ত নিষ্পত্তি সম্পন্ন: মোট পরিশোধ ৳${netAmount}`
-  );
-
-  realtime.broadcastToMosque(mosqueId, 'STAFF_UPDATED', staff, { senderId: req.user!.id });
-  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
-
-  res.json({ success: true, data: finalSettlementRecord, staff, message: 'স্টাফের চূড়ান্ত হিসাব নিষ্পত্তি সফলভাবে সম্পন্ন হয়েছে।' });
 });
 
 // Batch Disburse Festival Allowance / Bonus
-app.post('/api/v1/staff/disburse-festival-allowance', authenticate, requirePermission('MANAGE_STAFF'), (req: AuthRequest, res: Response) => {
+app.post('/api/v1/staff/disburse-festival-allowance', authenticate, requirePermission('MANAGE_STAFF'), async (req: AuthRequest, res: Response) => {
   const mosqueId = req.currentMosque!.id;
   const { 
     festivalName, 
@@ -10264,103 +10607,116 @@ app.post('/api/v1/staff/disburse-festival-allowance', authenticate, requirePermi
   const payMonth = month || `${currentYear}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
   const activeTerm = db.committeeTerms.find(t => t.mosqueId === mosqueId && t.status === 'ACTIVE');
 
-  let batchTotalAmount = 0;
-  const createdPayments: StaffPayment[] = [];
+  try {
+    const { createdPayments, batchTotalAmount, resPayload } = await db.runTransaction((tx) => {
+      let batchTotal = 0;
+      const payments: StaffPayment[] = [];
 
-  for (const item of staffAllocations) {
-    const staff = db.staffList.find(s => s.id === item.staffId && s.mosqueId === mosqueId);
-    if (!staff) continue;
+      for (const item of staffAllocations) {
+        const staff = db.staffList.find(s => s.id === item.staffId && s.mosqueId === mosqueId);
+        if (!staff) continue;
 
-    const amount = Number(item.amount) || 0;
-    if (amount <= 0) continue;
+        const amount = Number(item.amount) || 0;
+        if (amount <= 0) continue;
 
-    batchTotalAmount += amount;
-    const expVoucher = `EXP-${currentYear}-${String(db.expenseEntries.filter(e => e.mosqueId === mosqueId).length + 1).padStart(6, '0')}`;
-    const expEntryId = `exp-fest-${Date.now()}-${staff.id.slice(-4)}`;
+        batchTotal += amount;
+        const expVoucher = `EXP-${currentYear}-${String(db.expenseEntries.filter(e => e.mosqueId === mosqueId).length + 1).padStart(6, '0')}`;
+        const expEntryId = `exp-fest-${Date.now()}-${staff.id.slice(-4)}`;
 
-    const payment: StaffPayment = {
-      id: `pay-${Date.now()}-${staff.id.slice(-4)}`,
-      mosqueId,
-      staffId: staff.id,
-      staffName: staff.name,
-      designationBn: staff.designationBn,
-      month: payMonth,
-      paymentDate: payDate,
-      paymentType: paymentType as any,
-      festivalName,
-      basicSalary: 0,
-      bonus: amount,
-      otherAllowance: 0,
-      allowance: amount,
-      deduction: 0,
-      totalPayable: amount,
-      netPaid: amount,
-      paymentMethod: paymentMethod || 'BANK',
-      accountId: account.id,
-      accountNameBn: account.nameBn,
-      expenseVoucherNumber: expVoucher,
-      expenseEntryId: expEntryId,
-      notes: `${festivalName}: ${item.notes || notes || ''}`.trim(),
-      status: 'PAID',
-      termId: activeTerm ? activeTerm.id : undefined,
-      createdAt: new Date().toISOString()
-    };
+        const payment: StaffPayment = {
+          id: `pay-${Date.now()}-${staff.id.slice(-4)}`,
+          mosqueId,
+          staffId: staff.id,
+          staffName: staff.name,
+          designationBn: staff.designationBn,
+          month: payMonth,
+          paymentDate: payDate,
+          paymentType: paymentType as any,
+          festivalName,
+          basicSalary: 0,
+          bonus: amount,
+          otherAllowance: 0,
+          allowance: amount,
+          deduction: 0,
+          totalPayable: amount,
+          netPaid: amount,
+          paymentMethod: paymentMethod || 'BANK',
+          accountId: account.id,
+          accountNameBn: account.nameBn,
+          expenseVoucherNumber: expVoucher,
+          expenseEntryId: expEntryId,
+          notes: `${festivalName}: ${item.notes || notes || ''}`.trim(),
+          status: 'PAID',
+          termId: activeTerm ? activeTerm.id : undefined,
+          createdAt: new Date().toISOString()
+        };
 
-    db.staffPayments.unshift(payment);
-    createdPayments.push(payment);
+        db.staffPayments.unshift(payment);
+        payments.push(payment);
 
-    // Auto Expense Entry
-    db.expenseEntries.unshift({
-      id: expEntryId,
-      mosqueId,
-      termId: activeTerm ? activeTerm.id : undefined,
-      voucherNumber: expVoucher,
-      date: payDate,
-      mainHeadId: 'head-exp-01',
-      mainHeadNameBn: 'ইমাম ও স্টাফ বেতন-ভাতা (Staff Salary)',
-      subHeadId: staff.designation === 'IMAM' || staff.designation === 'KHATIB' ? 'head-exp-01-1' : 'head-exp-01-2',
-      subHeadNameBn: `${festivalName} ভাতা (${staff.name})`,
-      amount: amount,
-      paymentMethod: payment.paymentMethod,
-      accountId: account.id,
-      accountName: account.nameBn,
-      payeeName: staff.name,
-      payeePhone: staff.phone,
-      reference: `${festivalName} - ${payMonth}`,
-      description: `${staff.name} (${staff.designationBn}) কে ${festivalName} বাবদ উৎসব ভাতা প্রদান [ভাউচার: ${expVoucher}]`,
-      createdBy: req.user!.id,
-      createdByName: req.user!.name,
-      approvedBy: req.user!.id,
-      approvedByName: req.user!.name,
-      approvedAt: new Date().toISOString(),
-      status: 'APPROVED',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+        // Auto Expense Entry
+        db.expenseEntries.unshift({
+          id: expEntryId,
+          mosqueId,
+          termId: activeTerm ? activeTerm.id : undefined,
+          voucherNumber: expVoucher,
+          date: payDate,
+          mainHeadId: 'head-exp-01',
+          mainHeadNameBn: 'ইমাম ও স্টাফ বেতন-ভাতা (Staff Salary)',
+          subHeadId: staff.designation === 'IMAM' || staff.designation === 'KHATIB' ? 'head-exp-01-1' : 'head-exp-01-2',
+          subHeadNameBn: `${festivalName} ভাতা (${staff.name})`,
+          amount: amount,
+          paymentMethod: payment.paymentMethod,
+          accountId: account.id,
+          accountName: account.nameBn,
+          payeeName: staff.name,
+          payeePhone: staff.phone,
+          reference: `${festivalName} - ${payMonth}`,
+          description: `${staff.name} (${staff.designationBn}) কে ${festivalName} বাবদ উৎসব ভাতা প্রদান [ভাউচার: ${expVoucher}]`,
+          createdBy: req.user!.id,
+          createdByName: req.user!.name,
+          approvedBy: req.user!.id,
+          approvedByName: req.user!.name,
+          approvedAt: new Date().toISOString(),
+          status: 'APPROVED',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+      }
+
+      // Deduct bank/cash balance
+      account.currentBalance -= batchTotal;
+
+      tx.logAudit(
+        mosqueId,
+        req.user!.id,
+        req.user!.name,
+        req.user!.role,
+        'CREATE',
+        'STAFF_PAYMENT',
+        `${festivalName} উৎসব ভাতা বিতরণ: ${payments.length} জন স্টাফকে সর্বমোট ৳${batchTotal} প্রদান`
+      );
+
+      const payload = { 
+        success: true, 
+        data: { payments, totalAmount: batchTotal, count: payments.length },
+        message: `${festivalName} বাবদ ${payments.length} জন স্টাফের উৎসব ভাতা সফলভাবে একাউন্ট ও ভাউচারে যুক্ত হয়েছে।` 
+      };
+      tx.saveIdempotency(req.idempotencyKey, payload);
+
+      return { createdPayments: payments, batchTotalAmount: batchTotal, resPayload: payload };
     });
+
+    realtime.broadcastToMosque(mosqueId, 'STAFF_FESTIVAL_DISBURSED', { payments: createdPayments, totalAmount: batchTotalAmount }, { senderId: req.user!.id });
+    realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+    res.json(resPayload);
+  } catch (err: any) {
+    if (err instanceof StoragePersistenceError) {
+      return res.status(500).json({ success: false, error: { code: 'PERSISTENCE_FAILED', message: 'উৎসব ভাতা বিতরণ সংরক্ষণ ব্যর্থ হয়েছে। ডেটাবেজ রোলব্যাক সম্পন্ন।' } });
+    }
+    throw err;
   }
-
-  // Deduct bank/cash balance
-  account.currentBalance -= batchTotalAmount;
-
-  db.save();
-  db.logAudit(
-    mosqueId,
-    req.user!.id,
-    req.user!.name,
-    req.user!.role,
-    'CREATE',
-    'STAFF_PAYMENT',
-    `${festivalName} উৎসব ভাতা বিতরণ: ${createdPayments.length} জন স্টাফকে সর্বমোট ৳${batchTotalAmount} প্রদান`
-  );
-
-  realtime.broadcastToMosque(mosqueId, 'STAFF_FESTIVAL_DISBURSED', { payments: createdPayments, totalAmount: batchTotalAmount }, { senderId: req.user!.id });
-  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
-
-  res.json({ 
-    success: true, 
-    data: { payments: createdPayments, totalAmount: batchTotalAmount, count: createdPayments.length },
-    message: `${festivalName} বাবদ ${createdPayments.length} জন স্টাফের উৎসব ভাতা সফলভাবে একাউন্ট ও ভাউচারে যুক্ত হয়েছে।` 
-  });
 });
 
 app.delete('/api/v1/staff/:id', authenticate, requirePermission('MANAGE_STAFF'), (req: AuthRequest, res: Response) => {
@@ -10395,7 +10751,7 @@ app.delete('/api/v1/staff/:id', authenticate, requirePermission('MANAGE_STAFF'),
 });
 
 // Pay staff salary
-const handleStaffPay = (req: AuthRequest, res: Response) => {
+const handleStaffPay = async (req: AuthRequest, res: Response) => {
   const { 
     staffId, 
     month, 
@@ -10463,115 +10819,125 @@ const handleStaffPay = (req: AuthRequest, res: Response) => {
   // Active Committee Term Link
   const activeTerm = db.committeeTerms.find(t => t.mosqueId === mosqueId && t.status === 'ACTIVE');
 
-  // Check and deduct account balance
-  account.currentBalance -= totalAmount;
+  try {
+    const payment = await db.runTransaction((tx) => {
+      // Check and deduct account balance
+      account.currentBalance -= totalAmount;
 
-  // Auto create expense voucher
-  const expVoucher = `EXP-${currentYear}-${String(db.expenseEntries.filter(e => e.mosqueId === mosqueId).length + 1).padStart(6, '0')}`;
-  const expEntryId = `exp-pay-${Date.now()}`;
+      // Auto create expense voucher
+      const expVoucher = `EXP-${currentYear}-${String(db.expenseEntries.filter(e => e.mosqueId === mosqueId).length + 1).padStart(6, '0')}`;
+      const expEntryId = `exp-pay-${Date.now()}`;
 
-  const payment: StaffPayment = {
-    id: `pay-${Date.now()}`,
-    mosqueId,
-    staffId: staff.id,
-    staffName: staff.name,
-    designationBn: staff.designationBn,
-    month: monthName,
-    paymentDate: payDate,
-    paymentType: paymentType || 'REGULAR_SALARY',
-    festivalName: festivalName || undefined,
-    basicSalary: numBasic,
-    bonus: numBonus,
-    otherAllowance: numOther,
-    allowance: numBonus + numOther,
-    deduction: numDeduction,
-    advanceDeduction: numAdvDeduction,
-    totalPayable: totalPayable,
-    netPaid: totalAmount,
-    paymentMethod: paymentMethod || 'CASH',
-    accountId: account.id,
-    accountNameBn: account.nameBn,
-    expenseVoucherNumber: expVoucher,
-    expenseEntryId: expEntryId,
-    notes,
-    staffSignatureUrl: staffSignatureUrl || staff.signatureUrl || undefined,
-    receivedByConfirmation: receivedByConfirmation !== undefined ? Boolean(receivedByConfirmation) : true,
-    status: 'PAID',
-    termId: activeTerm ? activeTerm.id : undefined,
-    createdAt: new Date().toISOString()
-  };
+      const paymentRecord: StaffPayment = {
+        id: `pay-${Date.now()}`,
+        mosqueId,
+        staffId: staff.id,
+        staffName: staff.name,
+        designationBn: staff.designationBn,
+        month: monthName,
+        paymentDate: payDate,
+        paymentType: paymentType || 'REGULAR_SALARY',
+        festivalName: festivalName || undefined,
+        basicSalary: numBasic,
+        bonus: numBonus,
+        otherAllowance: numOther,
+        allowance: numBonus + numOther,
+        deduction: numDeduction,
+        advanceDeduction: numAdvDeduction,
+        totalPayable: totalPayable,
+        netPaid: totalAmount,
+        paymentMethod: paymentMethod || 'CASH',
+        accountId: account.id,
+        accountNameBn: account.nameBn,
+        expenseVoucherNumber: expVoucher,
+        expenseEntryId: expEntryId,
+        notes,
+        staffSignatureUrl: staffSignatureUrl || staff.signatureUrl || undefined,
+        receivedByConfirmation: receivedByConfirmation !== undefined ? Boolean(receivedByConfirmation) : true,
+        status: 'PAID',
+        termId: activeTerm ? activeTerm.id : undefined,
+        createdAt: new Date().toISOString()
+      };
 
-  db.staffPayments.unshift(payment);
+      db.staffPayments.unshift(paymentRecord);
 
-  // If advance deduction occurred, adjust active advance records for the staff
-  if (numAdvDeduction > 0 && staff.advanceRecords) {
-    let remainingToAdjust = numAdvDeduction;
-    for (const adv of staff.advanceRecords) {
-      if (adv.status === 'ACTIVE' && remainingToAdjust > 0) {
-        const canAdjust = Math.min(remainingToAdjust, adv.outstandingAmount);
-        adv.adjustedAmount = (adv.adjustedAmount || 0) + canAdjust;
-        adv.outstandingAmount -= canAdjust;
-        if (!adv.adjustmentHistory) adv.adjustmentHistory = [];
-        adv.adjustmentHistory.push({
-          paymentId: payment.id,
-          month: monthName,
-          amount: canAdjust,
-          date: payDate
-        });
-        if (adv.outstandingAmount <= 0) {
-          adv.status = 'FULLY_ADJUSTED';
-        } else {
-          adv.status = 'ACTIVE';
+      // If advance deduction occurred, adjust active advance records for the staff
+      if (numAdvDeduction > 0 && staff.advanceRecords) {
+        let remainingToAdjust = numAdvDeduction;
+        for (const adv of staff.advanceRecords) {
+          if (adv.status === 'ACTIVE' && remainingToAdjust > 0) {
+            const canAdjust = Math.min(remainingToAdjust, adv.outstandingAmount);
+            adv.adjustedAmount = (adv.adjustedAmount || 0) + canAdjust;
+            adv.outstandingAmount -= canAdjust;
+            if (!adv.adjustmentHistory) adv.adjustmentHistory = [];
+            adv.adjustmentHistory.push({
+              paymentId: paymentRecord.id,
+              month: monthName,
+              amount: canAdjust,
+              date: payDate
+            });
+            if (adv.outstandingAmount <= 0) {
+              adv.status = 'FULLY_ADJUSTED';
+            } else {
+              adv.status = 'ACTIVE';
+            }
+            remainingToAdjust -= canAdjust;
+          }
         }
-        remainingToAdjust -= canAdjust;
       }
+
+      // Auto-post expense entry linked to Committee Term and head-exp-01
+      db.expenseEntries.unshift({
+        id: expEntryId,
+        mosqueId,
+        termId: activeTerm ? activeTerm.id : undefined,
+        voucherNumber: expVoucher,
+        date: payDate,
+        mainHeadId: 'head-exp-01',
+        mainHeadNameBn: 'ইমাম ও স্টাফ বেতন-ভাতা (Staff Salary)',
+        subHeadId: staff.designation === 'IMAM' || staff.designation === 'KHATIB' ? 'head-exp-01-1' : 'head-exp-01-2',
+        subHeadNameBn: `${staff.designationBn} বেতন ও হাদিয়া (${staff.name} - ${monthName})`,
+        amount: totalAmount,
+        paymentMethod: paymentRecord.paymentMethod,
+        accountId: account.id,
+        accountName: account.nameBn,
+        payeeName: staff.name,
+        payeePhone: staff.phone,
+        reference: `${paymentType === 'FESTIVAL_ALLOWANCE' ? festivalName || 'উৎসব ভাতা' : 'Salary Month'}: ${monthName}`,
+        description: `${staff.name} (${staff.designationBn}) এর ${monthName} মাসের ${paymentType === 'FESTIVAL_ALLOWANCE' ? `${festivalName || 'উৎসব ভাতা'}` : 'বেতন/হাদিয়া'} পরিশোধ ${numBonus > 0 ? `(বোনাস: ৳${numBonus})` : ''} ${notes ? `[${notes}]` : ''}`.trim(),
+        createdBy: req.user!.id,
+        createdByName: req.user!.name,
+        approvedBy: req.user!.id,
+        approvedByName: req.user!.name,
+        approvedAt: new Date().toISOString(),
+        status: 'APPROVED',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+
+      tx.logAudit(
+        mosqueId, 
+        req.user!.id, 
+        req.user!.name, 
+        req.user!.role, 
+        'CREATE', 
+        'STAFF_PAYMENT', 
+        `${staff.name} এর ${monthName} মাসের বেতন পরিশোধ (${expVoucher}): মূল ৳${numBasic}${numBonus > 0 ? ` + বোনাস ৳${numBonus}` : ''} = মোট ৳${totalAmount}`
+      );
+
+      return paymentRecord;
+    });
+
+    realtime.broadcastToMosque(mosqueId, 'STAFF_PAID', payment, { senderId: req.user!.id });
+    realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+    res.json({ success: true, data: payment, message: 'বেতন ও বোনাস সফলভাবে পরিশোধ ও হিসাবভুক্ত করা হয়েছে।' });
+  } catch (err: any) {
+    if (err instanceof StoragePersistenceError) {
+      return res.status(500).json({ success: false, error: { code: 'PERSISTENCE_FAILED', message: 'স্টাফ বেতন পরিশোধ সংরক্ষণ ব্যর্থ হয়েছে। ডেটাবেজ রোলব্যাক সম্পন্ন।' } });
     }
+    throw err;
   }
-
-  // Auto-post expense entry linked to Committee Term and head-exp-01
-  db.expenseEntries.unshift({
-    id: expEntryId,
-    mosqueId,
-    termId: activeTerm ? activeTerm.id : undefined,
-    voucherNumber: expVoucher,
-    date: payDate,
-    mainHeadId: 'head-exp-01',
-    mainHeadNameBn: 'ইমাম ও স্টাফ বেতন-ভাতা (Staff Salary)',
-    subHeadId: staff.designation === 'IMAM' || staff.designation === 'KHATIB' ? 'head-exp-01-1' : 'head-exp-01-2',
-    subHeadNameBn: `${staff.designationBn} বেতন ও হাদিয়া (${staff.name} - ${monthName})`,
-    amount: totalAmount,
-    paymentMethod: payment.paymentMethod,
-    accountId: account.id,
-    accountName: account.nameBn,
-    payeeName: staff.name,
-    payeePhone: staff.phone,
-    reference: `${paymentType === 'FESTIVAL_ALLOWANCE' ? festivalName || 'উৎসব ভাতা' : 'Salary Month'}: ${monthName}`,
-    description: `${staff.name} (${staff.designationBn}) এর ${monthName} মাসের ${paymentType === 'FESTIVAL_ALLOWANCE' ? `${festivalName || 'উৎসব ভাতা'}` : 'বেতন/হাদিয়া'} পরিশোধ ${numBonus > 0 ? `(বোনাস: ৳${numBonus})` : ''} ${notes ? `[${notes}]` : ''}`.trim(),
-    createdBy: req.user!.id,
-    createdByName: req.user!.name,
-    approvedBy: req.user!.id,
-    approvedByName: req.user!.name,
-    approvedAt: new Date().toISOString(),
-    status: 'APPROVED',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  });
-
-  db.save();
-  db.logAudit(
-    mosqueId, 
-    req.user!.id, 
-    req.user!.name, 
-    req.user!.role, 
-    'CREATE', 
-    'STAFF_PAYMENT', 
-    `${staff.name} এর ${monthName} মাসের বেতন পরিশোধ (${expVoucher}): মূল ৳${numBasic}${numBonus > 0 ? ` + বোনাস ৳${numBonus}` : ''} = মোট ৳${totalAmount}`
-  );
-
-  realtime.broadcastToMosque(mosqueId, 'STAFF_PAID', payment, { senderId: req.user!.id });
-  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
-
-  res.json({ success: true, data: payment, message: 'বেতন ও বোনাস সফলভাবে পরিশোধ ও হিসাবভুক্ত করা হয়েছে।' });
 };
 
 app.post('/api/v1/staff/pay', authenticate, requirePermission('MANAGE_STAFF'), handleStaffPay);
@@ -10660,7 +11026,7 @@ app.put('/api/v1/staff/payments/:id', authenticate, requirePermission('MANAGE_ST
 });
 
 // Cancel / Reversal for Staff Payment
-app.post('/api/v1/staff/payments/:id/cancel', authenticate, requirePermission('MANAGE_STAFF'), (req: AuthRequest, res: Response) => {
+app.post('/api/v1/staff/payments/:id/cancel', authenticate, requirePermission('MANAGE_STAFF'), async (req: AuthRequest, res: Response) => {
   const mosqueId = req.currentMosque!.id;
   const payment = db.staffPayments.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
   if (!payment) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'পেমেন্ট রেকর্ড পাওয়া যায়নি।' } });
@@ -10670,37 +11036,46 @@ app.post('/api/v1/staff/payments/:id/cancel', authenticate, requirePermission('M
   }
 
   const { reason } = req.body;
-  const account = db.accounts.find(a => a.id === payment.accountId);
-  if (account) {
-    account.currentBalance += payment.netPaid; // Restore fund
+
+  try {
+    await db.runTransaction((tx) => {
+      const account = db.accounts.find(a => a.id === payment.accountId);
+      if (account) {
+        account.currentBalance += payment.netPaid; // Restore fund
+      }
+
+      payment.status = 'CANCELLED';
+      payment.notes = `${payment.notes ? payment.notes + ' | ' : ''}[বাতিলকৃত: ${reason || 'প্রশাসনিক সিদ্ধান্ত'}]`;
+      payment.updatedAt = new Date().toISOString();
+
+      const expEntry = db.expenseEntries.find(e => e.voucherNumber === payment.expenseVoucherNumber || e.id === payment.expenseEntryId);
+      if (expEntry) {
+        expEntry.status = 'REJECTED';
+        expEntry.description = `[বাতিলকৃত ভাউচার] ${expEntry.description} (কারণ: ${reason || 'প্রশাসনিক সিদ্ধান্ত'})`;
+        expEntry.updatedAt = new Date().toISOString();
+      }
+
+      tx.logAudit(
+        mosqueId, 
+        req.user!.id, 
+        req.user!.name, 
+        req.user!.role, 
+        'DELETE', 
+        'STAFF_PAYMENT', 
+        `${payment.staffName} এর ${payment.month} মাসের বেতন বাতিল ও ব্যালেন্স সমন্বয় (${payment.expenseVoucherNumber}): ৳${payment.netPaid}`
+      );
+    });
+
+    realtime.broadcastToMosque(mosqueId, 'STAFF_PAYMENT_CANCELLED', { id: payment.id }, { senderId: req.user!.id });
+    realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+    res.json({ success: true, message: 'বেতন পেমেন্ট সফলভাবে বাতিল ও ব্যাংক/ক্যাশ একাউন্টে তহবিল সমন্বয় করা হয়েছে।' });
+  } catch (err: any) {
+    if (err instanceof StoragePersistenceError) {
+      return res.status(500).json({ success: false, error: { code: 'PERSISTENCE_FAILED', message: 'বেতন পেমেন্ট বাতিলকরণ সংরক্ষণ ব্যর্থ হয়েছে। ডেটাবেজ রোলব্যাক সম্পন্ন।' } });
+    }
+    throw err;
   }
-
-  payment.status = 'CANCELLED';
-  payment.notes = `${payment.notes ? payment.notes + ' | ' : ''}[বাতিলকৃত: ${reason || 'প্রশাসনিক সিদ্ধান্ত'}]`;
-  payment.updatedAt = new Date().toISOString();
-
-  const expEntry = db.expenseEntries.find(e => e.voucherNumber === payment.expenseVoucherNumber || e.id === payment.expenseEntryId);
-  if (expEntry) {
-    expEntry.status = 'REJECTED';
-    expEntry.description = `[বাতিলকৃত ভাউচার] ${expEntry.description} (কারণ: ${reason || 'প্রশাসনিক সিদ্ধান্ত'})`;
-    expEntry.updatedAt = new Date().toISOString();
-  }
-
-  db.save();
-  db.logAudit(
-    mosqueId, 
-    req.user!.id, 
-    req.user!.name, 
-    req.user!.role, 
-    'DELETE', 
-    'STAFF_PAYMENT', 
-    `${payment.staffName} এর ${payment.month} মাসের বেতন বাতিল ও ব্যালেন্স সমন্বয় (${payment.expenseVoucherNumber}): ৳${payment.netPaid}`
-  );
-
-  realtime.broadcastToMosque(mosqueId, 'STAFF_PAYMENT_CANCELLED', { id: payment.id }, { senderId: req.user!.id });
-  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
-
-  res.json({ success: true, message: 'বেতন পেমেন্ট সফলভাবে বাতিল ও ব্যাংক/ক্যাশ একাউন্টে তহবিল সমন্বয় করা হয়েছে।' });
 });
 
 // ==========================================
@@ -11102,7 +11477,7 @@ app.put('/api/v1/staff/payment-batches/:id', authenticate, requirePermission('MA
 });
 
 // Disburse / Execute Payment Batch (creates individual StaffPayment + 1-to-1 ExpenseEntry + Account Balances)
-app.post('/api/v1/staff/payment-batches/:id/disburse', authenticate, requirePermission('MANAGE_STAFF'), (req: AuthRequest, res: Response) => {
+app.post('/api/v1/staff/payment-batches/:id/disburse', authenticate, requirePermission('MANAGE_STAFF'), async (req: AuthRequest, res: Response) => {
   const mosque = req.currentMosque!;
   const mosqueId = mosque.id;
   const batch = (db.paymentBatches || []).find((b: any) => b.id === req.params.id && b.mosqueId === mosqueId);
@@ -11122,146 +11497,155 @@ app.post('/api/v1/staff/payment-batches/:id/disburse', authenticate, requirePerm
   const activeTerm = db.committeeTerms.find(t => t.mosqueId === mosqueId && t.status === 'ACTIVE');
   const currentYear = batch.paymentYear || new Date().getFullYear();
 
-  const createdPayments: StaffPayment[] = [];
+  try {
+    const { disbursedBatch, createdPayments } = await db.runTransaction((tx) => {
+      const paymentsList: StaffPayment[] = [];
 
-  for (const item of batch.items) {
-    if (item.status === 'PAID') continue; // already paid
+      for (const item of batch.items) {
+        if (item.status === 'PAID') continue; // already paid
 
-    const staff = db.staffList.find(s => s.id === item.staffId && s.mosqueId === mosqueId);
-    if (!staff) continue;
+        const staff = db.staffList.find(s => s.id === item.staffId && s.mosqueId === mosqueId);
+        if (!staff) continue;
 
-    // Check balance
-    account.currentBalance -= item.netPayable;
+        // Check balance
+        account.currentBalance -= item.netPayable;
 
-    const expVoucher = `EXP-${currentYear}-${String(db.expenseEntries.filter(e => e.mosqueId === mosqueId).length + 1).padStart(6, '0')}`;
-    const expEntryId = `exp-batch-${Date.now()}-${item.staffId}`;
+        const expVoucher = `EXP-${currentYear}-${String(db.expenseEntries.filter(e => e.mosqueId === mosqueId).length + 1).padStart(6, '0')}`;
+        const expEntryId = `exp-batch-${Date.now()}-${item.staffId}`;
 
-    const payment: StaffPayment = {
-      id: `pay-${Date.now()}-${item.staffId}`,
-      mosqueId,
-      staffId: staff.id,
-      staffName: staff.name,
-      designationBn: staff.designationBn,
-      month: batch.paymentMonth,
-      paymentDate: payDate,
-      paymentType: batch.paymentType === 'FESTIVAL_ALLOWANCE' ? 'FESTIVAL_ALLOWANCE' : (batch.paymentType === 'HADIA' ? 'HADIA' : 'REGULAR_SALARY'),
-      festivalName: batch.festivalName,
-      basicSalary: item.basicSalary,
-      bonus: item.bonus || 0,
-      otherAllowance: item.otherAllowance || 0,
-      allowance: item.allowance || 0,
-      deduction: item.deduction,
-      advanceDeduction: item.advanceAdjustment,
-      advanceAdjustment: item.advanceAdjustment,
-      totalPayable: item.totalPayable,
-      payableAmount: item.totalPayable,
-      netPaid: item.netPayable,
-      remainingDue: 0,
-      paymentMethod: item.paymentMethod || 'BANK',
-      accountId: account.id,
-      accountNameBn: account.nameBn,
-      bankName: item.bankName || staff.bankName,
-      branchName: item.branchName || staff.branchName,
-      accountNumber: item.accountNumber || staff.accountNumber,
-      expenseVoucherNumber: expVoucher,
-      expenseEntryId: expEntryId,
-      batchId: batch.id,
-      batchNumber: batch.batchNumber,
-      notes: item.notes || notes || `ব্যাচ পেমেন্ট: ${batch.batchNumber}`,
-      staffSignatureUrl: staff.signatureUrl || undefined,
-      receivedByConfirmation: true,
-      status: 'PAID',
-      termId: activeTerm ? activeTerm.id : undefined,
-      createdBy: req.user!.id,
-      createdByName: req.user!.name,
-      createdAt: new Date().toISOString()
-    };
+        const payment: StaffPayment = {
+          id: `pay-${Date.now()}-${item.staffId}`,
+          mosqueId,
+          staffId: staff.id,
+          staffName: staff.name,
+          designationBn: staff.designationBn,
+          month: batch.paymentMonth,
+          paymentDate: payDate,
+          paymentType: batch.paymentType === 'FESTIVAL_ALLOWANCE' ? 'FESTIVAL_ALLOWANCE' : (batch.paymentType === 'HADIA' ? 'HADIA' : 'REGULAR_SALARY'),
+          festivalName: batch.festivalName,
+          basicSalary: item.basicSalary,
+          bonus: item.bonus || 0,
+          otherAllowance: item.otherAllowance || 0,
+          allowance: item.allowance || 0,
+          deduction: item.deduction,
+          advanceDeduction: item.advanceAdjustment,
+          advanceAdjustment: item.advanceAdjustment,
+          totalPayable: item.totalPayable,
+          payableAmount: item.totalPayable,
+          netPaid: item.netPayable,
+          remainingDue: 0,
+          paymentMethod: item.paymentMethod || 'BANK',
+          accountId: account.id,
+          accountNameBn: account.nameBn,
+          bankName: item.bankName || staff.bankName,
+          branchName: item.branchName || staff.branchName,
+          accountNumber: item.accountNumber || staff.accountNumber,
+          expenseVoucherNumber: expVoucher,
+          expenseEntryId: expEntryId,
+          batchId: batch.id,
+          batchNumber: batch.batchNumber,
+          notes: item.notes || notes || `ব্যাচ পেমেন্ট: ${batch.batchNumber}`,
+          staffSignatureUrl: staff.signatureUrl || undefined,
+          receivedByConfirmation: true,
+          status: 'PAID',
+          termId: activeTerm ? activeTerm.id : undefined,
+          createdBy: req.user!.id,
+          createdByName: req.user!.name,
+          createdAt: new Date().toISOString()
+        };
 
-    db.staffPayments.unshift(payment);
-    createdPayments.push(payment);
+        db.staffPayments.unshift(payment);
+        paymentsList.push(payment);
 
-    item.status = 'PAID';
-    item.paymentId = payment.id;
-    item.voucherNumber = expVoucher;
+        item.status = 'PAID';
+        item.paymentId = payment.id;
+        item.voucherNumber = expVoucher;
 
-    // Adjust advance records if advance adjustment was made
-    if (item.advanceAdjustment && item.advanceAdjustment > 0 && staff.advanceRecords) {
-      let rem = item.advanceAdjustment;
-      for (const adv of staff.advanceRecords) {
-        if (adv.status === 'ACTIVE' && rem > 0) {
-          const adj = Math.min(rem, adv.outstandingAmount);
-          adv.adjustedAmount = (adv.adjustedAmount || 0) + adj;
-          adv.outstandingAmount -= adj;
-          if (!adv.adjustmentHistory) adv.adjustmentHistory = [];
-          adv.adjustmentHistory.push({
-            paymentId: payment.id,
-            month: batch.paymentMonth,
-            amount: adj,
-            date: payDate
-          });
-          if (adv.outstandingAmount <= 0) adv.status = 'FULLY_ADJUSTED';
-          rem -= adj;
+        // Adjust advance records if advance adjustment was made
+        if (item.advanceAdjustment && item.advanceAdjustment > 0 && staff.advanceRecords) {
+          let rem = item.advanceAdjustment;
+          for (const adv of staff.advanceRecords) {
+            if (adv.status === 'ACTIVE' && rem > 0) {
+              const adj = Math.min(rem, adv.outstandingAmount);
+              adv.adjustedAmount = (adv.adjustedAmount || 0) + adj;
+              adv.outstandingAmount -= adj;
+              if (!adv.adjustmentHistory) adv.adjustmentHistory = [];
+              adv.adjustmentHistory.push({
+                paymentId: payment.id,
+                month: batch.paymentMonth,
+                amount: adj,
+                date: payDate
+              });
+              if (adv.outstandingAmount <= 0) adv.status = 'FULLY_ADJUSTED';
+              rem -= adj;
+            }
+          }
         }
+
+        // Auto-post expense entry linked 1:1
+        db.expenseEntries.unshift({
+          id: expEntryId,
+          mosqueId,
+          termId: activeTerm ? activeTerm.id : undefined,
+          voucherNumber: expVoucher,
+          date: payDate,
+          mainHeadId: 'head-exp-01',
+          mainHeadNameBn: 'ইমাম ও স্টাফ বেতন-ভাতা (Staff Salary)',
+          subHeadId: staff.designation === 'IMAM' || staff.designation === 'KHATIB' ? 'head-exp-01-1' : 'head-exp-01-2',
+          subHeadNameBn: `${staff.designationBn} বেতন ও হাদিয়া (${staff.name} - ${batch.paymentMonth})`,
+          amount: item.netPayable,
+          paymentMethod: item.paymentMethod || 'BANK',
+          accountId: account.id,
+          accountName: account.nameBn,
+          payeeName: staff.name,
+          payeePhone: staff.phone,
+          reference: `ব্যাচ: ${batch.batchNumber} | মাস: ${batch.paymentMonth}`,
+          description: `${staff.name} (${staff.designationBn}) এর ${batch.paymentMonth} মাসের বেতন/হাদিয়া পরিশোধ [ব্যাচ: ${batch.batchNumber}]`.trim(),
+          createdBy: req.user!.id,
+          createdByName: req.user!.name,
+          approvedBy: req.user!.id,
+          approvedByName: req.user!.name,
+          approvedAt: new Date().toISOString(),
+          status: 'APPROVED',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
       }
-    }
 
-    // Auto-post expense entry linked 1:1
-    db.expenseEntries.unshift({
-      id: expEntryId,
-      mosqueId,
-      termId: activeTerm ? activeTerm.id : undefined,
-      voucherNumber: expVoucher,
-      date: payDate,
-      mainHeadId: 'head-exp-01',
-      mainHeadNameBn: 'ইমাম ও স্টাফ বেতন-ভাতা (Staff Salary)',
-      subHeadId: staff.designation === 'IMAM' || staff.designation === 'KHATIB' ? 'head-exp-01-1' : 'head-exp-01-2',
-      subHeadNameBn: `${staff.designationBn} বেতন ও হাদিয়া (${staff.name} - ${batch.paymentMonth})`,
-      amount: item.netPayable,
-      paymentMethod: item.paymentMethod || 'BANK',
-      accountId: account.id,
-      accountName: account.nameBn,
-      payeeName: staff.name,
-      payeePhone: staff.phone,
-      reference: `ব্যাচ: ${batch.batchNumber} | মাস: ${batch.paymentMonth}`,
-      description: `${staff.name} (${staff.designationBn}) এর ${batch.paymentMonth} মাসের বেতন/হাদিয়া পরিশোধ [ব্যাচ: ${batch.batchNumber}]`.trim(),
-      createdBy: req.user!.id,
-      createdByName: req.user!.name,
-      approvedBy: req.user!.id,
-      approvedByName: req.user!.name,
-      approvedAt: new Date().toISOString(),
-      status: 'APPROVED',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      batch.status = 'PAID';
+      batch.disbursedAt = new Date().toISOString();
+      batch.accountId = account.id;
+      batch.accountNameBn = account.nameBn;
+      batch.updatedAt = new Date().toISOString();
+
+      tx.logAudit(
+        mosqueId,
+        req.user!.id,
+        req.user!.name,
+        req.user!.role,
+        'CREATE',
+        'STAFF_PAYMENT',
+        `পেমেন্ট ব্যাচ বিতরণ সম্পন্ন (${batch.batchNumber}): মোট পরিশোধ ৳${batch.totalAmount} (${paymentsList.length} জন কর্মী)`
+      );
+
+      return { disbursedBatch: batch, createdPayments: paymentsList };
     });
+
+    realtime.broadcastToMosque(mosqueId, 'PAYMENT_BATCH_DISBURSED', { batch: disbursedBatch, payments: createdPayments }, { senderId: req.user!.id });
+    realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+    res.json({
+      success: true,
+      data: disbursedBatch,
+      payments: createdPayments,
+      message: `পেমেন্ট ব্যাচ (${batch.batchNumber}) সফলভাবে কার্যকর ও একাউন্টিংয়ে সমন্বিত হয়েছে।`
+    });
+  } catch (err: any) {
+    if (err instanceof StoragePersistenceError) {
+      return res.status(500).json({ success: false, error: { code: 'PERSISTENCE_FAILED', message: 'পেমেন্ট ব্যাচ বিতরণ সংরক্ষণ ব্যর্থ হয়েছে। ডেটাবেজ রোলব্যাক সম্পন্ন।' } });
+    }
+    throw err;
   }
-
-  batch.status = 'PAID';
-  batch.disbursedAt = new Date().toISOString();
-  batch.accountId = account.id;
-  batch.accountNameBn = account.nameBn;
-  batch.updatedAt = new Date().toISOString();
-
-  db.save();
-
-  db.logAudit(
-    mosqueId,
-    req.user!.id,
-    req.user!.name,
-    req.user!.role,
-    'CREATE',
-    'STAFF_PAYMENT',
-    `পেমেন্ট ব্যাচ বিতরণ সম্পন্ন (${batch.batchNumber}): মোট পরিশোধ ৳${batch.totalAmount} (${createdPayments.length} জন কর্মী)`
-  );
-
-  realtime.broadcastToMosque(mosqueId, 'PAYMENT_BATCH_DISBURSED', { batch, payments: createdPayments }, { senderId: req.user!.id });
-  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
-
-  res.json({
-    success: true,
-    data: batch,
-    payments: createdPayments,
-    message: `পেমেন্ট ব্যাচ (${batch.batchNumber}) সফলভাবে কার্যকর ও একাউন্টিংয়ে সমন্বিত হয়েছে।`
-  });
 });
 
 // Cancel Payment Batch
@@ -11481,7 +11865,7 @@ app.get('/api/v1/assets/:id', authenticate, (req: AuthRequest, res: Response) =>
   });
 });
 
-app.post('/api/v1/assets', authenticate, requirePermission('MANAGE_ASSETS'), (req: AuthRequest, res: Response) => {
+app.post('/api/v1/assets', authenticate, requirePermission('MANAGE_ASSETS'), async (req: AuthRequest, res: Response) => {
   const {
     assetCode: customCode,
     name,
@@ -11555,116 +11939,126 @@ app.post('/api/v1/assets', authenticate, requirePermission('MANAGE_ASSETS'), (re
   let linkedVoucherNo = expenseVoucherNumber || '';
   let linkedExpenseId = expenseEntryId || '';
 
-  // Optional: Auto-create Expense Voucher in Accounting without duplication
-  if (createExpenseVoucher && parsedPurchaseValue > 0 && accountId && expenseHeadId) {
-    const account = db.accounts.find(a => a.id === accountId && a.mosqueId === mosqueId);
-    const head = db.accountHeads.find(h => h.id === expenseHeadId && h.mosqueId === mosqueId);
+  try {
+    const newAsset = await db.runTransaction((tx) => {
+      // Optional: Auto-create Expense Voucher in Accounting without duplication
+      if (createExpenseVoucher && parsedPurchaseValue > 0 && accountId && expenseHeadId) {
+        const account = db.accounts.find(a => a.id === accountId && a.mosqueId === mosqueId);
+        const head = db.accountHeads.find(h => h.id === expenseHeadId && h.mosqueId === mosqueId);
 
-    if (account && head) {
-      const expCount = db.expenseEntries.filter(e => e.mosqueId === mosqueId).length + 1;
-      const year = new Date().getFullYear();
-      const expVoucherNo = `EXP-${year}-${String(expCount).padStart(6, '0')}`;
-      const newExpId = `exp-${Date.now()}`;
+        if (account && head) {
+          const expCount = db.expenseEntries.filter(e => e.mosqueId === mosqueId).length + 1;
+          const year = new Date().getFullYear();
+          const expVoucherNo = `EXP-${year}-${String(expCount).padStart(6, '0')}`;
+          const newExpId = `exp-${Date.now()}`;
 
-      const expenseEntry = {
-        id: newExpId,
+          const expenseEntry = {
+            id: newExpId,
+            mosqueId,
+            voucherNumber: expVoucherNo,
+            date: purchaseDate || new Date().toISOString().split('T')[0],
+            mainHeadId: head.id,
+            mainHeadNameBn: head.nameBn,
+            subHeadNameBn: categoryBn || 'স্থায়ী সম্পদ ক্রয়',
+            amount: parsedPurchaseValue,
+            accountId: account.id,
+            accountName: account.name || account.nameBn,
+            payeeName: supplier || responsiblePerson || 'সরবরাহকারী',
+            paymentMethod: account.accountType === 'CASH' ? ('CASH' as const) : ('BANK' as const),
+            description: `সম্পদ ক্রয় ভাউচার: ${name} (${assetCode})${brand ? ' | ' + brand : ''}`,
+            status: 'APPROVED' as const,
+            createdBy: req.user!.id,
+            createdByName: req.user!.name,
+            approvedBy: req.user!.id,
+            approvedByName: req.user!.name,
+            approvedAt: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+
+          account.currentBalance -= parsedPurchaseValue;
+          db.expenseEntries.unshift(expenseEntry);
+          linkedVoucherNo = expVoucherNo;
+          linkedExpenseId = newExpId;
+
+          tx.logAudit(
+            mosqueId,
+            req.user!.id,
+            req.user!.name,
+            req.user!.role,
+            'CREATE',
+            'EXPENSE',
+            `সম্পদ ক্রয়ের সাথে স্বয়ংক্রিয় ব্যয় ভাউচার তৈরি (${expVoucherNo}): ৳${parsedPurchaseValue} (${name})`
+          );
+        }
+      }
+
+      const asset: MosqueAsset = {
+        id: `ast-${Date.now()}`,
         mosqueId,
-        voucherNumber: expVoucherNo,
-        date: purchaseDate || new Date().toISOString().split('T')[0],
-        mainHeadId: head.id,
-        mainHeadNameBn: head.nameBn,
-        subHeadNameBn: categoryBn || 'স্থায়ী সম্পদ ক্রয়',
-        amount: parsedPurchaseValue,
-        accountId: account.id,
-        accountName: account.name || account.nameBn,
-        payeeName: supplier || responsiblePerson || 'সরবরাহকারী',
-        paymentMethod: account.accountType === 'CASH' ? ('CASH' as const) : ('BANK' as const),
-        description: `সম্পদ ক্রয় ভাউচার: ${name} (${assetCode})${brand ? ' | ' + brand : ''}`,
-        status: 'APPROVED' as const,
+        assetCode,
+        name: name.trim(),
+        category: category || 'OTHER',
+        categoryBn: categoryBn || '',
+        brand: brand || '',
+        model: model || '',
+        serialNumber: serialNumber || '',
+        purchaseDate: purchaseDate || new Date().toISOString().split('T')[0],
+        purchaseValue: parsedPurchaseValue,
+        currentValue: parsedCurrentValue,
+        location: location || 'মূল ভবন',
+        responsiblePerson: responsiblePerson || '',
+        responsiblePersonPhone: responsiblePersonPhone || '',
+        condition: condition || 'GOOD',
+        conditionBn: conditionBn || '',
+        nextServiceDate: nextServiceDate || '',
+        warrantyInfo: warrantyInfo || '',
+        supplier: supplier || '',
+        sourceOfPurchase: sourceOfPurchase || '',
+        notes: notes || '',
+        description: description || '',
+        photoUrl: photoUrl || '',
+        attachments: attachments || [],
+        serviceHistory: [],
+        expenseVoucherNumber: linkedVoucherNo,
+        expenseEntryId: linkedExpenseId,
+        isExpenseLinked: Boolean(linkedVoucherNo || linkedExpenseId),
+        termId: selectedTermId,
+        termTitle: selectedTermTitle,
+        isArchived: false,
+        isDeleted: false,
+        isDemo: false,
         createdBy: req.user!.id,
         createdByName: req.user!.name,
-        approvedBy: req.user!.id,
-        approvedByName: req.user!.name,
-        approvedAt: new Date().toISOString(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
 
-      account.currentBalance -= parsedPurchaseValue;
-      db.expenseEntries.unshift(expenseEntry);
-      linkedVoucherNo = expVoucherNo;
-      linkedExpenseId = newExpId;
+      db.assets.unshift(asset);
 
-      db.logAudit(
+      tx.logAudit(
         mosqueId,
         req.user!.id,
         req.user!.name,
         req.user!.role,
         'CREATE',
-        'EXPENSE',
-        `সম্পদ ক্রয়ের সাথে স্বয়ংক্রিয় ব্যয় ভাউচার তৈরি (${expVoucherNo}): ৳${parsedPurchaseValue} (${name})`
+        'ASSET',
+        `নতুন সম্পদ রেজিস্ট্রি: ${asset.name} (${asset.assetCode}) | ক্রয়মূল্য: ৳${asset.purchaseValue} | অবস্থা: ${asset.condition}`
       );
+
+      return asset;
+    });
+
+    realtime.broadcastToMosque(mosqueId, 'ASSET_CREATED', newAsset, { senderId: req.user!.id });
+    realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+    res.json({ success: true, data: newAsset, message: 'সম্পদের তথ্য সফলভাবে সংরক্ষিত হয়েছে।' });
+  } catch (err: any) {
+    if (err instanceof StoragePersistenceError) {
+      return res.status(500).json({ success: false, error: { code: 'PERSISTENCE_FAILED', message: 'সম্পদ নিবন্ধন সংরক্ষণ ব্যর্থ হয়েছে। ডেটাবেজ রোলব্যাক সম্পন্ন।' } });
     }
+    throw err;
   }
-
-  const asset: MosqueAsset = {
-    id: `ast-${Date.now()}`,
-    mosqueId,
-    assetCode,
-    name: name.trim(),
-    category: category || 'OTHER',
-    categoryBn: categoryBn || '',
-    brand: brand || '',
-    model: model || '',
-    serialNumber: serialNumber || '',
-    purchaseDate: purchaseDate || new Date().toISOString().split('T')[0],
-    purchaseValue: parsedPurchaseValue,
-    currentValue: parsedCurrentValue,
-    location: location || 'মূল ভবন',
-    responsiblePerson: responsiblePerson || '',
-    responsiblePersonPhone: responsiblePersonPhone || '',
-    condition: condition || 'GOOD',
-    conditionBn: conditionBn || '',
-    nextServiceDate: nextServiceDate || '',
-    warrantyInfo: warrantyInfo || '',
-    supplier: supplier || '',
-    sourceOfPurchase: sourceOfPurchase || '',
-    notes: notes || '',
-    description: description || '',
-    photoUrl: photoUrl || '',
-    attachments: attachments || [],
-    serviceHistory: [],
-    expenseVoucherNumber: linkedVoucherNo,
-    expenseEntryId: linkedExpenseId,
-    isExpenseLinked: Boolean(linkedVoucherNo || linkedExpenseId),
-    termId: selectedTermId,
-    termTitle: selectedTermTitle,
-    isArchived: false,
-    isDeleted: false,
-    isDemo: false,
-    createdBy: req.user!.id,
-    createdByName: req.user!.name,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  };
-
-  db.assets.unshift(asset);
-  db.save();
-
-  db.logAudit(
-    mosqueId,
-    req.user!.id,
-    req.user!.name,
-    req.user!.role,
-    'CREATE',
-    'ASSET',
-    `নতুন সম্পদ রেজিস্ট্রি: ${asset.name} (${asset.assetCode}) | ক্রয়মূল্য: ৳${asset.purchaseValue} | অবস্থা: ${asset.condition}`
-  );
-
-  realtime.broadcastToMosque(mosqueId, 'ASSET_CREATED', asset, { senderId: req.user!.id });
-  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
-
-  res.json({ success: true, data: asset, message: 'সম্পদের তথ্য সফলভাবে সংরক্ষিত হয়েছে।' });
 });
 
 app.put('/api/v1/assets/:id', authenticate, requirePermission('MANAGE_ASSETS'), (req: AuthRequest, res: Response) => {
@@ -11753,7 +12147,7 @@ app.put('/api/v1/assets/:id', authenticate, requirePermission('MANAGE_ASSETS'), 
 });
 
 // Add Maintenance / Service Record
-app.post('/api/v1/assets/:id/service', authenticate, requirePermission('MANAGE_ASSETS'), (req: AuthRequest, res: Response) => {
+app.post('/api/v1/assets/:id/service', authenticate, requirePermission('MANAGE_ASSETS'), async (req: AuthRequest, res: Response) => {
   const mosqueId = req.currentMosque!.id;
   const asset = db.assets.find(a => a.id === req.params.id && a.mosqueId === mosqueId);
   if (!asset) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সম্পদ পাওয়া যায়নি।' } });
@@ -11780,100 +12174,110 @@ app.post('/api/v1/assets/:id/service', authenticate, requirePermission('MANAGE_A
   let serviceVoucherNo = '';
   let serviceExpenseId = '';
 
-  // Optional: Auto-create Expense Voucher for Maintenance
-  if (createMaintenanceExpense && serviceCost > 0 && accountId && expenseHeadId) {
-    const account = db.accounts.find(a => a.id === accountId && a.mosqueId === mosqueId);
-    const head = db.accountHeads.find(h => h.id === expenseHeadId && h.mosqueId === mosqueId);
+  try {
+    const updatedAsset = await db.runTransaction((tx) => {
+      // Optional: Auto-create Expense Voucher for Maintenance
+      if (createMaintenanceExpense && serviceCost > 0 && accountId && expenseHeadId) {
+        const account = db.accounts.find(a => a.id === accountId && a.mosqueId === mosqueId);
+        const head = db.accountHeads.find(h => h.id === expenseHeadId && h.mosqueId === mosqueId);
 
-    if (account && head) {
-      const expCount = db.expenseEntries.filter(e => e.mosqueId === mosqueId).length + 1;
-      const year = new Date().getFullYear();
-      const expVoucherNo = `EXP-${year}-${String(expCount).padStart(6, '0')}`;
-      const newExpId = `exp-${Date.now()}`;
+        if (account && head) {
+          const expCount = db.expenseEntries.filter(e => e.mosqueId === mosqueId).length + 1;
+          const year = new Date().getFullYear();
+          const expVoucherNo = `EXP-${year}-${String(expCount).padStart(6, '0')}`;
+          const newExpId = `exp-${Date.now()}`;
 
-      const expenseEntry = {
-        id: newExpId,
-        mosqueId,
-        voucherNumber: expVoucherNo,
-        date: serviceDate || new Date().toISOString().split('T')[0],
-        mainHeadId: head.id,
-        mainHeadNameBn: head.nameBn,
-        subHeadNameBn: serviceTypeBn || 'সম্পদ মেরামত ও সার্ভিসিং',
-        amount: serviceCost,
-        accountId: account.id,
-        accountName: account.name || account.nameBn,
-        payeeName: servicedBy || 'সার্ভিসিং টেকনিশিয়ান',
-        paymentMethod: account.accountType === 'CASH' ? ('CASH' as const) : ('BANK' as const),
-        description: `সম্পদ মেরামত/সার্ভিসিং খরচ: ${asset.name} (${asset.assetCode}) - ${description}`,
-        status: 'APPROVED' as const,
-        createdBy: req.user!.id,
-        createdByName: req.user!.name,
-        approvedBy: req.user!.id,
-        approvedByName: req.user!.name,
-        approvedAt: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+          const expenseEntry = {
+            id: newExpId,
+            mosqueId,
+            voucherNumber: expVoucherNo,
+            date: serviceDate || new Date().toISOString().split('T')[0],
+            mainHeadId: head.id,
+            mainHeadNameBn: head.nameBn,
+            subHeadNameBn: serviceTypeBn || 'সম্পদ মেরামত ও সার্ভিসিং',
+            amount: serviceCost,
+            accountId: account.id,
+            accountName: account.name || account.nameBn,
+            payeeName: servicedBy || 'সার্ভিসিং টেকনিশিয়ান',
+            paymentMethod: account.accountType === 'CASH' ? ('CASH' as const) : ('BANK' as const),
+            description: `সম্পদ মেরামত/সার্ভিসিং খরচ: ${asset.name} (${asset.assetCode}) - ${description}`,
+            status: 'APPROVED' as const,
+            createdBy: req.user!.id,
+            createdByName: req.user!.name,
+            approvedBy: req.user!.id,
+            approvedByName: req.user!.name,
+            approvedAt: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+
+          account.currentBalance -= serviceCost;
+          db.expenseEntries.unshift(expenseEntry);
+          serviceVoucherNo = expVoucherNo;
+          serviceExpenseId = newExpId;
+
+          tx.logAudit(
+            mosqueId,
+            req.user!.id,
+            req.user!.name,
+            req.user!.role,
+            'CREATE',
+            'EXPENSE',
+            `সম্পদ সার্ভিসিং খরচ বাবদ ব্যয় ভাউচার তৈরি (${expVoucherNo}): ৳${serviceCost} (${asset.name})`
+          );
+        }
+      }
+
+      const serviceRecord: AssetServiceRecord = {
+        id: `srv-${Date.now()}`,
+        serviceDate: serviceDate || new Date().toISOString().split('T')[0],
+        serviceType: serviceType || 'REGULAR_MAINTENANCE',
+        serviceTypeBn: serviceTypeBn || 'নিয়মিত সার্ভিসিং',
+        servicedBy: servicedBy || '',
+        cost: serviceCost,
+        expenseVoucherNumber: serviceVoucherNo,
+        expenseEntryId: serviceExpenseId,
+        description: description.trim(),
+        nextServiceDate: nextServiceDate || '',
+        performedBy: req.user!.name,
+        createdAt: new Date().toISOString()
       };
 
-      account.currentBalance -= serviceCost;
-      db.expenseEntries.unshift(expenseEntry);
-      serviceVoucherNo = expVoucherNo;
-      serviceExpenseId = newExpId;
+      if (!asset.serviceHistory) asset.serviceHistory = [];
+      asset.serviceHistory.unshift(serviceRecord);
 
-      db.logAudit(
+      if (nextServiceDate) {
+        asset.nextServiceDate = nextServiceDate;
+      }
+      if (updateConditionTo) {
+        asset.condition = updateConditionTo;
+      }
+
+      asset.updatedAt = new Date().toISOString();
+
+      tx.logAudit(
         mosqueId,
         req.user!.id,
         req.user!.name,
         req.user!.role,
         'CREATE',
-        'EXPENSE',
-        `সম্পদ সার্ভিসিং খরচ বাবদ ব্যয় ভাউচার তৈরি (${expVoucherNo}): ৳${serviceCost} (${asset.name})`
+        'ASSET',
+        `সম্পদ সার্ভিসিং লগ যুক্ত: ${asset.name} (${asset.assetCode}) | খরচ: ৳${serviceCost} | বিবরণ: ${description}`
       );
+
+      return asset;
+    });
+
+    realtime.broadcastToMosque(mosqueId, 'ASSET_UPDATED', updatedAsset, { senderId: req.user!.id });
+    realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+    res.json({ success: true, data: updatedAsset, message: 'সার্ভিসিং রেকর্ড সফলভাবে যুক্ত হয়েছে।' });
+  } catch (err: any) {
+    if (err instanceof StoragePersistenceError) {
+      return res.status(500).json({ success: false, error: { code: 'PERSISTENCE_FAILED', message: 'সম্পদ সার্ভিসিং সংরক্ষণ ব্যর্থ হয়েছে। ডেটাবেজ রোলব্যাক সম্পন্ন।' } });
     }
+    throw err;
   }
-
-  const serviceRecord: AssetServiceRecord = {
-    id: `srv-${Date.now()}`,
-    serviceDate: serviceDate || new Date().toISOString().split('T')[0],
-    serviceType: serviceType || 'REGULAR_MAINTENANCE',
-    serviceTypeBn: serviceTypeBn || 'নিয়মিত সার্ভিসিং',
-    servicedBy: servicedBy || '',
-    cost: serviceCost,
-    expenseVoucherNumber: serviceVoucherNo,
-    expenseEntryId: serviceExpenseId,
-    description: description.trim(),
-    nextServiceDate: nextServiceDate || '',
-    performedBy: req.user!.name,
-    createdAt: new Date().toISOString()
-  };
-
-  if (!asset.serviceHistory) asset.serviceHistory = [];
-  asset.serviceHistory.unshift(serviceRecord);
-
-  if (nextServiceDate) {
-    asset.nextServiceDate = nextServiceDate;
-  }
-  if (updateConditionTo) {
-    asset.condition = updateConditionTo;
-  }
-
-  asset.updatedAt = new Date().toISOString();
-  db.save();
-
-  db.logAudit(
-    mosqueId,
-    req.user!.id,
-    req.user!.name,
-    req.user!.role,
-    'CREATE',
-    'ASSET',
-    `সম্পদ সার্ভিসিং লগ যুক্ত: ${asset.name} (${asset.assetCode}) | খরচ: ৳${serviceCost} | বিবরণ: ${description}`
-  );
-
-  realtime.broadcastToMosque(mosqueId, 'ASSET_UPDATED', asset, { senderId: req.user!.id });
-  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
-
-  res.json({ success: true, data: asset, message: 'সার্ভিসিং রেকর্ড সফলভাবে যুক্ত হয়েছে।' });
 });
 
 // Toggle Archive
@@ -12402,7 +12806,7 @@ app.post('/api/v1/properties/:id/cases', authenticate, requirePermission('MANAGE
 });
 
 // Add / Record Rent Collection (Linked to Income Voucher & Accounting Ledger)
-app.post('/api/v1/properties/:id/rent-collections', authenticate, requirePermission('MANAGE_PROPERTY'), (req: AuthRequest, res: Response) => {
+app.post('/api/v1/properties/:id/rent-collections', authenticate, requirePermission('MANAGE_PROPERTY'), async (req: AuthRequest, res: Response) => {
   // Idempotency check
   const cached = db.checkIdempotency(req.idempotencyKey);
   if (cached) {
@@ -12455,101 +12859,114 @@ app.post('/api/v1/properties/:id/rent-collections', authenticate, requirePermiss
   let incomeEntryId = '';
   let incomeEntry: any = null;
 
-  // Link to Accounting & Income Entry (Safely without double entry)
-  if (isAccountingLinked && numPaid > 0) {
-    const mainHead = db.accountHeads.find(h => (h.nameBn?.includes('ভাড়া') || h.nameBn?.includes('ওয়াকফ')) && h.type === 'INCOME') ||
-      db.accountHeads.find(h => h.type === 'INCOME') || db.accountHeads[0];
+  try {
+    const { collectionRecord, returnedProperty, returnedIncomeEntry, payload } = await db.runTransaction((tx) => {
+      // Link to Accounting & Income Entry (Safely without double entry)
+      if (isAccountingLinked && numPaid > 0) {
+        const mainHead = db.accountHeads.find(h => (h.nameBn?.includes('ভাড়া') || h.nameBn?.includes('ওয়াকফ')) && h.type === 'INCOME') ||
+          db.accountHeads.find(h => h.type === 'INCOME') || db.accountHeads[0];
 
-    const incCount = db.incomeEntries.filter(e => e.mosqueId === mosqueId).length + 1;
-    incomeVoucherNumber = `INC-${year}-${String(incCount).padStart(6, '0')}`;
-    incomeEntryId = `inc-prop-${Date.now()}`;
+        const incCount = db.incomeEntries.filter(e => e.mosqueId === mosqueId).length + 1;
+        incomeVoucherNumber = `INC-${year}-${String(incCount).padStart(6, '0')}`;
+        incomeEntryId = `inc-prop-${Date.now()}`;
 
-    incomeEntry = {
-      id: incomeEntryId,
-      mosqueId,
-      voucherNumber: incomeVoucherNumber,
-      date: paymentDate || new Date().toISOString().split('T')[0],
-      mainHeadId: mainHead?.id || 'head-inc-02',
-      mainHeadNameBn: mainHead?.nameBn || 'ওয়াকফ ও দোকান ভাড়া আয়',
-      amount: numPaid,
-      paymentMethod: paymentMethod || 'CASH',
-      accountId: account?.id || 'acc-cash-01',
-      accountName: account?.nameBn || 'প্রধান ক্যাশ',
-      donorName: `${tenant.name} (${property.name || property.propertyCode})`,
-      donorPhone: tenant.mobile,
-      reference: receiptNumber,
-      description: `ওয়াকফ সম্পত্তি ভাড়া আদায়: ${property.name || property.propertyCode} - ইউনিট/দোকান: ${tenant.unitOrShopNo || ''} (মাস: ${billingMonth || ''})`,
-      createdBy: req.user!.id,
-      createdByName: req.user!.name,
-      status: 'APPROVED' as const,
-      approvedBy: req.user!.id,
-      approvedByName: req.user!.name,
-      approvedAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
+        incomeEntry = {
+          id: incomeEntryId,
+          mosqueId,
+          voucherNumber: incomeVoucherNumber,
+          date: paymentDate || new Date().toISOString().split('T')[0],
+          mainHeadId: mainHead?.id || 'head-inc-02',
+          mainHeadNameBn: mainHead?.nameBn || 'ওয়াকফ ও দোকান ভাড়া আয়',
+          amount: numPaid,
+          paymentMethod: paymentMethod || 'CASH',
+          accountId: account?.id || 'acc-cash-01',
+          accountName: account?.nameBn || 'প্রধান ক্যাশ',
+          donorName: `${tenant.name} (${property.name || property.propertyCode})`,
+          donorPhone: tenant.mobile,
+          reference: receiptNumber,
+          description: `ওয়াকফ সম্পত্তি ভাড়া আদায়: ${property.name || property.propertyCode} - ইউনিট/দোকান: ${tenant.unitOrShopNo || ''} (মাস: ${billingMonth || ''})`,
+          createdBy: req.user!.id,
+          createdByName: req.user!.name,
+          status: 'APPROVED' as const,
+          approvedBy: req.user!.id,
+          approvedByName: req.user!.name,
+          approvedAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
 
-    if (account) {
-      account.currentBalance += numPaid;
+        if (account) {
+          account.currentBalance += numPaid;
+        }
+
+        db.incomeEntries.unshift(incomeEntry);
+      }
+
+      const collectionRec: PropertyRentCollection = {
+        id: `rent-col-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        mosqueId,
+        propertyId: property.id,
+        propertyCode: property.propertyCode,
+        propertyName: property.name || property.nameBn || property.description,
+        tenantId: tenant.id,
+        tenantName: tenant.name,
+        tenantCode: tenant.tenantCode,
+        shopOrUnitNo: tenant.unitOrShopNo,
+        billingMonth: billingMonth || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`,
+        monthlyRent: numMonthlyRent,
+        previousDue: numPrevDue,
+        totalDue,
+        paidAmount: numPaid,
+        remainingDue,
+        paymentDate: paymentDate || new Date().toISOString().split('T')[0],
+        paymentMethod: paymentMethod || 'CASH',
+        accountId: account?.id,
+        accountName: account?.nameBn,
+        receiptNumber,
+        incomeVoucherNumber: incomeVoucherNumber || undefined,
+        incomeEntryId: incomeEntryId || undefined,
+        isAccountingLinked: Boolean(isAccountingLinked),
+        collectorName: req.user!.name,
+        collectorDesignation: req.user!.role === 'MOSQUE_ADMIN' ? 'অ্যাডমিন / মোতাওয়াল্লি' : 'হিসাবরক্ষক',
+        notes,
+        status: remainingDue === 0 ? 'PAID' : 'PARTIAL',
+        createdAt: new Date().toISOString()
+      };
+
+      property.rentCollections.unshift(collectionRec);
+      property.updatedAt = new Date().toISOString();
+
+      tx.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'PROPERTY', `ওয়াকফ সম্পত্তি ভাড়া আদায়: ৳${numPaid.toLocaleString('en-IN')} (রসিদ: ${receiptNumber}, ভাড়াটিয়া: ${tenant.name})`);
+
+      const resPayload = {
+        success: true,
+        data: property,
+        rentCollection: collectionRec,
+        incomeEntry,
+        message: 'ভাড়া আদায় সফলভাবে সম্পন্ন হয়েছে ও রসিদ তৈরি হয়েছে।'
+      };
+      tx.saveIdempotency(req.idempotencyKey, resPayload);
+
+      return { collectionRecord: collectionRec, returnedProperty: property, returnedIncomeEntry: incomeEntry, payload: resPayload };
+    });
+
+    if (returnedIncomeEntry) {
+      realtime.broadcastToMosque(mosqueId, 'INCOME_CREATED', returnedIncomeEntry, { senderId: req.user!.id });
     }
+    realtime.broadcastToMosque(mosqueId, 'PROPERTY_UPDATED', returnedProperty, { senderId: req.user!.id });
+    realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
 
-    db.incomeEntries.unshift(incomeEntry);
-    realtime.broadcastToMosque(mosqueId, 'INCOME_CREATED', incomeEntry, { senderId: req.user!.id });
+    res.json(payload);
+  } catch (err: any) {
+    if (err instanceof StoragePersistenceError) {
+      return res.status(500).json({ success: false, error: { code: 'PERSISTENCE_FAILED', message: 'ওয়াকফ ভাড়া কালেকশন সংরক্ষণ ব্যর্থ হয়েছে। ডেটাবেজ রোলব্যাক সম্পন্ন।' } });
+    }
+    throw err;
   }
-
-  const collectionRecord: PropertyRentCollection = {
-    id: `rent-col-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-    mosqueId,
-    propertyId: property.id,
-    propertyCode: property.propertyCode,
-    propertyName: property.name || property.nameBn || property.description,
-    tenantId: tenant.id,
-    tenantName: tenant.name,
-    tenantCode: tenant.tenantCode,
-    shopOrUnitNo: tenant.unitOrShopNo,
-    billingMonth: billingMonth || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`,
-    monthlyRent: numMonthlyRent,
-    previousDue: numPrevDue,
-    totalDue,
-    paidAmount: numPaid,
-    remainingDue,
-    paymentDate: paymentDate || new Date().toISOString().split('T')[0],
-    paymentMethod: paymentMethod || 'CASH',
-    accountId: account?.id,
-    accountName: account?.nameBn,
-    receiptNumber,
-    incomeVoucherNumber: incomeVoucherNumber || undefined,
-    incomeEntryId: incomeEntryId || undefined,
-    isAccountingLinked: Boolean(isAccountingLinked),
-    collectorName: req.user!.name,
-    collectorDesignation: req.user!.role === 'MOSQUE_ADMIN' ? 'অ্যাডমিন / মোতাওয়াল্লি' : 'হিসাবরক্ষক',
-    notes,
-    status: remainingDue === 0 ? 'PAID' : 'PARTIAL',
-    createdAt: new Date().toISOString()
-  };
-
-  property.rentCollections.unshift(collectionRecord);
-  property.updatedAt = new Date().toISOString();
-  db.save();
-
-  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'PROPERTY', `ওয়াকফ সম্পত্তি ভাড়া আদায়: ৳${numPaid.toLocaleString('en-IN')} (রসিদ: ${receiptNumber}, ভাড়াটিয়া: ${tenant.name})`);
-  realtime.broadcastToMosque(mosqueId, 'PROPERTY_UPDATED', property, { senderId: req.user!.id });
-  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
-
-  const responsePayload = {
-    success: true,
-    data: property,
-    rentCollection: collectionRecord,
-    incomeEntry,
-    message: 'ভাড়া আদায় সফলভাবে সম্পন্ন হয়েছে ও রসিদ তৈরি হয়েছে।'
-  };
-  db.saveIdempotency(req.idempotencyKey, responsePayload);
-
-  res.json(responsePayload);
 });
 
 // Delete / Reverse Rent Collection
-app.delete('/api/v1/properties/:id/rent-collections/:collectionId', authenticate, requirePermission('MANAGE_PROPERTY'), (req: AuthRequest, res: Response) => {
+app.delete('/api/v1/properties/:id/rent-collections/:collectionId', authenticate, requirePermission('MANAGE_PROPERTY'), async (req: AuthRequest, res: Response) => {
   const mosqueId = req.currentMosque!.id;
   const property = db.properties.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
   if (!property || !property.rentCollections) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সম্পত্তি বা ভাড়া রেকর্ড পাওয়া যায়নি।' } });
@@ -12559,34 +12976,47 @@ app.delete('/api/v1/properties/:id/rent-collections/:collectionId', authenticate
 
   const record = property.rentCollections[colIdx];
 
-  // If accounting linked, cancel the income entry and deduct from balance
-  if (record.incomeEntryId) {
-    const inc = db.incomeEntries.find(i => i.id === record.incomeEntryId && i.mosqueId === mosqueId);
-    if (inc && inc.status === 'APPROVED') {
-      const account = db.accounts.find(a => a.id === inc.accountId);
-      if (account) {
-        account.currentBalance -= inc.amount;
+  try {
+    let reversedInc: any = null;
+    await db.runTransaction((tx) => {
+      // If accounting linked, cancel the income entry and deduct from balance
+      if (record.incomeEntryId) {
+        const inc = db.incomeEntries.find(i => i.id === record.incomeEntryId && i.mosqueId === mosqueId);
+        if (inc && inc.status === 'APPROVED') {
+          const account = db.accounts.find(a => a.id === inc.accountId);
+          if (account) {
+            account.currentBalance -= inc.amount;
+          }
+          inc.status = 'CANCELLED';
+          inc.rejectionReason = 'ওয়াকফ ভাড়া কালেকশন বাতিল';
+          inc.updatedAt = new Date().toISOString();
+          reversedInc = inc;
+        }
       }
-      inc.status = 'CANCELLED';
-      inc.rejectionReason = 'ওয়াকফ ভাড়া কালেকশন বাতিল';
-      inc.updatedAt = new Date().toISOString();
-      realtime.broadcastToMosque(mosqueId, 'INCOME_REVERSED', inc, { senderId: req.user!.id });
+
+      property.rentCollections.splice(colIdx, 1);
+      property.updatedAt = new Date().toISOString();
+
+      tx.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'DELETE', 'PROPERTY', `ওয়াকফ ভাড়া কালেকশন বাতিল: ${record.receiptNumber} - ৳${record.paidAmount}`);
+    });
+
+    if (reversedInc) {
+      realtime.broadcastToMosque(mosqueId, 'INCOME_REVERSED', reversedInc, { senderId: req.user!.id });
     }
+    realtime.broadcastToMosque(mosqueId, 'PROPERTY_UPDATED', property, { senderId: req.user!.id });
+    realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+    res.json({ success: true, data: property, message: 'ভাড়া কালেকশন রেকর্ড সফলভাবে বাতিল করা হয়েছে।' });
+  } catch (err: any) {
+    if (err instanceof StoragePersistenceError) {
+      return res.status(500).json({ success: false, error: { code: 'PERSISTENCE_FAILED', message: 'ভাড়া কালেকশন বাতিলকরণ সংরক্ষণ ব্যর্থ হয়েছে। ডেটাবেজ রোলব্যাক সম্পন্ন।' } });
+    }
+    throw err;
   }
-
-  property.rentCollections.splice(colIdx, 1);
-  property.updatedAt = new Date().toISOString();
-  db.save();
-
-  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'DELETE', 'PROPERTY', `ওয়াকফ ভাড়া কালেকশন বাতিল: ${record.receiptNumber} - ৳${record.paidAmount}`);
-  realtime.broadcastToMosque(mosqueId, 'PROPERTY_UPDATED', property, { senderId: req.user!.id });
-  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
-
-  res.json({ success: true, data: property, message: 'ভাড়া কালেকশন রেকর্ড সফলভাবে বাতিল করা হয়েছে।' });
 });
 
 // Add Property Expense (Linked to Expense Voucher)
-app.post('/api/v1/properties/:id/expenses', authenticate, requirePermission('MANAGE_PROPERTY'), (req: AuthRequest, res: Response) => {
+app.post('/api/v1/properties/:id/expenses', authenticate, requirePermission('MANAGE_PROPERTY'), async (req: AuthRequest, res: Response) => {
   const mosqueId = req.currentMosque!.id;
   const property = db.properties.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
   if (!property) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সম্পত্তি পাওয়া যায়নি।' } });
@@ -12644,45 +13074,56 @@ app.post('/api/v1/properties/:id/expenses', authenticate, requirePermission('MAN
     updatedAt: new Date().toISOString()
   };
 
-  if (account) {
-    account.currentBalance -= numAmount;
+  try {
+    const { expRecord, updatedProperty } = await db.runTransaction((tx) => {
+      if (account) {
+        account.currentBalance -= numAmount;
+      }
+
+      db.expenseEntries.unshift(expenseEntry);
+
+      const expRec: PropertyExpenseRecord = {
+        id: `exp-prop-rec-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        mosqueId,
+        propertyId: property.id,
+        propertyCode: property.propertyCode,
+        propertyName: property.name || property.nameBn || property.description,
+        expenseCategory: expenseCategory || 'REPAIR',
+        expenseCategoryBn: expenseCategoryBn || 'মেরামত ও রক্ষণাবেক্ষণ',
+        amount: numAmount,
+        date: date || new Date().toISOString().split('T')[0],
+        payeeName: payeeName || 'সরবরাহকারী/কারিগর',
+        paymentMethod: paymentMethod || 'CASH',
+        accountId: account?.id,
+        accountName: account?.nameBn,
+        voucherNumber,
+        expenseEntryId,
+        description,
+        attachmentUrl,
+        createdBy: req.user!.id,
+        createdByName: req.user!.name,
+        createdAt: new Date().toISOString()
+      };
+
+      property.expenses.unshift(expRec);
+      property.updatedAt = new Date().toISOString();
+
+      tx.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'PROPERTY', `ওয়াকফ সম্পত্তি বাবদ ব্যয়: ৳${numAmount.toLocaleString('en-IN')} (${property.propertyCode}, ভাউচার: ${voucherNumber})`);
+
+      return { expRecord: expRec, updatedProperty: property };
+    });
+
+    realtime.broadcastToMosque(mosqueId, 'EXPENSE_CREATED', expenseEntry, { senderId: req.user!.id });
+    realtime.broadcastToMosque(mosqueId, 'PROPERTY_UPDATED', updatedProperty, { senderId: req.user!.id });
+    realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+    res.json({ success: true, data: updatedProperty, expense: expRecord, message: 'সম্পত্তি ব্যয় ও ভাউচার সফলভাবে সংরক্ষিত হয়েছে।' });
+  } catch (err: any) {
+    if (err instanceof StoragePersistenceError) {
+      return res.status(500).json({ success: false, error: { code: 'PERSISTENCE_FAILED', message: 'সম্পত্তি ব্যয় সংরক্ষণ ব্যর্থ হয়েছে। ডেটাবেজ রোলব্যাক সম্পন্ন।' } });
+    }
+    throw err;
   }
-
-  db.expenseEntries.unshift(expenseEntry);
-  realtime.broadcastToMosque(mosqueId, 'EXPENSE_CREATED', expenseEntry, { senderId: req.user!.id });
-
-  const expRecord: PropertyExpenseRecord = {
-    id: `exp-prop-rec-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-    mosqueId,
-    propertyId: property.id,
-    propertyCode: property.propertyCode,
-    propertyName: property.name || property.nameBn || property.description,
-    expenseCategory: expenseCategory || 'REPAIR',
-    expenseCategoryBn: expenseCategoryBn || 'মেরামত ও রক্ষণাবেক্ষণ',
-    amount: numAmount,
-    date: date || new Date().toISOString().split('T')[0],
-    payeeName: payeeName || 'সরবরাহকারী/কারিগর',
-    paymentMethod: paymentMethod || 'CASH',
-    accountId: account?.id,
-    accountName: account?.nameBn,
-    voucherNumber,
-    expenseEntryId,
-    description,
-    attachmentUrl,
-    createdBy: req.user!.id,
-    createdByName: req.user!.name,
-    createdAt: new Date().toISOString()
-  };
-
-  property.expenses.unshift(expRecord);
-  property.updatedAt = new Date().toISOString();
-  db.save();
-
-  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'PROPERTY', `ওয়াকফ সম্পত্তি বাবদ ব্যয়: ৳${numAmount.toLocaleString('en-IN')} (${property.propertyCode}, ভাউচার: ${voucherNumber})`);
-  realtime.broadcastToMosque(mosqueId, 'PROPERTY_UPDATED', property, { senderId: req.user!.id });
-  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
-
-  res.json({ success: true, data: property, expense: expRecord, message: 'সম্পত্তি ব্যয় ও ভাউচার সফলভাবে সংরক্ষিত হয়েছে।' });
 });
 
 // Delete Property Expense
@@ -12784,7 +13225,7 @@ app.delete('/api/v1/properties/:id/documents/:docId', authenticate, requirePermi
 });
 
 // Add Khajna / Land Tax Record
-app.post('/api/v1/properties/:id/khajna', authenticate, requirePermission('MANAGE_PROPERTY'), (req: AuthRequest, res: Response) => {
+app.post('/api/v1/properties/:id/khajna', authenticate, requirePermission('MANAGE_PROPERTY'), async (req: AuthRequest, res: Response) => {
   const mosqueId = req.currentMosque!.id;
   const property = db.properties.find(p => p.id === req.params.id && p.mosqueId === mosqueId);
   if (!property) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'সম্পত্তি পাওয়া যায়নি।' } });
@@ -12813,78 +13254,92 @@ app.post('/api/v1/properties/:id/khajna', authenticate, requirePermission('MANAG
 
   let expenseVoucherNumber = '';
   let expenseEntryId = '';
+  let createdExpenseEntry: any = null;
 
-  if (isExpenseLinked && numAmount > 0) {
-    const account = db.accounts.find(a => a.id === accountId) || db.accounts.find(a => a.mosqueId === mosqueId) || db.accounts[0];
-    const year = new Date().getFullYear();
-    const expCount = db.expenseEntries.filter(e => e.mosqueId === mosqueId).length + 1;
-    expenseVoucherNumber = `EXP-${year}-${String(expCount).padStart(6, '0')}`;
-    expenseEntryId = `exp-prop-khajna-${Date.now()}`;
+  try {
+    const { khajnaRecord, updatedProperty } = await db.runTransaction((tx) => {
+      if (isExpenseLinked && numAmount > 0) {
+        const account = db.accounts.find(a => a.id === accountId) || db.accounts.find(a => a.mosqueId === mosqueId) || db.accounts[0];
+        const year = new Date().getFullYear();
+        const expCount = db.expenseEntries.filter(e => e.mosqueId === mosqueId).length + 1;
+        expenseVoucherNumber = `EXP-${year}-${String(expCount).padStart(6, '0')}`;
+        expenseEntryId = `exp-prop-khajna-${Date.now()}`;
 
-    const mainHead = db.accountHeads.find(h => (h.nameBn?.includes('খাজনা') || h.nameBn?.includes('কর') || h.nameBn?.includes('সম্পত্তি')) && h.type === 'EXPENSE') ||
-      db.accountHeads.find(h => h.type === 'EXPENSE') || db.accountHeads[0];
+        const mainHead = db.accountHeads.find(h => (h.nameBn?.includes('খাজনা') || h.nameBn?.includes('কর') || h.nameBn?.includes('সম্পত্তি')) && h.type === 'EXPENSE') ||
+          db.accountHeads.find(h => h.type === 'EXPENSE') || db.accountHeads[0];
 
-    const expenseEntry: any = {
-      id: expenseEntryId,
-      mosqueId,
-      voucherNumber: expenseVoucherNumber,
-      date: paymentDate || new Date().toISOString().split('T')[0],
-      mainHeadId: mainHead?.id || 'head-exp-03',
-      mainHeadNameBn: mainHead?.nameBn || 'ভূমি উন্নয়ন কর ও খাজনা',
-      amount: numAmount,
-      paymentMethod: paymentMethod || 'CASH',
-      accountId: account?.id || 'acc-cash-01',
-      accountName: account?.nameBn || 'প্রধান ক্যাশ',
-      payeeName: paidToOffice || 'ভূমি রাজস্ব অফিস',
-      reference: receiptNumber || property.propertyCode,
-      description: `ভূমি উন্নয়ন কর ও খাজনা পরিশোধ (${taxYear}): ${property.name || property.propertyCode} - দাখিলা নং: ${receiptNumber || ''}`,
-      attachmentUrl: documentUrl,
-      createdBy: req.user!.id,
-      createdByName: req.user!.name,
-      status: 'APPROVED' as const,
-      approvedBy: req.user!.id,
-      approvedByName: req.user!.name,
-      approvedAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
+        createdExpenseEntry = {
+          id: expenseEntryId,
+          mosqueId,
+          voucherNumber: expenseVoucherNumber,
+          date: paymentDate || new Date().toISOString().split('T')[0],
+          mainHeadId: mainHead?.id || 'head-exp-03',
+          mainHeadNameBn: mainHead?.nameBn || 'ভূমি উন্নয়ন কর ও খাজনা',
+          amount: numAmount,
+          paymentMethod: paymentMethod || 'CASH',
+          accountId: account?.id || 'acc-cash-01',
+          accountName: account?.nameBn || 'প্রধান ক্যাশ',
+          payeeName: paidToOffice || 'ভূমি রাজস্ব অফিস',
+          reference: receiptNumber || property.propertyCode,
+          description: `ভূমি উন্নয়ন কর ও খাজনা পরিশোধ (${taxYear}): ${property.name || property.propertyCode} - দাখিলা নং: ${receiptNumber || ''}`,
+          attachmentUrl: documentUrl,
+          createdBy: req.user!.id,
+          createdByName: req.user!.name,
+          status: 'APPROVED' as const,
+          approvedBy: req.user!.id,
+          approvedByName: req.user!.name,
+          approvedAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
 
-    if (account) {
-      account.currentBalance -= numAmount;
+        if (account) {
+          account.currentBalance -= numAmount;
+        }
+
+        db.expenseEntries.unshift(createdExpenseEntry);
+      }
+
+      const khajnaRec: PropertyKhajnaRecord = {
+        id: `khajna-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        mosqueId,
+        propertyId: property.id,
+        taxYear,
+        amount: numAmount,
+        paymentDate: paymentDate || new Date().toISOString().split('T')[0],
+        receiptNumber: receiptNumber || `DAK-${new Date().getFullYear()}-${String(property.khajnaRecords.length + 1).padStart(4, '0')}`,
+        nextDueDate,
+        holdingNo,
+        paidToOffice,
+        documentUrl,
+        notes,
+        expenseVoucherNumber: expenseVoucherNumber || undefined,
+        expenseEntryId: expenseEntryId || undefined,
+        isExpenseLinked: Boolean(isExpenseLinked),
+        createdAt: new Date().toISOString()
+      };
+
+      property.khajnaRecords.unshift(khajnaRec);
+      property.updatedAt = new Date().toISOString();
+
+      tx.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'PROPERTY', `ভূমি কর ও খাজনা রেকর্ড সংযোজন: ৳${numAmount.toLocaleString('en-IN')} (${taxYear}, ${property.propertyCode})`);
+
+      return { khajnaRecord: khajnaRec, updatedProperty: property };
+    });
+
+    if (createdExpenseEntry) {
+      realtime.broadcastToMosque(mosqueId, 'EXPENSE_CREATED', createdExpenseEntry, { senderId: req.user!.id });
     }
+    realtime.broadcastToMosque(mosqueId, 'PROPERTY_UPDATED', updatedProperty, { senderId: req.user!.id });
+    realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
 
-    db.expenseEntries.unshift(expenseEntry);
-    realtime.broadcastToMosque(mosqueId, 'EXPENSE_CREATED', expenseEntry, { senderId: req.user!.id });
+    res.json({ success: true, data: updatedProperty, khajnaRecord, message: 'ভূমি উন্নয়ন কর ও খাজনা তথ্য সংরক্ষিত হয়েছে।' });
+  } catch (err: any) {
+    if (err instanceof StoragePersistenceError) {
+      return res.status(500).json({ success: false, error: { code: 'PERSISTENCE_FAILED', message: 'ভূমি কর ও খাজনা সংরক্ষণ ব্যর্থ হয়েছে। ডেটাবেজ রোলব্যাক সম্পন্ন।' } });
+    }
+    throw err;
   }
-
-  const khajnaRec: PropertyKhajnaRecord = {
-    id: `khajna-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-    mosqueId,
-    propertyId: property.id,
-    taxYear,
-    amount: numAmount,
-    paymentDate: paymentDate || new Date().toISOString().split('T')[0],
-    receiptNumber: receiptNumber || `DAK-${new Date().getFullYear()}-${String(property.khajnaRecords.length + 1).padStart(4, '0')}`,
-    nextDueDate,
-    holdingNo,
-    paidToOffice,
-    documentUrl,
-    notes,
-    expenseVoucherNumber: expenseVoucherNumber || undefined,
-    expenseEntryId: expenseEntryId || undefined,
-    isExpenseLinked: Boolean(isExpenseLinked),
-    createdAt: new Date().toISOString()
-  };
-
-  property.khajnaRecords.unshift(khajnaRec);
-  property.updatedAt = new Date().toISOString();
-  db.save();
-
-  db.logAudit(mosqueId, req.user!.id, req.user!.name, req.user!.role, 'CREATE', 'PROPERTY', `ভূমি কর ও খাজনা রেকর্ড সংযোজন: ৳${numAmount.toLocaleString('en-IN')} (${taxYear}, ${property.propertyCode})`);
-  realtime.broadcastToMosque(mosqueId, 'PROPERTY_UPDATED', property, { senderId: req.user!.id });
-  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
-
-  res.json({ success: true, data: property, khajnaRecord: khajnaRec, message: 'ভূমি উন্নয়ন কর ও খাজনা তথ্য সংরক্ষিত হয়েছে।' });
 });
 
 // Delete Khajna Record
@@ -20360,7 +20815,7 @@ app.post('/api/v1/maktab/fees/generate-monthly', authenticate, requirePermission
 });
 
 // Canonical Fee Payment Collection -> Posts directly to E1-E6 IncomeEntry
-app.post('/api/v1/maktab/fees/:id/collect', authenticate, requirePermission('MANAGE_MAKTAB_FEES'), (req: AuthRequest, res: Response) => {
+app.post('/api/v1/maktab/fees/:id/collect', authenticate, requirePermission('MANAGE_MAKTAB_FEES'), async (req: AuthRequest, res: Response) => {
   const mosqueId = req.currentMosque!.id;
   const feeRecord = db.maktabFeeRecords.find(f => f.id === req.params.id && f.mosqueId === mosqueId);
   if (!feeRecord) {
@@ -20392,86 +20847,98 @@ app.post('/api/v1/maktab/fees/:id/collect', authenticate, requirePermission('MAN
   const incCount = db.incomeEntries.filter(i => i.mosqueId === mosqueId).length + 1;
   const voucherNumber = `INC-${year}-${String(incCount).padStart(6, '0')}`;
 
-  // 1. POST TO CANONICAL FINANCE ENGINE (E1-E6)
-  const canonicalIncome = {
-    id: `inc-maktab-${Date.now()}`,
-    mosqueId,
-    voucherNumber,
-    date: now.split('T')[0],
-    mainHeadId: 'head-maktab-fee',
-    mainHeadNameBn: 'মক্তব ও শিক্ষা ফি',
-    amount: numPaid,
-    paymentMethod: paymentMethod || 'CASH',
-    accountId: account?.id || 'acc-cash-01',
-    accountName: account?.nameBn || 'প্রধান ক্যাশ',
-    donorName: student?.personName || feeRecord.studentName || 'মক্তব শিক্ষার্থী',
-    reference: feeRecord.studentId, // STU-000001
-    description: `মক্তব ফি আদায়: ${feeRecord.feeTitle} (${feeRecord.billingMonth || 'সাধারণ'}) - শিক্ষার্থী: ${student?.personName || feeRecord.studentName} (${feeRecord.studentId})`,
-    createdBy: req.user!.id,
-    createdByName: req.user!.name,
-    status: 'APPROVED' as const,
-    approvedBy: req.user!.id,
-    approvedByName: req.user!.name,
-    approvedAt: now,
-    createdAt: now,
-    updatedAt: now,
-  };
+  try {
+    const { returnedFeeRecord, returnedIncome, payload } = await db.runTransaction((tx) => {
+      // 1. POST TO CANONICAL FINANCE ENGINE (E1-E6)
+      const canonicalIncome = {
+        id: `inc-maktab-${Date.now()}`,
+        mosqueId,
+        voucherNumber,
+        date: now.split('T')[0],
+        mainHeadId: 'head-maktab-fee',
+        mainHeadNameBn: 'মক্তব ও শিক্ষা ফি',
+        amount: numPaid,
+        paymentMethod: paymentMethod || 'CASH',
+        accountId: account?.id || 'acc-cash-01',
+        accountName: account?.nameBn || 'প্রধান ক্যাশ',
+        donorName: student?.personName || feeRecord.studentName || 'মক্তব শিক্ষার্থী',
+        reference: feeRecord.studentId, // STU-000001
+        description: `মক্তব ফি আদায়: ${feeRecord.feeTitle} (${feeRecord.billingMonth || 'সাধারণ'}) - শিক্ষার্থী: ${student?.personName || feeRecord.studentName} (${feeRecord.studentId})`,
+        createdBy: req.user!.id,
+        createdByName: req.user!.name,
+        status: 'APPROVED' as const,
+        approvedBy: req.user!.id,
+        approvedByName: req.user!.name,
+        approvedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      };
 
-  // Update canonical financial balance
-  if (account) {
-    account.currentBalance += numPaid;
+      // Update canonical financial balance
+      if (account) {
+        account.currentBalance += numPaid;
+      }
+      db.incomeEntries.unshift(canonicalIncome);
+
+      // 2. UPDATE MAKTAB FEE RECORD
+      feeRecord.paidAmount += numPaid;
+      feeRecord.dueAmount = Math.max(0, feeRecord.netPayable - feeRecord.paidAmount);
+      feeRecord.status = feeRecord.dueAmount === 0 ? 'PAID' : 'PARTIAL';
+      feeRecord.canonicalIncomeEntryId = canonicalIncome.id;
+      feeRecord.canonicalVoucherNumber = canonicalIncome.voucherNumber;
+      feeRecord.paidAt = now;
+      feeRecord.paymentMethod = paymentMethod || 'CASH';
+      feeRecord.accountId = account?.id;
+      feeRecord.accountName = account?.nameBn;
+      feeRecord.receiptNo = receiptNo || voucherNumber;
+      feeRecord.notes = notes?.trim() || feeRecord.notes;
+      feeRecord.collectedBy = req.user!.id;
+      feeRecord.collectedByName = req.user!.name;
+      feeRecord.updatedAt = now;
+
+      // Audit in canonical finance and maktab
+      tx.logAudit(
+        mosqueId,
+        req.user!.id,
+        req.user!.name,
+        req.user!.role,
+        'CREATE',
+        'INCOME',
+        `মক্তব ফি আদায় ভাউচার (${voucherNumber}): ৳ ${numPaid} [${feeRecord.studentId}]`,
+        canonicalIncome.id
+      );
+      tx.logAudit(
+        mosqueId,
+        req.user!.id,
+        req.user!.name,
+        req.user!.role,
+        'UPDATE',
+        'MAKTAB',
+        `মক্তব ফি আদায় সম্পন্ন (${feeRecord.studentId}): ৳ ${numPaid}, ভাউচার #${voucherNumber}`,
+        feeRecord.id
+      );
+
+      const resPayload = {
+        success: true,
+        data: { feeRecord, canonicalIncome },
+        message: `ফি আদায় সফল হয়েছে এবং মূল হিসাবের ${account?.nameBn || 'ক্যাশ'} তহবিলে ৳ ${numPaid} জমা হয়েছে (ভাউচার: ${voucherNumber})।`
+      };
+      tx.saveIdempotency(req.idempotencyKey, resPayload);
+
+      return { returnedFeeRecord: feeRecord, returnedIncome: canonicalIncome, payload: resPayload };
+    });
+
+    // Broadcast canonical finance update
+    realtime.broadcastToMosque(mosqueId, 'INCOME_CREATED', returnedIncome, { senderId: req.user!.id });
+    realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+    res.json(payload);
+  } catch (err: any) {
+    if (err instanceof StoragePersistenceError) {
+      return res.status(500).json({ success: false, error: { code: 'PERSISTENCE_FAILED', message: 'মক্তব ফি কালেকশন সংরক্ষণ ব্যর্থ হয়েছে। ডেটাবেজ রোলব্যাক সম্পন্ন।' } });
+    }
+    throw err;
   }
-  db.incomeEntries.unshift(canonicalIncome);
-
-  // 2. UPDATE MAKTAB FEE RECORD
-  feeRecord.paidAmount += numPaid;
-  feeRecord.dueAmount = Math.max(0, feeRecord.netPayable - feeRecord.paidAmount);
-  feeRecord.status = feeRecord.dueAmount === 0 ? 'PAID' : 'PARTIAL';
-  feeRecord.canonicalIncomeEntryId = canonicalIncome.id;
-  feeRecord.canonicalVoucherNumber = canonicalIncome.voucherNumber;
-  feeRecord.paidAt = now;
-  feeRecord.paymentMethod = paymentMethod || 'CASH';
-  feeRecord.accountId = account?.id;
-  feeRecord.accountName = account?.nameBn;
-  feeRecord.receiptNo = receiptNo || voucherNumber;
-  feeRecord.notes = notes?.trim() || feeRecord.notes;
-  feeRecord.collectedBy = req.user!.id;
-  feeRecord.collectedByName = req.user!.name;
-  feeRecord.updatedAt = now;
-
-  db.save();
-
-  // Audit in canonical finance and maktab
-  db.logAudit(
-    mosqueId,
-    req.user!.id,
-    req.user!.name,
-    req.user!.role,
-    'CREATE',
-    'INCOME',
-    `মক্তব ফি আদায় ভাউচার (${voucherNumber}): ৳ ${numPaid} [${feeRecord.studentId}]`,
-    canonicalIncome.id
-  );
-  db.logAudit(
-    mosqueId,
-    req.user!.id,
-    req.user!.name,
-    req.user!.role,
-    'UPDATE',
-    'MAKTAB',
-    `মক্তব ফি আদায় সম্পন্ন (${feeRecord.studentId}): ৳ ${numPaid}, ভাউচার #${voucherNumber}`,
-    feeRecord.id
-  );
-
-  // Broadcast canonical finance update
-  realtime.broadcastToMosque(mosqueId, 'INCOME_CREATED', canonicalIncome, { senderId: req.user!.id });
-  realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
-
-  res.json({
-    success: true,
-    data: { feeRecord, canonicalIncome },
-    message: `ফি আদায় সফল হয়েছে এবং মূল হিসাবের ${account?.nameBn || 'ক্যাশ'} তহবিলে ৳ ${numPaid} জমা হয়েছে (ভাউচার: ${voucherNumber})।`
-  });
 });
 
 // 6. Maktab Student Progress (পাঠ অগ্রগতি ও মূল্যায়ন)
@@ -27703,4 +28170,6 @@ async function startApp() {
   });
 }
 
-startApp();
+if (process.env.NODE_ENV !== 'test') {
+  startApp();
+}

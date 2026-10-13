@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { AsyncLocalStorage } from 'async_hooks';
 import bcrypt from 'bcryptjs';
 import { buildDailyPrayerSchedule, toBanglaDigits } from '../lib/prayerEngine';
 import {
@@ -117,7 +118,42 @@ import {
 import { DEFAULT_DOCUMENT_TEMPLATES } from '../lib/officialDocumentTemplates';
 import { getStarterOfficialDocuments } from '../lib/starterOfficialDocuments';
 
-const DB_FILE_PATH = path.join(process.cwd(), 'data', 'masjidledger_db.json');
+export class StoragePersistenceError extends Error {
+  constructor(public code: string, message: string, public cause?: any) {
+    super(message);
+    this.name = 'StoragePersistenceError';
+  }
+}
+
+export interface IdempotencyScopeContext {
+  mosqueId?: string;
+  method?: string;
+  route?: string;
+}
+
+export interface TransactionContext {
+  logAudit(
+    mosqueId: string,
+    userId: string,
+    userName: string,
+    userRole: string,
+    action: AuditLog['action'],
+    module: string,
+    details: string,
+    recordId?: string,
+    ipAddress?: string,
+    extra?: {
+      voucherNumber?: string;
+      previousState?: string;
+      newState?: string;
+      device?: string;
+      status?: 'SUCCESS' | 'FAILED' | 'WARNING';
+    }
+  ): AuditLog;
+  saveIdempotency(key: string | undefined, result: any, context?: IdempotencyScopeContext | string): void;
+}
+
+export const DB_FILE_PATH = path.join(process.cwd(), 'data', 'masjidledger_db.json');
 
 export const getStarterEducationPrograms = (mosqueId: string): EducationProgram[] => {
   const now = new Date().toISOString();
@@ -561,19 +597,49 @@ export class DatabaseStore {
   legalActions: LegalAction[] = [];
   legalOrders: LegalOrder[] = [];
 
+  private _transactionActive: boolean = false;
+  private _currentTxContext: TransactionContext | null = null;
+  private _writeMutexPromise: Promise<void> = Promise.resolve();
+  private txStorage = new AsyncLocalStorage<TransactionContext>();
+
+  getDbFilePath(): string {
+    return process.env.MASJIDLEDGER_DB_PATH || DB_FILE_PATH;
+  }
+
   constructor() {
     this.init();
   }
 
   init() {
+    const dbPath = this.getDbFilePath();
     try {
-      const dataDir = path.dirname(DB_FILE_PATH);
+      const dataDir = path.dirname(dbPath);
       if (!fs.existsSync(dataDir)) {
         fs.mkdirSync(dataDir, { recursive: true });
       }
 
-      if (fs.existsSync(DB_FILE_PATH)) {
-        const raw = fs.readFileSync(DB_FILE_PATH, 'utf-8');
+      // Cleanup stale temporary files from ungraceful crashes (>10 seconds old)
+      if (fs.existsSync(dataDir)) {
+        try {
+          const files = fs.readdirSync(dataDir);
+          const prefix = `${path.basename(dbPath)}.tmp.`;
+          const now = Date.now();
+          for (const f of files) {
+            if (f.startsWith(prefix)) {
+              const fullPath = path.join(dataDir, f);
+              try {
+                const stat = fs.statSync(fullPath);
+                if (now - stat.mtimeMs > 10000) {
+                  fs.unlinkSync(fullPath);
+                }
+              } catch (_) {}
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (fs.existsSync(dbPath)) {
+        const raw = fs.readFileSync(dbPath, 'utf-8');
         const parsed = JSON.parse(raw);
         this.mosques = (parsed.mosques || []).map((m: any) => ({
           ...m,
@@ -826,7 +892,14 @@ export class DatabaseStore {
         return;
       }
     } catch (e) {
-      console.warn('[DB] Failed to load DB file:', e);
+      console.error('[FATAL DATABASE CORRUPTION ERROR] Failed to load DB file:', e);
+      if (fs.existsSync(dbPath)) {
+        throw new StoragePersistenceError(
+          'DATABASE_CORRUPT',
+          `The database file at "${dbPath}" exists but could not be parsed. Startup aborted to prevent overwriting existing data.`,
+          e
+        );
+      }
     }
 
     // Only seed initial data if DEMO_MODE is explicitly enabled. Otherwise start with empty dataset for production.
@@ -838,131 +911,315 @@ export class DatabaseStore {
     }
   }
 
-  save() {
-    try {
-      const dataDir = path.dirname(DB_FILE_PATH);
-      if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
-      }
-      const data = {
-        mosques: this.mosques,
-        users: this.users,
-        accountHeads: this.accountHeads,
-        accounts: this.accounts,
-        incomeEntries: this.incomeEntries,
-        expenseEntries: this.expenseEntries,
-        donations: this.donations,
-        donationBoxes: this.donationBoxes,
-        donationBoxCollections: this.donationBoxCollections,
-        committeeTerms: this.committeeTerms,
-        committeeMembers: this.committeeMembers,
-        committeeMeetings: this.committeeMeetings,
-        committeeNotices: this.committeeNotices,
-        committeeResolutions: this.committeeResolutions,
-        committeeActionPlans: this.committeeActionPlans,
-        committeeActivities: this.committeeActivities,
-        committeeTasks: this.committeeTasks,
-        committeeManualEvaluations: this.committeeManualEvaluations,
-        subCommittees: this.subCommittees,
-        advisoryTerms: this.advisoryTerms,
-        advisors: this.advisors,
-        advisorConsultations: this.advisorConsultations,
-        staffList: this.staffList,
-        staffPayments: this.staffPayments,
-        staffBankTransferLetters: this.staffBankTransferLetters,
-        assets: this.assets,
-        properties: this.properties,
-        cemeteryRecords: this.cemeteryRecords,
-        notices: this.notices,
-        notifications: this.notifications,
-        transfers: this.transfers,
-        uploadedFiles: this.uploadedFiles,
-        centralDocuments: this.centralDocuments,
-        qrCodes: this.qrCodes,
-        auditLogs: this.auditLogs,
-        idempotencyMap: this.idempotencyMap,
-        backupRecords: this.backupRecords,
-        restoreRecords: this.restoreRecords,
-        backupSettings: this.backupSettings,
-        officialDocuments: this.officialDocuments,
-        officialDocumentTemplates: this.officialDocumentTemplates,
-        officialDocumentNumbering: this.officialDocumentNumbering,
-        areas: this.areas,
-        families: this.families,
-        persons: this.persons,
-        donationPlans: this.donationPlans,
-        collectionWorkers: this.collectionWorkers,
-        donationCollections: this.donationCollections,
-        budgets: this.budgets,
-        budgetLines: this.budgetLines,
-        libraryCategories: this.libraryCategories,
-        bookTitles: this.bookTitles,
-        bookCopies: this.bookCopies,
-        libraryMembers: this.libraryMembers,
-        bookIssues: this.bookIssues,
-        bookAcquisitions: this.bookAcquisitions,
-        libraryRooms: this.libraryRooms,
-        libraryRacks: this.libraryRacks,
-        libraryShelves: this.libraryShelves,
-        educationStudentProfiles: this.educationStudentProfiles,
-        educationPrograms: this.educationPrograms,
-        educationLevels: this.educationLevels,
-        educationEnrollments: this.educationEnrollments,
-        educationGuardianRelationships: this.educationGuardianRelationships,
-        maktabClasses: this.maktabClasses,
-        maktabAttendances: this.maktabAttendances,
-        maktabTeacherAssignments: this.maktabTeacherAssignments,
-        maktabFeeSchedules: this.maktabFeeSchedules,
-        maktabFeeRecords: this.maktabFeeRecords,
-        maktabProgressRecords: this.maktabProgressRecords,
-        hifzEnrollments: this.hifzEnrollments,
-        hifzLevels: this.hifzLevels,
-        hifzCurricula: this.hifzCurricula,
-        hifzSabaks: this.hifzSabaks,
-        hifzSabakis: this.hifzSabakis,
-        hifzDaurCycles: this.hifzDaurCycles,
-        hifzDaurs: this.hifzDaurs,
-        hifzRevisions: this.hifzRevisions,
-        hifzAttendances: this.hifzAttendances,
-        hifzTeacherAssignments: this.hifzTeacherAssignments,
-        hifzResidences: this.hifzResidences,
-        hifzResidenceBuildings: this.hifzResidenceBuildings,
-        hifzResidenceRooms: this.hifzResidenceRooms,
-        hifzResidenceBeds: this.hifzResidenceBeds,
-        hifzResidentialAllocations: this.hifzResidentialAllocations,
-        hifzResidentialTransfers: this.hifzResidentialTransfers,
-        legalCases: this.legalCases,
-        legalCourts: this.legalCourts,
-        legalParties: this.legalParties,
-        legalLawyers: this.legalLawyers,
-        legalHearings: this.legalHearings,
-        legalActions: this.legalActions,
-        legalOrders: this.legalOrders,
-      };
-      const tempPath = `${DB_FILE_PATH}.tmp.${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), 'utf-8');
-      fs.renameSync(tempPath, DB_FILE_PATH);
-    } catch (e) {
-      console.error('[DB] Failed to save DB to disk:', e);
+  /**
+   * Captures a complete serialized JSON snapshot of all database entities.
+   */
+  serializeDatabaseState(): any {
+    return {
+      mosques: this.mosques,
+      users: this.users,
+      accountHeads: this.accountHeads,
+      accounts: this.accounts,
+      incomeEntries: this.incomeEntries,
+      expenseEntries: this.expenseEntries,
+      donations: this.donations,
+      donationBoxes: this.donationBoxes,
+      donationBoxCollections: this.donationBoxCollections,
+      committeeTerms: this.committeeTerms,
+      committeeMembers: this.committeeMembers,
+      committeeMeetings: this.committeeMeetings,
+      committeeNotices: this.committeeNotices,
+      committeeResolutions: this.committeeResolutions,
+      committeeActionPlans: this.committeeActionPlans,
+      committeeActivities: this.committeeActivities,
+      committeeTasks: this.committeeTasks,
+      committeeManualEvaluations: this.committeeManualEvaluations,
+      subCommittees: this.subCommittees,
+      advisoryTerms: this.advisoryTerms,
+      advisors: this.advisors,
+      advisorConsultations: this.advisorConsultations,
+      staffList: this.staffList,
+      staffPayments: this.staffPayments,
+      staffBankTransferLetters: this.staffBankTransferLetters,
+      paymentBatches: this.paymentBatches,
+      assets: this.assets,
+      properties: this.properties,
+      cemeteryRecords: this.cemeteryRecords,
+      notices: this.notices,
+      notifications: this.notifications,
+      transfers: this.transfers,
+      uploadedFiles: this.uploadedFiles,
+      centralDocuments: this.centralDocuments,
+      qrCodes: this.qrCodes,
+      auditLogs: this.auditLogs,
+      smsLogs: this.smsLogs,
+      documentTokens: this.documentTokens,
+      idempotencyMap: this.idempotencyMap,
+      backupRecords: this.backupRecords,
+      restoreRecords: this.restoreRecords,
+      backupSettings: this.backupSettings,
+      officialDocuments: this.officialDocuments,
+      officialDocumentTemplates: this.officialDocumentTemplates,
+      officialDocumentNumbering: this.officialDocumentNumbering,
+      areas: this.areas,
+      families: this.families,
+      persons: this.persons,
+      donationPlans: this.donationPlans,
+      collectionWorkers: this.collectionWorkers,
+      donationCollections: this.donationCollections,
+      budgets: this.budgets,
+      budgetLines: this.budgetLines,
+      libraryCategories: this.libraryCategories,
+      bookTitles: this.bookTitles,
+      bookCopies: this.bookCopies,
+      libraryMembers: this.libraryMembers,
+      bookIssues: this.bookIssues,
+      bookAcquisitions: this.bookAcquisitions,
+      libraryRooms: this.libraryRooms,
+      libraryRacks: this.libraryRacks,
+      libraryShelves: this.libraryShelves,
+      educationStudentProfiles: this.educationStudentProfiles,
+      educationPrograms: this.educationPrograms,
+      educationLevels: this.educationLevels,
+      educationEnrollments: this.educationEnrollments,
+      educationGuardianRelationships: this.educationGuardianRelationships,
+      maktabClasses: this.maktabClasses,
+      maktabAttendances: this.maktabAttendances,
+      maktabTeacherAssignments: this.maktabTeacherAssignments,
+      maktabFeeSchedules: this.maktabFeeSchedules,
+      maktabFeeRecords: this.maktabFeeRecords,
+      maktabProgressRecords: this.maktabProgressRecords,
+      hifzEnrollments: this.hifzEnrollments,
+      hifzLevels: this.hifzLevels,
+      hifzCurricula: this.hifzCurricula,
+      hifzSabaks: this.hifzSabaks,
+      hifzSabakis: this.hifzSabakis,
+      hifzDaurCycles: this.hifzDaurCycles,
+      hifzDaurs: this.hifzDaurs,
+      hifzRevisions: this.hifzRevisions,
+      hifzAttendances: this.hifzAttendances,
+      hifzTeacherAssignments: this.hifzTeacherAssignments,
+      hifzResidences: this.hifzResidences,
+      hifzResidenceBuildings: this.hifzResidenceBuildings,
+      hifzResidenceRooms: this.hifzResidenceRooms,
+      hifzResidenceBeds: this.hifzResidenceBeds,
+      hifzResidentialAllocations: this.hifzResidentialAllocations,
+      hifzResidentialTransfers: this.hifzResidentialTransfers,
+      legalCases: this.legalCases,
+      legalCourts: this.legalCourts,
+      legalParties: this.legalParties,
+      legalLawyers: this.legalLawyers,
+      legalHearings: this.legalHearings,
+      legalActions: this.legalActions,
+      legalOrders: this.legalOrders,
+    };
+  }
+
+  /**
+   * Restores in-memory collections and objects from a serialized snapshot.
+   */
+  restoreDatabaseSnapshot(snapshot: any): void {
+    for (const [key, val] of Object.entries(snapshot)) {
+      (this as any)[key] = val;
     }
   }
 
-  checkIdempotency(key?: string) {
+  /**
+   * Flushes and synchronizes state to disk with atomic rename.
+   */
+  persistStateAtomically(): void {
+    const dbPath = this.getDbFilePath();
+    const dataDir = path.dirname(dbPath);
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+
+    const data = this.serializeDatabaseState();
+    const tempPath = `${dbPath}.tmp.${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+    try {
+      // 1. Write complete state to temp file
+      const fd = fs.openSync(tempPath, 'w');
+      try {
+        fs.writeFileSync(fd, JSON.stringify(data, null, 2), 'utf-8');
+        // 2. Fsync to physical storage
+        fs.fsyncSync(fd);
+      } finally {
+        fs.closeSync(fd);
+      }
+
+      // 3. Atomic rename replacement
+      fs.renameSync(tempPath, dbPath);
+
+      // 4. Directory fsync where supported
+      try {
+        const dirFd = fs.openSync(dataDir, 'r');
+        try {
+          fs.fsyncSync(dirFd);
+        } finally {
+          fs.closeSync(dirFd);
+        }
+      } catch (_) {}
+    } catch (err: any) {
+      // Clean up failed temp file without masking original error
+      try {
+        if (fs.existsSync(tempPath)) {
+          fs.unlinkSync(tempPath);
+        }
+      } catch (_) {}
+
+      throw new StoragePersistenceError('DISK_WRITE_FAILED', err.message || 'Failed to persist database state to disk', err);
+    }
+  }
+
+  /**
+   * Executes a mutator inside a serialized, transactional boundary.
+   * If any step fails or persistence fails, in-memory state is completely restored.
+   */
+  async runTransaction<T>(mutator: (tx: TransactionContext) => Promise<T> | T): Promise<T> {
+    // If inside a nested transaction within the same async call chain, re-use existing context
+    const currentStore = this.txStorage.getStore();
+    if (currentStore) {
+      return await mutator(currentStore);
+    }
+
+    // Acquire Mutex Lock (FIFO queue)
+    let releaseLock: () => void = () => {};
+    const lockPromise = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+
+    const previousLock = this._writeMutexPromise;
+    this._writeMutexPromise = (async () => {
+      try {
+        await previousLock;
+      } catch (_) {}
+      try {
+        await lockPromise;
+      } catch (_) {}
+    })();
+
+    try {
+      await previousLock;
+    } catch (_) {}
+
+    // Deep Snapshot before mutation
+    const snapshotRaw = JSON.stringify(this.serializeDatabaseState());
+    const snapshot = JSON.parse(snapshotRaw);
+
+    this._transactionActive = true;
+
+    // Transaction Context
+    const tx: TransactionContext = {
+      logAudit: (mosqueId, userId, userName, userRole, action, module, details, recordId, ipAddress, extra) => {
+        const log: AuditLog = {
+          id: `aud-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          mosqueId,
+          userId,
+          userName,
+          userRole,
+          action,
+          module,
+          category: module,
+          recordId,
+          voucherNumber: extra?.voucherNumber,
+          details,
+          previousState: extra?.previousState,
+          newState: extra?.newState,
+          timestamp: new Date().toISOString(),
+          ipAddress: ipAddress || '127.0.0.1',
+          device: extra?.device || 'Chrome 128 / Windows',
+          status: extra?.status || 'SUCCESS'
+        };
+        this.auditLogs.unshift(log);
+        return log;
+      },
+      saveIdempotency: (key, result, context) => {
+        if (!key) return;
+        const scopedKey = this.buildScopedKey(key, context);
+        if (!scopedKey) return;
+        this.idempotencyMap[scopedKey] = { result, createdAt: Date.now() };
+      }
+    };
+    this._currentTxContext = tx;
+
+    try {
+      return await this.txStorage.run(tx, async () => {
+        const result = await mutator(tx);
+
+        // Persist state atomically
+        this.persistStateAtomically();
+
+        return result;
+      });
+    } catch (err: any) {
+      // Rollback in-memory state cleanly
+      this.restoreDatabaseSnapshot(snapshot);
+
+      if (err instanceof StoragePersistenceError) {
+        throw err;
+      }
+      throw new StoragePersistenceError('TRANSACTION_FAILED', err.message || 'Transaction mutator failed', err);
+    } finally {
+      this._transactionActive = false;
+      this._currentTxContext = null;
+      releaseLock();
+    }
+  }
+
+  save() {
+    // If inside runTransaction, the transaction boundary handles the single commit
+    if (this._transactionActive) {
+      return;
+    }
+
+    try {
+      this.persistStateAtomically();
+    } catch (e: any) {
+      console.error('[DB] Failed to save DB to disk:', e);
+      // In non-transactional contexts, rethrow so caller is aware of save failure
+      throw e;
+    }
+  }
+
+  buildScopedKey(key?: string, context?: IdempotencyScopeContext | string): string | undefined {
+    if (!key) return undefined;
+    if (!context) {
+      return key;
+    }
+
+    const mosqueId = typeof context === 'string' ? context : (context.mosqueId || 'global');
+    const method = typeof context === 'string' ? '*' : (context.method ? context.method.toUpperCase() : '*');
+    const route = typeof context === 'string' ? '*' : (context.route || '*');
+
+    // Encode client key to ensure client-supplied delimiters (e.g. '::') can never alter or forge scope segments
+    const encodedClientKey = encodeURIComponent(key);
+
+    return `${mosqueId}::${method}::${route}::${encodedClientKey}`;
+  }
+
+  checkIdempotency(key?: string, context?: IdempotencyScopeContext | string) {
     if (!key) return null;
-    const item = this.idempotencyMap[key];
+    const scopedKey = this.buildScopedKey(key, context);
+    if (!scopedKey) return null;
+    const item = this.idempotencyMap[scopedKey];
     if (!item) return null;
     // Expire after 24 hours
     if (Date.now() - item.createdAt > 24 * 3600 * 1000) {
-      delete this.idempotencyMap[key];
+      delete this.idempotencyMap[scopedKey];
       return null;
     }
     return item.result;
   }
 
-  saveIdempotency(key: string | undefined, result: any) {
+  saveIdempotency(key: string | undefined, result: any, context?: IdempotencyScopeContext | string) {
     if (!key) return;
-    this.idempotencyMap[key] = { result, createdAt: Date.now() };
-    this.save();
+    const scopedKey = this.buildScopedKey(key, context);
+    if (!scopedKey) return;
+    this.idempotencyMap[scopedKey] = { result, createdAt: Date.now() };
+    if (!this._transactionActive) {
+      this.save();
+    }
   }
 
   seedInitialData() {
