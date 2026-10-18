@@ -32,7 +32,7 @@ export const AdminLoginScreen: React.FC<AdminLoginScreenProps> = ({
 }) => {
   const t = translations[language] || translations.bn;
 
-  const [identifier, setIdentifier] = useState('01711000001');
+  const [identifier, setIdentifier] = useState('01711223344');
   const [password, setPassword] = useState('admin123');
   const [selectedMosqueId, setSelectedMosqueId] = useState(currentMosque?.id || mosques[0]?.id || 'mosque-1');
   const [rememberMe, setRememberMe] = useState(true);

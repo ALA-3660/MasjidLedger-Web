@@ -113,7 +113,12 @@ export default function App() {
   const [allMosques, setAllMosques] = useState<Mosque[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string>('');
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return !!localStorage.getItem('ml_token');
+    }
+    return false;
+  });
 
   // Mobile View & Drawer State
   const [viewMode, setViewMode] = useState<'desktop' | 'mobile'>('desktop');
@@ -213,6 +218,18 @@ export default function App() {
     }
     setErrorMessage('');
     try {
+      // If there is no token in storage, only load public mosque identity and present login
+      if (!api.hasToken()) {
+        const mosqueRes = await api.getMosque().catch(() => null);
+        if (mosqueRes) {
+          setMosque(mosqueRes);
+          setAllMosques([mosqueRes]);
+        }
+        setCurrentUser(null);
+        setIsAuthenticated(false);
+        return;
+      }
+
       const [
         mosqueRes,
         userRes,
@@ -274,6 +291,11 @@ export default function App() {
       if (userRes) {
         setCurrentUser(userRes);
         setIsAuthenticated(true);
+      } else {
+        // Token was invalid, expired, or revoked
+        setCurrentUser(null);
+        setIsAuthenticated(false);
+        api.clearAuth();
       }
       if (usersListRes) setAllUsers(usersListRes);
       if (accountsRes) setAccounts(accountsRes);
@@ -609,10 +631,36 @@ export default function App() {
     try {
       await api.logout();
     } catch (err) {
-      console.error(err);
+      console.error('Logout error:', err);
+    } finally {
+      api.clearAuth();
+      setCurrentUser(null);
+      setIsAuthenticated(false);
+      setCurrentTab('dashboard');
+      setAccounts([]);
+      setAccountHeads([]);
+      setIncomes([]);
+      setExpenses([]);
+      setDonations([]);
+      setDonationBoxes([]);
+      setBoxCollections([]);
+      setTerms([]);
+      setMembers([]);
+      setMeetings([]);
+      setCommitteeNotices([]);
+      setResolutions([]);
+      setSubCommittees([]);
+      setStaff([]);
+      setStaffPayments([]);
+      setAssets([]);
+      setProperties([]);
+      setCemetery([]);
+      setNotices([]);
+      setAuditLogs([]);
+      setAllUsers([]);
+      setDashboardStats(null);
+      setTransfers([]);
     }
-    setCurrentUser(null);
-    setIsAuthenticated(false);
   };
 
   const handleAddIncome = async (data: any, options?: { print?: boolean; format?: PrintFormat }) => {
@@ -1060,8 +1108,8 @@ export default function App() {
     );
   }
 
-  // If not authenticated and not explicitly viewing public portal, show login screen
-  if (!isAuthenticated && currentTab !== 'publicPortal') {
+  // If not authenticated or user profile missing, and not explicitly viewing public portal, show login screen
+  if ((!isAuthenticated || !currentUser) && currentTab !== 'publicPortal') {
     return (
       <AdminLoginScreen
         mosques={allMosques}

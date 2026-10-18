@@ -179,6 +179,14 @@ class ApiService {
     this.refreshPromise = null;
   }
 
+  hasToken(): boolean {
+    return !!(this.token || (typeof window !== 'undefined' && localStorage.getItem('ml_token')));
+  }
+
+  getToken(): string | null {
+    return this.token || (typeof window !== 'undefined' ? localStorage.getItem('ml_token') : null);
+  }
+
   private async refreshAccessToken(): Promise<boolean> {
     if (!this.refreshToken) return false;
     if (this.refreshPromise) return this.refreshPromise;
@@ -375,7 +383,13 @@ class ApiService {
   }
 
   async logout(): Promise<void> {
-    await this.request('/auth/logout', { method: 'POST' }).catch(() => {});
+    const refToken = this.refreshToken;
+    try {
+      await this.request('/auth/logout', {
+        method: 'POST',
+        body: JSON.stringify({ refreshToken: refToken }),
+      });
+    } catch {}
     this.clearAuth();
   }
 

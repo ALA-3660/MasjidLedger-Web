@@ -1,7 +1,7 @@
 import jwt, { SignOptions } from 'jsonwebtoken';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
-import { User, UserRole } from '../../types';
+import { User, UserRole } from '../../types/index.ts';
 
 function parseExpiresIn(envVal: string | undefined, defaultVal: number | string): number | string {
   if (!envVal || typeof envVal !== 'string') return defaultVal;
@@ -223,6 +223,7 @@ export function generateAccessToken(user: User): { token: string; expiresIn: num
 
   const secret = getJwtAccessSecret();
   const token = jwt.sign(payload, secret, options);
+  tokenSessionManager.register(jti, user.id, user.mosqueId, ACCESS_TOKEN_TTL_SECONDS);
   return {
     token,
     expiresIn: ACCESS_TOKEN_TTL_SECONDS,
@@ -270,6 +271,9 @@ export function verifyAccessToken(token: string): TokenVerificationResult<JwtAcc
     const decoded = jwt.verify(token, secret) as JwtAccessPayload;
     if (decoded.type !== 'access') {
       return { valid: false, error: 'অননুমোদিত টোকেন প্রকার (Invalid token type)', code: 'INVALID_TYPE' };
+    }
+    if (decoded.jti && !tokenSessionManager.isValid(decoded.jti)) {
+      return { valid: false, error: 'টোকেন বাতিল বা ব্যবহার অনুপযোগী (Token revoked/invalid)', code: 'REVOKED' };
     }
     return { valid: true, payload: decoded };
   } catch (err: any) {

@@ -8,8 +8,8 @@ import { GoogleGenAI } from '@google/genai';
 import { db, StoragePersistenceError, getStarterLibraryCategories, getStarterEducationPrograms, getStarterEducationLevels, getStarterMaktabClasses, getStarterMaktabFeeSchedules } from './src/server/db.ts';
 import { realtime } from './src/server/ws.ts';
 import { quranReferenceService } from './src/server/quranReferenceService.ts';
-import { buildDailyPrayerSchedule, buildMonthlyPrayerCalendar } from './src/lib/prayerEngine';
-import { DEFAULT_DOCUMENT_TEMPLATES } from './src/lib/officialDocumentTemplates';
+import { buildDailyPrayerSchedule, buildMonthlyPrayerCalendar } from './src/lib/prayerEngine.ts';
+import { DEFAULT_DOCUMENT_TEMPLATES } from './src/lib/officialDocumentTemplates.ts';
 import {
   generateAccessToken,
   generateRefreshToken,
@@ -22,7 +22,7 @@ import {
   ACCESS_TOKEN_TTL_SECONDS,
   REFRESH_TOKEN_TTL_SECONDS,
   JwtAccessPayload,
-} from './src/server/auth/jwt';
+} from './src/server/auth/jwt.ts';
 import {
   User,
   UserRole,
@@ -163,7 +163,7 @@ import {
   LegalOrder,
   OrderType,
   LegalDashboardStats,
-} from './src/types';
+} from './src/types/index.ts';
 
 export const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -460,7 +460,7 @@ const getAuthoritativeRolePermissions = (targetRole: UserRole): Permission[] => 
 // ==========================================
 app.post('/api/v1/auth/login', (req: Request, res: Response) => {
   const { phoneOrEmail, identifier, phone, password } = req.body;
-  const loginId = identifier || phoneOrEmail || phone || '';
+  const loginId = (identifier || phoneOrEmail || phone || '').trim();
   if (!loginId || !password) {
     return res.status(400).json({
       success: false,
@@ -579,10 +579,25 @@ app.post('/api/v1/auth/refresh', (req: Request, res: Response) => {
   });
 });
 
-app.post('/api/v1/auth/logout', authenticate, (req: AuthRequest, res: Response) => {
-  if (req.user) {
-    tokenSessionManager.revokeAllForUser(req.user.id);
-    db.logAudit(req.currentMosque!.id, req.user.id, req.user.name, req.user.role, 'LOGOUT', 'AUTH', 'সফলভাবে লগআউট করেছেন');
+app.post('/api/v1/auth/logout', (req: Request, res: Response) => {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7).trim();
+    const verifyResult = verifyAccessToken(token);
+    if (verifyResult.valid && verifyResult.payload) {
+      tokenSessionManager.revokeAllForUser(verifyResult.payload.sub);
+      const user = db.users.find(u => u.id === verifyResult.payload?.sub);
+      if (user) {
+        db.logAudit(user.mosqueId, user.id, user.name, user.role, 'LOGOUT', 'AUTH', 'সফলভাবে লগআউট করেছেন');
+      }
+    }
+  }
+  const { refreshToken } = req.body || {};
+  if (refreshToken && typeof refreshToken === 'string') {
+    const verifyRef = verifyRefreshToken(refreshToken);
+    if (verifyRef.valid && verifyRef.payload) {
+      tokenSessionManager.revokeAllForUser(verifyRef.payload.sub);
+    }
   }
   res.json({ success: true, message: 'লগআউট সফল হয়েছে।' });
 });
@@ -28131,6 +28146,18 @@ async function startApp() {
       const { pathToFileURL } = await import('url');
       await import(pathToFileURL(compiledBundle).href);
       return;
+    }
+  }
+
+  // In managed production hosting (such as Cloud Run / AI Studio Publish), if custom secrets
+  // are not provided via environment variables, auto-generate strong, distinct 256-bit random secrets
+  // so the service starts up reliably, binds to PORT, and serves requests securely.
+  if (process.env.NODE_ENV === 'production') {
+    if (!process.env.JWT_ACCESS_SECRET || process.env.JWT_ACCESS_SECRET === 'JWT_ACCESS_SECRET' || process.env.JWT_ACCESS_SECRET.trim().length < 32) {
+      process.env.JWT_ACCESS_SECRET = crypto.randomBytes(32).toString('hex');
+    }
+    if (!process.env.JWT_REFRESH_SECRET || process.env.JWT_REFRESH_SECRET === 'JWT_REFRESH_SECRET' || process.env.JWT_REFRESH_SECRET.trim().length < 32 || process.env.JWT_REFRESH_SECRET === process.env.JWT_ACCESS_SECRET) {
+      process.env.JWT_REFRESH_SECRET = crypto.randomBytes(32).toString('hex');
     }
   }
 

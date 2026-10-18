@@ -2383,6 +2383,7 @@
     }
   ],
   "staffBankTransferLetters": [],
+  "paymentBatches": [],
   "assets": [],
   "properties": [
     {
@@ -2533,6 +2534,96 @@
   "centralDocuments": [],
   "qrCodes": [],
   "auditLogs": [
+    {
+      "id": "aud-1792339602582-u2k4k",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "LOGIN",
+      "module": "AUTH",
+      "category": "AUTH",
+      "details": "সফলভাবে লগইন করেছেন",
+      "timestamp": "2026-10-18T16:06:42.582Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "aud-1792339588887-60mcx",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "LOGIN",
+      "module": "AUTH",
+      "category": "AUTH",
+      "details": "সফলভাবে লগইন করেছেন",
+      "timestamp": "2026-10-18T16:06:28.887Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "aud-1792339571190-upbzi",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "LOGIN",
+      "module": "AUTH",
+      "category": "AUTH",
+      "details": "সফলভাবে লগইন করেছেন",
+      "timestamp": "2026-10-18T16:06:11.190Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "aud-1792339555079-zs7pu",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "LOGOUT",
+      "module": "AUTH",
+      "category": "AUTH",
+      "details": "সফলভাবে লগআউট করেছেন",
+      "timestamp": "2026-10-18T16:05:55.079Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "aud-1792339555062-9wcyj",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "LOGIN",
+      "module": "AUTH",
+      "category": "AUTH",
+      "details": "সফলভাবে লগইন করেছেন",
+      "timestamp": "2026-10-18T16:05:55.062Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "aud-1792339541202-glhdm",
+      "mosqueId": "mosque-mamun-001",
+      "userId": "usr-admin-1",
+      "userName": "মুহাম্মদ রফিকুল ইসলাম",
+      "userRole": "MOSQUE_ADMIN",
+      "action": "LOGIN",
+      "module": "AUTH",
+      "category": "AUTH",
+      "details": "সফলভাবে লগইন করেছেন",
+      "timestamp": "2026-10-18T16:05:41.202Z",
+      "ipAddress": "127.0.0.1",
+      "device": "Chrome 128 / Windows",
+      "status": "SUCCESS"
+    },
     {
       "id": "aud-1791569171010-l866l",
       "mosqueId": "mosque-mamun-001",
@@ -6326,6 +6417,8 @@
       "status": "SUCCESS"
     }
   ],
+  "smsLogs": [],
+  "documentTokens": [],
   "idempotencyMap": {},
   "backupRecords": [],
   "restoreRecords": [],

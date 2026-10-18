@@ -1,8 +1,8 @@
 import { Server as HttpServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { parse } from 'url';
-import { db } from './db';
-import { verifyAccessToken } from './auth/jwt';
+import { db } from './db.ts';
+import { verifyAccessToken } from './auth/jwt.ts';
 
 export interface WsMessage<T = any> {
   type: string;
