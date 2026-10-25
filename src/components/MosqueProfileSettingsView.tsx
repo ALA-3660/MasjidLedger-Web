@@ -379,7 +379,10 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
   const handlePrintLetterhead = async () => {
     setIsPrintingLetterhead(true);
     try {
-      const success = await printOfficialLetterheadPad('official-letterhead-a4-sheet');
+      const docTitle = currentMosque?.nameBn || currentMosque?.name
+        ? `অফিসিয়াল লেটারহেড প্যাড — ${currentMosque?.nameBn || currentMosque?.name}`
+        : 'অফিসিয়াল লেটারহেড প্যাড';
+      const success = await printOfficialLetterheadPad('official-letterhead-a4-sheet', docTitle);
       if (!success) {
         setIsLetterheadPrintModalOpen(true);
       }
@@ -653,15 +656,17 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400/20 text-amber-300 border border-amber-400/30">
                   ঐতিহ্যবাহী ওয়াকফ এস্টেট
                 </span>
-                <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-white/10 text-emerald-200">
-                  {currentMosque?.code || 'MAMUN-WAQF-01'}
-                </span>
+                {currentMosque?.code && (
+                  <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-white/10 text-emerald-200">
+                    {currentMosque.code}
+                  </span>
+                )}
               </div>
               <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white mt-1">
                 🏛️ মসজিদ পরিচিতি ও সেটিংস
               </h1>
               <p className="text-xs text-emerald-100/80 font-sans mt-0.5">
-                {currentMosque?.nameBn || 'মামুন জামে মসজিদ ওয়াকফ এস্টেট'} • {currentMosque?.address || 'খুরুশকুল, কক্সবাজার'}
+                {currentMosque?.nameBn || currentMosque?.name || 'মসজিদ প্রোফাইল'}{currentMosque?.address ? ` • ${currentMosque.address}` : ''}
               </p>
             </div>
           </div>
@@ -1575,12 +1580,12 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
                   {/* Subtitle / দ্বীনি স্লোগান */}
                   <div className="p-3.5 bg-white rounded-2xl border border-slate-200 space-y-2">
                     <label className="block text-xs font-bold text-slate-800">
-                      লেটারহেড সাবটাইটেল / দ্বীনি স্লোগান (Preserved)
+                      লেটারহেড সাবটাইটেল / দ্বীনি স্লোগান
                     </label>
                     <input
                       type="text"
                       disabled={!canEdit}
-                      value={formData.letterheadSettings?.subtitleBn ?? 'গায়েবী মসজিদ নামে পরিচিত খুরুশকুলে সবচেয়ে পুরাতন মসজিদ'}
+                      value={formData.letterheadSettings?.subtitleBn ?? ''}
                       onChange={(e) =>
                         setFormData(prev => ({
                           ...prev,
@@ -1590,7 +1595,7 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
                           },
                         }))
                       }
-                      placeholder="গায়েবী মসজিদ নামে পরিচিত খুরুশকুলে সবচেয়ে পুরাতন মসজিদ"
+                      placeholder="যেমন: ঐতিহ্যবাহী জামে মসজিদ ও ইসলামিক কমপ্লেক্স"
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-600"
                     />
                     <span className="text-[10px] text-slate-400 block">
@@ -1606,7 +1611,7 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
                     <input
                       type="text"
                       disabled={!canEdit}
-                      value={formData.letterheadSettings?.footerNoteBn ?? 'ওয়াকফ এস্টেটের সকল দান ও আয়-ব্যয় সরকারি ও শরীয়াহ অডিট সাপেক্ষে সংরক্ষিত।'}
+                      value={formData.letterheadSettings?.footerNoteBn ?? ''}
                       onChange={(e) =>
                         setFormData(prev => ({
                           ...prev,
@@ -1616,7 +1621,7 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
                           },
                         }))
                       }
-                      placeholder="ওয়াকফ এস্টেটের সকল দান ও আয়-ব্যয় সরকারি ও শরীয়াহ অডিট সাপেক্ষে সংরক্ষিত।"
+                      placeholder="যেমন: সকল দান ও আয়-ব্যয় অডিট সাপেক্ষে সংরক্ষিত।"
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-600"
                     />
                   </div>

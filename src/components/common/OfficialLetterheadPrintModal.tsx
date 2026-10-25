@@ -47,7 +47,26 @@ export const OfficialLetterheadPrintModal: React.FC<OfficialLetterheadPrintModal
   if (!isOpen) return null;
 
   const handlePrint = () => {
+    const previousTitle = document.title;
+    const rawName = mosque?.nameBn?.trim() || mosque?.name?.trim() || '';
+    const dynamicPrintTitle = rawName
+      ? `অফিসিয়াল লেটারহেড প্যাড — ${rawName}`
+      : 'অফিসিয়াল লেটারহেড প্যাড';
+
+    document.title = dynamicPrintTitle;
+
+    let restored = false;
+    const restoreTitle = () => {
+      if (!restored) {
+        restored = true;
+        document.title = previousTitle;
+        window.removeEventListener('afterprint', restoreTitle);
+      }
+    };
+
+    window.addEventListener('afterprint', restoreTitle, { once: true });
     window.print();
+    setTimeout(restoreTitle, 2000);
   };
 
   return (
@@ -69,7 +88,7 @@ export const OfficialLetterheadPrintModal: React.FC<OfficialLetterheadPrintModal
               </span>
             </div>
             <p className="text-xs text-slate-400 font-tiro">
-              {mosque?.nameBn || mosque?.name || 'মামুন জামে মসজিদ ওয়াকফ এস্টেট'} • অফিশিয়াল ব্যবহারের জন্য অনুমোদিত
+              {mosque?.nameBn || mosque?.name || 'মসজিদ / ওয়াকফ এস্টেট'} • অফিশিয়াল ব্যবহারের জন্য অনুমোদিত
             </p>
           </div>
         </div>

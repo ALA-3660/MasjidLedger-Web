@@ -27,9 +27,9 @@ export const MosqueOfficialLetterhead: React.FC<MosqueOfficialLetterheadProps> =
 }) => {
   const mosque = propMosque || getGlobalMosque();
 
-  const nameBn = mosque?.nameBn || mosque?.name || 'বায়তুল মোকাররম কেন্দ্রীয় জামে মসজিদ';
-  const nameEn = mosque?.nameEn || (mosque?.name && mosque.name !== mosque.nameBn ? mosque.name : 'Baitul Mukarram Central Jame Mosque');
-  const address = mosque?.address || mosque?.district || 'ঢাকা, বাংলাদেশ';
+  const nameBn = mosque?.nameBn || mosque?.name || 'মসজিদ / ওয়াকফ এস্টেট';
+  const nameEn = mosque?.nameEn || (mosque?.name && mosque.name !== mosque.nameBn ? mosque.name : '');
+  const address = mosque?.address || [mosque?.village, mosque?.union, mosque?.upazila, mosque?.district].filter(Boolean).join(', ') || '';
   const phone = mosque?.phone || mosque?.altPhone || '';
   const email = mosque?.email || '';
   const website = mosque?.website || '';

@@ -16,6 +16,7 @@ import * as XLSX from 'xlsx';
 import { OfficialDocument, OfficialDocumentType, OfficialDocumentStatus } from '../../types/officialDocumentTypes';
 import { Mosque } from '../../types';
 import { MosqueOfficialLetterhead } from '../common/MosqueOfficialLetterhead';
+import { printElement } from '../../lib/printUtils';
 
 interface OfficialDocumentReportsViewProps {
   documents: OfficialDocument[];
@@ -101,6 +102,30 @@ export const OfficialDocumentReportsView: React.FC<OfficialDocumentReportsViewPr
     XLSX.writeFile(wb, `masjidledger_official_documents_report_${datePreset.toLowerCase()}.xlsx`);
   };
 
+  const handlePrintReport = () => {
+    const cleanMosqueName = (mosque?.nameBn || mosque?.name || 'মসজিদ').trim().replace(/[\/\\?%*:|"<>]/g, '_');
+    const reportTitle = `${cleanMosqueName}_দাপ্তরিক_নথি_রিপোর্ট_${todayStr}`;
+    printElement('official-doc-report-printable-area', {
+      title: reportTitle,
+      pageSize: 'A4',
+      pageOrientation: 'portrait',
+      margin: '8mm 10mm',
+      customStyles: `
+        @page {
+          size: A4 portrait !important;
+          margin: 8mm 10mm !important;
+        }
+        #official-doc-report-printable-area {
+          box-shadow: none !important;
+          border: none !important;
+          padding: 0 !important;
+          width: 100% !important;
+          max-width: 100% !important;
+        }
+      `,
+    });
+  };
+
   return (
     <div className="space-y-5">
       {/* Header Card */}
@@ -126,7 +151,7 @@ export const OfficialDocumentReportsView: React.FC<OfficialDocumentReportsViewPr
           </button>
           <button
             type="button"
-            onClick={() => window.print()}
+            onClick={handlePrintReport}
             className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-colors cursor-pointer"
           >
             <Printer className="w-4 h-4" />
@@ -227,7 +252,10 @@ export const OfficialDocumentReportsView: React.FC<OfficialDocumentReportsViewPr
       </div>
 
       {/* Printable Report View (Visible on screen and optimized for paper print) */}
-      <div className="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-2xs space-y-6 print:p-0 print:border-none print:shadow-none">
+      <div
+        id="official-doc-report-printable-area"
+        className="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-2xs space-y-6 print:p-0 print:border-none print:shadow-none"
+      >
         
         {/* Top Mosque Letterhead */}
         <MosqueOfficialLetterhead

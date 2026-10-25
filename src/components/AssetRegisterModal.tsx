@@ -43,6 +43,23 @@ export const AssetRegisterModal: React.FC<AssetRegisterModalProps> = ({
     0
   );
 
+  const locationFallback = [
+    currentMosque?.village,
+    currentMosque?.union,
+    currentMosque?.ward,
+    currentMosque?.upazila,
+    currentMosque?.district,
+    currentMosque?.division,
+    currentMosque?.country,
+  ]
+    .filter((part): part is string => Boolean(part && typeof part === 'string' && part.trim()))
+    .map((part) => part.trim())
+    .join(', ');
+
+  const displayAddress = (currentMosque?.address && currentMosque.address.trim())
+    ? currentMosque.address.trim()
+    : locationFallback;
+
   const handlePrint = () => {
     printElement('printable-asset-register-doc', {
       title: `${currentMosque?.nameBn || currentMosque?.name || 'মসজিদ'}_সম্পদ_রেজিস্ট্রি_রিপোর্ট`,
@@ -85,9 +102,11 @@ export const AssetRegisterModal: React.FC<AssetRegisterModalProps> = ({
             <h1 className="text-xl font-bold text-slate-900 font-siliguri">
               {currentMosque?.nameBn || currentMosque?.name || 'মসজিদুল ফেরদৌস কমপ্লেক্স'}
             </h1>
-            <p className="text-xs text-slate-600">
-              {currentMosque?.address?.street || 'ধানমন্ডি'}, {currentMosque?.address?.district || 'ঢাকা'}
-            </p>
+            {displayAddress ? (
+              <p className="text-xs text-slate-600">
+                {displayAddress}
+              </p>
+            ) : null}
             <div className="inline-block px-3 py-1 bg-slate-100 rounded-full font-bold text-slate-800 text-xs mt-1">
               সম্পদ ও সরঞ্জাম রেজিস্ট্রি বই (Official Asset Register)
             </div>

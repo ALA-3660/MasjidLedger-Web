@@ -1,6 +1,7 @@
 import React from 'react';
 import { Mosque } from '../../types';
 import { printElement } from '../../lib/printUtils';
+import { getGlobalMosque } from '../../lib/mosqueStore';
 
 export type LetterheadBodyMode = 'blank' | 'sample_letter' | 'sample_notice' | 'guidelines';
 
@@ -16,7 +17,7 @@ export interface OfficialLetterheadPadProps {
 }
 
 export const OfficialLetterheadPad: React.FC<OfficialLetterheadPadProps> = ({
-  mosque,
+  mosque: propMosque,
   children,
   bodyMode = 'blank',
   showWritingGuidelines = false,
@@ -25,23 +26,24 @@ export const OfficialLetterheadPad: React.FC<OfficialLetterheadPadProps> = ({
   id = 'official-letterhead-a4-sheet',
   isPrintMode = false,
 }) => {
-  const nameBn = mosque?.nameBn || mosque?.name || 'মামুন জামে মসজিদ ওয়াকফ এস্টেট';
-  const nameEn = mosque?.nameEn || (mosque?.name && mosque.name !== mosque.nameBn ? mosque.name : 'Mamun Jame Masjid Waqf Estate');
-  const address = mosque?.address || 'খুরুশকুল, কক্সবাজার সদর, কক্সবাজার';
+  const mosque = propMosque || getGlobalMosque();
+  const nameBn = mosque?.nameBn || mosque?.name || 'মসজিদ / ওয়াকফ এস্টেট';
+  const nameEn = mosque?.nameEn || (mosque?.name && mosque.name !== mosque.nameBn ? mosque.name : '');
+  const address = mosque?.address || [mosque?.village, mosque?.union, mosque?.upazila, mosque?.district].filter(Boolean).join(', ') || '';
   const phone = mosque?.phone || mosque?.altPhone || '';
   const email = mosque?.email || '';
   const website = mosque?.website || '';
   const regNo = mosque?.registrationNumber;
   const waqfEstate = mosque?.waqfEstateName;
-  const code = mosque?.code || 'MAMUN-WAQF-01';
+  const code = mosque?.code || '';
 
   // Letterhead settings with authoritative defaults
   const settings = mosque?.letterheadSettings || {};
   const layout = settings.layout || 'CLASSICAL_WAQF';
   const showBismillah = settings.showBismillah !== false;
   const bismillahText = settings.bismillahText || 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ';
-  const subtitleBn = settings.subtitleBn || 'গায়েবী মসজিদ নামে পরিচিত খুরুশকুলে সবচেয়ে পুরাতন মসজিদ';
-  const footerNoteBn = settings.footerNoteBn || 'ওয়াকফ এস্টেটের সকল দান ও আয়-ব্যয় সরকারি ও শরীয়াহ অডিট সাপেক্ষে সংরক্ষিত।';
+  const subtitleBn = settings.subtitleBn || '';
+  const footerNoteBn = settings.footerNoteBn || '';
   const showWatermark = settings.showWatermark !== false;
   const showSignatures = settings.showSignatures !== false;
   const logoUrl = mosque?.logoUrl;
@@ -350,7 +352,7 @@ export const OfficialLetterheadPad: React.FC<OfficialLetterheadPadProps> = ({
 
             <div className="space-y-4 text-justify">
               <p>
-                এই মর্মে প্রত্যয়ন করা যাচ্ছে যে, জনাব/বেগম ...................................................................., পিতা/স্বামী: ...................................................................., মাতা: ...................................................................., গ্রাম/মহল্লা: {address.split(',')[0] || 'খুরুশকুল'}, ডাকঘর: {address.split(',')[1] || 'কক্সবাজার সদর'}, জেলা: {mosque?.district || 'কক্সবাজার'} অত্র জামে মসজিদের এলাকার একজন নিয়মিত ও সম্মানিত মুসল্লি।
+                এই মর্মে প্রত্যয়ন করা যাচ্ছে যে, জনাব/বেগম ...................................................................., পিতা/স্বামী: ...................................................................., মাতা: ...................................................................., গ্রাম/মহল্লা: {mosque?.village || (address ? address.split(',')[0]?.trim() : '') || '........................'}, ডাকঘর/উপজেলা: {mosque?.upazila || (address ? address.split(',')[1]?.trim() : '') || '........................'}, জেলা: {mosque?.district || (address ? address.split(',')[2]?.trim() : '') || '........................'} অত্র জামে মসজিদের এলাকার একজন নিয়মিত ও সম্মানিত মুসল্লি।
               </p>
               <p>
                 আমার জানামতে তিনি একজন সৎ, ধার্মিক ও চরিত্রবান ব্যক্তি। তিনি সামাজিক ও দ্বীনি কার্যক্রমে সক্রিয়ভাবে অংশগ্রহণ করেন। মসজিদ ও সমাজের শান্তি-শৃঙ্খলা বিরোধী কোনো কার্যকলাপে কখনো তাঁর সংশ্লিষ্টতা পাওয়া যায়নি। অত্র মসজিদ ওয়াকফ এস্টেটের সার্বিক কার্যক্রমে তাঁর অবদান প্রশংসনীয়।
@@ -539,9 +541,15 @@ export const OfficialLetterheadPad: React.FC<OfficialLetterheadPadProps> = ({
 /**
  * Clean isolated print trigger for the Official Letterhead Pad
  */
-export async function printOfficialLetterheadPad(elementId: string = 'official-letterhead-a4-sheet') {
+export async function printOfficialLetterheadPad(
+  elementId: string = 'official-letterhead-a4-sheet',
+  customTitle?: string
+) {
+  const globalMosque = getGlobalMosque();
+  const mosqueName = globalMosque?.nameBn || globalMosque?.name;
+  const dynamicTitle = customTitle || (mosqueName ? `অফিসিয়াল লেটারহেড প্যাড — ${mosqueName}` : 'অফিসিয়াল লেটারহেড প্যাড');
   return await printElement(elementId, {
-    title: 'অফিসিয়াল লেটারহেড প্যাড — মামুন জামে মসজিদ',
+    title: dynamicTitle,
     pageSize: 'A4',
     pageOrientation: 'portrait',
     margin: '0mm',

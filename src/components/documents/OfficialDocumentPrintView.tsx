@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useCallback } from 'react';
 import {
   Printer,
   X,
@@ -16,6 +16,7 @@ import {
 import { OfficialDocument } from '../../types/officialDocumentTypes';
 import { Mosque } from '../../types';
 import { MosqueOfficialLetterhead } from '../common/MosqueOfficialLetterhead';
+import { printElement } from '../../lib/printUtils';
 
 interface OfficialDocumentPrintViewProps {
   document: OfficialDocument;
@@ -30,13 +31,48 @@ export const OfficialDocumentPrintView: React.FC<OfficialDocumentPrintViewProps>
   onClose,
   onPrint,
 }) => {
-  const handleNativePrint = () => {
+  const handleNativePrint = useCallback(() => {
     if (onPrint) {
       onPrint();
       return;
     }
-    window.print();
-  };
+    const cleanTitle = (doc.title || 'দাপ্তরিক_নথি').trim().replace(/[\/\\?%*:|"<>]/g, '_');
+    const cleanNumber = (doc.memoNumber || doc.documentNumber || doc.id).trim().replace(/[\/\\?%*:|"<>]/g, '_');
+    const docTitle = `${mosque?.nameBn || mosque?.name || 'মসজিদ'}_${cleanTitle}_${cleanNumber}`;
+    printElement('official-document-printable-canvas', {
+      title: docTitle,
+      pageSize: 'A4',
+      pageOrientation: 'portrait',
+      margin: '10mm 12mm',
+      customStyles: `
+        @page {
+          size: A4 portrait !important;
+          margin: 10mm 12mm !important;
+        }
+        #official-document-printable-canvas {
+          box-shadow: none !important;
+          border: none !important;
+          padding: 0 !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          min-height: auto !important;
+        }
+      `,
+    });
+  }, [doc, mosque, onPrint]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault();
+        handleNativePrint();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [handleNativePrint]);
 
   const getDocTypeLabel = (type: string) => {
     switch (type) {
@@ -91,7 +127,10 @@ export const OfficialDocumentPrintView: React.FC<OfficialDocumentPrintViewProps>
 
         {/* Printable Paper Canvas (A4 standard) */}
         <div className="p-6 sm:p-10 overflow-y-auto flex-1 bg-slate-100 print:bg-white print:p-0 flex justify-center">
-          <div className="w-full max-w-[210mm] bg-white p-8 sm:p-12 rounded-xl shadow-lg border border-slate-200 print:shadow-none print:border-none print:p-8 print:m-0 min-h-[297mm] flex flex-col justify-between text-slate-900 font-sans">
+          <div
+            id="official-document-printable-canvas"
+            className="w-full max-w-[210mm] bg-white p-8 sm:p-12 rounded-xl shadow-lg border border-slate-200 print:shadow-none print:border-none print:p-8 print:m-0 min-h-[297mm] flex flex-col justify-between text-slate-900 font-sans"
+          >
             
             {/* Top: Letterhead or standard header */}
             <div>
@@ -105,8 +144,8 @@ export const OfficialDocumentPrintView: React.FC<OfficialDocumentPrintViewProps>
               ) : (
                 <div className="border-b-2 border-slate-800 pb-4 mb-6">
                   <div className="text-center">
-                    <h1 className="text-xl font-bold text-slate-900">{mosque?.nameBn || mosque?.name || 'বায়তুল আমান জামে মসজিদ'}</h1>
-                    <p className="text-xs text-slate-600">{mosque?.address || 'ঢাকা, বাংলাদেশ'}</p>
+                    <h1 className="text-xl font-bold text-slate-900">{mosque?.nameBn || mosque?.name || 'মসজিদ / ওয়াকফ এস্টেট'}</h1>
+                    {mosque?.address && <p className="text-xs text-slate-600">{mosque.address}</p>}
                   </div>
                   <div className="flex justify-between items-center text-xs text-slate-700 mt-4 pt-2 border-t border-slate-200">
                     <div><strong>স্মারক / নথি নং:</strong> {doc.documentNumber || doc.memoNumber}</div>
