@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Mosque } from '../../types';
 import { getGlobalMosque } from '../../lib/mosqueStore';
 
@@ -37,7 +37,14 @@ export const MosqueOfficialLetterhead: React.FC<MosqueOfficialLetterheadProps> =
   const waqfEstate = mosque?.waqfEstateName;
   const bismillah = mosque?.letterheadSettings?.bismillahText || 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ';
   const showBismillah = mosque?.letterheadSettings?.showBismillah !== false;
-  const hasLogo = Boolean(mosque?.logoUrl);
+
+  // Resilient Logo Handling (falls back gracefully if image URL fails or breaks)
+  const [logoError, setLogoError] = useState(false);
+  useEffect(() => {
+    setLogoError(false);
+  }, [mosque?.logoUrl]);
+
+  const hasLogo = Boolean(mosque?.logoUrl) && !logoError;
 
   return (
     <div
@@ -64,6 +71,7 @@ export const MosqueOfficialLetterhead: React.FC<MosqueOfficialLetterheadProps> =
               alt="Mosque Logo"
               className="w-16 h-16 sm:w-20 sm:h-20 object-contain rounded-full border border-emerald-800/30 p-0.5 bg-white shadow-2xs"
               referrerPolicy="no-referrer"
+              onError={() => setLogoError(true)}
             />
           </div>
         )}

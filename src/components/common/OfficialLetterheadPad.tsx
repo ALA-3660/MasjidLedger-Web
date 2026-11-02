@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Mosque } from '../../types';
 import { printElement } from '../../lib/printUtils';
 import { getGlobalMosque } from '../../lib/mosqueStore';
@@ -46,7 +46,13 @@ export const OfficialLetterheadPad: React.FC<OfficialLetterheadPadProps> = ({
   const footerNoteBn = settings.footerNoteBn || '';
   const showWatermark = settings.showWatermark !== false;
   const showSignatures = settings.showSignatures !== false;
-  const logoUrl = mosque?.logoUrl;
+
+  // Resilient Logo Handling (falls back gracefully if image URL fails or breaks)
+  const [logoError, setLogoError] = useState(false);
+  useEffect(() => {
+    setLogoError(false);
+  }, [mosque?.logoUrl]);
+  const logoUrl = !logoError ? mosque?.logoUrl : null;
 
   // Authority & Signatures
   const presidentSig = showSignatureImages ? mosque?.presidentSignatureUrl : undefined;
@@ -86,6 +92,7 @@ export const OfficialLetterheadPad: React.FC<OfficialLetterheadPadProps> = ({
             alt=""
             className="w-[420px] h-[420px] object-contain filter grayscale"
             referrerPolicy="no-referrer"
+            onError={() => setLogoError(true)}
           />
         </div>
       )}
@@ -110,6 +117,7 @@ export const OfficialLetterheadPad: React.FC<OfficialLetterheadPadProps> = ({
                   alt={nameBn}
                   className="max-h-full max-w-full object-contain"
                   referrerPolicy="no-referrer"
+                  onError={() => setLogoError(true)}
                 />
               </div>
             ) : (
@@ -195,6 +203,7 @@ export const OfficialLetterheadPad: React.FC<OfficialLetterheadPadProps> = ({
                   alt={nameBn}
                   className="max-h-full max-w-full object-contain"
                   referrerPolicy="no-referrer"
+                  onError={() => setLogoError(true)}
                 />
               </div>
             )}
@@ -239,6 +248,7 @@ export const OfficialLetterheadPad: React.FC<OfficialLetterheadPadProps> = ({
                       alt={nameBn}
                       className="max-h-full max-w-full object-contain"
                       referrerPolicy="no-referrer"
+                      onError={() => setLogoError(true)}
                     />
                   </div>
                 )}
@@ -299,6 +309,7 @@ export const OfficialLetterheadPad: React.FC<OfficialLetterheadPadProps> = ({
                       alt={nameBn}
                       className="max-h-full max-w-full object-contain"
                       referrerPolicy="no-referrer"
+                      onError={() => setLogoError(true)}
                     />
                   </div>
                 )}

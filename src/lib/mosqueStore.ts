@@ -8,11 +8,17 @@ export function setGlobalMosque(mosque: Mosque | null) {
   try {
     if (mosque) {
       localStorage.setItem('ml_current_mosque', JSON.stringify(mosque));
+    } else {
+      localStorage.removeItem('ml_current_mosque');
     }
   } catch {
     // Ignore storage errors
   }
   listeners.forEach((listener) => listener(mosque));
+}
+
+export function clearGlobalMosque() {
+  setGlobalMosque(null);
 }
 
 export function getGlobalMosque(): Mosque | null {

@@ -183,11 +183,17 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
 
   // Branding states
   const [logoUploading, setLogoUploading] = useState(false);
+  const [logoError, setLogoError] = useState(false);
   const [driveImportUrl, setDriveImportUrl] = useState('');
   const [driveImporting, setDriveImporting] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const presidentSigInputRef = useRef<HTMLInputElement>(null);
   const secretarySigInputRef = useRef<HTMLInputElement>(null);
+
+  // Reset logo error when logoUrl changes
+  useEffect(() => {
+    setLogoError(false);
+  }, [formData.logoUrl]);
 
   // Letterhead Interactive Preview & Print states
   const [isLetterheadPrintModalOpen, setIsLetterheadPrintModalOpen] = useState(false);
@@ -640,12 +646,13 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center space-x-3.5 sm:space-x-4">
             <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/10 backdrop-blur-md p-2 flex items-center justify-center border border-white/20 shadow-inner shrink-0">
-              {formData.logoUrl ? (
+              {formData.logoUrl && !logoError ? (
                 <img
                   src={formData.logoUrl}
                   alt="Mosque Logo"
                   className="w-full h-full object-contain filter drop-shadow-sm"
                   referrerPolicy="no-referrer"
+                  onError={() => setLogoError(true)}
                 />
               ) : (
                 <Landmark className="w-8 h-8 text-amber-300" />
@@ -1317,12 +1324,13 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
                 <div className="flex flex-col sm:flex-row items-center gap-6">
                   {/* Logo Preview */}
                   <div className="w-32 h-32 rounded-3xl bg-white p-3 shadow-md border border-slate-200 flex items-center justify-center relative shrink-0 overflow-hidden">
-                    {formData.logoUrl ? (
+                    {formData.logoUrl && !logoError ? (
                       <img
                         src={formData.logoUrl}
                         alt="Mosque Logo"
                         className="w-full h-full object-contain filter drop-shadow-sm"
                         referrerPolicy="no-referrer"
+                        onError={() => setLogoError(true)}
                       />
                     ) : (
                       <ImageIcon className="w-10 h-10 text-slate-300" />

@@ -94,6 +94,12 @@ export const QuickIncomeExpenseReportModal: React.FC<QuickIncomeExpenseReportMod
   const [statusFilter, setStatusFilter] = useState<string>(initialStatus || 'ALL');
   const [showLetterhead, setShowLetterhead] = useState<boolean>(true);
   const [showHeadSummary, setShowHeadSummary] = useState<boolean>(true);
+  const [logoError, setLogoError] = useState<boolean>(false);
+
+  // Reset logo error when active mosque or its logoUrl changes
+  useEffect(() => {
+    setLogoError(false);
+  }, [currentMosque?.logoUrl]);
 
   // Sync initialStatus when modal opens
   React.useEffect(() => {
@@ -566,11 +572,13 @@ export const QuickIncomeExpenseReportModal: React.FC<QuickIncomeExpenseReportMod
             <div className="relative pb-3 border-b-2 border-slate-900 text-center letterhead-header-box">
               {/* Logo Anchored to Left */}
               <div className="absolute left-0 top-1/2 -translate-y-1/2 flex items-center justify-center">
-                {currentMosque?.logoUrl ? (
+                {currentMosque?.logoUrl && !logoError ? (
                   <img
                     src={currentMosque.logoUrl}
                     alt="Mosque Logo"
                     className="w-14 h-14 object-contain rounded-full border border-slate-200 p-0.5"
+                    referrerPolicy="no-referrer"
+                    onError={() => setLogoError(true)}
                   />
                 ) : (
                   <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">

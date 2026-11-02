@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from './lib/api';
+import { setGlobalMosque, clearGlobalMosque } from './lib/mosqueStore';
 import {
   Mosque,
   User,
@@ -224,6 +225,7 @@ export default function App() {
         if (mosqueRes) {
           setMosque(mosqueRes);
           setAllMosques([mosqueRes]);
+          setGlobalMosque(mosqueRes);
         }
         setCurrentUser(null);
         setIsAuthenticated(false);
@@ -287,6 +289,7 @@ export default function App() {
       if (mosqueRes) {
         setMosque(mosqueRes);
         setAllMosques([mosqueRes]);
+        setGlobalMosque(mosqueRes);
       }
       if (userRes) {
         setCurrentUser(userRes);
@@ -295,6 +298,9 @@ export default function App() {
         // Token was invalid, expired, or revoked
         setCurrentUser(null);
         setIsAuthenticated(false);
+        setMosque(null);
+        setAllMosques([]);
+        clearGlobalMosque();
         api.clearAuth();
       }
       if (usersListRes) setAllUsers(usersListRes);
@@ -637,6 +643,9 @@ export default function App() {
       setCurrentUser(null);
       setIsAuthenticated(false);
       setCurrentTab('dashboard');
+      setMosque(null);
+      setAllMosques([]);
+      clearGlobalMosque();
       setAccounts([]);
       setAccountHeads([]);
       setIncomes([]);
@@ -1076,6 +1085,7 @@ export default function App() {
   const handleSaveMosqueSettings = async (data: Partial<Mosque>) => {
     const updated = await api.updateMosqueSettings(data);
     setMosque(updated);
+    setGlobalMosque(updated);
     await loadData(false);
   };
 

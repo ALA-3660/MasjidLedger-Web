@@ -93,6 +93,12 @@ export const QuickDonationBoxReportModal: React.FC<QuickDonationBoxReportModalPr
   const [showLetterhead, setShowLetterhead] = useState<boolean>(true);
   const [showBoxSummary, setShowBoxSummary] = useState<boolean>(true);
   const [showDenominationDetails, setShowDenominationDetails] = useState<boolean>(true);
+  const [logoError, setLogoError] = useState<boolean>(false);
+
+  // Reset logo error when active mosque or its logoUrl changes
+  React.useEffect(() => {
+    setLogoError(false);
+  }, [currentMosque?.logoUrl]);
 
   // Sync initial props on open
   React.useEffect(() => {
@@ -731,11 +737,12 @@ export const QuickDonationBoxReportModal: React.FC<QuickDonationBoxReportModalPr
               <div className="flex items-start justify-between gap-4">
                 {/* Mosque Logo */}
                 <div className="w-16 h-16 flex-shrink-0 flex items-center justify-center">
-                  {currentMosque?.logoUrl ? (
+                  {currentMosque?.logoUrl && !logoError ? (
                     <img
                       src={currentMosque.logoUrl}
                       alt="Mosque Logo"
                       referrerPolicy="no-referrer"
+                      onError={() => setLogoError(true)}
                       className="w-16 h-16 object-contain rounded-lg"
                     />
                   ) : (
