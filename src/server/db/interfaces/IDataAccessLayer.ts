@@ -55,10 +55,18 @@ export interface IUserRepository {
 }
 
 /**
+ * Read-only interface contract for Mosque Identity operations (Phase 1A).
+ */
+export interface IMosqueIdentityReadOnlyRepository {
+  findById(mosqueId: string, options?: DALOptions): Promise<Mosque | null>;
+  getById?(options: DALOptions, mosqueId?: string): Promise<Mosque | null>;
+}
+
+/**
  * Interface contract for Mosque Metadata & Tenant Settings operations.
  */
-export interface IMosqueIdentityRepository {
-  findById(mosqueId: string): Promise<Mosque | null>;
+export interface IMosqueIdentityRepository extends IMosqueIdentityReadOnlyRepository {
+  findById(mosqueId: string, options?: DALOptions): Promise<Mosque | null>;
   updateSettings(options: DALOptions, updates: Partial<Mosque>): Promise<Mosque>;
 }
 
@@ -125,10 +133,18 @@ export interface ICommitteeRepository {
 }
 
 /**
+ * Read-Only Data Access Layer Contract for Phase 1A.
+ * Restricts exposed surface strictly to read-only mosque identity operations.
+ */
+export interface IReadOnlyDataAccessLayer {
+  readonly mosque: IMosqueIdentityReadOnlyRepository;
+}
+
+/**
  * Master Unified Data Access Layer Interface Contract.
  * Positioned between Express route handlers and database persistence engines.
  */
-export interface IDataAccessLayer {
+export interface IDataAccessLayer extends IReadOnlyDataAccessLayer {
   readonly users: IUserRepository;
   readonly mosque: IMosqueIdentityRepository;
   readonly accountHeads: IAccountHeadRepository;

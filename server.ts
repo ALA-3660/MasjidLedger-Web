@@ -23,6 +23,8 @@ import {
   REFRESH_TOKEN_TTL_SECONDS,
   JwtAccessPayload,
 } from './src/server/auth/jwt.ts';
+import { IReadOnlyDataAccessLayer } from './src/server/db/interfaces/IDataAccessLayer.ts';
+import { dalContextMiddleware } from './src/server/middleware/dalContextMiddleware.ts';
 import {
   User,
   UserRole,
@@ -188,6 +190,7 @@ export interface AuthRequest extends Request {
   user?: User;
   currentMosque?: Mosque;
   idempotencyKey?: string;
+  dal?: IReadOnlyDataAccessLayer;
 }
 
 // Multi-tenant authentication & role middleware
@@ -350,6 +353,54 @@ const requireAnyPermission = (permissions: Permission[]) => {
     });
   };
 };
+
+// ==========================================
+// DAL HEALTH CHECK ENDPOINT (PHASE 1A: READ-ONLY MOSQUE IDENTITY VERTICAL SLICE)
+// ==========================================
+app.get('/api/v1/dal-health', authenticate, dalContextMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.dal || !req.dal.mosque) {
+      return res.status(500).json({
+        success: false,
+        error: {
+          code: 'DAL_UNAVAILABLE',
+          message: 'Data Access Layer is not available on the request context.'
+        }
+      });
+    }
+
+    const currentMosqueId = req.currentMosque!.id;
+    const mosqueRecord = await req.dal.mosque.findById(currentMosqueId);
+
+    if (!mosqueRecord || mosqueRecord.id !== currentMosqueId) {
+      return res.status(500).json({
+        success: false,
+        error: {
+          code: 'DAL_QUERY_FAILED',
+          message: 'Failed to verify tenant through DAL Mosque repository.'
+        }
+      });
+    }
+
+    return res.json({
+      success: true,
+      status: 'UP',
+      layer: 'DATA_ACCESS_LAYER',
+      phase: '1A_READ_ONLY_VERTICAL_SLICE',
+      adapter: 'JSON',
+      tenantBound: true,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: 'DAL_ERROR',
+        message: err.message || 'An error occurred while verifying the Data Access Layer.'
+      }
+    });
+  }
+});
 
 // ==========================================
 // 1. AUTH & USER HELPERS & CONSTANTS
