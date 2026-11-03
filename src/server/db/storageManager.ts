@@ -6,6 +6,12 @@
 import { Request } from 'express';
 import { db } from '../db.ts';
 import { IDataAccessLayer, AuthorizedUserContext, DALOptions } from './interfaces/IDataAccessLayer';
+import {
+  JsonDonationParityRepository,
+  JsonDonationBoxParityRepository,
+  JsonStaffParityRepository,
+  JsonPropertyParityRepository,
+} from './adapters/JsonStorageAdapter';
 
 export class StorageManagerError extends Error {
   constructor(public code: string, message: string) {
@@ -145,6 +151,22 @@ export class StorageManager {
           db.save();
           return newHead as any;
         },
+        update: async (options, headId, updates) => {
+          StorageManager.verifyTenantAccess(options, context);
+          const head = db.accountHeads.find(h => h.id === headId && h.mosqueId === options.mosqueId);
+          if (!head) throw new Error('Account head not found');
+          Object.assign(head, updates, { updatedAt: new Date().toISOString() });
+          db.save();
+          return head as any;
+        },
+        deleteOrArchive: async (options, headId) => {
+          StorageManager.verifyTenantAccess(options, context);
+          const idx = db.accountHeads.findIndex(h => h.id === headId && h.mosqueId === options.mosqueId);
+          if (idx === -1) throw new Error('Account head not found');
+          const [removed] = db.accountHeads.splice(idx, 1);
+          db.save();
+          return { action: 'DELETED', head: removed as any, usageCount: 0 };
+        },
       },
       financialAccounts: {
         list: async (options) => {
@@ -154,6 +176,37 @@ export class StorageManager {
         findById: async (options, accountId) => {
           StorageManager.verifyTenantAccess(options, context);
           return db.accounts.find(a => a.id === accountId && a.mosqueId === options.mosqueId) || null;
+        },
+        create: async (options, account) => {
+          StorageManager.verifyTenantAccess(options, context);
+          const bal = Number(account.openingBalance) || 0;
+          const newAcc = {
+            ...account,
+            id: `acc-${Date.now()}`,
+            mosqueId: options.mosqueId,
+            openingBalance: bal,
+            currentBalance: account.openingBalanceType === 'CREDIT' ? -bal : bal,
+            createdAt: new Date().toISOString(),
+          };
+          db.accounts.push(newAcc as any);
+          db.save();
+          return newAcc as any;
+        },
+        update: async (options, accountId, updates) => {
+          StorageManager.verifyTenantAccess(options, context);
+          const acc = db.accounts.find(a => a.id === accountId && a.mosqueId === options.mosqueId);
+          if (!acc) throw new Error('Financial account not found');
+          Object.assign(acc, updates, { updatedAt: new Date().toISOString() });
+          db.save();
+          return acc as any;
+        },
+        setOpeningBalance: async (options, accountId, input) => {
+          StorageManager.verifyTenantAccess(options, context);
+          const acc = db.accounts.find(a => a.id === accountId && a.mosqueId === options.mosqueId);
+          if (!acc) throw new Error('Financial account not found');
+          Object.assign(acc, input, { updatedAt: new Date().toISOString() });
+          db.save();
+          return acc as any;
         },
         updateBalance: async (options, accountId, newBalance) => {
           StorageManager.verifyTenantAccess(options, context);
@@ -180,6 +233,23 @@ export class StorageManager {
           db.save();
           return newEntry as any;
         },
+        update: async (options, entryId, updates) => {
+          StorageManager.verifyTenantAccess(options, context);
+          const entry = db.incomeEntries.find(i => i.id === entryId && i.mosqueId === options.mosqueId);
+          if (!entry) throw new Error('Income entry not found');
+          Object.assign(entry, updates, { updatedAt: new Date().toISOString() });
+          db.save();
+          return entry as any;
+        },
+        updateDenomination: async (options, entryId, denominationData) => {
+          StorageManager.verifyTenantAccess(options, context);
+          const entry = db.incomeEntries.find(i => i.id === entryId && i.mosqueId === options.mosqueId);
+          if (!entry) throw new Error('Income entry not found');
+          entry.denominationData = denominationData;
+          entry.updatedAt = new Date().toISOString();
+          db.save();
+          return entry as any;
+        },
         reverse: async (options, entryId, reason) => {
           StorageManager.verifyTenantAccess(options, context);
           const entry = db.incomeEntries.find(i => i.id === entryId && i.mosqueId === options.mosqueId);
@@ -205,6 +275,14 @@ export class StorageManager {
           db.expenseEntries.push(newEntry as any);
           db.save();
           return newEntry as any;
+        },
+        update: async (options, entryId, updates) => {
+          StorageManager.verifyTenantAccess(options, context);
+          const entry = db.expenseEntries.find(e => e.id === entryId && e.mosqueId === options.mosqueId);
+          if (!entry) throw new Error('Expense entry not found');
+          Object.assign(entry, updates, { updatedAt: new Date().toISOString() });
+          db.save();
+          return entry as any;
         },
         reverse: async (options, entryId, reason) => {
           StorageManager.verifyTenantAccess(options, context);
@@ -249,6 +327,22 @@ export class StorageManager {
           return db.committeeMembers.filter(m => m.mosqueId === options.mosqueId && m.termId === termId);
         },
       },
+      donations: new JsonDonationParityRepository(db, {
+        mosqueId: context.userMosqueId,
+        userContext: context,
+      }),
+      donationBoxes: new JsonDonationBoxParityRepository(db, {
+        mosqueId: context.userMosqueId,
+        userContext: context,
+      }),
+      staff: new JsonStaffParityRepository(db, {
+        mosqueId: context.userMosqueId,
+        userContext: context,
+      }),
+      properties: new JsonPropertyParityRepository(db, {
+        mosqueId: context.userMosqueId,
+        userContext: context,
+      }),
       executeTransaction: async (work) => {
         // In-memory execution boundary for JSON storage engine
         return await work(StorageManager.createJsonDalWrapper(context));

@@ -9,23 +9,26 @@
 import { Request, Response, NextFunction } from 'express';
 import {
   IReadOnlyDataAccessLayer,
+  IScopedMutationDataAccessLayer,
   AuthorizedUserContext,
   DALOptions,
 } from '../db/interfaces/IDataAccessLayer';
-import { JsonStorageAdapter } from '../db/adapters/JsonStorageAdapter';
+import { createDataAccessLayer } from '../db/adapters/dalFactory';
 
-// Express Request type augmentation for req.dal
+// Express Request type augmentation for req.dal and req.dalOptions
 declare global {
   namespace Express {
     interface Request {
-      dal?: IReadOnlyDataAccessLayer;
+      dal?: IScopedMutationDataAccessLayer;
+      dalOptions?: DALOptions;
     }
   }
 }
 
 /**
  * DAL Context Middleware:
- * Validates authenticated session context and injects request-scoped read-only DAL.
+ * Validates authenticated session context and injects request-scoped DAL via createDataAccessLayer.
+ * JSON remains the default runtime adapter; PostgreSQL remains explicitly opt-in.
  */
 export const dalContextMiddleware = (
   req: Request,
@@ -60,6 +63,7 @@ export const dalContextMiddleware = (
   // 3. Construct AuthorizedUserContext strictly from verified server credentials
   const userContext: AuthorizedUserContext = {
     userId: user.id,
+    userName: user.name || user.id,
     userRole: user.role,
     userMosqueId: user.mosqueId,
     permissions: user.permissions || [],
@@ -73,8 +77,11 @@ export const dalContextMiddleware = (
     idempotencyKey: (req as any).idempotencyKey,
   };
 
-  // 5. Bind scoped read-only DAL adapter to request
-  req.dal = new JsonStorageAdapter(dalOptions);
+  // 5. Obtain scoped DAL adapter through factory (defaults strictly to JSON)
+  req.dalOptions = dalOptions;
+  req.dal = createDataAccessLayer({
+    dalOptions,
+  });
 
   next();
 };

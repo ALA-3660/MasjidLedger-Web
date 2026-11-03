@@ -178,6 +178,15 @@ export class PostgresExpenseRepository {
         throw new Error(`[ExpenseRepository] Target account ${dto.accountId} not found in mosque ${dto.mosqueId}`);
       }
 
+      const currentBalance = parseFloat(accRes.rows[0].current_balance || '0');
+      if ((!dto.status || dto.status === 'APPROVED') && currentBalance < numAmount) {
+        const err = new Error(
+          `[ExpenseRepository] Insufficient balance in account ${dto.accountId} (Current: ${currentBalance.toFixed(2)}, Required: ${numAmount.toFixed(2)})`
+        );
+        (err as any).code = 'INSUFFICIENT_BALANCE';
+        throw err;
+      }
+
       // 2. Insert Expense Entry
       const query = `
         INSERT INTO expense_entries (
@@ -321,7 +330,7 @@ export class PostgresExpenseRepository {
           $1, $2, $3, $4, $5, 'REVERSE_EXPENSE', 'EXPENSE_ENTRY', $6, $7, $8, $9, NOW()
         )`,
         [
-          `aud-rev-exp-${Date.now()}`,
+          `aud-rev-exp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
           dto.mosqueId,
           dto.actorId,
           dto.actorName || dto.actorId,

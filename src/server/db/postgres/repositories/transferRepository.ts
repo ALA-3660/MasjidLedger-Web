@@ -150,6 +150,15 @@ export class PostgresTransferRepository {
         throw new Error('[TransferRepository] Failed to acquire locks on both transfer accounts.');
       }
 
+      const sourceBalance = parseFloat(sourceAcc.current_balance || '0');
+      if (sourceBalance < numAmount) {
+        const err = new Error(
+          `[TransferRepository] Insufficient balance in source account ${dto.fromAccountId} (Current: ${sourceBalance.toFixed(2)}, Required: ${numAmount.toFixed(2)})`
+        );
+        (err as any).code = 'INSUFFICIENT_BALANCE';
+        throw err;
+      }
+
       // 3. Update Source Account (Debit / Subtract)
       await client.query(
         `UPDATE financial_accounts

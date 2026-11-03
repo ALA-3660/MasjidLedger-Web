@@ -313,7 +313,7 @@ export class PostgresIncomeRepository {
           $1, $2, $3, $4, $5, 'REVERSE_INCOME', 'INCOME_ENTRY', $6, $7, $8, $9, NOW()
         )`,
         [
-          `aud-rev-inc-${Date.now()}`,
+          `aud-rev-inc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
           dto.mosqueId,
           dto.actorId,
           dto.actorName || dto.actorId,

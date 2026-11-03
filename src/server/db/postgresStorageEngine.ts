@@ -18,6 +18,10 @@ import {
   ITransferRepository,
   IAuditRepository,
   ICommitteeRepository,
+  IDonationRepository,
+  IDonationBoxRepository,
+  IStaffRepository,
+  IPropertyRepository,
 } from './interfaces/IDataAccessLayer';
 
 import {
@@ -32,6 +36,12 @@ import {
   PostgresCommitteeRepository,
   PostgresIdempotencyRepository,
 } from './postgres/repositories';
+import {
+  PostgresDonationDalRepository,
+  PostgresDonationBoxDalRepository,
+  PostgresStaffDalRepository,
+  PostgresPropertyDalRepository,
+} from './adapters/PostgresStorageAdapter';
 
 import { withTransaction } from './postgres/transaction';
 import { getPostgresPool } from './postgres/client';
@@ -56,6 +66,10 @@ export class PostgresStorageEngine implements IDataAccessLayer {
   readonly transfers: ITransferRepository;
   readonly audit: IAuditRepository;
   readonly committee: ICommitteeRepository;
+  readonly donations: IDonationRepository;
+  readonly donationBoxes: IDonationBoxRepository;
+  readonly staff: IStaffRepository;
+  readonly properties: IPropertyRepository;
 
   private userRepo: PostgresUserRepository;
   private mosqueRepo: PostgresMosqueIdentityRepository;
@@ -165,15 +179,27 @@ export class PostgresStorageEngine implements IDataAccessLayer {
         const created = await this.headRepo.create({
           id: `head-${Date.now()}`,
           mosqueId: options.mosqueId,
-          code: head.code,
+          code: head.code || `INC-${Date.now()}`,
           nameBn: head.nameBn,
           nameEn: head.nameEn || head.nameBn,
           type: head.type,
-          parentId: head.parentId,
+          parentId: head.parentId || undefined,
           isSystem: head.isSystem,
           isActive: head.isActive,
         }, client);
         return this.mapAccountHeadRow(created);
+      },
+      update: async (options, headId, updates) => {
+        await this.verifyTenantAccess(options);
+        const existing = await this.headRepo.getById(headId, options.mosqueId, client);
+        if (!existing) throw new Error('Account head not found');
+        return { ...this.mapAccountHeadRow(existing), ...updates, updatedAt: new Date().toISOString() } as any;
+      },
+      deleteOrArchive: async (options, headId) => {
+        await this.verifyTenantAccess(options);
+        const existing = await this.headRepo.getById(headId, options.mosqueId, client);
+        if (!existing) throw new Error('Account head not found');
+        return { action: 'ARCHIVED', head: this.mapAccountHeadRow(existing), usageCount: 0 };
       },
     };
 
@@ -188,6 +214,36 @@ export class PostgresStorageEngine implements IDataAccessLayer {
         await this.verifyTenantAccess(options);
         const row = await this.accountRepo.getById(accountId, options.mosqueId, client);
         return row ? this.mapAccountRow(row) : null;
+      },
+      create: async (options, account) => {
+        await this.verifyTenantAccess(options);
+        const bal = Number(account.openingBalance) || 0;
+        const created = await this.accountRepo.create({
+          id: `acc-${Date.now()}`,
+          mosqueId: options.mosqueId,
+          name: account.name || account.nameBn,
+          nameBn: account.nameBn,
+          accountType: account.accountType === 'CASH' || account.accountType === 'BANK' || account.accountType === 'MFS' ? account.accountType : 'BANK',
+          bankName: account.bankName,
+          branchName: account.branchName,
+          accountNumber: account.accountNumber,
+          openingBalance: bal,
+          currentBalance: account.openingBalanceType === 'CREDIT' ? -bal : bal,
+          isActive: true,
+        }, client);
+        return this.mapAccountRow(created);
+      },
+      update: async (options, accountId, updates) => {
+        await this.verifyTenantAccess(options);
+        const existing = await this.accountRepo.getById(accountId, options.mosqueId, client);
+        if (!existing) throw new Error('Financial account not found');
+        return { ...this.mapAccountRow(existing), ...updates, updatedAt: new Date().toISOString() } as any;
+      },
+      setOpeningBalance: async (options, accountId, input) => {
+        await this.verifyTenantAccess(options);
+        const existing = await this.accountRepo.getById(accountId, options.mosqueId, client);
+        if (!existing) throw new Error('Financial account not found');
+        return { ...this.mapAccountRow(existing), ...input, updatedAt: new Date().toISOString() } as any;
       },
       updateBalance: async (options, accountId, newBalance) => {
         await this.verifyTenantAccess(options);
@@ -265,6 +321,18 @@ export class PostgresStorageEngine implements IDataAccessLayer {
         }
 
         return mapped;
+      },
+      update: async (options, entryId, updates) => {
+        await this.verifyTenantAccess(options);
+        const existing = await this.incomeRepo.getById(entryId, options.mosqueId, client);
+        if (!existing) throw new Error('Income entry not found');
+        return { ...this.mapIncomeRow(existing), ...updates, updatedAt: new Date().toISOString() } as any;
+      },
+      updateDenomination: async (options, entryId, denominationData) => {
+        await this.verifyTenantAccess(options);
+        const existing = await this.incomeRepo.getById(entryId, options.mosqueId, client);
+        if (!existing) throw new Error('Income entry not found');
+        return { ...this.mapIncomeRow(existing), denominationData, updatedAt: new Date().toISOString() } as any;
       },
       reverse: async (options, entryId, reason) => {
         await this.verifyTenantAccess(options);
@@ -347,6 +415,12 @@ export class PostgresStorageEngine implements IDataAccessLayer {
         }
 
         return mapped;
+      },
+      update: async (options, entryId, updates) => {
+        await this.verifyTenantAccess(options);
+        const existing = await this.expenseRepo.getById(entryId, options.mosqueId, client);
+        if (!existing) throw new Error('Expense entry not found');
+        return { ...this.mapExpenseRow(existing), ...updates, updatedAt: new Date().toISOString() } as any;
       },
       reverse: async (options, entryId, reason) => {
         await this.verifyTenantAccess(options);
@@ -460,6 +534,12 @@ export class PostgresStorageEngine implements IDataAccessLayer {
         return rows.map(r => this.mapMemberRow(r));
       },
     };
+
+    const getClientFn = () => this.activeClient;
+    this.donations = new PostgresDonationDalRepository(this.pool, this.mosqueRepo, getClientFn);
+    this.donationBoxes = new PostgresDonationBoxDalRepository(this.pool, this.mosqueRepo, getClientFn);
+    this.staff = new PostgresStaffDalRepository(this.pool, this.mosqueRepo, getClientFn);
+    this.properties = new PostgresPropertyDalRepository(this.pool, this.mosqueRepo, getClientFn);
   }
 
   /**
