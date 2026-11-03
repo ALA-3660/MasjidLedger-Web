@@ -22,6 +22,10 @@ import {
   IDonationBoxRepository,
   IStaffRepository,
   IPropertyRepository,
+  IAssetRepository,
+  IMusalliRepository,
+  IEducationRepository,
+  ILibraryRepository,
 } from './interfaces/IDataAccessLayer';
 
 import {
@@ -41,6 +45,10 @@ import {
   PostgresDonationBoxDalRepository,
   PostgresStaffDalRepository,
   PostgresPropertyDalRepository,
+  PostgresAssetDalRepository,
+  PostgresMusalliDalRepository,
+  PostgresEducationDalRepository,
+  PostgresLibraryDalRepository,
 } from './adapters/PostgresStorageAdapter';
 
 import { withTransaction } from './postgres/transaction';
@@ -70,6 +78,10 @@ export class PostgresStorageEngine implements IDataAccessLayer {
   readonly donationBoxes: IDonationBoxRepository;
   readonly staff: IStaffRepository;
   readonly properties: IPropertyRepository;
+  readonly assets: IAssetRepository;
+  readonly musalli: IMusalliRepository;
+  readonly education: IEducationRepository;
+  readonly library: ILibraryRepository;
 
   private userRepo: PostgresUserRepository;
   private mosqueRepo: PostgresMosqueIdentityRepository;
@@ -540,6 +552,10 @@ export class PostgresStorageEngine implements IDataAccessLayer {
     this.donationBoxes = new PostgresDonationBoxDalRepository(this.pool, this.mosqueRepo, getClientFn);
     this.staff = new PostgresStaffDalRepository(this.pool, this.mosqueRepo, getClientFn);
     this.properties = new PostgresPropertyDalRepository(this.pool, this.mosqueRepo, getClientFn);
+    this.assets = new PostgresAssetDalRepository(this.pool, this.mosqueRepo, getClientFn);
+    this.musalli = new PostgresMusalliDalRepository(this.pool, this.mosqueRepo, getClientFn);
+    this.education = new PostgresEducationDalRepository(this.pool, this.mosqueRepo, getClientFn);
+    this.library = new PostgresLibraryDalRepository(this.pool, this.mosqueRepo, getClientFn);
   }
 
   /**

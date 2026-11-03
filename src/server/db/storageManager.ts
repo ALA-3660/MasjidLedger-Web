@@ -11,6 +11,10 @@ import {
   JsonDonationBoxParityRepository,
   JsonStaffParityRepository,
   JsonPropertyParityRepository,
+  JsonAssetParityRepository,
+  JsonMusalliParityRepository,
+  JsonEducationParityRepository,
+  JsonLibraryParityRepository,
 } from './adapters/JsonStorageAdapter';
 
 export class StorageManagerError extends Error {
@@ -340,6 +344,22 @@ export class StorageManager {
         userContext: context,
       }),
       properties: new JsonPropertyParityRepository(db, {
+        mosqueId: context.userMosqueId,
+        userContext: context,
+      }),
+      assets: new JsonAssetParityRepository(db, {
+        mosqueId: context.userMosqueId,
+        userContext: context,
+      }),
+      musalli: new JsonMusalliParityRepository(db, {
+        mosqueId: context.userMosqueId,
+        userContext: context,
+      }),
+      education: new JsonEducationParityRepository(db, {
+        mosqueId: context.userMosqueId,
+        userContext: context,
+      }),
+      library: new JsonLibraryParityRepository(db, {
         mosqueId: context.userMosqueId,
         userContext: context,
       }),

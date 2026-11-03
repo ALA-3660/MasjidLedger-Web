@@ -334,7 +334,143 @@ export interface IPropertyRepository {
 }
 
 /**
- * Read-Only Data Access Layer Contract (Phase 1A / Phase 1B.8 / Phase 1B.9 / Phase 1B.12).
+ * Interface contract for Assets & Maintenance (Section 8 — Phase 1B.13).
+ */
+export interface IAssetRepository {
+  list(options: DALOptions, query?: any): Promise<{ data: any[]; stats: any }>;
+  findById(options: DALOptions, id: string): Promise<any | null>;
+  create(options: DALOptions, payload: Record<string, any>): Promise<any>;
+  update(options: DALOptions, id: string, payload: Record<string, any>): Promise<any>;
+  addServiceRecord(options: DALOptions, id: string, payload: Record<string, any>): Promise<any>;
+  toggleArchive(options: DALOptions, id: string, payload?: Record<string, any>): Promise<any>;
+  deleteOrArchive(options: DALOptions, id: string, force?: boolean): Promise<any>;
+  clearDemo(options: DALOptions): Promise<{ removedCount: number }>;
+  logAudit(options: DALOptions, id: string, action?: string, details?: string): Promise<void>;
+}
+
+/**
+ * Interface contract for Musalli & Donor Management (Section 12 — Phase 1B.13).
+ */
+export interface IMusalliRepository {
+  listAreas(options: DALOptions): Promise<any[]>;
+  getAreaById(options: DALOptions, id: string): Promise<any | null>;
+  createArea(options: DALOptions, payload: Record<string, any>): Promise<any>;
+  updateArea(options: DALOptions, id: string, payload: Record<string, any>): Promise<any>;
+  updateAreaStatus(options: DALOptions, id: string, status: string): Promise<any>;
+
+  listFamilies(options: DALOptions, query?: any): Promise<any[]>;
+  getFamilyById(options: DALOptions, id: string): Promise<any | null>;
+  checkFamilyDuplicate(options: DALOptions, payload: Record<string, any>): Promise<any>;
+  createFamily(options: DALOptions, payload: Record<string, any>): Promise<any>;
+  updateFamily(options: DALOptions, id: string, payload: Record<string, any>): Promise<any>;
+  updateFamilyStatus(options: DALOptions, id: string, status: string): Promise<any>;
+
+  listPersons(options: DALOptions, query?: any): Promise<any[]>;
+  getPersonById(options: DALOptions, id: string): Promise<any | null>;
+  checkPersonDuplicate(options: DALOptions, payload: Record<string, any>): Promise<any>;
+  createPerson(options: DALOptions, payload: Record<string, any>): Promise<any>;
+  updatePerson(options: DALOptions, id: string, payload: Record<string, any>): Promise<any>;
+  updatePersonStatus(options: DALOptions, id: string, status: string): Promise<any>;
+
+  listDonationPlans(options: DALOptions, query?: any): Promise<any[]>;
+  getDonationPlanById(options: DALOptions, id: string): Promise<any | null>;
+  checkPlanOverlap(options: DALOptions, payload: Record<string, any>): Promise<any>;
+  createDonationPlan(options: DALOptions, payload: Record<string, any>): Promise<any>;
+  updateDonationPlan(options: DALOptions, id: string, payload: Record<string, any>): Promise<any>;
+  updatePlanStatus(options: DALOptions, id: string, status: string): Promise<any>;
+  deleteDonationPlan(options: DALOptions, id: string): Promise<any>;
+
+  listCollectionWorkers(options: DALOptions): Promise<any[]>;
+  getCollectionWorkerById(options: DALOptions, id: string): Promise<any | null>;
+  createCollectionWorker(options: DALOptions, payload: Record<string, any>): Promise<any>;
+  updateCollectionWorker(options: DALOptions, id: string, payload: Record<string, any>): Promise<any>;
+  updateWorkerStatus(options: DALOptions, id: string, status: string): Promise<any>;
+
+  getMusalliStats(options: DALOptions): Promise<any>;
+}
+
+/**
+ * Interface contract for Education Foundation, Maktab & Hifzkhana Operations (Section 13 — Phase 1B.13).
+ */
+export interface IEducationRepository {
+  getDashboardStats(options: DALOptions): Promise<any>;
+
+  listPrograms(options: DALOptions): Promise<any[]>;
+  createProgram(options: DALOptions, payload: Record<string, any>): Promise<any>;
+  updateProgram(options: DALOptions, id: string, payload: Record<string, any>): Promise<any>;
+
+  listLevels(options: DALOptions, query?: any): Promise<any[]>;
+  createLevel(options: DALOptions, payload: Record<string, any>): Promise<any>;
+  updateLevel(options: DALOptions, id: string, payload: Record<string, any>): Promise<any>;
+
+  listStudents(options: DALOptions, query?: any): Promise<any[]>;
+  getStudentById(options: DALOptions, id: string): Promise<any | null>;
+  createStudent(options: DALOptions, payload: Record<string, any>): Promise<any>;
+  updateStudent(options: DALOptions, id: string, payload: Record<string, any>): Promise<any>;
+  deleteStudent(options: DALOptions, id: string): Promise<any>;
+
+  listGuardians(options: DALOptions, studentId: string): Promise<any[]>;
+  addGuardian(options: DALOptions, studentId: string, payload: Record<string, any>): Promise<any>;
+  removeGuardian(options: DALOptions, studentId: string, guardianPersonId: string): Promise<any>;
+
+  listEnrollments(options: DALOptions, query?: any): Promise<any[]>;
+  getEnrollmentById(options: DALOptions, id: string): Promise<any | null>;
+  createEnrollment(options: DALOptions, payload: Record<string, any>): Promise<any>;
+  updateEnrollment(options: DALOptions, id: string, payload: Record<string, any>): Promise<any>;
+}
+
+/**
+ * Interface contract for Library & Knowledge Center (Section 14 — Phase 1B.13).
+ */
+export interface ILibraryRepository {
+  listCategories(options: DALOptions): Promise<any[]>;
+  createCategory(options: DALOptions, payload: Record<string, any>): Promise<any>;
+  updateCategory(options: DALOptions, id: string, payload: Record<string, any>): Promise<any>;
+  deleteCategory(options: DALOptions, id: string): Promise<any>;
+
+  listBookTitles(options: DALOptions, query?: any): Promise<any[]>;
+  getBookTitleById(options: DALOptions, id: string): Promise<any | null>;
+  createBookTitle(options: DALOptions, payload: Record<string, any>): Promise<any>;
+  updateBookTitle(options: DALOptions, id: string, payload: Record<string, any>): Promise<any>;
+  deleteBookTitle(options: DALOptions, id: string): Promise<any>;
+
+  listBookCopies(options: DALOptions, query?: any): Promise<any[]>;
+  getBookCopyById(options: DALOptions, id: string): Promise<any | null>;
+  lookupByBookId(options: DALOptions, bookId: string): Promise<any | null>;
+  createBookCopy(options: DALOptions, payload: Record<string, any>): Promise<any>;
+  bulkCreateBookCopies(options: DALOptions, payload: Record<string, any>): Promise<any>;
+  updateBookCopy(options: DALOptions, id: string, payload: Record<string, any>): Promise<any>;
+  updateCopyStatus(options: DALOptions, id: string, status: string, notes?: string): Promise<any>;
+
+  listMembers(options: DALOptions, query?: any): Promise<any[]>;
+  getMemberById(options: DALOptions, id: string): Promise<any | null>;
+  createMember(options: DALOptions, payload: Record<string, any>): Promise<any>;
+  updateMember(options: DALOptions, id: string, payload: Record<string, any>): Promise<any>;
+
+  listIssues(options: DALOptions, query?: any): Promise<any[]>;
+  issueBook(options: DALOptions, payload: Record<string, any>): Promise<any>;
+  returnBook(options: DALOptions, id: string, payload: Record<string, any>): Promise<any>;
+  markLost(options: DALOptions, id: string, payload?: Record<string, any>): Promise<any>;
+
+  listAcquisitions(options: DALOptions, query?: any): Promise<any[]>;
+  createAcquisition(options: DALOptions, payload: Record<string, any>): Promise<any>;
+
+  getLocations(options: DALOptions): Promise<any>;
+  createRoom(options: DALOptions, payload: Record<string, any>): Promise<any>;
+  updateRoom(options: DALOptions, id: string, payload: Record<string, any>): Promise<any>;
+  deleteRoom(options: DALOptions, id: string): Promise<any>;
+  createRack(options: DALOptions, payload: Record<string, any>): Promise<any>;
+  updateRack(options: DALOptions, id: string, payload: Record<string, any>): Promise<any>;
+  deleteRack(options: DALOptions, id: string): Promise<any>;
+  createShelf(options: DALOptions, payload: Record<string, any>): Promise<any>;
+  updateShelf(options: DALOptions, id: string, payload: Record<string, any>): Promise<any>;
+  deleteShelf(options: DALOptions, id: string): Promise<any>;
+
+  getReport(options: DALOptions, reportType: string, query?: any): Promise<any>;
+}
+
+/**
+ * Read-Only Data Access Layer Contract (Phase 1A / Phase 1B.8 / Phase 1B.9 / Phase 1B.12 / Phase 1B.13).
  * Strictly read-only: NEVER exposes financial or state mutation methods.
  */
 export interface IReadOnlyDataAccessLayer {
@@ -349,10 +485,14 @@ export interface IReadOnlyDataAccessLayer {
   readonly donationBoxes?: Pick<IDonationBoxRepository, 'listBoxesAndCollections'>;
   readonly staff?: Pick<IStaffRepository, 'listStaff' | 'listPayments' | 'getNextCode' | 'listPaymentBatches' | 'findPaymentBatchById'>;
   readonly properties?: Pick<IPropertyRepository, 'list'>;
+  readonly assets?: Pick<IAssetRepository, 'list' | 'findById'>;
+  readonly musalli?: Pick<IMusalliRepository, 'listAreas' | 'getAreaById' | 'listFamilies' | 'getFamilyById' | 'listPersons' | 'getPersonById' | 'getMusalliStats'>;
+  readonly education?: Pick<IEducationRepository, 'getDashboardStats' | 'listPrograms' | 'listLevels' | 'listStudents' | 'getStudentById' | 'listEnrollments'>;
+  readonly library?: Pick<ILibraryRepository, 'listCategories' | 'listBookTitles' | 'getBookTitleById' | 'listBookCopies' | 'getBookCopyById' | 'listMembers' | 'getMemberById' | 'listIssues' | 'getLocations'>;
 }
 
 /**
- * Scoped Mutation & Parity Data Access Layer Contract (Phase 1B.7 – Phase 1B.12).
+ * Scoped Mutation & Parity Data Access Layer Contract (Phase 1B.7 – Phase 1B.13).
  * Cleanly separates mutation-capable parity operations
  * from the strictly read-only IReadOnlyDataAccessLayer contract.
  */
@@ -368,6 +508,10 @@ export interface IScopedMutationDataAccessLayer extends IReadOnlyDataAccessLayer
   readonly donationBoxes: IDonationBoxRepository;
   readonly staff: IStaffRepository;
   readonly properties: IPropertyRepository;
+  readonly assets: IAssetRepository;
+  readonly musalli: IMusalliRepository;
+  readonly education: IEducationRepository;
+  readonly library: ILibraryRepository;
 }
 
 /**
@@ -390,10 +534,15 @@ export interface IDataAccessLayer extends IScopedMutationDataAccessLayer {
   readonly donationBoxes: IDonationBoxRepository;
   readonly staff: IStaffRepository;
   readonly properties: IPropertyRepository;
+  readonly assets: IAssetRepository;
+  readonly musalli: IMusalliRepository;
+  readonly education: IEducationRepository;
+  readonly library: ILibraryRepository;
 
   /**
    * Execute multi-table transaction in atomic unit of work block.
    */
   executeTransaction<T>(work: (txDal: IDataAccessLayer) => Promise<T>): Promise<T>;
 }
+
 

@@ -35,6 +35,10 @@ import {
   IDonationBoxRepository,
   IStaffRepository,
   IPropertyRepository,
+  IAssetRepository,
+  IMusalliRepository,
+  IEducationRepository,
+  ILibraryRepository,
   DALOptions,
 } from '../interfaces/IDataAccessLayer';
 import {
@@ -85,6 +89,21 @@ export interface JsonDataSourceContract {
   collectionWorkers?: any[];
   families?: any[];
   areas?: any[];
+  assets?: any[];
+  recurringCollections?: any[];
+  educationStudents?: any[];
+  educationPrograms?: any[];
+  educationLevels?: any[];
+  educationEnrollments?: any[];
+  libraryCategories?: any[];
+  libraryBookTitles?: any[];
+  libraryBookCopies?: any[];
+  libraryMembers?: any[];
+  libraryIssues?: any[];
+  libraryAcquisitions?: any[];
+  libraryRooms?: any[];
+  libraryRacks?: any[];
+  libraryShelves?: any[];
   staffList?: any[];
   staffPayments?: any[];
   paymentBatches?: any[];
@@ -98,6 +117,7 @@ export interface JsonDataSourceContract {
   checkIdempotency?: (key?: string, context?: any) => any;
   saveIdempotency?: (key: string | undefined, result: any, context?: any) => void;
   buildScopedKey?: (key?: string, context?: any) => string | undefined;
+  getDashboardStats?: (mosqueId: string) => any;
 }
 
 /**
@@ -6144,10 +6164,1335 @@ export class JsonPropertyParityRepository implements IPropertyRepository {
 }
 
 /**
+ * JsonAssetParityRepository (Phase 1B.13): Assets & Maintenance Domain DAL Repository.
+ */
+export class JsonAssetParityRepository implements IAssetRepository {
+  constructor(
+    private dataSource: JsonDataSourceContract = db,
+    private defaultOptions?: DALOptions
+  ) {}
+
+  async list(options: DALOptions, query: any = {}): Promise<{ data: any[]; stats: any }> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const { category, condition, search, location, includeArchived, termId } = query;
+
+    let list = (this.dataSource.assets || []).filter((a: any) => a.mosqueId === mosqueId && !a.isDeleted);
+
+    if (includeArchived !== 'true') {
+      list = list.filter((a: any) => !a.isArchived);
+    }
+    if (category && category !== 'ALL') {
+      list = list.filter((a: any) => a.category === category);
+    }
+    if (condition && condition !== 'ALL') {
+      list = list.filter((a: any) => a.condition === condition);
+    }
+    if (location && location !== 'ALL') {
+      list = list.filter((a: any) => a.location?.toLowerCase().includes(location.toLowerCase()));
+    }
+    if (termId && termId !== 'ALL') {
+      list = list.filter((a: any) => a.termId === termId);
+    }
+    if (search && search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter((a: any) =>
+        a.name?.toLowerCase().includes(q) ||
+        a.assetCode?.toLowerCase().includes(q) ||
+        a.brand?.toLowerCase().includes(q) ||
+        a.model?.toLowerCase().includes(q) ||
+        a.serialNumber?.toLowerCase().includes(q) ||
+        a.location?.toLowerCase().includes(q) ||
+        a.responsiblePerson?.toLowerCase().includes(q) ||
+        a.supplier?.toLowerCase().includes(q)
+      );
+    }
+
+    const allMosqueAssets = (this.dataSource.assets || []).filter((a: any) => a.mosqueId === mosqueId && !a.isDeleted && !a.isArchived);
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    const stats = {
+      totalAssets: allMosqueAssets.length,
+      goodCount: allMosqueAssets.filter((a: any) => a.condition === 'GOOD').length,
+      needsRepairCount: allMosqueAssets.filter((a: any) => a.condition === 'NEEDS_REPAIR' || a.condition === 'FAIR' || a.condition === 'POOR').length,
+      outOfOrderCount: allMosqueAssets.filter((a: any) => a.condition === 'OUT_OF_ORDER' || a.condition === 'DAMAGED').length,
+      lostCount: allMosqueAssets.filter((a: any) => a.condition === 'LOST').length,
+      disposedCount: allMosqueAssets.filter((a: any) => a.condition === 'DISPOSED').length,
+      archivedCount: (this.dataSource.assets || []).filter((a: any) => a.mosqueId === mosqueId && !a.isDeleted && a.isArchived).length,
+      demoCount: (this.dataSource.assets || []).filter((a: any) => a.mosqueId === mosqueId && !a.isDeleted && a.isDemo).length,
+      totalPurchaseValue: allMosqueAssets.reduce((sum: number, a: any) => sum + (Number(a.purchaseValue) || 0), 0),
+      totalCurrentValue: allMosqueAssets.reduce((sum: number, a: any) => sum + (Number(a.currentValue) || 0), 0),
+      upcomingServiceCount: allMosqueAssets.filter((a: any) => a.nextServiceDate && a.nextServiceDate >= todayStr).length,
+      overdueServiceCount: allMosqueAssets.filter((a: any) => a.nextServiceDate && a.nextServiceDate < todayStr).length,
+    };
+
+    return { data: list.map((a: any) => ({ ...a })), stats };
+  }
+
+  async findById(options: DALOptions, id: string): Promise<any | null> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const asset = (this.dataSource.assets || []).find((a: any) => a.id === id && a.mosqueId === mosqueId);
+    if (!asset) return null;
+
+    let linkedExpense = null;
+    if (asset.expenseVoucherNumber || asset.expenseEntryId) {
+      linkedExpense = (this.dataSource.expenseEntries || []).find(
+        (e: any) => e.mosqueId === mosqueId && (e.voucherNumber === asset.expenseVoucherNumber || e.id === asset.expenseEntryId)
+      );
+    }
+
+    return { ...asset, linkedExpense };
+  }
+
+  async create(options: DALOptions, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const actor = resolveActorMeta(this.dataSource, activeOptions);
+
+    return runWithDomainErrorUnwrap(this.dataSource, (tx) => {
+      const {
+        assetCode: customCode,
+        name,
+        category,
+        categoryBn,
+        brand,
+        model,
+        serialNumber,
+        purchaseDate,
+        purchaseValue,
+        currentValue,
+        location,
+        responsiblePerson,
+        responsiblePersonPhone,
+        condition,
+        conditionBn,
+        nextServiceDate,
+        warrantyInfo,
+        supplier,
+        sourceOfPurchase,
+        notes,
+        description,
+        photoUrl,
+        attachments,
+        termId,
+        termTitle,
+        expenseVoucherNumber,
+        expenseEntryId,
+        createExpenseVoucher,
+        accountId,
+        expenseHeadId
+      } = payload;
+
+      if (!name || !name.trim()) {
+        throw new DalDomainError('VALIDATION_ERROR', 'সম্পদের নাম আবশ্যক।');
+      }
+
+      const categoryPrefixMap: Record<string, string> = {
+        GENERATOR: 'GEN', FAN: 'FAN', AC: 'AC', REFRIGERATOR: 'FRG', DEEP_FREEZER: 'DFZ',
+        SOUND_SYSTEM: 'SND', CCTV: 'CCTV', COMPUTER_ICT: 'ICT', FURNITURE: 'FUR',
+        ELECTRICAL: 'ELE', WATER_WUDU: 'WDU', CONSTRUCTION: 'CON', RELIGIOUS: 'REL', OTHER: 'AST'
+      };
+
+      const prefix = categoryPrefixMap[category] || 'AST';
+      const count = (this.dataSource.assets || []).filter((a: any) => a.mosqueId === mosqueId).length + 1;
+      const autoCode = `AST-${prefix}-${String(count).padStart(3, '0')}`;
+      const assetCode = customCode && customCode.trim() ? customCode.trim() : autoCode;
+
+      const activeTerm = (this.dataSource.committeeTerms || []).find((t: any) => t.mosqueId === mosqueId && t.status === 'ACTIVE');
+      const selectedTermId = termId || activeTerm?.id || '';
+      const selectedTermTitle = termTitle || activeTerm?.title || '';
+
+      const parsedPurchaseValue = Number(purchaseValue) || 0;
+      const parsedCurrentValue = currentValue !== undefined && currentValue !== null && currentValue !== '' ? Number(currentValue) : parsedPurchaseValue;
+
+      let linkedVoucherNo = expenseVoucherNumber || '';
+      let linkedExpenseId = expenseEntryId || '';
+
+      if (createExpenseVoucher && parsedPurchaseValue > 0 && accountId && expenseHeadId) {
+        const account = (this.dataSource.accounts || []).find((a: any) => a.id === accountId && a.mosqueId === mosqueId);
+        const head = (this.dataSource.accountHeads || []).find((h: any) => h.id === expenseHeadId && h.mosqueId === mosqueId);
+
+        if (account && head) {
+          const expCount = (this.dataSource.expenseEntries || []).filter((e: any) => e.mosqueId === mosqueId).length + 1;
+          const year = new Date().getFullYear();
+          const expVoucherNo = `EXP-${year}-${String(expCount).padStart(6, '0')}`;
+          const newExpId = `exp-${Date.now()}`;
+
+          const expenseEntry = {
+            id: newExpId,
+            mosqueId,
+            voucherNumber: expVoucherNo,
+            date: purchaseDate || new Date().toISOString().split('T')[0],
+            mainHeadId: head.id,
+            mainHeadNameBn: head.nameBn,
+            subHeadNameBn: categoryBn || 'স্থায়ী সম্পদ ক্রয়',
+            amount: parsedPurchaseValue,
+            accountId: account.id,
+            accountName: account.name || account.nameBn,
+            payeeName: supplier || responsiblePerson || 'সরবরাহকারী',
+            paymentMethod: account.accountType === 'CASH' ? 'CASH' : 'BANK',
+            description: `সম্পদ ক্রয় ভাউচার: ${name} (${assetCode})${brand ? ' | ' + brand : ''}`,
+            status: 'APPROVED',
+            createdBy: actor.userId,
+            createdByName: actor.userName,
+            approvedBy: actor.userId,
+            approvedByName: actor.userName,
+            approvedAt: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+
+          account.currentBalance -= parsedPurchaseValue;
+          if (!tx.expenseEntries) tx.expenseEntries = [];
+          tx.expenseEntries.unshift(expenseEntry);
+          linkedVoucherNo = expVoucherNo;
+          linkedExpenseId = newExpId;
+
+          tx.logAudit(
+            mosqueId,
+            actor.userId,
+            actor.userName,
+            actor.userRole,
+            'CREATE',
+            'EXPENSE',
+            `সম্পদ ক্রয়ের সাথে স্বয়ংক্রিয় ব্যয় ভাউচার তৈরি (${expVoucherNo}): ৳${parsedPurchaseValue} (${name})`
+          );
+        }
+      }
+
+      const asset = {
+        id: `ast-${Date.now()}`,
+        mosqueId,
+        assetCode,
+        name: name.trim(),
+        category: category || 'OTHER',
+        categoryBn: categoryBn || '',
+        brand: brand || '',
+        model: model || '',
+        serialNumber: serialNumber || '',
+        purchaseDate: purchaseDate || new Date().toISOString().split('T')[0],
+        purchaseValue: parsedPurchaseValue,
+        currentValue: parsedCurrentValue,
+        location: location || 'মূল ভবন',
+        responsiblePerson: responsiblePerson || '',
+        responsiblePersonPhone: responsiblePersonPhone || '',
+        condition: condition || 'GOOD',
+        conditionBn: conditionBn || '',
+        nextServiceDate: nextServiceDate || '',
+        warrantyInfo: warrantyInfo || '',
+        supplier: supplier || '',
+        sourceOfPurchase: sourceOfPurchase || '',
+        notes: notes || '',
+        description: description || '',
+        photoUrl: photoUrl || '',
+        attachments: attachments || [],
+        serviceHistory: [],
+        expenseVoucherNumber: linkedVoucherNo,
+        expenseEntryId: linkedExpenseId,
+        isExpenseLinked: Boolean(linkedVoucherNo || linkedExpenseId),
+        termId: selectedTermId,
+        termTitle: selectedTermTitle,
+        isArchived: false,
+        isDeleted: false,
+        isDemo: false,
+        createdBy: actor.userId,
+        createdByName: actor.userName,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      if (!this.dataSource.assets) this.dataSource.assets = [];
+      this.dataSource.assets.unshift(asset);
+
+      tx.logAudit(
+        mosqueId,
+        actor.userId,
+        actor.userName,
+        actor.userRole,
+        'CREATE',
+        'ASSET',
+        `নতুন সম্পদ রেজিস্ট্রি: ${asset.name} (${asset.assetCode}) | ক্রয়মূল্য: ৳${asset.purchaseValue} | অবস্থা: ${asset.condition}`
+      );
+
+      return asset;
+    });
+  }
+
+  async update(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const actor = resolveActorMeta(this.dataSource, activeOptions);
+
+    const asset = (this.dataSource.assets || []).find((a: any) => a.id === id && a.mosqueId === mosqueId);
+    if (!asset) throw new DalDomainError('NOT_FOUND', 'সম্পদ পাওয়া যায়নি।');
+
+    const prevCondition = asset.condition;
+    const prevValue = asset.currentValue;
+
+    Object.assign(asset, payload);
+    if (payload.name) asset.name = payload.name.trim();
+    if (payload.purchaseValue !== undefined) asset.purchaseValue = Number(payload.purchaseValue) || 0;
+    if (payload.currentValue !== undefined) asset.currentValue = Number(payload.currentValue) || 0;
+    asset.updatedAt = new Date().toISOString();
+
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+
+    let changeDetail = `সম্পদের তথ্য আপডেট: ${asset.name} (${asset.assetCode})`;
+    if (prevCondition !== asset.condition) changeDetail += ` | অবস্থা পরিবর্তন: ${prevCondition} → ${asset.condition}`;
+    if (prevValue !== asset.currentValue) changeDetail += ` | বর্তমান মূল্য: ৳${prevValue} → ৳${asset.currentValue}`;
+
+    if (typeof this.dataSource.logAudit === 'function') {
+      this.dataSource.logAudit(mosqueId, actor.userId, actor.userName, actor.userRole, 'UPDATE', 'ASSET', changeDetail);
+    }
+
+    return asset;
+  }
+
+  async addServiceRecord(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const actor = resolveActorMeta(this.dataSource, activeOptions);
+
+    const asset = (this.dataSource.assets || []).find((a: any) => a.id === id && a.mosqueId === mosqueId);
+    if (!asset) throw new DalDomainError('NOT_FOUND', 'সম্পদ পাওয়া যায়নি।');
+
+    const { description, cost, serviceDate, serviceType, serviceTypeBn, servicedBy, nextServiceDate, updateConditionTo, createMaintenanceExpense, accountId, expenseHeadId } = payload;
+    if (!description || !description.trim()) throw new DalDomainError('VALIDATION_ERROR', 'সার্ভিসিং / মেরামতের বিবরণ আবশ্যক।');
+
+    const serviceCost = Number(cost) || 0;
+    let serviceVoucherNo = '';
+    let serviceExpenseId = '';
+
+    return runWithDomainErrorUnwrap(this.dataSource, (tx) => {
+      if (createMaintenanceExpense && serviceCost > 0 && accountId && expenseHeadId) {
+        const account = (this.dataSource.accounts || []).find((a: any) => a.id === accountId && a.mosqueId === mosqueId);
+        const head = (this.dataSource.accountHeads || []).find((h: any) => h.id === expenseHeadId && h.mosqueId === mosqueId);
+
+        if (account && head) {
+          const expCount = (this.dataSource.expenseEntries || []).filter((e: any) => e.mosqueId === mosqueId).length + 1;
+          const year = new Date().getFullYear();
+          const expVoucherNo = `EXP-${year}-${String(expCount).padStart(6, '0')}`;
+          const newExpId = `exp-${Date.now()}`;
+
+          const expenseEntry = {
+            id: newExpId,
+            mosqueId,
+            voucherNumber: expVoucherNo,
+            date: serviceDate || new Date().toISOString().split('T')[0],
+            mainHeadId: head.id,
+            mainHeadNameBn: head.nameBn,
+            subHeadNameBn: serviceTypeBn || 'সম্পদ মেরামত ও সার্ভিসিং',
+            amount: serviceCost,
+            accountId: account.id,
+            accountName: account.name || account.nameBn,
+            payeeName: servicedBy || 'সার্ভিসিং টেকনিশিয়ান',
+            paymentMethod: account.accountType === 'CASH' ? 'CASH' : 'BANK',
+            description: `সম্পদ মেরামত/সার্ভিসিং খরচ: ${asset.name} (${asset.assetCode}) - ${description}`,
+            status: 'APPROVED',
+            createdBy: actor.userId,
+            createdByName: actor.userName,
+            approvedBy: actor.userId,
+            approvedByName: actor.userName,
+            approvedAt: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+
+          account.currentBalance -= serviceCost;
+          if (!tx.expenseEntries) tx.expenseEntries = [];
+          tx.expenseEntries.unshift(expenseEntry);
+          serviceVoucherNo = expVoucherNo;
+          serviceExpenseId = newExpId;
+
+          tx.logAudit(
+            mosqueId,
+            actor.userId,
+            actor.userName,
+            actor.userRole,
+            'CREATE',
+            'EXPENSE',
+            `সম্পদ সার্ভিসিং খরচ বাবদ ব্যয় ভাউচার তৈরি (${expVoucherNo}): ৳${serviceCost} (${asset.name})`
+          );
+        }
+      }
+
+      const serviceRecord = {
+        id: `srv-${Date.now()}`,
+        serviceDate: serviceDate || new Date().toISOString().split('T')[0],
+        serviceType: serviceType || 'REGULAR_MAINTENANCE',
+        serviceTypeBn: serviceTypeBn || 'নিয়মিত সার্ভিসিং',
+        servicedBy: servicedBy || '',
+        cost: serviceCost,
+        expenseVoucherNumber: serviceVoucherNo,
+        expenseEntryId: serviceExpenseId,
+        description: description.trim(),
+        nextServiceDate: nextServiceDate || '',
+        performedBy: actor.userName,
+        createdAt: new Date().toISOString()
+      };
+
+      if (!asset.serviceHistory) asset.serviceHistory = [];
+      asset.serviceHistory.unshift(serviceRecord);
+      if (nextServiceDate) asset.nextServiceDate = nextServiceDate;
+      if (updateConditionTo) asset.condition = updateConditionTo;
+      asset.updatedAt = new Date().toISOString();
+
+      tx.logAudit(
+        mosqueId,
+        actor.userId,
+        actor.userName,
+        actor.userRole,
+        'CREATE',
+        'ASSET',
+        `সম্পদ সার্ভিসিং লগ যুক্ত: ${asset.name} (${asset.assetCode}) | খরচ: ৳${serviceCost} | বিবরণ: ${description}`
+      );
+
+      return asset;
+    });
+  }
+
+  async toggleArchive(options: DALOptions, id: string, payload: Record<string, any> = {}): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const actor = resolveActorMeta(this.dataSource, activeOptions);
+
+    const asset = (this.dataSource.assets || []).find((a: any) => a.id === id && a.mosqueId === mosqueId);
+    if (!asset) throw new DalDomainError('NOT_FOUND', 'সম্পদ পাওয়া যায়নি।');
+
+    asset.isArchived = payload.isArchived !== undefined ? Boolean(payload.isArchived) : !asset.isArchived;
+    asset.updatedAt = new Date().toISOString();
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+
+    const actionText = asset.isArchived ? 'আর্কাইভ' : 'সক্রিয়করণ';
+    if (typeof this.dataSource.logAudit === 'function') {
+      this.dataSource.logAudit(
+        mosqueId,
+        actor.userId,
+        actor.userName,
+        actor.userRole,
+        'UPDATE',
+        'ASSET',
+        `সম্পদ ${actionText}: ${asset.name} (${asset.assetCode})${payload.reason ? ' | কারণ: ' + payload.reason : ''}`
+      );
+    }
+
+    return asset;
+  }
+
+  async deleteOrArchive(options: DALOptions, id: string, force?: boolean): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const actor = resolveActorMeta(this.dataSource, activeOptions);
+
+    const idx = (this.dataSource.assets || []).findIndex((a: any) => a.id === id && a.mosqueId === mosqueId);
+    if (idx === -1) throw new DalDomainError('NOT_FOUND', 'সম্পদ পাওয়া যায়নি।');
+
+    const asset = this.dataSource.assets![idx];
+    const hasHistory = Boolean(asset.expenseVoucherNumber || (asset.serviceHistory && asset.serviceHistory.length > 0));
+
+    if (hasHistory && !force) {
+      asset.isArchived = true;
+      asset.updatedAt = new Date().toISOString();
+      if (typeof this.dataSource.save === 'function') this.dataSource.save();
+
+      if (typeof this.dataSource.logAudit === 'function') {
+        this.dataSource.logAudit(
+          mosqueId,
+          actor.userId,
+          actor.userName,
+          actor.userRole,
+          'DELETE',
+          'ASSET',
+          `সম্পদ আর্কাইভ (আর্থিক লেনদেন সংযুক্ত থাকার কারণে সফট-ডিলিট): ${asset.name} (${asset.assetCode})`
+        );
+      }
+      return { asset, isArchived: true };
+    }
+
+    const removed = this.dataSource.assets!.splice(idx, 1)[0];
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+
+    if (typeof this.dataSource.logAudit === 'function') {
+      this.dataSource.logAudit(
+        mosqueId,
+        actor.userId,
+        actor.userName,
+        actor.userRole,
+        'DELETE',
+        'ASSET',
+        `সম্পদ স্থায়ীভাবে মুছে ফেলা: ${removed.name} (${removed.assetCode})`
+      );
+    }
+    return { asset: removed, isDeleted: true };
+  }
+
+  async clearDemo(options: DALOptions): Promise<{ removedCount: number }> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const actor = resolveActorMeta(this.dataSource, activeOptions);
+
+    const initialCount = (this.dataSource.assets || []).length;
+    this.dataSource.assets = (this.dataSource.assets || []).filter((a: any) => !(a.mosqueId === mosqueId && a.isDemo));
+    const removedCount = initialCount - (this.dataSource.assets || []).length;
+
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    if (typeof this.dataSource.logAudit === 'function') {
+      this.dataSource.logAudit(
+        mosqueId,
+        actor.userId,
+        actor.userName,
+        actor.userRole,
+        'DELETE',
+        'ASSET',
+        `ডেমো সম্পদ রেকর্ড সফলভাবে পরিচ্ছন্ন করা হয়েছে (${removedCount} টি রেকর্ড)`
+      );
+    }
+
+    return { removedCount };
+  }
+
+  async logAudit(options: DALOptions, id: string, action?: string, details?: string): Promise<void> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const actor = resolveActorMeta(this.dataSource, activeOptions);
+
+    const asset = (this.dataSource.assets || []).find((a: any) => a.id === id && a.mosqueId === mosqueId);
+    if (typeof this.dataSource.logAudit === 'function') {
+      this.dataSource.logAudit(
+        mosqueId,
+        actor.userId,
+        actor.userName,
+        actor.userRole,
+        action || 'PRINT',
+        'ASSET',
+        details || `সম্পদ তথ্য প্রিন্ট/রিপোর্ট দেখা হয়েছে: ${asset ? asset.name + ' (' + asset.assetCode + ')' : id}`
+      );
+    }
+  }
+}
+
+/**
+ * JsonMusalliParityRepository (Phase 1B.13): Musalli & Donor Management Domain DAL Repository.
+ */
+export class JsonMusalliParityRepository implements IMusalliRepository {
+  constructor(
+    private dataSource: JsonDataSourceContract = db,
+    private defaultOptions?: DALOptions
+  ) {}
+
+  async listAreas(options: DALOptions): Promise<any[]> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    return ((this.dataSource.areas || []).filter((a: any) => a.mosqueId === mosqueId)).map((a: any) => ({ ...a }));
+  }
+
+  async getAreaById(options: DALOptions, id: string): Promise<any | null> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const area = (this.dataSource.areas || []).find((a: any) => a.id === id && a.mosqueId === mosqueId);
+    return area ? { ...area } : null;
+  }
+
+  async createArea(options: DALOptions, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const item = { ...payload, id: payload.id || `area-${Date.now()}`, mosqueId, createdAt: new Date().toISOString() };
+    if (!this.dataSource.areas) this.dataSource.areas = [];
+    this.dataSource.areas.unshift(item);
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return item;
+  }
+
+  async updateArea(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const area = (this.dataSource.areas || []).find((a: any) => a.id === id && a.mosqueId === mosqueId);
+    if (!area) throw new DalDomainError('NOT_FOUND', 'এলাকা পাওয়া যায়নি।');
+    Object.assign(area, payload, { updatedAt: new Date().toISOString() });
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return area;
+  }
+
+  async updateAreaStatus(options: DALOptions, id: string, status: string): Promise<any> {
+    return this.updateArea(options, id, { status, isActive: status === 'ACTIVE' });
+  }
+
+  async listFamilies(options: DALOptions, query: any = {}): Promise<any[]> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    return ((this.dataSource.families || []).filter((f: any) => f.mosqueId === mosqueId)).map((f: any) => ({ ...f }));
+  }
+
+  async getFamilyById(options: DALOptions, id: string): Promise<any | null> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const fam = (this.dataSource.families || []).find((f: any) => f.id === id && f.mosqueId === mosqueId);
+    return fam ? { ...fam } : null;
+  }
+
+  async checkFamilyDuplicate(options: DALOptions, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const { headName, headMobile } = payload;
+    const matches = (this.dataSource.families || []).filter(
+      (f: any) => f.mosqueId === mosqueId && (f.headName === headName || f.headMobile === headMobile)
+    );
+    return { isDuplicate: matches.length > 0, matches };
+  }
+
+  async createFamily(options: DALOptions, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const item = { ...payload, id: payload.id || `fam-${Date.now()}`, mosqueId, createdAt: new Date().toISOString() };
+    if (!this.dataSource.families) this.dataSource.families = [];
+    this.dataSource.families.unshift(item);
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return item;
+  }
+
+  async updateFamily(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const fam = (this.dataSource.families || []).find((f: any) => f.id === id && f.mosqueId === mosqueId);
+    if (!fam) throw new DalDomainError('NOT_FOUND', 'পরিবার রেকর্ড পাওয়া যায়নি।');
+    Object.assign(fam, payload, { updatedAt: new Date().toISOString() });
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return fam;
+  }
+
+  async updateFamilyStatus(options: DALOptions, id: string, status: string): Promise<any> {
+    return this.updateFamily(options, id, { status, isActive: status === 'ACTIVE' });
+  }
+
+  async listPersons(options: DALOptions, query: any = {}): Promise<any[]> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    return ((this.dataSource.persons || []).filter((p: any) => p.mosqueId === mosqueId)).map((p: any) => ({ ...p }));
+  }
+
+  async getPersonById(options: DALOptions, id: string): Promise<any | null> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const p = (this.dataSource.persons || []).find((person: any) => person.id === id && person.mosqueId === mosqueId);
+    return p ? { ...p } : null;
+  }
+
+  async checkPersonDuplicate(options: DALOptions, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const { name, mobile, nid } = payload;
+    const matches = (this.dataSource.persons || []).filter(
+      (p: any) => p.mosqueId === mosqueId && ((mobile && p.mobile === mobile) || (nid && p.nid === nid))
+    );
+    return { isDuplicate: matches.length > 0, matches };
+  }
+
+  async createPerson(options: DALOptions, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const item = { ...payload, id: payload.id || `per-${Date.now()}`, mosqueId, createdAt: new Date().toISOString() };
+    if (!this.dataSource.persons) this.dataSource.persons = [];
+    this.dataSource.persons.unshift(item);
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return item;
+  }
+
+  async updatePerson(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const p = (this.dataSource.persons || []).find((person: any) => person.id === id && person.mosqueId === mosqueId);
+    if (!p) throw new DalDomainError('NOT_FOUND', 'মুসল্লী রেকর্ড পাওয়া যায়নি।');
+    Object.assign(p, payload, { updatedAt: new Date().toISOString() });
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return p;
+  }
+
+  async updatePersonStatus(options: DALOptions, id: string, status: string): Promise<any> {
+    return this.updatePerson(options, id, { status, isActive: status === 'ACTIVE' });
+  }
+
+  async listDonationPlans(options: DALOptions, query: any = {}): Promise<any[]> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    return ((this.dataSource.donationPlans || []).filter((dp: any) => dp.mosqueId === mosqueId)).map((dp: any) => ({ ...dp }));
+  }
+
+  async getDonationPlanById(options: DALOptions, id: string): Promise<any | null> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const plan = (this.dataSource.donationPlans || []).find((dp: any) => dp.id === id && dp.mosqueId === mosqueId);
+    return plan ? { ...plan } : null;
+  }
+
+  async checkPlanOverlap(options: DALOptions, payload: Record<string, any>): Promise<any> {
+    return { hasOverlap: false };
+  }
+
+  async createDonationPlan(options: DALOptions, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const item = { ...payload, id: payload.id || `plan-${Date.now()}`, mosqueId, createdAt: new Date().toISOString() };
+    if (!this.dataSource.donationPlans) this.dataSource.donationPlans = [];
+    this.dataSource.donationPlans.unshift(item);
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return item;
+  }
+
+  async updateDonationPlan(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const plan = (this.dataSource.donationPlans || []).find((dp: any) => dp.id === id && dp.mosqueId === mosqueId);
+    if (!plan) throw new DalDomainError('NOT_FOUND', 'দান প্ল্যান পাওয়া যায়নি।');
+    Object.assign(plan, payload, { updatedAt: new Date().toISOString() });
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return plan;
+  }
+
+  async updatePlanStatus(options: DALOptions, id: string, status: string): Promise<any> {
+    return this.updateDonationPlan(options, id, { status, isActive: status === 'ACTIVE' });
+  }
+
+  async deleteDonationPlan(options: DALOptions, id: string): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const idx = (this.dataSource.donationPlans || []).findIndex((dp: any) => dp.id === id && dp.mosqueId === mosqueId);
+    if (idx === -1) throw new DalDomainError('NOT_FOUND', 'দান প্ল্যান পাওয়া যায়নি।');
+    const [removed] = this.dataSource.donationPlans!.splice(idx, 1);
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return removed;
+  }
+
+  async listCollectionWorkers(options: DALOptions): Promise<any[]> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    return ((this.dataSource.collectionWorkers || []).filter((cw: any) => cw.mosqueId === mosqueId)).map((cw: any) => ({ ...cw }));
+  }
+
+  async getCollectionWorkerById(options: DALOptions, id: string): Promise<any | null> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const cw = (this.dataSource.collectionWorkers || []).find((worker: any) => worker.id === id && worker.mosqueId === mosqueId);
+    return cw ? { ...cw } : null;
+  }
+
+  async createCollectionWorker(options: DALOptions, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const item = { ...payload, id: payload.id || `worker-${Date.now()}`, mosqueId, createdAt: new Date().toISOString() };
+    if (!this.dataSource.collectionWorkers) this.dataSource.collectionWorkers = [];
+    this.dataSource.collectionWorkers.unshift(item);
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return item;
+  }
+
+  async updateCollectionWorker(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const cw = (this.dataSource.collectionWorkers || []).find((worker: any) => worker.id === id && worker.mosqueId === mosqueId);
+    if (!cw) throw new DalDomainError('NOT_FOUND', 'আদায়কারী কর্মীর রেকর্ড পাওয়া যায়নি।');
+    Object.assign(cw, payload, { updatedAt: new Date().toISOString() });
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return cw;
+  }
+
+  async updateWorkerStatus(options: DALOptions, id: string, status: string): Promise<any> {
+    return this.updateCollectionWorker(options, id, { status, isActive: status === 'ACTIVE' });
+  }
+
+  async getMusalliStats(options: DALOptions): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const persons = (this.dataSource.persons || []).filter((p: any) => p.mosqueId === mosqueId);
+    const families = (this.dataSource.families || []).filter((f: any) => f.mosqueId === mosqueId);
+    const areas = (this.dataSource.areas || []).filter((a: any) => a.mosqueId === mosqueId);
+    const plans = (this.dataSource.donationPlans || []).filter((dp: any) => dp.mosqueId === mosqueId);
+    const workers = (this.dataSource.collectionWorkers || []).filter((cw: any) => cw.mosqueId === mosqueId);
+
+    return {
+      totalMusallis: persons.length,
+      activeMusallis: persons.filter((p: any) => p.status === 'ACTIVE').length,
+      totalFamilies: families.length,
+      totalAreas: areas.length,
+      totalActiveDonationPlans: plans.filter((dp: any) => dp.status === 'ACTIVE').length,
+      totalCollectionWorkers: workers.length,
+    };
+  }
+}
+
+/**
+ * JsonEducationParityRepository (Phase 1B.13): Education Domain DAL Repository.
+ */
+export class JsonEducationParityRepository implements IEducationRepository {
+  constructor(
+    private dataSource: JsonDataSourceContract = db,
+    private defaultOptions?: DALOptions
+  ) {}
+
+  async getDashboardStats(options: DALOptions): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+
+    const students = (this.dataSource.educationStudents || []).filter((s: any) => s.mosqueId === mosqueId);
+    const programs = (this.dataSource.educationPrograms || []).filter((p: any) => p.mosqueId === mosqueId);
+    const levels = (this.dataSource.educationLevels || []).filter((l: any) => l.mosqueId === mosqueId);
+    const enrollments = (this.dataSource.educationEnrollments || []).filter((e: any) => e.mosqueId === mosqueId);
+
+    return {
+      totalStudents: students.length,
+      activeStudents: students.filter((s: any) => s.status === 'ACTIVE').length,
+      totalPrograms: programs.length,
+      totalLevels: levels.length,
+      totalEnrollments: enrollments.length,
+    };
+  }
+
+  async listPrograms(options: DALOptions): Promise<any[]> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    return ((this.dataSource.educationPrograms || []).filter((p: any) => p.mosqueId === mosqueId)).map((p: any) => ({ ...p }));
+  }
+
+  async createProgram(options: DALOptions, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const item = { ...payload, id: payload.id || `edu-prog-${Date.now()}`, mosqueId, createdAt: new Date().toISOString() };
+    if (!this.dataSource.educationPrograms) this.dataSource.educationPrograms = [];
+    this.dataSource.educationPrograms.unshift(item);
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return item;
+  }
+
+  async updateProgram(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const prog = (this.dataSource.educationPrograms || []).find((p: any) => p.id === id && p.mosqueId === mosqueId);
+    if (!prog) throw new DalDomainError('NOT_FOUND', 'শিক্ষা প্রোগ্রাম পাওয়া যায়নি।');
+    Object.assign(prog, payload, { updatedAt: new Date().toISOString() });
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return prog;
+  }
+
+  async listLevels(options: DALOptions, query: any = {}): Promise<any[]> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    return ((this.dataSource.educationLevels || []).filter((l: any) => l.mosqueId === mosqueId)).map((l: any) => ({ ...l }));
+  }
+
+  async createLevel(options: DALOptions, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const item = { ...payload, id: payload.id || `edu-lvl-${Date.now()}`, mosqueId, createdAt: new Date().toISOString() };
+    if (!this.dataSource.educationLevels) this.dataSource.educationLevels = [];
+    this.dataSource.educationLevels.unshift(item);
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return item;
+  }
+
+  async updateLevel(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const lvl = (this.dataSource.educationLevels || []).find((l: any) => l.id === id && l.mosqueId === mosqueId);
+    if (!lvl) throw new DalDomainError('NOT_FOUND', 'শিক্ষা লেভেল/শ্রেণী পাওয়া যায়নি।');
+    Object.assign(lvl, payload, { updatedAt: new Date().toISOString() });
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return lvl;
+  }
+
+  async listStudents(options: DALOptions, query: any = {}): Promise<any[]> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    return ((this.dataSource.educationStudents || []).filter((s: any) => s.mosqueId === mosqueId)).map((s: any) => ({ ...s }));
+  }
+
+  async getStudentById(options: DALOptions, id: string): Promise<any | null> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const st = (this.dataSource.educationStudents || []).find((s: any) => s.id === id && s.mosqueId === mosqueId);
+    return st ? { ...st } : null;
+  }
+
+  async createStudent(options: DALOptions, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const item = { ...payload, id: payload.id || `std-${Date.now()}`, mosqueId, createdAt: new Date().toISOString() };
+    if (!this.dataSource.educationStudents) this.dataSource.educationStudents = [];
+    this.dataSource.educationStudents.unshift(item);
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return item;
+  }
+
+  async updateStudent(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const st = (this.dataSource.educationStudents || []).find((s: any) => s.id === id && s.mosqueId === mosqueId);
+    if (!st) throw new DalDomainError('NOT_FOUND', 'শিক্ষার্থী প্রোফাইল পাওয়া যায়নি।');
+    Object.assign(st, payload, { updatedAt: new Date().toISOString() });
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return st;
+  }
+
+  async deleteStudent(options: DALOptions, id: string): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const idx = (this.dataSource.educationStudents || []).findIndex((s: any) => s.id === id && s.mosqueId === mosqueId);
+    if (idx === -1) throw new DalDomainError('NOT_FOUND', 'শিক্ষার্থী প্রোফাইল পাওয়া যায়নি।');
+    const [removed] = this.dataSource.educationStudents!.splice(idx, 1);
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return removed;
+  }
+
+  async listGuardians(options: DALOptions, studentId: string): Promise<any[]> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const st = (this.dataSource.educationStudents || []).find((s: any) => s.id === studentId && s.mosqueId === mosqueId);
+    return st?.guardians || [];
+  }
+
+  async addGuardian(options: DALOptions, studentId: string, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const st = (this.dataSource.educationStudents || []).find((s: any) => s.id === studentId && s.mosqueId === mosqueId);
+    if (!st) throw new DalDomainError('NOT_FOUND', 'শিক্ষার্থী প্রোফাইল পাওয়া যায়নি।');
+    if (!st.guardians) st.guardians = [];
+    st.guardians.push(payload);
+    st.updatedAt = new Date().toISOString();
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return st;
+  }
+
+  async removeGuardian(options: DALOptions, studentId: string, guardianPersonId: string): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const st = (this.dataSource.educationStudents || []).find((s: any) => s.id === studentId && s.mosqueId === mosqueId);
+    if (!st) throw new DalDomainError('NOT_FOUND', 'শিক্ষার্থী প্রোফাইল পাওয়া যায়নি।');
+    if (st.guardians) {
+      st.guardians = st.guardians.filter((g: any) => g.personId !== guardianPersonId && g.id !== guardianPersonId);
+      st.updatedAt = new Date().toISOString();
+      if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    }
+    return st;
+  }
+
+  async listEnrollments(options: DALOptions, query: any = {}): Promise<any[]> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    return ((this.dataSource.educationEnrollments || []).filter((e: any) => e.mosqueId === mosqueId)).map((e: any) => ({ ...e }));
+  }
+
+  async getEnrollmentById(options: DALOptions, id: string): Promise<any | null> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const en = (this.dataSource.educationEnrollments || []).find((e: any) => e.id === id && e.mosqueId === mosqueId);
+    return en ? { ...en } : null;
+  }
+
+  async createEnrollment(options: DALOptions, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const item = { ...payload, id: payload.id || `enr-${Date.now()}`, mosqueId, createdAt: new Date().toISOString() };
+    if (!this.dataSource.educationEnrollments) this.dataSource.educationEnrollments = [];
+    this.dataSource.educationEnrollments.unshift(item);
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return item;
+  }
+
+  async updateEnrollment(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const en = (this.dataSource.educationEnrollments || []).find((e: any) => e.id === id && e.mosqueId === mosqueId);
+    if (!en) throw new DalDomainError('NOT_FOUND', 'ভর্তি/এনরোলমেন্ট রেকর্ড পাওয়া যায়নি।');
+    Object.assign(en, payload, { updatedAt: new Date().toISOString() });
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return en;
+  }
+}
+
+/**
+ * JsonLibraryParityRepository (Phase 1B.13): Library & Knowledge Center Domain DAL Repository.
+ */
+export class JsonLibraryParityRepository implements ILibraryRepository {
+  constructor(
+    private dataSource: JsonDataSourceContract = db,
+    private defaultOptions?: DALOptions
+  ) {}
+
+  async listCategories(options: DALOptions): Promise<any[]> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    return ((this.dataSource.libraryCategories || []).filter((c: any) => c.mosqueId === mosqueId)).map((c: any) => ({ ...c }));
+  }
+
+  async createCategory(options: DALOptions, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const item = { ...payload, id: payload.id || `cat-${Date.now()}`, mosqueId, createdAt: new Date().toISOString() };
+    if (!this.dataSource.libraryCategories) this.dataSource.libraryCategories = [];
+    this.dataSource.libraryCategories.unshift(item);
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return item;
+  }
+
+  async updateCategory(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const cat = (this.dataSource.libraryCategories || []).find((c: any) => c.id === id && c.mosqueId === mosqueId);
+    if (!cat) throw new DalDomainError('NOT_FOUND', 'লাইব্রেরি ক্যাটাগরি পাওয়া যায়নি।');
+    Object.assign(cat, payload, { updatedAt: new Date().toISOString() });
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return cat;
+  }
+
+  async deleteCategory(options: DALOptions, id: string): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const idx = (this.dataSource.libraryCategories || []).findIndex((c: any) => c.id === id && c.mosqueId === mosqueId);
+    if (idx === -1) throw new DalDomainError('NOT_FOUND', 'লাইব্রেরি ক্যাটাগরি পাওয়া যায়নি।');
+    const [removed] = this.dataSource.libraryCategories!.splice(idx, 1);
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return removed;
+  }
+
+  async listBookTitles(options: DALOptions, query: any = {}): Promise<any[]> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    return ((this.dataSource.libraryBookTitles || []).filter((bt: any) => bt.mosqueId === mosqueId)).map((bt: any) => ({ ...bt }));
+  }
+
+  async getBookTitleById(options: DALOptions, id: string): Promise<any | null> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const bt = (this.dataSource.libraryBookTitles || []).find((t: any) => t.id === id && t.mosqueId === mosqueId);
+    return bt ? { ...bt } : null;
+  }
+
+  async createBookTitle(options: DALOptions, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const item = { ...payload, id: payload.id || `book-${Date.now()}`, mosqueId, createdAt: new Date().toISOString() };
+    if (!this.dataSource.libraryBookTitles) this.dataSource.libraryBookTitles = [];
+    this.dataSource.libraryBookTitles.unshift(item);
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return item;
+  }
+
+  async updateBookTitle(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const bt = (this.dataSource.libraryBookTitles || []).find((t: any) => t.id === id && t.mosqueId === mosqueId);
+    if (!bt) throw new DalDomainError('NOT_FOUND', 'বইয়ের রেকর্ড পাওয়া যায়নি।');
+    Object.assign(bt, payload, { updatedAt: new Date().toISOString() });
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return bt;
+  }
+
+  async deleteBookTitle(options: DALOptions, id: string): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const idx = (this.dataSource.libraryBookTitles || []).findIndex((t: any) => t.id === id && t.mosqueId === mosqueId);
+    if (idx === -1) throw new DalDomainError('NOT_FOUND', 'বইয়ের রেকর্ড পাওয়া যায়নি।');
+    const [removed] = this.dataSource.libraryBookTitles!.splice(idx, 1);
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return removed;
+  }
+
+  async listBookCopies(options: DALOptions, query: any = {}): Promise<any[]> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    return ((this.dataSource.libraryBookCopies || []).filter((bc: any) => bc.mosqueId === mosqueId)).map((bc: any) => ({ ...bc }));
+  }
+
+  async getBookCopyById(options: DALOptions, id: string): Promise<any | null> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const bc = (this.dataSource.libraryBookCopies || []).find((c: any) => c.id === id && c.mosqueId === mosqueId);
+    return bc ? { ...bc } : null;
+  }
+
+  async lookupByBookId(options: DALOptions, bookId: string): Promise<any | null> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const copy = (this.dataSource.libraryBookCopies || []).find((c: any) => c.mosqueId === mosqueId && (c.id === bookId || c.accessionNo === bookId || c.barcode === bookId));
+    return copy ? { ...copy } : null;
+  }
+
+  async createBookCopy(options: DALOptions, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const item = { ...payload, id: payload.id || `copy-${Date.now()}`, mosqueId, createdAt: new Date().toISOString() };
+    if (!this.dataSource.libraryBookCopies) this.dataSource.libraryBookCopies = [];
+    this.dataSource.libraryBookCopies.unshift(item);
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return item;
+  }
+
+  async bulkCreateBookCopies(options: DALOptions, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const copies = payload.copies || [];
+    const created: any[] = [];
+    for (const c of copies) {
+      const item = { ...c, id: c.id || `copy-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`, mosqueId, createdAt: new Date().toISOString() };
+      if (!this.dataSource.libraryBookCopies) this.dataSource.libraryBookCopies = [];
+      this.dataSource.libraryBookCopies.unshift(item);
+      created.push(item);
+    }
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return created;
+  }
+
+  async updateBookCopy(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const bc = (this.dataSource.libraryBookCopies || []).find((c: any) => c.id === id && c.mosqueId === mosqueId);
+    if (!bc) throw new DalDomainError('NOT_FOUND', 'বইয়ের কপি পাওয়া যায়নি।');
+    Object.assign(bc, payload, { updatedAt: new Date().toISOString() });
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return bc;
+  }
+
+  async updateCopyStatus(options: DALOptions, id: string, status: string, notes?: string): Promise<any> {
+    return this.updateBookCopy(options, id, { status, notes });
+  }
+
+  async listMembers(options: DALOptions, query: any = {}): Promise<any[]> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    return ((this.dataSource.libraryMembers || []).filter((m: any) => m.mosqueId === mosqueId)).map((m: any) => ({ ...m }));
+  }
+
+  async getMemberById(options: DALOptions, id: string): Promise<any | null> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const mem = (this.dataSource.libraryMembers || []).find((m: any) => m.id === id && m.mosqueId === mosqueId);
+    return mem ? { ...mem } : null;
+  }
+
+  async createMember(options: DALOptions, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const item = { ...payload, id: payload.id || `mem-${Date.now()}`, mosqueId, createdAt: new Date().toISOString() };
+    if (!this.dataSource.libraryMembers) this.dataSource.libraryMembers = [];
+    this.dataSource.libraryMembers.unshift(item);
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return item;
+  }
+
+  async updateMember(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const mem = (this.dataSource.libraryMembers || []).find((m: any) => m.id === id && m.mosqueId === mosqueId);
+    if (!mem) throw new DalDomainError('NOT_FOUND', 'লাইব্রেরি সদস্য পাওয়া যায়নি।');
+    Object.assign(mem, payload, { updatedAt: new Date().toISOString() });
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return mem;
+  }
+
+  async listIssues(options: DALOptions, query: any = {}): Promise<any[]> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    return ((this.dataSource.libraryIssues || []).filter((i: any) => i.mosqueId === mosqueId)).map((i: any) => ({ ...i }));
+  }
+
+  async issueBook(options: DALOptions, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const item = { ...payload, id: payload.id || `issue-${Date.now()}`, mosqueId, status: 'ISSUED', issueDate: payload.issueDate || new Date().toISOString().split('T')[0], createdAt: new Date().toISOString() };
+    if (!this.dataSource.libraryIssues) this.dataSource.libraryIssues = [];
+    this.dataSource.libraryIssues.unshift(item);
+
+    const copy = (this.dataSource.libraryBookCopies || []).find((c: any) => c.id === payload.bookCopyId && c.mosqueId === mosqueId);
+    if (copy) {
+      copy.status = 'ISSUED';
+      copy.updatedAt = new Date().toISOString();
+    }
+
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return item;
+  }
+
+  async returnBook(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const issue = (this.dataSource.libraryIssues || []).find((i: any) => i.id === id && i.mosqueId === mosqueId);
+    if (!issue) throw new DalDomainError('NOT_FOUND', 'ইস্যু রেকর্ড পাওয়া যায়নি।');
+
+    issue.status = 'RETURNED';
+    issue.returnDate = payload.returnDate || new Date().toISOString().split('T')[0];
+    issue.fineAmount = Number(payload.fineAmount) || 0;
+    issue.updatedAt = new Date().toISOString();
+
+    const copy = (this.dataSource.libraryBookCopies || []).find((c: any) => c.id === issue.bookCopyId && c.mosqueId === mosqueId);
+    if (copy) {
+      copy.status = 'AVAILABLE';
+      copy.updatedAt = new Date().toISOString();
+    }
+
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return issue;
+  }
+
+  async markLost(options: DALOptions, id: string, payload: Record<string, any> = {}): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const issue = (this.dataSource.libraryIssues || []).find((i: any) => i.id === id && i.mosqueId === mosqueId);
+    if (!issue) throw new DalDomainError('NOT_FOUND', 'ইস্যু রেকর্ড পাওয়া যায়নি।');
+
+    issue.status = 'LOST';
+    issue.updatedAt = new Date().toISOString();
+
+    const copy = (this.dataSource.libraryBookCopies || []).find((c: any) => c.id === issue.bookCopyId && c.mosqueId === mosqueId);
+    if (copy) {
+      copy.status = 'LOST';
+      copy.updatedAt = new Date().toISOString();
+    }
+
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return issue;
+  }
+
+  async listAcquisitions(options: DALOptions, query: any = {}): Promise<any[]> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    return ((this.dataSource.libraryAcquisitions || []).filter((a: any) => a.mosqueId === mosqueId)).map((a: any) => ({ ...a }));
+  }
+
+  async createAcquisition(options: DALOptions, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const item = { ...payload, id: payload.id || `acq-${Date.now()}`, mosqueId, createdAt: new Date().toISOString() };
+    if (!this.dataSource.libraryAcquisitions) this.dataSource.libraryAcquisitions = [];
+    this.dataSource.libraryAcquisitions.unshift(item);
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return item;
+  }
+
+  async getLocations(options: DALOptions): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    return {
+      rooms: ((this.dataSource.libraryRooms || []).filter((r: any) => r.mosqueId === mosqueId)).map((r: any) => ({ ...r })),
+      racks: ((this.dataSource.libraryRacks || []).filter((r: any) => r.mosqueId === mosqueId)).map((r: any) => ({ ...r })),
+      shelves: ((this.dataSource.libraryShelves || []).filter((s: any) => s.mosqueId === mosqueId)).map((s: any) => ({ ...s })),
+    };
+  }
+
+  async createRoom(options: DALOptions, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const item = { ...payload, id: payload.id || `room-${Date.now()}`, mosqueId, createdAt: new Date().toISOString() };
+    if (!this.dataSource.libraryRooms) this.dataSource.libraryRooms = [];
+    this.dataSource.libraryRooms.unshift(item);
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return item;
+  }
+
+  async updateRoom(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const room = (this.dataSource.libraryRooms || []).find((r: any) => r.id === id && r.mosqueId === mosqueId);
+    if (!room) throw new DalDomainError('NOT_FOUND', 'রুম পাওয়া যায়নি।');
+    Object.assign(room, payload, { updatedAt: new Date().toISOString() });
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return room;
+  }
+
+  async deleteRoom(options: DALOptions, id: string): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const idx = (this.dataSource.libraryRooms || []).findIndex((r: any) => r.id === id && r.mosqueId === mosqueId);
+    if (idx === -1) throw new DalDomainError('NOT_FOUND', 'রুম পাওয়া যায়নি।');
+    const [removed] = this.dataSource.libraryRooms!.splice(idx, 1);
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return removed;
+  }
+
+  async createRack(options: DALOptions, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const item = { ...payload, id: payload.id || `rack-${Date.now()}`, mosqueId, createdAt: new Date().toISOString() };
+    if (!this.dataSource.libraryRacks) this.dataSource.libraryRacks = [];
+    this.dataSource.libraryRacks.unshift(item);
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return item;
+  }
+
+  async updateRack(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const rack = (this.dataSource.libraryRacks || []).find((r: any) => r.id === id && r.mosqueId === mosqueId);
+    if (!rack) throw new DalDomainError('NOT_FOUND', 'র‍্যাক পাওয়া যায়নি।');
+    Object.assign(rack, payload, { updatedAt: new Date().toISOString() });
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return rack;
+  }
+
+  async deleteRack(options: DALOptions, id: string): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const idx = (this.dataSource.libraryRacks || []).findIndex((r: any) => r.id === id && r.mosqueId === mosqueId);
+    if (idx === -1) throw new DalDomainError('NOT_FOUND', 'র‍্যাক পাওয়া যায়নি।');
+    const [removed] = this.dataSource.libraryRacks!.splice(idx, 1);
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return removed;
+  }
+
+  async createShelf(options: DALOptions, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const item = { ...payload, id: payload.id || `shelf-${Date.now()}`, mosqueId, createdAt: new Date().toISOString() };
+    if (!this.dataSource.libraryShelves) this.dataSource.libraryShelves = [];
+    this.dataSource.libraryShelves.unshift(item);
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return item;
+  }
+
+  async updateShelf(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const shelf = (this.dataSource.libraryShelves || []).find((s: any) => s.id === id && s.mosqueId === mosqueId);
+    if (!shelf) throw new DalDomainError('NOT_FOUND', 'শেলফ পাওয়া যায়নি।');
+    Object.assign(shelf, payload, { updatedAt: new Date().toISOString() });
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return shelf;
+  }
+
+  async deleteShelf(options: DALOptions, id: string): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const idx = (this.dataSource.libraryShelves || []).findIndex((s: any) => s.id === id && s.mosqueId === mosqueId);
+    if (idx === -1) throw new DalDomainError('NOT_FOUND', 'শেলফ পাওয়া যায়নি।');
+    const [removed] = this.dataSource.libraryShelves!.splice(idx, 1);
+    if (typeof this.dataSource.save === 'function') this.dataSource.save();
+    return removed;
+  }
+
+  async getReport(options: DALOptions, reportType: string, query: any = {}): Promise<any> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const titles = (this.dataSource.libraryBookTitles || []).filter((t: any) => t.mosqueId === mosqueId);
+    const copies = (this.dataSource.libraryBookCopies || []).filter((c: any) => c.mosqueId === mosqueId);
+    const issues = (this.dataSource.libraryIssues || []).filter((i: any) => i.mosqueId === mosqueId);
+    const members = (this.dataSource.libraryMembers || []).filter((m: any) => m.mosqueId === mosqueId);
+
+    return {
+      reportType,
+      totalTitles: titles.length,
+      totalCopies: copies.length,
+      availableCopies: copies.filter((c: any) => c.status === 'AVAILABLE').length,
+      issuedCopies: copies.filter((c: any) => c.status === 'ISSUED').length,
+      totalMembers: members.length,
+      totalIssues: issues.length,
+    };
+  }
+}
+
+/**
  * JsonStorageAdapter: Provides scoped DAL instances backed by the JSON storage engine.
  * Preserves Phase 1A read-only mosque slice, Phase 1B.7 financial parity methods,
  * Phase 1B.9 read-only accountHeads and financialAccounts repositories,
- * and Phase 1B.12 domain repositories (donations, donationBoxes, staff, properties).
+ * Phase 1B.12 domain repositories (donations, donationBoxes, staff, properties),
+ * and Phase 1B.13 domain repositories (assets, musalli, education, library).
  */
 export class JsonStorageAdapter implements IReadOnlyDataAccessLayer, IScopedMutationDataAccessLayer {
   readonly mosque: IMosqueIdentityReadOnlyRepository;
@@ -6161,6 +7506,10 @@ export class JsonStorageAdapter implements IReadOnlyDataAccessLayer, IScopedMuta
   readonly donationBoxes: JsonDonationBoxParityRepository;
   readonly staff: JsonStaffParityRepository;
   readonly properties: JsonPropertyParityRepository;
+  readonly assets: JsonAssetParityRepository;
+  readonly musalli: JsonMusalliParityRepository;
+  readonly education: JsonEducationParityRepository;
+  readonly library: JsonLibraryParityRepository;
 
   constructor(
     options?: DALOptions,
@@ -6177,6 +7526,10 @@ export class JsonStorageAdapter implements IReadOnlyDataAccessLayer, IScopedMuta
     this.donationBoxes = new JsonDonationBoxParityRepository(dataSource, options);
     this.staff = new JsonStaffParityRepository(dataSource, options);
     this.properties = new JsonPropertyParityRepository(dataSource, options);
+    this.assets = new JsonAssetParityRepository(dataSource, options);
+    this.musalli = new JsonMusalliParityRepository(dataSource, options);
+    this.education = new JsonEducationParityRepository(dataSource, options);
+    this.library = new JsonLibraryParityRepository(dataSource, options);
   }
 }
 

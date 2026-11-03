@@ -32,6 +32,7 @@ import {
   CemeteryRecord,
   MosqueNotice,
   AuditLog,
+  SmsLog,
   UserStatus,
   SubCommittee,
   PublicPortalSettings,
@@ -382,6 +383,45 @@ class ApiService {
     return res.data;
   }
 
+  async registerMosque(payload: {
+    adminName: string;
+    phone: string;
+    email: string;
+    mosqueName: string;
+    address: string;
+    password?: string;
+  }): Promise<{ user: User; mosque: Mosque; token: string; refreshToken?: string }> {
+    const res = await this.request<{ user: User; mosque: Mosque; token: string; refreshToken?: string; accessToken?: string }>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'মসজিদ রেজিস্ট্রেশন ব্যর্থ হয়েছে। সকল প্রয়োজনীয় তথ্য প্রদান করুন।');
+    }
+    const accessToken = res.data.token || res.data.accessToken || '';
+    const refreshToken = res.data.refreshToken;
+    this.setAuth(res.data.user.id, res.data.user.mosqueId || res.data.mosque.id, accessToken, refreshToken);
+    return res.data;
+  }
+
+  async forgotPassword(identifier: string): Promise<any> {
+    const res = await this.request<any>('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ identifier }),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'টোকেন পাঠাতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async resetPassword(identifier: string, token: string, newPassword: string): Promise<any> {
+    const res = await this.request<any>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ identifier, token, newPassword }),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'পাসওয়ার্ড পরিবর্তন ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
   async logout(): Promise<void> {
     const refToken = this.refreshToken;
     try {
@@ -401,6 +441,115 @@ class ApiService {
   async getMosque(): Promise<Mosque | null> {
     const res = await this.request<Mosque>('/mosques/current');
     return res.data || null;
+  }
+
+  // SaaS Platform Admin Methods
+  async getSaasStats(): Promise<any> {
+    const res = await this.request<any>('/saas/stats');
+    return res.data || null;
+  }
+
+  async getSaasMosques(): Promise<any[]> {
+    const res = await this.request<any[]>('/saas/mosques');
+    return res.data || [];
+  }
+
+  async updateSaasMosqueStatus(id: string, status: string, reason?: string): Promise<any> {
+    const res = await this.request<any>(`/saas/mosques/${id}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status, reason }),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'স্ট্যাটাস আপডেট ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async sendSaasBroadcast(data: { title: string; message: string; priority?: string; isEmergency?: boolean }): Promise<any> {
+    const res = await this.request<any>('/saas/broadcast', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'ব্রডকাস্ট প্রেরণে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getSaasBroadcasts(): Promise<any[]> {
+    const res = await this.request<any[]>('/saas/broadcasts');
+    return res.data || [];
+  }
+
+  async deleteSaasBroadcast(id: string): Promise<boolean> {
+    const res = await this.request<boolean>(`/saas/broadcasts/${id}`, { method: 'DELETE' });
+    return res.success;
+  }
+
+  // Backup & Restore Suite
+  async downloadMosqueBackup(): Promise<void> {
+    const response = await fetch('/api/v1/backup/export', {
+      headers: {
+        'x-user-id': this.currentUserId,
+        'x-mosque-id': this.currentMosqueId,
+        ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
+      },
+    });
+    if (!response.ok) throw new Error('ব্যাকআপ ডাউনলোড করতে ব্যর্থ হয়েছে');
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `MasjidLedger_Backup_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  }
+
+  async restoreMosqueBackup(backupData: any): Promise<any> {
+    const res = await this.request<any>('/backup/restore', {
+      method: 'POST',
+      body: JSON.stringify({ backupData }),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'ডাটা রিস্টোর ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  // SMS Gateway Suite Methods
+  async getSmsSettings(): Promise<any> {
+    const res = await this.request<any>('/sms/settings');
+    return res.data || null;
+  }
+
+  async updateSmsSettings(settings: any): Promise<any> {
+    const res = await this.request<any>('/sms/settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'এসএমএস সেটিংস আপডেট করতে সমস্যা হয়েছে');
+    return res.data;
+  }
+
+  async getSmsLogs(): Promise<SmsLog[]> {
+    const res = await this.request<SmsLog[]>('/sms/logs');
+    return res.data || [];
+  }
+
+  async sendSmsGateway(payload: {
+    recipientPhone?: string;
+    recipientName?: string;
+    messageText: string;
+    templateType?: string;
+    recipients?: Array<{ phone: string; name?: string }>;
+  }): Promise<any> {
+    const res = await this.request<any>('/sms/send', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'এসএমএস পাঠাতে সমস্যা হয়েছে');
+    return res.data;
+  }
+
+  async deleteSmsLog(id: string): Promise<boolean> {
+    const res = await this.request<boolean>(`/sms/logs/${id}`, { method: 'DELETE' });
+    return res.success;
   }
 
   async getQrCodes(mosqueId?: string): Promise<QRCodeEntity[]> {
@@ -4450,6 +4599,15 @@ class ApiService {
     const res = await this.request<{ manzilNumber: number; ayahs: QuranAyah[] }>(`/quran/manzil/${manzilNumber}`);
     if (!res.success || !res.data) throw new Error(res.error?.message || 'মঞ্জিল লোড করতে ব্যর্থ হয়েছে');
     return res.data;
+  }
+
+  async resetMosquePassword(mosqueId: string, newPassword?: string): Promise<{ adminName: string; adminPhone: string; newPassword: string; message: string }> {
+    const res = await this.request<{ adminName: string; adminPhone: string; newPassword: string }>(`/saas/mosques/${mosqueId}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify({ newPassword }),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'পাসওয়ার্ড রিসেট করতে ব্যর্থ হয়েছে');
+    return { ...res.data, message: res.message || 'পাসওয়ার্ড সফলভাবে রিসেট করা হয়েছে' };
   }
 }
 

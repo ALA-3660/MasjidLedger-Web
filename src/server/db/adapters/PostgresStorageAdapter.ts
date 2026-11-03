@@ -35,6 +35,10 @@ import {
   IDonationBoxRepository,
   IStaffRepository,
   IPropertyRepository,
+  IAssetRepository,
+  IMusalliRepository,
+  IEducationRepository,
+  ILibraryRepository,
   DALOptions,
 } from '../interfaces/IDataAccessLayer';
 import {
@@ -78,7 +82,14 @@ import {
   PostgresCommitteeMemberRow,
 } from '../postgres/repositories';
 import { getPostgresPool } from '../postgres/client';
-import { TenantSecurityError, DalDomainError } from './JsonStorageAdapter';
+import {
+  TenantSecurityError,
+  DalDomainError,
+  JsonAssetParityRepository,
+  JsonMusalliParityRepository,
+  JsonEducationParityRepository,
+  JsonLibraryParityRepository,
+} from './JsonStorageAdapter';
 
 export { TenantSecurityError, DalDomainError };
 
@@ -1760,6 +1771,121 @@ export class PostgresPropertyDalRepository implements IPropertyRepository {
   }
 }
 
+export class PostgresAssetDalRepository implements IAssetRepository {
+  private jsonRepo = new JsonAssetParityRepository();
+  constructor(private pool: pg.Pool, private mosqueRepo: PostgresMosqueIdentityRepository, private getClient: () => pg.PoolClient | undefined) {}
+  async list(options: DALOptions, query?: any): Promise<{ data: any[]; stats: any }> { return this.jsonRepo.list(options, query); }
+  async findById(options: DALOptions, id: string): Promise<any | null> { return this.jsonRepo.findById(options, id); }
+  async create(options: DALOptions, payload: Record<string, any>): Promise<any> { return this.jsonRepo.create(options, payload); }
+  async update(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> { return this.jsonRepo.update(options, id, payload); }
+  async addServiceRecord(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> { return this.jsonRepo.addServiceRecord(options, id, payload); }
+  async toggleArchive(options: DALOptions, id: string, payload?: Record<string, any>): Promise<any> { return this.jsonRepo.toggleArchive(options, id, payload); }
+  async deleteOrArchive(options: DALOptions, id: string, force?: boolean): Promise<any> { return this.jsonRepo.deleteOrArchive(options, id, force); }
+  async clearDemo(options: DALOptions): Promise<{ removedCount: number }> { return this.jsonRepo.clearDemo(options); }
+  async logAudit(options: DALOptions, id: string, action?: string, details?: string): Promise<void> { return this.jsonRepo.logAudit(options, id, action, details); }
+}
+
+export class PostgresMusalliDalRepository implements IMusalliRepository {
+  private jsonRepo = new JsonMusalliParityRepository();
+  constructor(private pool: pg.Pool, private mosqueRepo: PostgresMosqueIdentityRepository, private getClient: () => pg.PoolClient | undefined) {}
+  async listAreas(options: DALOptions): Promise<any[]> { return this.jsonRepo.listAreas(options); }
+  async getAreaById(options: DALOptions, id: string): Promise<any | null> { return this.jsonRepo.getAreaById(options, id); }
+  async createArea(options: DALOptions, payload: Record<string, any>): Promise<any> { return this.jsonRepo.createArea(options, payload); }
+  async updateArea(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> { return this.jsonRepo.updateArea(options, id, payload); }
+  async updateAreaStatus(options: DALOptions, id: string, status: string): Promise<any> { return this.jsonRepo.updateAreaStatus(options, id, status); }
+  async listFamilies(options: DALOptions, query?: any): Promise<any[]> { return this.jsonRepo.listFamilies(options, query); }
+  async getFamilyById(options: DALOptions, id: string): Promise<any | null> { return this.jsonRepo.getFamilyById(options, id); }
+  async checkFamilyDuplicate(options: DALOptions, payload: Record<string, any>): Promise<any> { return this.jsonRepo.checkFamilyDuplicate(options, payload); }
+  async createFamily(options: DALOptions, payload: Record<string, any>): Promise<any> { return this.jsonRepo.createFamily(options, payload); }
+  async updateFamily(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> { return this.jsonRepo.updateFamily(options, id, payload); }
+  async updateFamilyStatus(options: DALOptions, id: string, status: string): Promise<any> { return this.jsonRepo.updateFamilyStatus(options, id, status); }
+  async listPersons(options: DALOptions, query?: any): Promise<any[]> { return this.jsonRepo.listPersons(options, query); }
+  async getPersonById(options: DALOptions, id: string): Promise<any | null> { return this.jsonRepo.getPersonById(options, id); }
+  async checkPersonDuplicate(options: DALOptions, payload: Record<string, any>): Promise<any> { return this.jsonRepo.checkPersonDuplicate(options, payload); }
+  async createPerson(options: DALOptions, payload: Record<string, any>): Promise<any> { return this.jsonRepo.createPerson(options, payload); }
+  async updatePerson(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> { return this.jsonRepo.updatePerson(options, id, payload); }
+  async updatePersonStatus(options: DALOptions, id: string, status: string): Promise<any> { return this.jsonRepo.updatePersonStatus(options, id, status); }
+  async listDonationPlans(options: DALOptions, query?: any): Promise<any[]> { return this.jsonRepo.listDonationPlans(options, query); }
+  async getDonationPlanById(options: DALOptions, id: string): Promise<any | null> { return this.jsonRepo.getDonationPlanById(options, id); }
+  async checkPlanOverlap(options: DALOptions, payload: Record<string, any>): Promise<any> { return this.jsonRepo.checkPlanOverlap(options, payload); }
+  async createDonationPlan(options: DALOptions, payload: Record<string, any>): Promise<any> { return this.jsonRepo.createDonationPlan(options, payload); }
+  async updateDonationPlan(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> { return this.jsonRepo.updateDonationPlan(options, id, payload); }
+  async updatePlanStatus(options: DALOptions, id: string, status: string): Promise<any> { return this.jsonRepo.updatePlanStatus(options, id, status); }
+  async deleteDonationPlan(options: DALOptions, id: string): Promise<any> { return this.jsonRepo.deleteDonationPlan(options, id); }
+  async listCollectionWorkers(options: DALOptions): Promise<any[]> { return this.jsonRepo.listCollectionWorkers(options); }
+  async getCollectionWorkerById(options: DALOptions, id: string): Promise<any | null> { return this.jsonRepo.getCollectionWorkerById(options, id); }
+  async createCollectionWorker(options: DALOptions, payload: Record<string, any>): Promise<any> { return this.jsonRepo.createCollectionWorker(options, payload); }
+  async updateCollectionWorker(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> { return this.jsonRepo.updateCollectionWorker(options, id, payload); }
+  async updateWorkerStatus(options: DALOptions, id: string, status: string): Promise<any> { return this.jsonRepo.updateWorkerStatus(options, id, status); }
+  async getMusalliStats(options: DALOptions): Promise<any> { return this.jsonRepo.getMusalliStats(options); }
+}
+
+export class PostgresEducationDalRepository implements IEducationRepository {
+  private jsonRepo = new JsonEducationParityRepository();
+  constructor(private pool: pg.Pool, private mosqueRepo: PostgresMosqueIdentityRepository, private getClient: () => pg.PoolClient | undefined) {}
+  async getDashboardStats(options: DALOptions): Promise<any> { return this.jsonRepo.getDashboardStats(options); }
+  async listPrograms(options: DALOptions): Promise<any[]> { return this.jsonRepo.listPrograms(options); }
+  async createProgram(options: DALOptions, payload: Record<string, any>): Promise<any> { return this.jsonRepo.createProgram(options, payload); }
+  async updateProgram(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> { return this.jsonRepo.updateProgram(options, id, payload); }
+  async listLevels(options: DALOptions, query?: any): Promise<any[]> { return this.jsonRepo.listLevels(options, query); }
+  async createLevel(options: DALOptions, payload: Record<string, any>): Promise<any> { return this.jsonRepo.createLevel(options, payload); }
+  async updateLevel(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> { return this.jsonRepo.updateLevel(options, id, payload); }
+  async listStudents(options: DALOptions, query?: any): Promise<any[]> { return this.jsonRepo.listStudents(options, query); }
+  async getStudentById(options: DALOptions, id: string): Promise<any | null> { return this.jsonRepo.getStudentById(options, id); }
+  async createStudent(options: DALOptions, payload: Record<string, any>): Promise<any> { return this.jsonRepo.createStudent(options, payload); }
+  async updateStudent(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> { return this.jsonRepo.updateStudent(options, id, payload); }
+  async deleteStudent(options: DALOptions, id: string): Promise<any> { return this.jsonRepo.deleteStudent(options, id); }
+  async listGuardians(options: DALOptions, studentId: string): Promise<any[]> { return this.jsonRepo.listGuardians(options, studentId); }
+  async addGuardian(options: DALOptions, studentId: string, payload: Record<string, any>): Promise<any> { return this.jsonRepo.addGuardian(options, studentId, payload); }
+  async removeGuardian(options: DALOptions, studentId: string, guardianPersonId: string): Promise<any> { return this.jsonRepo.removeGuardian(options, studentId, guardianPersonId); }
+  async listEnrollments(options: DALOptions, query?: any): Promise<any[]> { return this.jsonRepo.listEnrollments(options, query); }
+  async getEnrollmentById(options: DALOptions, id: string): Promise<any | null> { return this.jsonRepo.getEnrollmentById(options, id); }
+  async createEnrollment(options: DALOptions, payload: Record<string, any>): Promise<any> { return this.jsonRepo.createEnrollment(options, payload); }
+  async updateEnrollment(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> { return this.jsonRepo.updateEnrollment(options, id, payload); }
+}
+
+export class PostgresLibraryDalRepository implements ILibraryRepository {
+  private jsonRepo = new JsonLibraryParityRepository();
+  constructor(private pool: pg.Pool, private mosqueRepo: PostgresMosqueIdentityRepository, private getClient: () => pg.PoolClient | undefined) {}
+  async listCategories(options: DALOptions): Promise<any[]> { return this.jsonRepo.listCategories(options); }
+  async createCategory(options: DALOptions, payload: Record<string, any>): Promise<any> { return this.jsonRepo.createCategory(options, payload); }
+  async updateCategory(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> { return this.jsonRepo.updateCategory(options, id, payload); }
+  async deleteCategory(options: DALOptions, id: string): Promise<any> { return this.jsonRepo.deleteCategory(options, id); }
+  async listBookTitles(options: DALOptions, query?: any): Promise<any[]> { return this.jsonRepo.listBookTitles(options, query); }
+  async getBookTitleById(options: DALOptions, id: string): Promise<any | null> { return this.jsonRepo.getBookTitleById(options, id); }
+  async createBookTitle(options: DALOptions, payload: Record<string, any>): Promise<any> { return this.jsonRepo.createBookTitle(options, payload); }
+  async updateBookTitle(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> { return this.jsonRepo.updateBookTitle(options, id, payload); }
+  async deleteBookTitle(options: DALOptions, id: string): Promise<any> { return this.jsonRepo.deleteBookTitle(options, id); }
+  async listBookCopies(options: DALOptions, query?: any): Promise<any[]> { return this.jsonRepo.listBookCopies(options, query); }
+  async getBookCopyById(options: DALOptions, id: string): Promise<any | null> { return this.jsonRepo.getBookCopyById(options, id); }
+  async lookupByBookId(options: DALOptions, bookId: string): Promise<any | null> { return this.jsonRepo.lookupByBookId(options, bookId); }
+  async createBookCopy(options: DALOptions, payload: Record<string, any>): Promise<any> { return this.jsonRepo.createBookCopy(options, payload); }
+  async bulkCreateBookCopies(options: DALOptions, payload: Record<string, any>): Promise<any> { return this.jsonRepo.bulkCreateBookCopies(options, payload); }
+  async updateBookCopy(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> { return this.jsonRepo.updateBookCopy(options, id, payload); }
+  async updateCopyStatus(options: DALOptions, id: string, status: string, notes?: string): Promise<any> { return this.jsonRepo.updateCopyStatus(options, id, status, notes); }
+  async listMembers(options: DALOptions, query?: any): Promise<any[]> { return this.jsonRepo.listMembers(options, query); }
+  async getMemberById(options: DALOptions, id: string): Promise<any | null> { return this.jsonRepo.getMemberById(options, id); }
+  async createMember(options: DALOptions, payload: Record<string, any>): Promise<any> { return this.jsonRepo.createMember(options, payload); }
+  async updateMember(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> { return this.jsonRepo.updateMember(options, id, payload); }
+  async listIssues(options: DALOptions, query?: any): Promise<any[]> { return this.jsonRepo.listIssues(options, query); }
+  async issueBook(options: DALOptions, payload: Record<string, any>): Promise<any> { return this.jsonRepo.issueBook(options, payload); }
+  async returnBook(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> { return this.jsonRepo.returnBook(options, id, payload); }
+  async markLost(options: DALOptions, id: string, payload?: Record<string, any>): Promise<any> { return this.jsonRepo.markLost(options, id, payload); }
+  async listAcquisitions(options: DALOptions, query?: any): Promise<any[]> { return this.jsonRepo.listAcquisitions(options, query); }
+  async createAcquisition(options: DALOptions, payload: Record<string, any>): Promise<any> { return this.jsonRepo.createAcquisition(options, payload); }
+  async getLocations(options: DALOptions): Promise<any> { return this.jsonRepo.getLocations(options); }
+  async createRoom(options: DALOptions, payload: Record<string, any>): Promise<any> { return this.jsonRepo.createRoom(options, payload); }
+  async updateRoom(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> { return this.jsonRepo.updateRoom(options, id, payload); }
+  async deleteRoom(options: DALOptions, id: string): Promise<any> { return this.jsonRepo.deleteRoom(options, id); }
+  async createRack(options: DALOptions, payload: Record<string, any>): Promise<any> { return this.jsonRepo.createRack(options, payload); }
+  async updateRack(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> { return this.jsonRepo.updateRack(options, id, payload); }
+  async deleteRack(options: DALOptions, id: string): Promise<any> { return this.jsonRepo.deleteRack(options, id); }
+  async createShelf(options: DALOptions, payload: Record<string, any>): Promise<any> { return this.jsonRepo.createShelf(options, payload); }
+  async updateShelf(options: DALOptions, id: string, payload: Record<string, any>): Promise<any> { return this.jsonRepo.updateShelf(options, id, payload); }
+  async deleteShelf(options: DALOptions, id: string): Promise<any> { return this.jsonRepo.deleteShelf(options, id); }
+  async getReport(options: DALOptions, reportType: string, query?: any): Promise<any> { return this.jsonRepo.getReport(options, reportType, query); }
+}
+
 // ============================================================================
 // Master PostgresStorageAdapter Implementation
 // ============================================================================
@@ -1779,6 +1905,10 @@ export class PostgresStorageAdapter implements IDataAccessLayer {
   readonly donationBoxes: IDonationBoxRepository;
   readonly staff: IStaffRepository;
   readonly properties: IPropertyRepository;
+  readonly assets: IAssetRepository;
+  readonly musalli: IMusalliRepository;
+  readonly education: IEducationRepository;
+  readonly library: ILibraryRepository;
 
   /**
    * Protected direct access to the 10 typed underlying PostgreSQL repositories,
@@ -1861,6 +1991,10 @@ export class PostgresStorageAdapter implements IDataAccessLayer {
     this.donationBoxes = new PostgresDonationBoxDalRepository(pool, mosqueRepo, getClientFn);
     this.staff = new PostgresStaffDalRepository(pool, mosqueRepo, getClientFn);
     this.properties = new PostgresPropertyDalRepository(pool, mosqueRepo, getClientFn);
+    this.assets = new PostgresAssetDalRepository(pool, mosqueRepo, getClientFn);
+    this.musalli = new PostgresMusalliDalRepository(pool, mosqueRepo, getClientFn);
+    this.education = new PostgresEducationDalRepository(pool, mosqueRepo, getClientFn);
+    this.library = new PostgresLibraryDalRepository(pool, mosqueRepo, getClientFn);
   }
 
   private resolvePoolSafe(): pg.Pool {

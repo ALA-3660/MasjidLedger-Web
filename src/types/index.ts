@@ -149,6 +149,7 @@ export interface User {
   role: UserRole;
   permissions: Permission[];
   status: UserStatus;
+  passwordHash?: string;
   lastLogin?: string;
   createdAt: string;
   updatedAt: string;
@@ -1098,13 +1099,18 @@ export interface SmsLog {
   id: string;
   mosqueId: string;
   recipientPhone: string;
-  message: string;
-  purpose: 'RECEIPT' | 'VOUCHER' | 'NOTICE' | 'NOTIFICATION' | 'CUSTOM';
-  status: 'SENT' | 'FAILED' | 'PENDING';
-  sentBy: string;
-  sentByName: string;
+  recipientName?: string;
+  message?: string;
+  messageText?: string;
+  purpose?: string;
+  templateType?: string;
+  status: 'PENDING' | 'SENT' | 'DELIVERED' | 'FAILED';
+  sentBy?: string;
+  sentByName?: string;
   sentAt: string;
+  costCredits?: number;
   documentLink?: string;
+  gatewayResponse?: string;
 }
 
 export interface DonationBox {

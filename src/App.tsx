@@ -82,6 +82,9 @@ import { RecordActionModal } from './components/RecordActionModal';
 import { RecordPrintLabelModal } from './components/RecordPrintLabelModal';
 import { GlobalSearchModal } from './components/GlobalSearchModal';
 import { NotificationCenterModal } from './components/NotificationCenterModal';
+import { SaasAdminHubView } from './components/SaasAdminHubView';
+import { BackupRestoreView } from './components/BackupRestoreView';
+import { SmsGatewayView } from './components/SmsGatewayView';
 import { resolveRecordFromSystem } from './services/qrBarcodeService';
 import { QrScanResult, ResolvedRecordItem, RecordSpecificAction, QRDestinationType } from './types/qrBarcodeTypes';
 import {
@@ -633,6 +636,26 @@ export default function App() {
     }
   };
 
+  const handleRegisterMosque = async (data: {
+    adminName: string;
+    phone: string;
+    email: string;
+    mosqueName: string;
+    address: string;
+    password?: string;
+  }) => {
+    try {
+      const res = await api.registerMosque(data);
+      if (res.user) {
+        setCurrentUser(res.user);
+        setIsAuthenticated(true);
+        await loadData(true);
+      }
+    } catch (err: any) {
+      throw new Error(err.message || 'রেজিস্ট্রেশন ব্যর্থ হয়েছে। তথ্য চেক করুন।');
+    }
+  };
+
   const handleLogout = async () => {
     try {
       await api.logout();
@@ -1125,6 +1148,7 @@ export default function App() {
         mosques={allMosques}
         currentMosque={mosque}
         onLogin={handleLogin}
+        onRegister={handleRegisterMosque}
         language={language}
         onLanguageChange={setLanguage}
       />
@@ -1149,6 +1173,45 @@ export default function App() {
             <span>পুনরায় চেষ্টা করুন</span>
           </button>
         </div>
+      )}
+
+      {/* 0. SaaS Platform Super Admin Control Hub View */}
+      {currentTab === 'saasHub' && (
+        <SaasAdminHubView
+          currentUser={currentUser}
+          currentMosque={mosque}
+          language={language}
+          onSwitchMosqueContext={(targetMosqueId) => {
+            const targetMosque = allMosques.find(m => m.id === targetMosqueId);
+            if (targetMosque) {
+              setMosque(targetMosque);
+              setGlobalMosque(targetMosque);
+              api.setAuth(currentUser!.id, targetMosqueId);
+              loadData(true);
+            }
+          }}
+        />
+      )}
+
+      {/* 0.1 Backup & Restore View */}
+      {currentTab === 'backupRestore' && (
+        <BackupRestoreView
+          currentMosque={mosque}
+          currentUser={currentUser}
+          language={language}
+          onRefreshData={() => loadData(false)}
+        />
+      )}
+
+      {/* 0.2 SMS & Notification Gateway View */}
+      {currentTab === 'smsGateway' && (
+        <SmsGatewayView
+          currentMosque={mosque}
+          currentUser={currentUser}
+          members={members}
+          staff={staff}
+          language={language}
+        />
       )}
 
       {/* 1. Dashboard View */}

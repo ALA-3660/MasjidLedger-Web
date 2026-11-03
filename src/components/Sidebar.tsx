@@ -24,6 +24,8 @@ import {
   Camera,
   Printer,
   Calculator,
+  Database,
+  Smartphone,
 } from 'lucide-react';
 import { Language, translations } from '../lib/i18n';
 
@@ -71,7 +73,10 @@ export type NavTab =
   | 'publicPortal'
   | 'qrManagement'
   | 'quickEntry'
-  | 'userManual';
+  | 'userManual'
+  | 'saasHub'
+  | 'backupRestore'
+  | 'smsGateway';
 
 export interface SidebarProps {
   activeTab?: NavTab | string;
@@ -110,6 +115,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   language = 'bn',
   isOpen = false,
   onClose,
+  currentUser,
 }) => {
   const t = translations[language] || translations.bn;
 
@@ -138,6 +144,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const navSections: NavSectionConfig[] = [
+    ...(currentUser?.role === 'SUPER_ADMIN'
+      ? [
+          {
+            title: language === 'bn' ? 'সেন্ট্রাল SaaS ড্যাশবোর্ড' : 'Central SaaS Hub',
+            items: [
+              {
+                id: 'saasHub' as NavTab,
+                label: language === 'bn' ? '🌐 সেন্ট্রাল SaaS এডমিন হাব' : '🌐 Central SaaS Hub',
+                icon: Globe,
+                color: 'text-indigo-600',
+              },
+            ],
+          },
+        ]
+      : []),
     {
       title: language === 'bn' ? 'ড্যাশবোর্ড' : 'Dashboard',
       items: [
@@ -286,6 +307,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
           label: language === 'bn' ? '🛡️ সিস্টেম ও আর্থিক অডিট লগ' : '🛡️ System & Audit Logs',
           icon: ShieldAlert,
           color: 'text-slate-700',
+        },
+        {
+          id: 'backupRestore',
+          label: language === 'bn' ? '💾 ডাটা ব্যাকআপ ও রিস্টোর' : '💾 Data Backup & Restore',
+          icon: Database,
+          color: 'text-emerald-700',
+        },
+        {
+          id: 'smsGateway',
+          label: language === 'bn' ? '📱 এসএমএস ও নোটিফিকেশন' : '📱 SMS & Notifications',
+          icon: Smartphone,
+          color: 'text-emerald-600',
         },
         {
           id: 'userManual',
