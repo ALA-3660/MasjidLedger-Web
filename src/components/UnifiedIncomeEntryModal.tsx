@@ -1107,9 +1107,9 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
                     )}
                   </div>
                   <div className="mt-2">
-                    <h4 className="font-bold text-slate-800 text-xs font-siliguri">অন্যান্য সাধারণ আয়</h4>
+                    <h4 className="font-bold text-slate-800 text-xs font-siliguri">খাতভিত্তিক সাধারণ আয়</h4>
                     <p className="text-[11px] text-slate-500 font-tiro mt-0.5 line-clamp-2">
-                      ইজারা/নিলাম/বিবিধ তহবিল
+                      নিজস্ব খাত নির্বাচন
                     </p>
                   </div>
                 </button>

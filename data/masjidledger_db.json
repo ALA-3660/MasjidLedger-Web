@@ -298,6 +298,36 @@
         "enableDisplayAudioAlert": true,
         "enableAutoSlideRotation": true
       }
+    },
+    {
+      "id": "mosque-mamun-03",
+      "code": "MAMUN-JAME-03",
+      "name": "Mamun Jame Masjid",
+      "nameBn": "মামুন জামে মসজিদ",
+      "nameEn": "Mamun Jame Masjid",
+      "address": "মিরপুর-১২, ঢাকা",
+      "district": "Dhaka",
+      "division": "Dhaka",
+      "country": "Bangladesh",
+      "phone": "01815678870",
+      "status": "ACTIVE",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "mosque-hatkhol-04",
+      "code": "HATKHOL-PARA-04",
+      "name": "Hatkhol Para Jame Masjid",
+      "nameBn": "হাটখোল পাড়া জামে মসজিদ",
+      "nameEn": "Hatkhol Para Jame Masjid",
+      "address": "হাটখোল পাড়া, সিলেট",
+      "district": "Sylhet",
+      "division": "Sylhet",
+      "country": "Bangladesh",
+      "phone": "01811223366",
+      "status": "ACTIVE",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
     }
   ],
   "users": [
@@ -412,6 +442,40 @@
       "status": "ACTIVE",
       "createdAt": "2026-09-21T15:31:48.511Z",
       "updatedAt": "2026-09-21T15:31:48.511Z"
+    },
+    {
+      "id": "usr-user-01815678870",
+      "name": "মুহাম্মদ মামুন (01815678870)",
+      "phone": "01815678870",
+      "email": "01815678870@masjidledger.com",
+      "mosqueId": "mosque-mamun-03",
+      "role": "SUPER_ADMIN",
+      "status": "ACTIVE",
+      "permissions": [
+        "VIEW_DASHBOARD",
+        "CREATE_INCOME",
+        "EDIT_INCOME",
+        "DELETE_INCOME",
+        "APPROVE_INCOME",
+        "CREATE_EXPENSE",
+        "EDIT_EXPENSE",
+        "DELETE_EXPENSE",
+        "APPROVE_EXPENSE",
+        "VIEW_REPORT",
+        "EXPORT_REPORT",
+        "MANAGE_COMMITTEE",
+        "MANAGE_USERS",
+        "MANAGE_ACCOUNTS",
+        "MANAGE_SETTINGS",
+        "VIEW_AUDIT_LOG",
+        "MANAGE_STAFF",
+        "MANAGE_ASSETS",
+        "MANAGE_PROPERTY",
+        "MANAGE_CEMETERY"
+      ],
+      "passwordHash": "$2b$10$S9X4z0BdQUXh3zrbo1KzO.1/9hfgS9LUNTV4ho4tgQsNTuwTM2CjO",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
     }
   ],
   "accountHeads": [
@@ -609,6 +673,87 @@
       "currentBalance": 0,
       "status": "ACTIVE",
       "createdAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "acc-mosque-baitul-002-cash",
+      "mosqueId": "mosque-baitul-002",
+      "name": "ক্যাশ ইন হ্যান্ড (ক্যাশ বাক্স)",
+      "nameBn": "ক্যাশ ইন হ্যান্ড (ক্যাশ বাক্স)",
+      "accountNumber": "CASH-01",
+      "accountType": "CASH",
+      "openingBalance": 0,
+      "currentBalance": 0,
+      "status": "ACTIVE",
+      "createdAt": "2026-11-04T10:55:40.453Z",
+      "updatedAt": "2026-11-04T10:55:40.454Z"
+    },
+    {
+      "id": "acc-mosque-baitul-002-bank",
+      "mosqueId": "mosque-baitul-002",
+      "name": "প্রধান ব্যাংক হিসাব",
+      "nameBn": "প্রধান ব্যাংক হিসাব",
+      "bankName": "ইসলামী ব্যাংক বাংলাদেশ লিমিটেড",
+      "accountNumber": "BANK-01",
+      "accountType": "BANK",
+      "openingBalance": 0,
+      "currentBalance": 0,
+      "status": "ACTIVE",
+      "createdAt": "2026-11-04T10:55:40.454Z",
+      "updatedAt": "2026-11-04T10:55:40.454Z"
+    },
+    {
+      "id": "acc-mosque-mamun-03-cash",
+      "mosqueId": "mosque-mamun-03",
+      "name": "ক্যাশ ইন হ্যান্ড (ক্যাশ বাক্স)",
+      "nameBn": "ক্যাশ ইন হ্যান্ড (ক্যাশ বাক্স)",
+      "accountNumber": "CASH-01",
+      "accountType": "CASH",
+      "openingBalance": 0,
+      "currentBalance": 0,
+      "status": "ACTIVE",
+      "createdAt": "2026-11-04T10:55:40.454Z",
+      "updatedAt": "2026-11-04T10:55:40.454Z"
+    },
+    {
+      "id": "acc-mosque-mamun-03-bank",
+      "mosqueId": "mosque-mamun-03",
+      "name": "প্রধান ব্যাংক হিসাব",
+      "nameBn": "প্রধান ব্যাংক হিসাব",
+      "bankName": "ইসলামী ব্যাংক বাংলাদেশ লিমিটেড",
+      "accountNumber": "BANK-01",
+      "accountType": "BANK",
+      "openingBalance": 0,
+      "currentBalance": 0,
+      "status": "ACTIVE",
+      "createdAt": "2026-11-04T10:55:40.454Z",
+      "updatedAt": "2026-11-04T10:55:40.454Z"
+    },
+    {
+      "id": "acc-mosque-hatkhol-04-cash",
+      "mosqueId": "mosque-hatkhol-04",
+      "name": "ক্যাশ ইন হ্যান্ড (ক্যাশ বাক্স)",
+      "nameBn": "ক্যাশ ইন হ্যান্ড (ক্যাশ বাক্স)",
+      "accountNumber": "CASH-01",
+      "accountType": "CASH",
+      "openingBalance": 0,
+      "currentBalance": 0,
+      "status": "ACTIVE",
+      "createdAt": "2026-11-04T10:55:40.454Z",
+      "updatedAt": "2026-11-04T10:55:40.454Z"
+    },
+    {
+      "id": "acc-mosque-hatkhol-04-bank",
+      "mosqueId": "mosque-hatkhol-04",
+      "name": "প্রধান ব্যাংক হিসাব",
+      "nameBn": "প্রধান ব্যাংক হিসাব",
+      "bankName": "ইসলামী ব্যাংক বাংলাদেশ লিমিটেড",
+      "accountNumber": "BANK-01",
+      "accountType": "BANK",
+      "openingBalance": 0,
+      "currentBalance": 0,
+      "status": "ACTIVE",
+      "createdAt": "2026-11-04T10:55:40.454Z",
+      "updatedAt": "2026-11-04T10:55:40.454Z"
     }
   ],
   "incomeEntries": [

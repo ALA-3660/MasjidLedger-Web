@@ -66,7 +66,9 @@ export const SaasAdminHubView: React.FC<SaasAdminHubViewProps> = ({
 
   // Password Reset Modal State
   const [selectedMosqueForPasswordReset, setSelectedMosqueForPasswordReset] = useState<any | null>(null);
-  const [newAdminPassword, setNewAdminPassword] = useState<string>('admin123');
+  const [newAdminPassword, setNewAdminPassword] = useState<string>('');
+  const [confirmAdminPassword, setConfirmAdminPassword] = useState<string>('');
+  const [passwordResetError, setPasswordResetError] = useState<string>('');
   const [isSubmittingPasswordReset, setIsSubmittingPasswordReset] = useState<boolean>(false);
   const [resetSuccessInfo, setResetSuccessInfo] = useState<any | null>(null);
 
@@ -74,9 +76,20 @@ export const SaasAdminHubView: React.FC<SaasAdminHubViewProps> = ({
     e.preventDefault();
     if (!selectedMosqueForPasswordReset) return;
 
+    if (!newAdminPassword || newAdminPassword.trim().length < 4) {
+      setPasswordResetError('নতুন পাসওয়ার্ড প্রদান করুন (ন্যূনতম ৪ অক্ষর)।');
+      return;
+    }
+
+    if (newAdminPassword !== confirmAdminPassword) {
+      setPasswordResetError('নতুন পাসওয়ার্ড এবং নিশ্চিতকরণ পাসওয়ার্ড হুবহু মিলছে না।');
+      return;
+    }
+
     setIsSubmittingPasswordReset(true);
+    setPasswordResetError('');
     try {
-      const res = await api.resetMosquePassword(selectedMosqueForPasswordReset.id, newAdminPassword);
+      const res = await api.resetMosquePassword(selectedMosqueForPasswordReset.id, newAdminPassword.trim());
       setResetSuccessInfo(res);
       setNotificationMsg({
         type: 'success',
@@ -84,7 +97,7 @@ export const SaasAdminHubView: React.FC<SaasAdminHubViewProps> = ({
       });
       await loadData();
     } catch (err: any) {
-      setNotificationMsg({ type: 'error', text: err.message || 'পাসওয়ার্ড রিসেট ব্যর্থ হয়েছে।' });
+      setPasswordResetError(err.message || 'পাসওয়ার্ড রিসেট ব্যর্থ হয়েছে।');
     } finally {
       setIsSubmittingPasswordReset(false);
     }
@@ -442,7 +455,9 @@ export const SaasAdminHubView: React.FC<SaasAdminHubViewProps> = ({
                             type="button"
                             onClick={() => {
                               setSelectedMosqueForPasswordReset(m);
-                              setNewAdminPassword('admin123');
+                              setNewAdminPassword('');
+                              setConfirmAdminPassword('');
+                              setPasswordResetError('');
                               setResetSuccessInfo(null);
                             }}
                             className="p-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg text-[11px] font-bold flex items-center space-x-1 transition-all cursor-pointer"
@@ -745,34 +760,80 @@ export const SaasAdminHubView: React.FC<SaasAdminHubViewProps> = ({
               </div>
             ) : (
               <form onSubmit={handleResetMosquePassword} className="space-y-4">
+                {passwordResetError && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-semibold flex items-center space-x-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                    <span>{passwordResetError}</span>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    নতুন পাসওয়ার্ড নির্ধারণ করুন (ন্যূনতম ৪ অক্ষর)
+                    নতুন পাসওয়ার্ড নির্ধারণ করুন (ন্যূনতম ৪ অক্ষর) <span className="text-rose-500">*</span>
                   </label>
                   <input
-                    type="text"
+                    type="password"
                     value={newAdminPassword}
                     onChange={(e) => setNewAdminPassword(e.target.value)}
-                    placeholder="যেমন: admin123"
+                    placeholder="নতুন পাসওয়ার্ড লিখুন"
                     required
                     minLength={4}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:ring-2 focus:ring-amber-500 outline-hidden"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    পাসওয়ার্ড নিশ্চিত করুন (Confirm Password) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    value={confirmAdminPassword}
+                    onChange={(e) => setConfirmAdminPassword(e.target.value)}
+                    placeholder="একই পাসওয়ার্ড পুনরায় লিখুন"
+                    required
+                    minLength={4}
+                    className={`w-full px-3 py-2 bg-slate-50 border rounded-xl text-xs font-mono font-bold text-slate-800 focus:ring-2 outline-hidden ${
+                      confirmAdminPassword && newAdminPassword === confirmAdminPassword
+                        ? 'border-emerald-500 focus:ring-emerald-500'
+                        : confirmAdminPassword && newAdminPassword !== confirmAdminPassword
+                        ? 'border-rose-500 focus:ring-rose-500'
+                        : 'border-slate-200 focus:ring-amber-500'
+                    }`}
+                  />
+                  {confirmAdminPassword.length > 0 && (
+                    <div className="mt-1.5 flex items-center space-x-1.5 text-[11px] font-semibold">
+                      {newAdminPassword === confirmAdminPassword ? (
+                        <span className="text-emerald-600 flex items-center space-x-1">
+                          <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                          <span>✓ পাসওয়ার্ড দুটি হুবহু মিলেছে</span>
+                        </span>
+                      ) : (
+                        <span className="text-rose-600 flex items-center space-x-1">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                          <span>✕ পাসওয়ার্ড দুটি মিলছে না</span>
+                        </span>
+                      )}
+                    </div>
+                  )}
                   <p className="text-[11px] text-slate-400 mt-1">সুপার অ্যাডমিন হিসেবে আপনি এই পাসওয়ার্ড সরাসরি সেট করে দিচ্ছেন।</p>
                 </div>
 
                 <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-100">
                   <button
                     type="button"
-                    onClick={() => setSelectedMosqueForPasswordReset(null)}
+                    onClick={() => {
+                      setSelectedMosqueForPasswordReset(null);
+                      setPasswordResetError('');
+                    }}
                     className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
                   >
                     বাতিল
                   </button>
                   <button
                     type="submit"
-                    disabled={isSubmittingPasswordReset}
-                    className="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-xl shadow-md flex items-center space-x-2 cursor-pointer"
+                    disabled={isSubmittingPasswordReset || !newAdminPassword || newAdminPassword !== confirmAdminPassword}
+                    className="px-5 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl shadow-md flex items-center space-x-2 cursor-pointer"
                   >
                     <KeyRound className="w-4 h-4" />
                     <span>{isSubmittingPasswordReset ? 'রিসেট হচ্ছে...' : 'পাসওয়ার্ড রিসেট করুন'}</span>

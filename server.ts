@@ -522,48 +522,9 @@ app.post('/api/v1/auth/login', (req: Request, res: Response) => {
     });
   }
 
-  let user = db.users.find(u => u.phone === loginId || u.email === loginId);
+  const user = db.users.find(u => u.phone === loginId || u.email === loginId);
 
-  // Fallback: If logging in as Super Admin (01999888777) and not found or password doesn't match, auto-provision or accept common passwords
-  if (!user && (loginId === '01999888777' || loginId === 'superadmin@masjidledger.com')) {
-    const defaultMosque = db.mosques[0] || {
-      id: 'mosque-mamun-001',
-      code: 'MAMUN-WAQF-01',
-      name: 'Mamun Jame Masjid Waqf Estate',
-      nameBn: 'মামুন জামে মসজিদ ওয়াকফ এস্টেট',
-      status: 'ACTIVE'
-    };
-    if (!db.mosques.some(m => m.id === defaultMosque.id)) {
-      db.mosques.push(defaultMosque as any);
-    }
-    user = {
-      id: 'usr-super-admin',
-      name: 'সিস্টেম সুপার অ্যাডমিনিস্ট্রেটর',
-      phone: '01999888777',
-      email: 'superadmin@masjidledger.com',
-      mosqueId: defaultMosque.id,
-      role: 'SUPER_ADMIN',
-      status: 'ACTIVE',
-      permissions: Array.from(ALL_VALID_PERMISSIONS) as any,
-      passwordHash: hashPassword(password),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-    db.users.push(user);
-    db.save();
-  }
-
-  let passwordValid = user ? verifyPassword(password, user.passwordHash) : false;
-
-  // Ultra-lenient fallback for demo/testing login (accept 123456789, admin123, super123, pass123)
-  if (user && !passwordValid) {
-    const commonPasswords = ['123456789', 'admin123', 'super123', 'pass123', '123456'];
-    if (commonPasswords.includes(password) || loginId === '01999888777') {
-      passwordValid = true;
-      user.passwordHash = hashPassword(password);
-      db.save();
-    }
-  }
+  const passwordValid = user ? verifyPassword(password, user.passwordHash) : false;
 
   if (!user || !passwordValid) {
     return res.status(401).json({
@@ -796,12 +757,22 @@ app.post('/api/v1/auth/logout', (req: Request, res: Response) => {
 app.post('/api/v1/auth/register', (req: Request, res: Response) => {
   const { adminName, phone, email, mosqueName, address, password } = req.body || {};
 
-  if (!adminName || !adminName.trim() || !phone || !phone.trim() || !email || !email.trim() || !mosqueName || !mosqueName.trim() || !address || !address.trim()) {
+  if (!adminName || !adminName.trim() || !phone || !phone.trim() || !email || !email.trim() || !mosqueName || !mosqueName.trim() || !address || !address.trim() || !password || !password.trim()) {
     return res.status(400).json({
       success: false,
       error: {
         code: 'MISSING_FIELDS',
-        message: 'সুপার অ্যাডমিনের নাম, মোবাইল নম্বর, ইমেইল আইডি, মসজিদের নাম এবং পূর্ণাঙ্গ ঠিকানা প্রদান বাধ্যতামূলক।',
+        message: 'অ্যাডমিনের নাম, মোবাইল নম্বর, ইমেইল আইডি, মসজিদের নাম, পূর্ণাঙ্গ ঠিকানা এবং গোপন পাসওয়ার্ড প্রদান বাধ্যতামূলক।',
+      },
+    });
+  }
+
+  if (password.trim().length < 4) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: 'WEAK_PASSWORD',
+        message: 'পাসওয়ার্ড ন্যূনতম ৪ অক্ষরের হতে হবে।',
       },
     });
   }
@@ -811,7 +782,7 @@ app.post('/api/v1/auth/register', (req: Request, res: Response) => {
   const cleanAdminName = adminName.trim();
   const cleanMosqueName = mosqueName.trim();
   const cleanAddress = address.trim();
-  const cleanPassword = (password && password.trim()) ? password.trim() : 'admin123';
+  const cleanPassword = password.trim();
 
   // Check if phone or email already exists
   const existingUser = db.users.find(u => u.phone === cleanPhone || u.email === cleanEmail);
@@ -938,8 +909,8 @@ app.post('/api/v1/auth/register', (req: Request, res: Response) => {
     name: cleanAdminName,
     phone: cleanPhone,
     email: cleanEmail,
-    role: 'SUPER_ADMIN',
-    permissions: getAuthoritativeRolePermissions('SUPER_ADMIN'),
+    role: 'MOSQUE_ADMIN',
+    permissions: getAuthoritativeRolePermissions('MOSQUE_ADMIN'),
     passwordHash: hashedPassword,
     status: 'ACTIVE',
     createdAt: new Date().toISOString(),
@@ -1151,7 +1122,14 @@ app.post('/api/v1/saas/mosques/:id/reset-password', authenticate, (req: AuthRequ
     });
   }
 
-  const pwToSet = typeof newPassword === 'string' && newPassword.trim().length >= 4 ? newPassword.trim() : 'admin123';
+  if (!newPassword || typeof newPassword !== 'string' || newPassword.trim().length < 4) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_PASSWORD', message: 'নতুন পাসওয়ার্ড ন্যূনতম ৪ অক্ষরের হওয়া আবশ্যক।' }
+    });
+  }
+
+  const pwToSet = newPassword.trim();
   adminUser.passwordHash = hashPassword(pwToSet);
   adminUser.updatedAt = new Date().toISOString();
   db.save();

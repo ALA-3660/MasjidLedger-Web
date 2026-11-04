@@ -1,0 +1,9 @@
+{
+  "appId": "com.masjidledger.app",
+  "appName": "MasjidLedger",
+  "webDir": "dist",
+  "server": {
+    "url": "https://masjidledger.com",
+    "cleartext": true
+  }
+}

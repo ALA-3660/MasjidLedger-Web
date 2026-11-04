@@ -85,7 +85,8 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('Masjid@2026');
+  const [password, setPassword] = useState('');
+  const [createConfirmPassword, setCreateConfirmPassword] = useState('');
   const [role, setRole] = useState<UserRole>('DATA_ENTRY_OPERATOR');
   const [selectedPermissions, setSelectedPermissions] = useState<Permission[]>([]);
   const [newPassword, setNewPassword] = useState('');
@@ -143,7 +144,8 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
     setName('');
     setPhone('');
     setEmail('');
-    setPassword('Masjid@2026');
+    setPassword('');
+    setCreateConfirmPassword('');
     setRole('DATA_ENTRY_OPERATOR');
     setSelectedPermissions(getPresetPermissionsForRole('DATA_ENTRY_OPERATOR'));
     setFormError('');
@@ -170,6 +172,14 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
     e.preventDefault();
     if (!name || !phone) {
       setFormError('নাম ও মোবাইল নম্বর আবশ্যক।');
+      return;
+    }
+    if (!password || password.length < 6) {
+      setFormError('প্রাথমিক পাসওয়ার্ড ন্যূনতম ৬ অক্ষরের হতে হবে।');
+      return;
+    }
+    if (password !== createConfirmPassword) {
+      setFormError('পাসওয়ার্ড দুটি হুবহু মিলছে না। পুনরায় নিশ্চিতকরণ পাসওয়ার্ড যাচাই করুন।');
       return;
     }
     setIsSubmitting(true);
@@ -591,15 +601,47 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    প্রাথমিক পাসওয়ার্ড <span className="text-rose-500">*</span>
+                    প্রাথমিক পাসওয়ার্ড (ন্যূনতম ৬ অক্ষর) <span className="text-rose-500">*</span>
                   </label>
                   <input
-                    type="text"
+                    type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    placeholder="গোপন পাসওয়ার্ড লিখুন"
                     required
+                    minLength={6}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono outline-hidden focus:bg-white focus:ring-2 focus:ring-blue-500"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    পাসওয়ার্ড নিশ্চিতকরণ (Confirm Password) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    value={createConfirmPassword}
+                    onChange={(e) => setCreateConfirmPassword(e.target.value)}
+                    placeholder="একই পাসওয়ার্ড পুনরায় লিখুন"
+                    required
+                    minLength={6}
+                    className={`w-full px-3 py-2 bg-slate-50 border rounded-xl text-xs font-mono outline-hidden focus:bg-white focus:ring-2 ${
+                      createConfirmPassword && password === createConfirmPassword
+                        ? 'border-emerald-500 focus:ring-emerald-500'
+                        : createConfirmPassword && password !== createConfirmPassword
+                        ? 'border-rose-500 focus:ring-rose-500'
+                        : 'border-slate-300 focus:ring-blue-500'
+                    }`}
+                  />
+                  {createConfirmPassword.length > 0 && (
+                    <div className="mt-1 flex items-center space-x-1 text-[11px] font-semibold">
+                      {password === createConfirmPassword ? (
+                        <span className="text-emerald-600">✓ পাসওয়ার্ড দুটি হুবহু মিলেছে</span>
+                      ) : (
+                        <span className="text-rose-600">✕ পাসওয়ার্ড দুটি মিলছে না</span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 

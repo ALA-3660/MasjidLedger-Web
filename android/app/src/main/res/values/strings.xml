@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">MasjidLedger</string>
+    <string name="title_activity_main">MasjidLedger</string>
+    <string name="package_name">com.masjidledger.app</string>
+    <string name="custom_url_scheme">com.masjidledger.app</string>
+</resources>

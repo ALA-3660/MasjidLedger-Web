@@ -48,12 +48,12 @@ export const AdminLoginScreen: React.FC<AdminLoginScreenProps> = ({
 }) => {
   const t = translations[language] || translations.bn;
 
-  // Mobile viewport tab toggle state ('login' | 'register')
-  const [mobileTab, setMobileTab] = useState<'login' | 'register'>('login');
+  // View mode state ('login' | 'register')
+  const [viewMode, setViewMode] = useState<'login' | 'register'>('login');
 
   // Login form state
-  const [identifier, setIdentifier] = useState('01711223344');
-  const [loginPassword, setLoginPassword] = useState('admin123');
+  const [identifier, setIdentifier] = useState('01815678870');
+  const [loginPassword, setLoginPassword] = useState('');
   const [selectedMosqueId, setSelectedMosqueId] = useState(currentMosque?.id || mosques[0]?.id || 'mosque-1');
   const [rememberMe, setRememberMe] = useState(true);
   const [showLoginPassword, setShowLoginPassword] = useState(false);
@@ -66,8 +66,10 @@ export const AdminLoginScreen: React.FC<AdminLoginScreenProps> = ({
   const [email, setEmail] = useState('');
   const [mosqueName, setMosqueName] = useState('');
   const [address, setAddress] = useState('');
-  const [registerPassword, setRegisterPassword] = useState('admin123');
+  const [registerPassword, setRegisterPassword] = useState('');
+  const [registerConfirmPassword, setRegisterConfirmPassword] = useState('');
   const [showRegPassword, setShowRegPassword] = useState(false);
+  const [showRegConfirmPassword, setShowRegConfirmPassword] = useState(false);
   const [isRegSubmitting, setIsRegSubmitting] = useState(false);
   const [regErrorMessage, setRegErrorMessage] = useState('');
 
@@ -105,6 +107,16 @@ export const AdminLoginScreen: React.FC<AdminLoginScreenProps> = ({
       return;
     }
 
+    if (!registerPassword || registerPassword.length < 4) {
+      setRegErrorMessage('গোপন পাসওয়ার্ড প্রদান করুন (ন্যূনতম ৪ অক্ষর)।');
+      return;
+    }
+
+    if (registerPassword !== registerConfirmPassword) {
+      setRegErrorMessage('পাসওয়ার্ড দুটি হুবহু মিলছে না। অনুগ্রহ করে পাসওয়ার্ড নিশ্চিতকরণ ঘরে একই পাসওয়ার্ড পুনরায় লিখুন।');
+      return;
+    }
+
     setIsRegSubmitting(true);
     setRegErrorMessage('');
     try {
@@ -114,7 +126,7 @@ export const AdminLoginScreen: React.FC<AdminLoginScreenProps> = ({
         email: email.trim(),
         mosqueName: mosqueName.trim(),
         address: address.trim(),
-        password: registerPassword || 'admin123',
+        password: registerPassword.trim(),
       });
     } catch (err: any) {
       setRegErrorMessage(err.message || 'মসজিদ রেজিস্ট্রেশন ব্যর্থ হয়েছে। আবার চেষ্টা করুন।');
@@ -196,344 +208,389 @@ export const AdminLoginScreen: React.FC<AdminLoginScreenProps> = ({
         </p>
       </div>
 
-      {/* Responsive View Switcher for Mobile Devices */}
-      <div className="lg:hidden max-w-md mx-auto w-full mb-4 z-10">
-        <div className="flex bg-slate-950/80 p-1 rounded-2xl border border-slate-800">
-          <button
-            type="button"
-            onClick={() => setMobileTab('login')}
-            className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center space-x-2 transition-all ${
-              mobileTab === 'login'
-                ? 'bg-emerald-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <ShieldCheck className="w-4 h-4" />
-            <span>লগইন (Login)</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setMobileTab('register')}
-            className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center space-x-2 transition-all ${
-              mobileTab === 'register'
-                ? 'bg-emerald-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <UserPlus className="w-4 h-4" />
-            <span>নতুন মসজিদ সাইন আপ</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Main Split Dialog / Card (2 Column Grid on Desktop) */}
-      <div className="max-w-5xl mx-auto w-full z-10">
-        <div className="bg-slate-900/90 backdrop-blur-xl shadow-2xl rounded-3xl border border-slate-800 grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-slate-800/80 overflow-hidden">
+      {/* Main Single Card with View Toggle */}
+      <div className="max-w-lg mx-auto w-full z-10">
+        <div className="bg-slate-900/95 backdrop-blur-xl shadow-2xl rounded-3xl border border-slate-800 overflow-hidden">
           
-          {/* ==================== LEFT SIDE: LOGIN FORM ==================== */}
-          <div
-            className={`p-6 sm:p-8 flex flex-col justify-between space-y-6 ${
-              mobileTab === 'login' ? 'block' : 'hidden lg:flex'
-            }`}
-          >
-            <div className="space-y-6">
-              <div className="border-b border-slate-800 pb-4">
-                <div className="inline-flex items-center space-x-2 text-xs font-bold text-emerald-400 bg-emerald-950/50 px-2.5 py-1 rounded-full border border-emerald-800/50 mb-2">
-                  <UserCheck className="w-3.5 h-3.5" />
-                  <span>বিদ্যমান ব্যবহারকারী</span>
+          {viewMode === 'login' ? (
+            /* ==================== LOGIN VIEW ==================== */
+            <div className="p-6 sm:p-8 flex flex-col justify-between space-y-6">
+              <div className="space-y-6">
+                <div className="border-b border-slate-800 pb-4">
+                  <div className="inline-flex items-center space-x-2 text-xs font-bold text-emerald-400 bg-emerald-950/50 px-2.5 py-1 rounded-full border border-emerald-800/50 mb-2">
+                    <UserCheck className="w-3.5 h-3.5" />
+                    <span>বিদ্যমান ব্যবহারকারী</span>
+                  </div>
+                  <h2 className="text-xl font-bold text-white flex items-center space-x-2">
+                    <span>অ্যাডমিন ও ইউজার লগইন</span>
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-1">
+                    আপনার অনুমোদিত মোবাইল নম্বর বা ইউজার আইডি দিয়ে প্রবেশ করুন
+                  </p>
                 </div>
-                <h2 className="text-xl font-bold text-white flex items-center space-x-2">
-                  <span>অ্যাডমিন ও ইউজার লগইন</span>
-                </h2>
-                <p className="text-xs text-slate-400 mt-1">
-                  আপনার অনুমোদিত মোবাইল নম্বর বা ইউজার আইডি দিয়ে প্রবেশ করুন
-                </p>
-              </div>
 
-              {loginErrorMessage && (
-                <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300 flex items-start space-x-2 animate-in fade-in">
-                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-                  <span>{loginErrorMessage}</span>
-                </div>
-              )}
-
-              <form onSubmit={handleLoginSubmit} className="space-y-4">
-                {/* Mosque Selector if multiple exist */}
-                {mosques.length > 1 && (
-                  <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1">
-                      মসজিদ শাখা নির্বাচন
-                    </label>
-                    <div className="relative">
-                      <select
-                        value={selectedMosqueId}
-                        onChange={(e) => setSelectedMosqueId(e.target.value)}
-                        className="w-full pl-9 pr-3 py-2.5 bg-slate-800/90 border border-slate-700 rounded-xl text-xs font-semibold text-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden"
-                      >
-                        {mosques.map((m) => (
-                          <option key={m.id} value={m.id} className="bg-slate-900 text-white">
-                            {m.nameBn || m.name} ({m.city || 'ঢাকা'})
-                          </option>
-                        ))}
-                      </select>
-                      <Building className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                    </div>
+                {loginErrorMessage && (
+                  <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300 flex items-start space-x-2 animate-in fade-in">
+                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                    <span>{loginErrorMessage}</span>
                   </div>
                 )}
 
-                {/* Mobile / Username */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">
-                    মোবাইল নম্বর / ইউজার আইডি <span className="text-emerald-400">*</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={identifier}
-                      onChange={(e) => setIdentifier(e.target.value)}
-                      placeholder="017XXXXXXXX"
-                      required
-                      className="w-full pl-9 pr-3 py-2.5 bg-slate-800/90 border border-slate-700 rounded-xl text-xs font-mono font-medium text-white placeholder-slate-500 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden"
-                    />
-                    <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                  </div>
-                </div>
+                <form onSubmit={handleLoginSubmit} className="space-y-4">
+                  {/* Mosque Selector if multiple exist */}
+                  {mosques.length > 1 && (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">
+                        মসজিদ শাখা নির্বাচন
+                      </label>
+                      <div className="relative">
+                        <select
+                          value={selectedMosqueId}
+                          onChange={(e) => setSelectedMosqueId(e.target.value)}
+                          className="w-full pl-9 pr-3 py-2.5 bg-slate-800/90 border border-slate-700 rounded-xl text-xs font-semibold text-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden"
+                        >
+                          {mosques.map((m) => (
+                            <option key={m.id} value={m.id} className="bg-slate-900 text-white">
+                              {m.nameBn || m.name} ({m.city || 'ঢাকা'})
+                            </option>
+                          ))}
+                        </select>
+                        <Building className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                      </div>
+                    </div>
+                  )}
 
-                {/* Password */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">
-                    গোপন পাসওয়ার্ড <span className="text-emerald-400">*</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showLoginPassword ? 'text' : 'password'}
-                      value={loginPassword}
-                      onChange={(e) => setLoginPassword(e.target.value)}
-                      placeholder="••••••••"
-                      required
-                      className="w-full pl-9 pr-10 py-2.5 bg-slate-800/90 border border-slate-700 rounded-xl text-xs font-mono text-white placeholder-slate-500 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden"
-                    />
-                    <KeyRound className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                  {/* Mobile / Username */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1">
+                      মোবাইল নম্বর / ইউজার আইডি <span className="text-emerald-400">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={identifier}
+                        onChange={(e) => setIdentifier(e.target.value)}
+                        placeholder="017XXXXXXXX"
+                        required
+                        className="w-full pl-9 pr-3 py-2.5 bg-slate-800/90 border border-slate-700 rounded-xl text-xs font-mono font-medium text-white placeholder-slate-500 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden"
+                      />
+                      <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                    </div>
+                  </div>
+
+                  {/* Password */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1">
+                      গোপন পাসওয়ার্ড <span className="text-emerald-400">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showLoginPassword ? 'text' : 'password'}
+                        value={loginPassword}
+                        onChange={(e) => setLoginPassword(e.target.value)}
+                        placeholder="••••••••"
+                        required
+                        className="w-full pl-9 pr-10 py-2.5 bg-slate-800/90 border border-slate-700 rounded-xl text-xs font-mono text-white placeholder-slate-500 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden"
+                      />
+                      <KeyRound className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                      <button
+                        type="button"
+                        onClick={() => setShowLoginPassword(!showLoginPassword)}
+                        className="absolute right-3 top-3 text-slate-400 hover:text-slate-200"
+                      >
+                        {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Remember Me & Forgot Password */}
+                  <div className="flex items-center justify-between text-xs pt-1">
+                    <label className="flex items-center space-x-2 cursor-pointer text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={rememberMe}
+                        onChange={(e) => setRememberMe(e.target.checked)}
+                        className="rounded bg-slate-800 border-slate-700 text-emerald-600 focus:ring-emerald-500 w-4 h-4"
+                      />
+                      <span>মনে রাখুন</span>
+                    </label>
+
                     <button
                       type="button"
-                      onClick={() => setShowLoginPassword(!showLoginPassword)}
-                      className="absolute right-3 top-3 text-slate-400 hover:text-slate-200"
+                      onClick={() => {
+                        setIsForgotModalOpen(true);
+                        setForgotStep('request');
+                        setForgotMessage(null);
+                      }}
+                      className="text-emerald-400 hover:text-emerald-300 font-semibold underline cursor-pointer"
                     >
-                      {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      পাসওয়ার্ড ভুলে গেছেন?
                     </button>
                   </div>
+
+                  {/* Submit Login */}
+                  <button
+                    type="submit"
+                    disabled={isLoginSubmitting}
+                    className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-950/50 flex items-center justify-center space-x-2 transition-all transform active:scale-98 cursor-pointer"
+                  >
+                    <span>{isLoginSubmitting ? 'প্রবেশ করা হচ্ছে...' : 'লগইন করুন'}</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </form>
+              </div>
+
+              <div className="pt-4 border-t border-slate-800/80 space-y-3">
+                <div className="text-xs text-slate-400 leading-relaxed">
+                  ডেমো লগইন: মোবাইল <code className="text-emerald-300 bg-slate-800 px-1 py-0.5 rounded">01711223344</code>, পাসওয়ার্ড <code className="text-emerald-300 bg-slate-800 px-1 py-0.5 rounded">admin123</code>
                 </div>
 
-                {/* Remember Me & Forgot Password */}
-                <div className="flex items-center justify-between text-xs pt-1">
-                  <label className="flex items-center space-x-2 cursor-pointer text-slate-300">
-                    <input
-                      type="checkbox"
-                      checked={rememberMe}
-                      onChange={(e) => setRememberMe(e.target.checked)}
-                      className="rounded bg-slate-800 border-slate-700 text-emerald-600 focus:ring-emerald-500 w-4 h-4"
-                    />
-                    <span>মনে রাখুন</span>
-                  </label>
-
+                <div className="text-center pt-2 border-t border-slate-800/50 text-xs text-slate-300">
+                  <span>আপনি নতুন ব্যবহারকারী? </span>
                   <button
                     type="button"
                     onClick={() => {
-                      setIsForgotModalOpen(true);
-                      setForgotStep('request');
-                      setForgotMessage(null);
+                      setViewMode('register');
+                      setRegErrorMessage('');
                     }}
-                    className="text-emerald-400 hover:text-emerald-300 font-semibold underline cursor-pointer"
+                    className="text-emerald-400 hover:text-emerald-300 font-bold underline cursor-pointer ml-1"
                   >
-                    পাসওয়ার্ড ভুলে গেছেন?
+                    নতুন মসজিদ রেজিস্ট্রেশন করুন
                   </button>
                 </div>
-
-                {/* Submit Login */}
-                <button
-                  type="submit"
-                  disabled={isLoginSubmitting}
-                  className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-950/50 flex items-center justify-center space-x-2 transition-all transform active:scale-98 cursor-pointer"
-                >
-                  <span>{isLoginSubmitting ? 'প্রবেশ করা হচ্ছে...' : 'লগইন করুন'}</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </form>
-            </div>
-
-            <div className="pt-4 border-t border-slate-800/80 text-xs text-slate-400">
-              <p className="leading-relaxed">
-                ডেমো লগইন: মোবাইল <code className="text-emerald-300 bg-slate-800 px-1 py-0.5 rounded">01711223344</code>, পাসওয়ার্ড <code className="text-emerald-300 bg-slate-800 px-1 py-0.5 rounded">admin123</code>
-              </p>
-            </div>
-          </div>
-
-          {/* ==================== RIGHT SIDE: SIGN UP FORM ==================== */}
-          <div
-            className={`p-6 sm:p-8 bg-slate-950/40 flex flex-col justify-between space-y-6 ${
-              mobileTab === 'register' ? 'block' : 'hidden lg:flex'
-            }`}
-          >
-            <div className="space-y-6">
-              <div className="border-b border-slate-800 pb-4">
-                <div className="inline-flex items-center space-x-2 text-xs font-bold text-teal-300 bg-teal-950/60 px-2.5 py-1 rounded-full border border-teal-800/50 mb-2">
-                  <Sparkles className="w-3.5 h-3.5 text-teal-400" />
-                  <span>নতুন মসজিদ রেজিস্ট্রেশন</span>
-                </div>
-                <h2 className="text-xl font-bold text-white flex items-center space-x-2">
-                  <span>নতুন মসজিদ সাইন আপ</span>
-                </h2>
-                <p className="text-xs text-slate-400 mt-1">
-                  সুপার অ্যাডমিনের তথ্য দিয়ে আপনার নতুন মসজিদের জন্য ডিজিটাল স্পেস তৈরি করুন
-                </p>
-              </div>
-
-              {regErrorMessage && (
-                <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300 flex items-start space-x-2 animate-in fade-in">
-                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-                  <span>{regErrorMessage}</span>
-                </div>
-              )}
-
-              <form onSubmit={handleRegisterSubmit} className="space-y-4">
-                {/* 1. Super Admin Name */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">
-                    ১. সুপার অ্যাডমিনের নাম <span className="text-emerald-400">*</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={adminName}
-                      onChange={(e) => setAdminName(e.target.value)}
-                      placeholder="যেমন: মাওলানা আব্দুল করিম"
-                      required
-                      className="w-full pl-9 pr-3 py-2.5 bg-slate-800/90 border border-slate-700 rounded-xl text-xs font-medium text-white placeholder-slate-500 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden"
-                    />
-                    <UserIcon className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                  </div>
-                </div>
-
-                {/* 2. Mobile Number */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">
-                    ২. মোবাইল নম্বর <span className="text-emerald-400">*</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      placeholder="017XXXXXXXX"
-                      required
-                      className="w-full pl-9 pr-3 py-2.5 bg-slate-800/90 border border-slate-700 rounded-xl text-xs font-mono font-medium text-white placeholder-slate-500 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden"
-                    />
-                    <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                  </div>
-                </div>
-
-                {/* 3. Email ID */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">
-                    ৩. ইমেইল আইডি (পাসওয়ার্ড রিকভারির জন্য) <span className="text-emerald-400">*</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="admin@mosque.org"
-                      required
-                      className="w-full pl-9 pr-3 py-2.5 bg-slate-800/90 border border-slate-700 rounded-xl text-xs font-medium text-white placeholder-slate-500 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden"
-                    />
-                    <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                  </div>
-                </div>
-
-                {/* 4. Mosque Name */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">
-                    ৪. মসজিদের নাম <span className="text-emerald-400">*</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={mosqueName}
-                      onChange={(e) => setMosqueName(e.target.value)}
-                      placeholder="যেমন: বায়তুল মোকাররম কেন্দ্রীয় জামে মসজিদ"
-                      required
-                      className="w-full pl-9 pr-3 py-2.5 bg-slate-800/90 border border-slate-700 rounded-xl text-xs font-medium text-white placeholder-slate-500 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden"
-                    />
-                    <Building className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                  </div>
-                </div>
-
-                {/* 5. Full Address */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">
-                    ৫. পূর্ণাঙ্গ ঠিকানা <span className="text-emerald-400">*</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                      placeholder="যেমন: পল্টন, ঢাকা-১০০০"
-                      required
-                      className="w-full pl-9 pr-3 py-2.5 bg-slate-800/90 border border-slate-700 rounded-xl text-xs font-medium text-white placeholder-slate-500 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden"
-                    />
-                    <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                  </div>
-                </div>
-
-                {/* Password for Registration */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">
-                    পাসওয়ার্ড <span className="text-emerald-400">*</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showRegPassword ? 'text' : 'password'}
-                      value={registerPassword}
-                      onChange={(e) => setRegisterPassword(e.target.value)}
-                      placeholder="গোপন পাসওয়ার্ড লিখুন"
-                      required
-                      className="w-full pl-9 pr-10 py-2.5 bg-slate-800/90 border border-slate-700 rounded-xl text-xs font-mono text-white placeholder-slate-500 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden"
-                    />
-                    <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                    <button
-                      type="button"
-                      onClick={() => setShowRegPassword(!showRegPassword)}
-                      className="absolute right-3 top-3 text-slate-400 hover:text-slate-200"
-                    >
-                      {showRegPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Submit Register */}
-                <button
-                  type="submit"
-                  disabled={isRegSubmitting}
-                  className="w-full py-3 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-teal-950/50 flex items-center justify-center space-x-2 transition-all transform active:scale-98 cursor-pointer mt-2"
-                >
-                  <span>{isRegSubmitting ? 'মসজিদ স্পেস তৈরি হচ্ছে...' : 'নতুন মসজিদ তৈরি করুন ও প্রবেশ করুন'}</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </form>
-            </div>
-
-            <div className="pt-4 border-t border-slate-800/80 grid grid-cols-2 gap-2 text-[11px] text-slate-400">
-              <div className="flex items-center space-x-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span>স্বয়ংক্রিয় ক্যাশ ও ব্যাংক অ্যাকাউন্ট</span>
-              </div>
-              <div className="flex items-center space-x-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span>সম্পূর্ণ নিয়ন্ত্রণ ও অডিট ট্রেইল</span>
               </div>
             </div>
-          </div>
+          ) : (
+            /* ==================== REGISTER VIEW ==================== */
+            <div className="p-6 sm:p-8 bg-slate-950/40 flex flex-col justify-between space-y-6">
+              <div className="space-y-6">
+                <div className="border-b border-slate-800 pb-4">
+                  <div className="inline-flex items-center space-x-2 text-xs font-bold text-teal-300 bg-teal-950/60 px-2.5 py-1 rounded-full border border-teal-800/50 mb-2">
+                    <Sparkles className="w-3.5 h-3.5 text-teal-400" />
+                    <span>নতুন মসজিদ রেজিস্ট্রেশন</span>
+                  </div>
+                  <h2 className="text-xl font-bold text-white flex items-center space-x-2">
+                    <span>নতুন মসজিদ সাইন আপ</span>
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-1">
+                    সুপার অ্যাডমিনের তথ্য দিয়ে আপনার নতুন মসজিদের জন্য ডিজিটাল স্পেস তৈরি করুন
+                  </p>
+                </div>
+
+                {regErrorMessage && (
+                  <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300 flex items-start space-x-2 animate-in fade-in">
+                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                    <span>{regErrorMessage}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleRegisterSubmit} className="space-y-4">
+                  {/* 1. Super Admin Name */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1">
+                      ১. সুপার অ্যাডমিনের নাম <span className="text-emerald-400">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={adminName}
+                        onChange={(e) => setAdminName(e.target.value)}
+                        placeholder="যেমন: মাওলানা আব্দুল করিম"
+                        required
+                        className="w-full pl-9 pr-3 py-2.5 bg-slate-800/90 border border-slate-700 rounded-xl text-xs font-medium text-white placeholder-slate-500 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden"
+                      />
+                      <UserIcon className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                    </div>
+                  </div>
+
+                  {/* 2. Mobile Number */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1">
+                      ২. মোবাইল নম্বর <span className="text-emerald-400">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        placeholder="017XXXXXXXX"
+                        required
+                        className="w-full pl-9 pr-3 py-2.5 bg-slate-800/90 border border-slate-700 rounded-xl text-xs font-mono font-medium text-white placeholder-slate-500 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden"
+                      />
+                      <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                    </div>
+                  </div>
+
+                  {/* 3. Email ID */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1">
+                      ৩. ইমেইল আইডি (পাসওয়ার্ড রিকভারির জন্য) <span className="text-emerald-400">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="admin@mosque.org"
+                        required
+                        className="w-full pl-9 pr-3 py-2.5 bg-slate-800/90 border border-slate-700 rounded-xl text-xs font-medium text-white placeholder-slate-500 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden"
+                      />
+                      <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                    </div>
+                  </div>
+
+                  {/* 4. Mosque Name */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1">
+                      ৪. মসজিদের নাম <span className="text-emerald-400">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={mosqueName}
+                        onChange={(e) => setMosqueName(e.target.value)}
+                        placeholder="যেমন: বায়তুল মোকাররম কেন্দ্রীয় জামে মসজিদ"
+                        required
+                        className="w-full pl-9 pr-3 py-2.5 bg-slate-800/90 border border-slate-700 rounded-xl text-xs font-medium text-white placeholder-slate-500 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden"
+                      />
+                      <Building className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                    </div>
+                  </div>
+
+                  {/* 5. Full Address */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1">
+                      ৫. পূর্ণাঙ্গ ঠিকানা <span className="text-emerald-400">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={address}
+                        onChange={(e) => setAddress(e.target.value)}
+                        placeholder="যেমন: পল্টন, ঢাকা-১০০০"
+                        required
+                        className="w-full pl-9 pr-3 py-2.5 bg-slate-800/90 border border-slate-700 rounded-xl text-xs font-medium text-white placeholder-slate-500 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden"
+                      />
+                      <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                    </div>
+                  </div>
+
+                  {/* Password & Confirm Password for Registration */}
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">
+                        গোপন পাসওয়ার্ড নির্ধারণ করুন <span className="text-emerald-400">*</span>
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showRegPassword ? 'text' : 'password'}
+                          value={registerPassword}
+                          onChange={(e) => setRegisterPassword(e.target.value)}
+                          placeholder="আপনার নিজস্ব পাসওয়ার্ড লিখুন (ন্যূনতম ৪ অক্ষর)"
+                          required
+                          minLength={4}
+                          className="w-full pl-9 pr-10 py-2.5 bg-slate-800/90 border border-slate-700 rounded-xl text-xs font-mono text-white placeholder-slate-500 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden"
+                        />
+                        <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                        <button
+                          type="button"
+                          onClick={() => setShowRegPassword(!showRegPassword)}
+                          className="absolute right-3 top-3 text-slate-400 hover:text-slate-200 cursor-pointer"
+                        >
+                          {showRegPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">
+                        গোপন পাসওয়ার্ড নিশ্চিত করুন (Confirm Password) <span className="text-emerald-400">*</span>
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showRegConfirmPassword ? 'text' : 'password'}
+                          value={registerConfirmPassword}
+                          onChange={(e) => setRegisterConfirmPassword(e.target.value)}
+                          placeholder="একই পাসওয়ার্ড পুনরায় লিখুন"
+                          required
+                          minLength={4}
+                          className={`w-full pl-9 pr-10 py-2.5 bg-slate-800/90 border rounded-xl text-xs font-mono text-white placeholder-slate-500 focus:ring-2 outline-hidden ${
+                            registerConfirmPassword && registerPassword === registerConfirmPassword
+                              ? 'border-emerald-500/80 focus:ring-emerald-500 focus:border-emerald-500'
+                              : registerConfirmPassword && registerPassword !== registerConfirmPassword
+                              ? 'border-rose-500/80 focus:ring-rose-500 focus:border-rose-500'
+                              : 'border-slate-700 focus:ring-emerald-500 focus:border-emerald-500'
+                          }`}
+                        />
+                        <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                        <button
+                          type="button"
+                          onClick={() => setShowRegConfirmPassword(!showRegConfirmPassword)}
+                          className="absolute right-3 top-3 text-slate-400 hover:text-slate-200 cursor-pointer"
+                        >
+                          {showRegConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+
+                      {/* Password Matching Feedback */}
+                      {registerConfirmPassword.length > 0 && (
+                        <div className="mt-1.5 flex items-center space-x-1.5 text-[11px] font-semibold">
+                          {registerPassword === registerConfirmPassword ? (
+                            <span className="text-emerald-400 flex items-center space-x-1">
+                              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                              <span>✓ পাসওয়ার্ড দুটি হুবহু মিলেছে</span>
+                            </span>
+                          ) : (
+                            <span className="text-rose-400 flex items-center space-x-1">
+                              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                              <span>✕ পাসওয়ার্ড দুটি মিলছে না! পুনরায় যাচাই করুন</span>
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Submit Register */}
+                  <button
+                    type="submit"
+                    disabled={isRegSubmitting}
+                    className="w-full py-3 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-teal-950/50 flex items-center justify-center space-x-2 transition-all transform active:scale-98 cursor-pointer mt-2"
+                  >
+                    <span>{isRegSubmitting ? 'মসজিদ স্পেস তৈরি হচ্ছে...' : 'নতুন মসজিদ তৈরি করুন ও প্রবেশ করুন'}</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </form>
+              </div>
+
+              <div className="pt-4 border-t border-slate-800/80 space-y-3">
+                <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-400">
+                  <div className="flex items-center space-x-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span>স্বয়ংক্রিয় ক্যাশ ও ব্যাংক অ্যাকাউন্ট</span>
+                  </div>
+                  <div className="flex items-center space-x-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span>সম্পূর্ণ নিয়ন্ত্রণ ও অডিট ট্রেইল</span>
+                  </div>
+                </div>
+
+                <div className="text-center pt-2 border-t border-slate-800/50 text-xs text-slate-300">
+                  <span>ইতিমধ্যে অ্যাকাউন্ট আছে? </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setViewMode('login');
+                      setLoginErrorMessage('');
+                    }}
+                    className="text-emerald-400 hover:text-emerald-300 font-bold underline cursor-pointer ml-1"
+                  >
+                    লগইন করুন
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
         </div>
       </div>

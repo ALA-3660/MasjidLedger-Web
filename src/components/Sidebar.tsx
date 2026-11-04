@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   LayoutDashboard,
   Banknote,
@@ -118,6 +118,52 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentUser,
 }) => {
   const t = translations[language] || translations.bn;
+
+  const [sidebarTheme, setSidebarTheme] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('ml_sidebar_theme') || 'rose';
+    }
+    return 'rose';
+  });
+
+  const handleThemeChange = (themeName: string) => {
+    setSidebarTheme(themeName);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('ml_sidebar_theme', themeName);
+    }
+  };
+
+  const getThemeBg = (theme: string) => {
+    switch (theme) {
+      case 'emerald':
+        return 'bg-emerald-50';
+      case 'amber':
+        return 'bg-amber-50';
+      case 'blue':
+        return 'bg-blue-50';
+      case 'teal':
+        return 'bg-teal-50';
+      case 'rose':
+      default:
+        return 'bg-rose-50';
+    }
+  };
+
+  const getThemeActive = (theme: string) => {
+    switch (theme) {
+      case 'emerald':
+        return 'bg-emerald-200 text-emerald-950 font-bold shadow-2xs ring-1 ring-emerald-300';
+      case 'amber':
+        return 'bg-amber-200 text-amber-950 font-bold shadow-2xs ring-1 ring-amber-300';
+      case 'blue':
+        return 'bg-blue-200 text-blue-950 font-bold shadow-2xs ring-1 ring-blue-300';
+      case 'teal':
+        return 'bg-teal-200 text-teal-950 font-bold shadow-2xs ring-1 ring-teal-300';
+      case 'rose':
+      default:
+        return 'bg-rose-200 text-rose-950 font-bold shadow-2xs ring-1 ring-rose-300';
+    }
+  };
 
   const handleTabClick = (tabId: NavTab) => {
     if (typeof onSelectTab === 'function') {
@@ -460,14 +506,67 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <aside
         id="app-sidebar"
         data-sidebar="true"
-        className={`fixed top-16 bottom-0 left-0 z-40 w-64 bg-white border-r border-slate-200 flex flex-col font-siliguri transition-transform duration-200 ease-in-out lg:translate-x-0 print:hidden ${
+        className={`fixed top-16 bottom-0 left-0 z-40 w-64 ${getThemeBg(
+          sidebarTheme
+        )} text-slate-800 border-r border-slate-200 flex flex-col font-siliguri transition-transform duration-200 ease-in-out lg:translate-x-0 print:hidden ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         <div className="flex-1 overflow-y-auto px-3 py-3.5 space-y-4 font-siliguri">
+          {/* Sidebar Theme Switcher Settings */}
+          <div className="p-3 bg-white/80 backdrop-blur-xs rounded-xl mb-3 border border-slate-200/80 font-siliguri shadow-2xs">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold text-slate-700 font-siliguri">
+                {language === 'bn' ? '🎨 সাইডবার থিম পরিবর্তন:' : '🎨 Sidebar Theme:'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-1.5 px-1">
+              <button
+                type="button"
+                onClick={() => handleThemeChange('rose')}
+                className={`w-6 h-6 rounded-full bg-rose-400 border-2 cursor-pointer transition-transform ${
+                  sidebarTheme === 'rose' ? 'scale-110 border-slate-800 shadow-md' : 'border-transparent'
+                }`}
+                title="Soft Rose"
+              />
+              <button
+                type="button"
+                onClick={() => handleThemeChange('emerald')}
+                className={`w-6 h-6 rounded-full bg-emerald-400 border-2 cursor-pointer transition-transform ${
+                  sidebarTheme === 'emerald' ? 'scale-110 border-slate-800 shadow-md' : 'border-transparent'
+                }`}
+                title="Soft Emerald"
+              />
+              <button
+                type="button"
+                onClick={() => handleThemeChange('amber')}
+                className={`w-6 h-6 rounded-full bg-amber-300 border-2 cursor-pointer transition-transform ${
+                  sidebarTheme === 'amber' ? 'scale-110 border-slate-800 shadow-md' : 'border-transparent'
+                }`}
+                title="Soft Amber"
+              />
+              <button
+                type="button"
+                onClick={() => handleThemeChange('blue')}
+                className={`w-6 h-6 rounded-full bg-blue-400 border-2 cursor-pointer transition-transform ${
+                  sidebarTheme === 'blue' ? 'scale-110 border-slate-800 shadow-md' : 'border-transparent'
+                }`}
+                title="Soft Blue"
+              />
+              <button
+                type="button"
+                onClick={() => handleThemeChange('teal')}
+                className={`w-6 h-6 rounded-full bg-teal-400 border-2 cursor-pointer transition-transform ${
+                  sidebarTheme === 'teal' ? 'scale-110 border-slate-800 shadow-md' : 'border-transparent'
+                }`}
+                title="Soft Teal"
+              />
+            </div>
+          </div>
+
           {navSections.map((sec, idx) => (
             <div key={idx} className="space-y-0.5">
-              <h3 className="px-3 py-1 text-[11px] font-bold text-slate-500 uppercase tracking-wider font-siliguri">
+              <h3 className="px-3 py-1 text-[11px] font-bold text-slate-600 uppercase tracking-wider font-siliguri">
                 {sec.title}
               </h3>
               <div className="space-y-0.5">
@@ -489,10 +588,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         id={buttonId}
                         type="button"
                         onClick={() => handleActionClick(item.actionType)}
-                        className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-[13px] font-semibold font-siliguri transition-all cursor-pointer text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+                        className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-[13px] font-semibold font-siliguri transition-all cursor-pointer text-slate-700 hover:bg-black/5 hover:text-slate-900"
                       >
                         <div className="flex items-center space-x-2.5 min-w-0">
-                          <Icon className={`w-4 h-4 shrink-0 ${item.color || 'text-slate-400'}`} />
+                          <Icon className={`w-4 h-4 shrink-0 ${item.color || 'text-slate-500'}`} />
                           <span className="truncate text-[13px] font-siliguri">{item.label}</span>
                         </div>
                       </button>
@@ -507,14 +606,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       onClick={() => item.id && handleTabClick(item.id)}
                       className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-[13px] font-semibold font-siliguri transition-all cursor-pointer ${
                         isActive
-                          ? 'bg-blue-50 text-blue-700 font-bold shadow-2xs ring-1 ring-blue-100'
-                          : 'text-slate-700 hover:bg-slate-50 hover:text-slate-900'
+                          ? getThemeActive(sidebarTheme)
+                          : 'text-slate-700 hover:bg-black/5 hover:text-slate-900'
                       }`}
                     >
                       <div className="flex items-center space-x-2.5 min-w-0">
                         <Icon
                           className={`w-4 h-4 shrink-0 ${
-                            isActive ? 'text-blue-600' : item.color || 'text-slate-400'
+                            isActive ? 'text-slate-900 font-bold' : item.color || 'text-slate-500'
                           }`}
                         />
                         <span className="truncate text-[13px] font-siliguri">{item.label}</span>
@@ -526,20 +625,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           ))}
 
-          {/* Android Mobile Edition Card & Status Footer */}
-          <div className="p-3 bg-slate-50 rounded-xl border border-dashed border-slate-300 mt-3 font-siliguri">
-            <p className="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1 font-siliguri">
+          {/* Status Footer */}
+          <div className="p-3 bg-white/70 backdrop-blur-xs rounded-xl border border-slate-200/80 mt-3 font-siliguri shadow-2xs">
+            <p className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1 font-siliguri">
               {language === 'bn' ? 'মোবাইল পরিকল্পনা' : 'Mobile Plan'}
             </p>
-            <p className="text-xs leading-relaxed text-slate-700 font-siliguri">
+            <p className="text-xs leading-relaxed text-slate-600 font-siliguri">
               {language === 'bn'
                 ? 'পরবর্তী সংস্করণ: অ্যান্ড্রয়েড নেটিভ অ্যাপ্লিকেশন। আপনার UI এখন প্রতিক্রিয়াশীল।'
                 : 'Next edition: Android Native App. Responsive UI active.'}
             </p>
-            <div className="mt-2 flex items-center justify-between text-xs text-slate-600 font-semibold font-siliguri">
+            <div className="mt-2 flex items-center justify-between text-xs text-slate-700 font-semibold font-siliguri">
               <span>{language === 'bn' ? 'মুদ্রা:' : 'Currency:'} BDT (৳)</span>
-              <span className="flex items-center text-green-700 font-bold">
-                <span className="w-2 h-2 rounded-full bg-green-500 mr-1.5 animate-pulse"></span>
+              <span className="flex items-center text-emerald-700 font-bold">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></span>
                 {language === 'bn' ? 'অনলাইন' : 'Online'}
               </span>
             </div>

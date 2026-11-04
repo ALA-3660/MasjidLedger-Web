@@ -1737,7 +1737,7 @@ export default function App() {
   const isSingleInvoicePrintActive = Boolean(activeDonationReceipt || activeVoucher.item);
 
   return (
-    <div className={`min-h-screen bg-[#F8FAFC] flex flex-col font-sans text-slate-800 antialiased selection:bg-blue-100 selection:text-blue-900 ${
+    <div className={`min-h-screen bg-[#f4fbf7] flex flex-col font-sans text-slate-800 antialiased selection:bg-emerald-100 selection:text-emerald-900 ${
       isSingleInvoicePrintActive ? 'print:bg-white print:min-h-0 print:h-auto' : ''
     }`}>
       {/* Top Application Navbar & Main App Shell */}
@@ -2077,7 +2077,7 @@ export default function App() {
       <UnifiedIncomeEntryModal
         isOpen={isGlobalIncomeModalOpen}
         onClose={() => setIsGlobalIncomeModalOpen(false)}
-        initialType="DONATION"
+        initialType="OTHER_INCOME"
         accounts={accounts}
         accountHeads={accountHeads}
         donationBoxes={donationBoxes}

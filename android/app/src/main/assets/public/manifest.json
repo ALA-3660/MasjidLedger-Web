@@ -1,0 +1,19 @@
+{
+  "name": "MasjidLedger — মসজিদ ব্যবস্থাপনা ও হিসাবরক্ষণ",
+  "short_name": "MasjidLedger",
+  "description": "Comprehensive Mosque Management, Public Portal and Accounting System",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#065f46",
+  "background_color": "#f8fafc",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

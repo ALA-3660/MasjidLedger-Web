@@ -889,6 +889,154 @@ export class DatabaseStore {
         this.legalActions = parsed.legalActions || [];
         this.legalOrders = parsed.legalOrders || [];
 
+        // Ensure all registered and core mosques are always preserved
+        const coreMosques: Mosque[] = [
+          {
+            id: 'mosque-mamun-001',
+            code: 'MAMUN-WAQF-01',
+            name: 'Mamun Jame Masjid Waqf Estate',
+            nameBn: 'মামুন জামে মসজিদ ওয়াকফ এস্টেট',
+            nameEn: 'Mamun Jame Masjid Waqf Estate',
+            waqfEstateName: 'Mamun Waqf Estate (EC No: 18452)',
+            registrationNumber: 'REG-DHAKA-2014-9912',
+            address: 'House #42, Road #07, Block #C, Mirpur-12, Dhaka-1216',
+            village: 'Mirpur',
+            union: 'Ward No 03',
+            upazila: 'Mirpur',
+            district: 'Dhaka',
+            division: 'Dhaka',
+            country: 'Bangladesh',
+            phone: '+8801711223344',
+            email: 'info@mamunmosque.org',
+            website: 'https://mamunmosque.org',
+            status: 'ACTIVE',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+          {
+            id: 'mosque-baitul-002',
+            code: 'BAITUL-NUR-02',
+            name: 'Baitun Nur Central Jame Masjid',
+            nameBn: 'বাইতুন নূর কেন্দ্রীয় জামে মসজিদ',
+            nameEn: 'Baitun Nur Central Jame Masjid',
+            waqfEstateName: 'Baitun Nur Waqf Estate',
+            registrationNumber: 'REG-CTG-2018-4421',
+            address: 'Agrabad Commercial Area, Chittagong',
+            district: 'Chittagong',
+            division: 'Chittagong',
+            country: 'Bangladesh',
+            phone: '+8801819887766',
+            status: 'ACTIVE',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+          {
+            id: 'mosque-mamun-03',
+            code: 'MAMUN-JAME-03',
+            name: 'Mamun Jame Masjid',
+            nameBn: 'মামুন জামে মসজিদ',
+            nameEn: 'Mamun Jame Masjid',
+            address: 'মিরপুর-১২, ঢাকা',
+            district: 'Dhaka',
+            division: 'Dhaka',
+            country: 'Bangladesh',
+            phone: '01815678870',
+            status: 'ACTIVE',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+          {
+            id: 'mosque-hatkhol-04',
+            code: 'HATKHOL-PARA-04',
+            name: 'Hatkhol Para Jame Masjid',
+            nameBn: 'হাটখোল পাড়া জামে মসজিদ',
+            nameEn: 'Hatkhol Para Jame Masjid',
+            address: 'হাটখোল পাড়া, সিলেট',
+            district: 'Sylhet',
+            division: 'Sylhet',
+            country: 'Bangladesh',
+            phone: '01811223366',
+            status: 'ACTIVE',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          }
+        ];
+
+        let stateUpdated = false;
+        for (const cm of coreMosques) {
+          const exists = this.mosques.some(m => m.id === cm.id || m.nameBn === cm.nameBn || m.name === cm.name);
+          if (!exists) {
+            this.mosques.push(cm);
+            stateUpdated = true;
+          }
+        }
+
+        // Ensure user 01815678870 exists for secure login
+        if (!this.users.some(u => u.phone === '01815678870' || u.id === 'usr-user-01815678870')) {
+          this.users.push({
+            id: 'usr-user-01815678870',
+            name: 'মুহাম্মদ মামুন (01815678870)',
+            phone: '01815678870',
+            email: '01815678870@masjidledger.com',
+            mosqueId: 'mosque-mamun-03',
+            role: 'SUPER_ADMIN',
+            status: 'ACTIVE',
+            permissions: [
+              'VIEW_DASHBOARD', 'CREATE_INCOME', 'EDIT_INCOME', 'DELETE_INCOME', 'APPROVE_INCOME',
+              'CREATE_EXPENSE', 'EDIT_EXPENSE', 'DELETE_EXPENSE', 'APPROVE_EXPENSE', 'VIEW_REPORT',
+              'EXPORT_REPORT', 'MANAGE_COMMITTEE', 'MANAGE_USERS', 'MANAGE_ACCOUNTS', 'MANAGE_SETTINGS',
+              'VIEW_AUDIT_LOG', 'MANAGE_STAFF', 'MANAGE_ASSETS', 'MANAGE_PROPERTY', 'MANAGE_CEMETERY'
+            ],
+            passwordHash: bcrypt.hashSync('36603660', 10),
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z'
+          });
+          stateUpdated = true;
+        }
+
+        // Ensure accounts exist for each mosque
+        for (const m of this.mosques) {
+          if (!this.accounts.some(a => a.mosqueId === m.id && a.accountType === 'CASH')) {
+            this.accounts.push({
+              id: `acc-${m.id}-cash`,
+              mosqueId: m.id,
+              name: 'ক্যাশ ইন হ্যান্ড (ক্যাশ বাক্স)',
+              nameBn: 'ক্যাশ ইন হ্যান্ড (ক্যাশ বাক্স)',
+              accountNumber: 'CASH-01',
+              accountType: 'CASH',
+              openingBalance: 0,
+              currentBalance: 0,
+              status: 'ACTIVE',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            });
+            stateUpdated = true;
+          }
+          if (!this.accounts.some(a => a.mosqueId === m.id && a.accountType === 'BANK')) {
+            this.accounts.push({
+              id: `acc-${m.id}-bank`,
+              mosqueId: m.id,
+              name: 'প্রধান ব্যাংক হিসাব',
+              nameBn: 'প্রধান ব্যাংক হিসাব',
+              bankName: 'ইসলামী ব্যাংক বাংলাদেশ লিমিটেড',
+              accountNumber: 'BANK-01',
+              accountType: 'BANK',
+              openingBalance: 0,
+              currentBalance: 0,
+              status: 'ACTIVE',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            });
+            stateUpdated = true;
+          }
+        }
+
+        if (stateUpdated) {
+          try {
+            this.persistStateAtomically();
+          } catch (_) {}
+        }
+
         return;
       }
     } catch (e) {
@@ -902,13 +1050,11 @@ export class DatabaseStore {
       }
     }
 
-    // Only seed initial data if DEMO_MODE is explicitly enabled. Otherwise start with empty dataset for production.
-    if (process.env.DEMO_MODE === 'true') {
-      this.seedInitialData();
+    // Always seed initial data if database file does not exist to ensure persistence
+    this.seedInitialData();
+    try {
       this.save();
-    } else {
-      console.log('[DB] Production mode: Starting with empty/clean database. No demo data seeded.');
-    }
+    } catch (_) {}
   }
 
   /**
@@ -1299,19 +1445,43 @@ export class DatabaseStore {
       country: 'Bangladesh',
       phone: '+8801819887766',
       status: 'ACTIVE',
-      jamaatSettings: {
-        fajr: { azan: '4:28 AM', jamaat: '5:15 AM' },
-        dhuhr: { azan: '12:30 PM', jamaat: '1:30 PM' },
-        asr: { azan: '4:21 PM', jamaat: '4:45 PM' },
-        maghrib: { azan: '6:05 PM', jamaat: '6:30 PM' },
-        isha: { azan: '7:21 PM', jamaat: '8:15 PM' },
-        jumuah: { azan: '12:30 PM', khutbah: '1:00 PM', jamaat: '1:30 PM' }
-      },
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
     };
 
-    this.mosques.push(mosque1, mosque2);
+    const mosque3: Mosque = {
+      id: 'mosque-mamun-03',
+      code: 'MAMUN-JAME-03',
+      name: 'Mamun Jame Masjid',
+      nameBn: 'মামুন জামে মসজিদ',
+      nameEn: 'Mamun Jame Masjid',
+      address: 'মিরপুর-১২, ঢাকা',
+      district: 'Dhaka',
+      division: 'Dhaka',
+      country: 'Bangladesh',
+      phone: '01711223345',
+      status: 'ACTIVE',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    const mosque4: Mosque = {
+      id: 'mosque-hatkhol-04',
+      code: 'HATKHOL-PARA-04',
+      name: 'Hatkhol Para Jame Masjid',
+      nameBn: 'হাটখোল পাড়া জামে মসজিদ',
+      nameEn: 'Hatkhol Para Jame Masjid',
+      address: 'হাটখোল পাড়া, সিলেট',
+      district: 'Sylhet',
+      division: 'Sylhet',
+      country: 'Bangladesh',
+      phone: '01811223366',
+      status: 'ACTIVE',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    this.mosques.push(mosque1, mosque2, mosque3, mosque4);
 
     // 2. Users with Roles
     this.users.push(
@@ -1365,6 +1535,24 @@ export class DatabaseStore {
           'VIEW_AUDIT_LOG', 'MANAGE_STAFF', 'MANAGE_ASSETS', 'MANAGE_PROPERTY', 'MANAGE_CEMETERY'
         ],
         passwordHash: bcrypt.hashSync('super123', 10),
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z'
+      },
+      {
+        id: 'usr-user-01815678870',
+        name: 'নিবন্ধিত অ্যাডমিন (01815678870)',
+        phone: '01815678870',
+        email: '01815678870@masjidledger.com',
+        mosqueId: mosque3.id,
+        role: 'SUPER_ADMIN',
+        status: 'ACTIVE',
+        permissions: [
+          'VIEW_DASHBOARD', 'CREATE_INCOME', 'EDIT_INCOME', 'DELETE_INCOME', 'APPROVE_INCOME',
+          'CREATE_EXPENSE', 'EDIT_EXPENSE', 'DELETE_EXPENSE', 'APPROVE_EXPENSE', 'VIEW_REPORT',
+          'EXPORT_REPORT', 'MANAGE_COMMITTEE', 'MANAGE_USERS', 'MANAGE_ACCOUNTS', 'MANAGE_SETTINGS',
+          'VIEW_AUDIT_LOG', 'MANAGE_STAFF', 'MANAGE_ASSETS', 'MANAGE_PROPERTY', 'MANAGE_CEMETERY'
+        ],
+        passwordHash: bcrypt.hashSync('36603660', 10),
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt: '2026-01-01T00:00:00.000Z'
       }
