@@ -490,6 +490,15 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
 
   const effectiveDates = expenseReportDataset.effectiveDates;
   const filteredReportItems = expenseReportDataset.items;
+  const printOrderedReportItems = useMemo(() => {
+    return [...filteredReportItems].sort((a, b) => {
+      const dateDiff = new Date(a.date).getTime() - new Date(b.date).getTime();
+      if (dateDiff !== 0) return dateDiff;
+      return (a.rawEntry?.createdAt || a.voucherNumber || '').localeCompare(
+        b.rawEntry?.createdAt || b.voucherNumber || ''
+      );
+    });
+  }, [filteredReportItems]);
   const filteredReportSummary = expenseReportDataset.summary;
   const filteredExpenses = filteredReportItems.map((item) => item.rawEntry);
   const filteredTotalAmount = filteredReportSummary.totalApprovedAmount;
@@ -622,7 +631,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
     },
     {
       header: 'বিবরণ',
-      className: 'text-slate-700 max-w-xs',
+      className: 'text-slate-700 max-w-[155px] text-[11px] leading-snug break-words print-desc-cell',
       render: (e) => e.description || '-',
     },
     {
@@ -642,23 +651,10 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
     },
     {
       header: 'পরিমাণ (৳)',
-      className: 'text-right font-mono font-bold text-rose-700',
+      className: 'text-right font-mono font-bold text-rose-700 whitespace-nowrap min-w-[105px] w-28 print-amount-cell',
       render: (e) => (
         <span className={e.status === 'CANCELLED' ? 'line-through text-slate-400' : ''}>
-          ৳ {Number(e.amount).toLocaleString('en-IN')}
-        </span>
-      ),
-    },
-    {
-      header: 'অবস্থা',
-      className: 'text-center',
-      render: (e) => (
-        <span
-          className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
-            e.status === 'CANCELLED' ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'
-          }`}
-        >
-          {e.statusLabelBn}
+          {Number(e.amount).toLocaleString('en-IN')}
         </span>
       ),
     },
@@ -675,7 +671,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
           { header: 'ক্রঃ', className: 'text-center w-12 font-mono', render: (_: any, idx?: number) => (idx !== undefined ? idx + 1 : '') },
           { header: 'প্রধান ব্যয়ের খাত', className: 'font-bold text-slate-900', render: (r: MainHeadExpenseReportRow) => r.headNameBn },
           { header: 'ভাউচার সংখ্যা', className: 'text-center font-mono', render: (r: MainHeadExpenseReportRow) => `${r.count} টি` },
-          { header: 'মোট ব্যয় (৳)', className: 'text-right font-mono font-bold text-rose-700', render: (r: MainHeadExpenseReportRow) => `৳ ${r.amount.toLocaleString('en-IN')}` },
+          { header: 'মোট ব্যয় (৳)', className: 'text-right font-mono font-bold text-rose-700 whitespace-nowrap min-w-[105px] w-28 print-amount-cell', render: (r: MainHeadExpenseReportRow) => r.amount.toLocaleString('en-IN') },
           { header: 'শতকরা অংশ (%)', className: 'text-right font-mono font-bold text-slate-800', render: (r: MainHeadExpenseReportRow) => `${r.percentage.toFixed(1)}%` },
         ],
         summaryMetrics: [
@@ -689,7 +685,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
           <tr>
             <td colSpan={2} className="px-3 py-2.5 text-right font-bold text-slate-800">সর্বমোট অনুমোদিত ব্যয়:</td>
             <td className="px-3 py-2.5 text-center font-mono font-bold text-slate-800">{filteredReportSummary.approvedTransactionsCount} টি</td>
-            <td className="px-3 py-2.5 text-right font-mono font-bold text-rose-800">৳ {filteredTotalAmount.toLocaleString('en-IN')}</td>
+            <td className="px-3 py-2.5 text-right font-mono font-bold text-rose-800 whitespace-nowrap min-w-[105px] print-amount-cell">{filteredTotalAmount.toLocaleString('en-IN')}</td>
             <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-800">১০০.০%</td>
           </tr>
         ),
@@ -706,7 +702,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
           { header: 'প্রধান খাত', className: 'font-bold text-slate-900', render: (r: SubHeadExpenseReportRow) => r.mainHeadNameBn },
           { header: 'উপ-খাত (Sub-Head)', className: 'text-slate-800 font-medium', render: (r: SubHeadExpenseReportRow) => r.subHeadNameBn },
           { header: 'ভাউচার সংখ্যা', className: 'text-center font-mono', render: (r: SubHeadExpenseReportRow) => `${r.count} টি` },
-          { header: 'মোট ব্যয় (৳)', className: 'text-right font-mono font-bold text-rose-700', render: (r: SubHeadExpenseReportRow) => `৳ ${r.amount.toLocaleString('en-IN')}` },
+          { header: 'মোট ব্যয় (৳)', className: 'text-right font-mono font-bold text-rose-700 whitespace-nowrap min-w-[105px] w-28 print-amount-cell', render: (r: SubHeadExpenseReportRow) => r.amount.toLocaleString('en-IN') },
           { header: 'শতকরা অংশ (%)', className: 'text-right font-mono font-bold text-slate-800', render: (r: SubHeadExpenseReportRow) => `${r.percentage.toFixed(1)}%` },
         ],
         summaryMetrics: [
@@ -720,7 +716,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
           <tr>
             <td colSpan={3} className="px-3 py-2.5 text-right font-bold text-slate-800">সর্বমোট অনুমোদিত ব্যয়:</td>
             <td className="px-3 py-2.5 text-center font-mono font-bold text-slate-800">{filteredReportSummary.approvedTransactionsCount} টি</td>
-            <td className="px-3 py-2.5 text-right font-mono font-bold text-rose-800">৳ {filteredTotalAmount.toLocaleString('en-IN')}</td>
+            <td className="px-3 py-2.5 text-right font-mono font-bold text-rose-800 whitespace-nowrap min-w-[105px] print-amount-cell">{filteredTotalAmount.toLocaleString('en-IN')}</td>
             <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-800">১০০.০%</td>
           </tr>
         ),
@@ -737,7 +733,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
           { header: 'মাস ও সাল', className: 'font-bold text-slate-900', render: (r: MonthlyExpenseReportRow) => r.monthNameBn },
           { header: 'মাসের কোড (YYYY-MM)', className: 'text-center font-mono text-slate-500', render: (r: MonthlyExpenseReportRow) => r.monthKey },
           { header: 'ভাউচার সংখ্যা', className: 'text-center font-mono', render: (r: MonthlyExpenseReportRow) => `${r.count} টি` },
-          { header: 'মোট ব্যয় (৳)', className: 'text-right font-mono font-bold text-rose-700', render: (r: MonthlyExpenseReportRow) => `৳ ${r.amount.toLocaleString('en-IN')}` },
+          { header: 'মোট ব্যয় (৳)', className: 'text-right font-mono font-bold text-rose-700 whitespace-nowrap min-w-[105px] w-28 print-amount-cell', render: (r: MonthlyExpenseReportRow) => r.amount.toLocaleString('en-IN') },
           { header: 'শতকরা অংশ (%)', className: 'text-right font-mono font-bold text-slate-800', render: (r: MonthlyExpenseReportRow) => `${r.percentage.toFixed(1)}%` },
         ],
         summaryMetrics: [
@@ -751,7 +747,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
           <tr>
             <td colSpan={3} className="px-3 py-2.5 text-right font-bold text-slate-800">সর্বমোট অনুমোদিত ব্যয়:</td>
             <td className="px-3 py-2.5 text-center font-mono font-bold text-slate-800">{filteredReportSummary.approvedTransactionsCount} টি</td>
-            <td className="px-3 py-2.5 text-right font-mono font-bold text-rose-800">৳ {filteredTotalAmount.toLocaleString('en-IN')}</td>
+            <td className="px-3 py-2.5 text-right font-mono font-bold text-rose-800 whitespace-nowrap min-w-[105px] print-amount-cell">{filteredTotalAmount.toLocaleString('en-IN')}</td>
             <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-800">১০০.০%</td>
           </tr>
         ),
@@ -767,7 +763,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
           { header: 'ক্রঃ', className: 'text-center w-12 font-mono', render: (_: any, idx?: number) => (idx !== undefined ? idx + 1 : '') },
           { header: 'অর্থবছর / সাল', className: 'font-bold text-slate-900', render: (r: AnnualExpenseReportRow) => r.yearNameBn },
           { header: 'ভাউচার সংখ্যা', className: 'text-center font-mono', render: (r: AnnualExpenseReportRow) => `${r.count} টি` },
-          { header: 'মোট ব্যয় (৳)', className: 'text-right font-mono font-bold text-rose-700', render: (r: AnnualExpenseReportRow) => `৳ ${r.amount.toLocaleString('en-IN')}` },
+          { header: 'মোট ব্যয় (৳)', className: 'text-right font-mono font-bold text-rose-700 whitespace-nowrap min-w-[105px] w-28 print-amount-cell', render: (r: AnnualExpenseReportRow) => r.amount.toLocaleString('en-IN') },
           { header: 'শতকরা অংশ (%)', className: 'text-right font-mono font-bold text-slate-800', render: (r: AnnualExpenseReportRow) => `${r.percentage.toFixed(1)}%` },
         ],
         summaryMetrics: [
@@ -781,7 +777,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
           <tr>
             <td colSpan={2} className="px-3 py-2.5 text-right font-bold text-slate-800">সর্বমোট অনুমোদিত ব্যয়:</td>
             <td className="px-3 py-2.5 text-center font-mono font-bold text-slate-800">{filteredReportSummary.approvedTransactionsCount} টি</td>
-            <td className="px-3 py-2.5 text-right font-mono font-bold text-rose-800">৳ {filteredTotalAmount.toLocaleString('en-IN')}</td>
+            <td className="px-3 py-2.5 text-right font-mono font-bold text-rose-800 whitespace-nowrap min-w-[105px] print-amount-cell">{filteredTotalAmount.toLocaleString('en-IN')}</td>
             <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-800">১০০.০%</td>
           </tr>
         ),
@@ -798,7 +794,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
           { header: 'হিসাবের নাম (Financial Account)', className: 'font-bold text-slate-900', render: (r: AccountExpenseReportRow) => r.accountName },
           { header: 'হিসাবের ধরন', className: 'text-center font-medium text-slate-700', render: (r: AccountExpenseReportRow) => r.accountType || 'CASH' },
           { header: 'ভাউচার সংখ্যা', className: 'text-center font-mono', render: (r: AccountExpenseReportRow) => `${r.count} টি` },
-          { header: 'মোট ব্যয় (৳)', className: 'text-right font-mono font-bold text-rose-700', render: (r: AccountExpenseReportRow) => `৳ ${r.amount.toLocaleString('en-IN')}` },
+          { header: 'মোট ব্যয় (৳)', className: 'text-right font-mono font-bold text-rose-700 whitespace-nowrap min-w-[105px] w-28 print-amount-cell', render: (r: AccountExpenseReportRow) => r.amount.toLocaleString('en-IN') },
           { header: 'শতকরা অংশ (%)', className: 'text-right font-mono font-bold text-slate-800', render: (r: AccountExpenseReportRow) => `${r.percentage.toFixed(1)}%` },
         ],
         summaryMetrics: [
@@ -812,7 +808,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
           <tr>
             <td colSpan={3} className="px-3 py-2.5 text-right font-bold text-slate-800">সর্বমোট অনুমোদিত ব্যয়:</td>
             <td className="px-3 py-2.5 text-center font-mono font-bold text-slate-800">{filteredReportSummary.approvedTransactionsCount} টি</td>
-            <td className="px-3 py-2.5 text-right font-mono font-bold text-rose-800">৳ {filteredTotalAmount.toLocaleString('en-IN')}</td>
+            <td className="px-3 py-2.5 text-right font-mono font-bold text-rose-800 whitespace-nowrap min-w-[105px] print-amount-cell">{filteredTotalAmount.toLocaleString('en-IN')}</td>
             <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-800">১০০.০%</td>
           </tr>
         ),
@@ -829,7 +825,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
           { header: 'পরিশোধ পদ্ধতি (Payment Method)', className: 'font-bold text-slate-900', render: (r: PaymentMethodExpenseReportRow) => r.labelBn },
           { header: 'মেথড কোড', className: 'text-center font-mono text-slate-500', render: (r: PaymentMethodExpenseReportRow) => r.method },
           { header: 'ভাউচার সংখ্যা', className: 'text-center font-mono', render: (r: PaymentMethodExpenseReportRow) => `${r.count} টি` },
-          { header: 'মোট ব্যয় (৳)', className: 'text-right font-mono font-bold text-rose-700', render: (r: PaymentMethodExpenseReportRow) => `৳ ${r.amount.toLocaleString('en-IN')}` },
+          { header: 'মোট ব্যয় (৳)', className: 'text-right font-mono font-bold text-rose-700 whitespace-nowrap min-w-[105px] w-28 print-amount-cell', render: (r: PaymentMethodExpenseReportRow) => r.amount.toLocaleString('en-IN') },
           { header: 'শতকরা অংশ (%)', className: 'text-right font-mono font-bold text-slate-800', render: (r: PaymentMethodExpenseReportRow) => `${r.percentage.toFixed(1)}%` },
         ],
         summaryMetrics: [
@@ -843,7 +839,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
           <tr>
             <td colSpan={3} className="px-3 py-2.5 text-right font-bold text-slate-800">সর্বমোট অনুমোদিত ব্যয়:</td>
             <td className="px-3 py-2.5 text-center font-mono font-bold text-slate-800">{filteredReportSummary.approvedTransactionsCount} টি</td>
-            <td className="px-3 py-2.5 text-right font-mono font-bold text-rose-800">৳ {filteredTotalAmount.toLocaleString('en-IN')}</td>
+            <td className="px-3 py-2.5 text-right font-mono font-bold text-rose-800 whitespace-nowrap min-w-[105px] print-amount-cell">{filteredTotalAmount.toLocaleString('en-IN')}</td>
             <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-800">১০০.০%</td>
           </tr>
         ),
@@ -861,7 +857,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
           { header: 'পদবি / রেফারেন্স', className: 'text-slate-700', render: (r: StaffExpenseReportRow) => r.designationBn || '-' },
           { header: 'মোবাইল নম্বর', className: 'font-mono text-slate-500', render: (r: StaffExpenseReportRow) => r.phone || '-' },
           { header: 'ভাউচার সংখ্যা', className: 'text-center font-mono', render: (r: StaffExpenseReportRow) => `${r.count} টি` },
-          { header: 'মোট পরিশোধ (৳)', className: 'text-right font-mono font-bold text-rose-700', render: (r: StaffExpenseReportRow) => `৳ ${r.amount.toLocaleString('en-IN')}` },
+          { header: 'মোট পরিশোধ (৳)', className: 'text-right font-mono font-bold text-rose-700 whitespace-nowrap min-w-[105px] w-28 print-amount-cell', render: (r: StaffExpenseReportRow) => r.amount.toLocaleString('en-IN') },
           { header: 'শতকরা অংশ (%)', className: 'text-right font-mono font-bold text-slate-800', render: (r: StaffExpenseReportRow) => `${r.percentage.toFixed(1)}%` },
         ],
         summaryMetrics: [
@@ -873,7 +869,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
           <tr>
             <td colSpan={4} className="px-3 py-2.5 text-right font-bold text-slate-800">সর্বমোট স্টাফ ব্যয়:</td>
             <td className="px-3 py-2.5 text-center font-mono font-bold text-slate-800">{staffReportData.reduce((s, r) => s + r.count, 0)} টি</td>
-            <td className="px-3 py-2.5 text-right font-mono font-bold text-rose-800">৳ {staffReportData.reduce((s, r) => s + r.amount, 0).toLocaleString('en-IN')}</td>
+            <td className="px-3 py-2.5 text-right font-mono font-bold text-rose-800 whitespace-nowrap min-w-[105px] print-amount-cell">{staffReportData.reduce((s, r) => s + r.amount, 0).toLocaleString('en-IN')}</td>
             <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-800">১০০.০%</td>
           </tr>
         ),
@@ -891,7 +887,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
           { header: 'সম্পদ কোড', className: 'font-mono text-slate-500', render: (r: AssetExpenseReportRow) => r.assetCode || '-' },
           { header: 'ক্যাটাগরি', className: 'text-slate-700', render: (r: AssetExpenseReportRow) => r.categoryBn || '-' },
           { header: 'ভাউচার সংখ্যা', className: 'text-center font-mono', render: (r: AssetExpenseReportRow) => `${r.count} টি` },
-          { header: 'মোট ব্যয় (৳)', className: 'text-right font-mono font-bold text-rose-700', render: (r: AssetExpenseReportRow) => `৳ ${r.amount.toLocaleString('en-IN')}` },
+          { header: 'মোট ব্যয় (৳)', className: 'text-right font-mono font-bold text-rose-700 whitespace-nowrap min-w-[105px] w-28 print-amount-cell', render: (r: AssetExpenseReportRow) => r.amount.toLocaleString('en-IN') },
           { header: 'শতকরা অংশ (%)', className: 'text-right font-mono font-bold text-slate-800', render: (r: AssetExpenseReportRow) => `${r.percentage.toFixed(1)}%` },
         ],
         summaryMetrics: [
@@ -903,7 +899,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
           <tr>
             <td colSpan={4} className="px-3 py-2.5 text-right font-bold text-slate-800">সর্বমোট সম্পদ ব্যয়:</td>
             <td className="px-3 py-2.5 text-center font-mono font-bold text-slate-800">{assetReportData.reduce((s, r) => s + r.count, 0)} টি</td>
-            <td className="px-3 py-2.5 text-right font-mono font-bold text-rose-800">৳ {assetReportData.reduce((s, r) => s + r.amount, 0).toLocaleString('en-IN')}</td>
+            <td className="px-3 py-2.5 text-right font-mono font-bold text-rose-800 whitespace-nowrap min-w-[105px] print-amount-cell">{assetReportData.reduce((s, r) => s + r.amount, 0).toLocaleString('en-IN')}</td>
             <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-800">১০০.০%</td>
           </tr>
         ),
@@ -921,7 +917,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
           { header: 'সম্পত্তি কোড', className: 'font-mono text-slate-500', render: (r: PropertyExpenseReportRow) => r.propertyCode || '-' },
           { header: 'সম্পত্তির ধরন', className: 'text-slate-700', render: (r: PropertyExpenseReportRow) => r.propertyType || '-' },
           { header: 'ভাউচার সংখ্যা', className: 'text-center font-mono', render: (r: PropertyExpenseReportRow) => `${r.count} টি` },
-          { header: 'মোট ব্যয় (৳)', className: 'text-right font-mono font-bold text-rose-700', render: (r: PropertyExpenseReportRow) => `৳ ${r.amount.toLocaleString('en-IN')}` },
+          { header: 'মোট ব্যয় (৳)', className: 'text-right font-mono font-bold text-rose-700 whitespace-nowrap min-w-[105px] w-28 print-amount-cell', render: (r: PropertyExpenseReportRow) => r.amount.toLocaleString('en-IN') },
           { header: 'শতকরা অংশ (%)', className: 'text-right font-mono font-bold text-slate-800', render: (r: PropertyExpenseReportRow) => `${r.percentage.toFixed(1)}%` },
         ],
         summaryMetrics: [
@@ -933,7 +929,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
           <tr>
             <td colSpan={4} className="px-3 py-2.5 text-right font-bold text-slate-800">সর্বমোট সম্পত্তি ব্যয়:</td>
             <td className="px-3 py-2.5 text-center font-mono font-bold text-slate-800">{propertyReportData.reduce((s, r) => s + r.count, 0)} টি</td>
-            <td className="px-3 py-2.5 text-right font-mono font-bold text-rose-800">৳ {propertyReportData.reduce((s, r) => s + r.amount, 0).toLocaleString('en-IN')}</td>
+            <td className="px-3 py-2.5 text-right font-mono font-bold text-rose-800 whitespace-nowrap min-w-[105px] print-amount-cell">{propertyReportData.reduce((s, r) => s + r.amount, 0).toLocaleString('en-IN')}</td>
             <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-800">১০০.০%</td>
           </tr>
         ),
@@ -950,7 +946,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
           { header: 'ব্যয়ের ধরন (Expense Type)', className: 'font-bold text-slate-900', render: (r: ExpenseTypeReportRow) => r.labelBn },
           { header: 'টাইপ কোড', className: 'text-center font-mono text-slate-500', render: (r: ExpenseTypeReportRow) => r.type },
           { header: 'ভাউচার সংখ্যা', className: 'text-center font-mono', render: (r: ExpenseTypeReportRow) => `${r.count} টি` },
-          { header: 'মোট ব্যয় (৳)', className: 'text-right font-mono font-bold text-rose-700', render: (r: ExpenseTypeReportRow) => `৳ ${r.amount.toLocaleString('en-IN')}` },
+          { header: 'মোট ব্যয় (৳)', className: 'text-right font-mono font-bold text-rose-700 whitespace-nowrap min-w-[105px] w-28 print-amount-cell', render: (r: ExpenseTypeReportRow) => r.amount.toLocaleString('en-IN') },
           { header: 'শতকরা অংশ (%)', className: 'text-right font-mono font-bold text-slate-800', render: (r: ExpenseTypeReportRow) => `${r.percentage.toFixed(1)}%` },
         ],
         summaryMetrics: [
@@ -962,7 +958,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
           <tr>
             <td colSpan={3} className="px-3 py-2.5 text-right font-bold text-slate-800">সর্বমোট অনুমোদিত ব্যয়:</td>
             <td className="px-3 py-2.5 text-center font-mono font-bold text-slate-800">{filteredReportSummary.approvedTransactionsCount} টি</td>
-            <td className="px-3 py-2.5 text-right font-mono font-bold text-rose-800">৳ {filteredTotalAmount.toLocaleString('en-IN')}</td>
+            <td className="px-3 py-2.5 text-right font-mono font-bold text-rose-800 whitespace-nowrap min-w-[105px] print-amount-cell">{filteredTotalAmount.toLocaleString('en-IN')}</td>
             <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-800">১০০.০%</td>
           </tr>
         ),
@@ -978,7 +974,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
           { header: 'ক্রঃ', className: 'text-center w-12 font-mono', render: (_: any, idx?: number) => (idx !== undefined ? idx + 1 : '') },
           { header: 'প্রধান ব্যয়ের খাত', className: 'font-bold text-slate-900', render: (r: MainHeadExpenseReportRow) => r.headNameBn },
           { header: 'ভাউচার সংখ্যা', className: 'text-center font-mono font-bold text-slate-700', render: (r: MainHeadExpenseReportRow) => `${r.count} টি` },
-          { header: 'মোট ব্যয় (৳)', className: 'text-right font-mono font-bold text-rose-700', render: (r: MainHeadExpenseReportRow) => `৳ ${r.amount.toLocaleString('en-IN')}` },
+          { header: 'মোট ব্যয় (৳)', className: 'text-right font-mono font-bold text-rose-700 whitespace-nowrap min-w-[105px] w-28 print-amount-cell', render: (r: MainHeadExpenseReportRow) => r.amount.toLocaleString('en-IN') },
           { header: 'শতকরা হার (%)', className: 'text-right font-mono font-bold text-slate-800', render: (r: MainHeadExpenseReportRow) => `${r.percentage.toFixed(1)}%` },
         ],
         summaryMetrics: [
@@ -992,7 +988,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
           <tr>
             <td colSpan={2} className="px-3 py-2.5 text-right font-bold text-slate-800">সর্বমোট:</td>
             <td className="px-3 py-2.5 text-center font-mono font-bold text-slate-800">{filteredReportSummary.approvedTransactionsCount} টি</td>
-            <td className="px-3 py-2.5 text-right font-mono font-bold text-rose-800">৳ {filteredTotalAmount.toLocaleString('en-IN')}</td>
+            <td className="px-3 py-2.5 text-right font-mono font-bold text-rose-800 whitespace-nowrap min-w-[105px] print-amount-cell">{filteredTotalAmount.toLocaleString('en-IN')}</td>
             <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-800">১০০.০%</td>
           </tr>
         ),
@@ -1003,7 +999,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
     return {
       title: 'ব্যয় ও পরিশোধ বিবরণী প্রতিবেদন (Expense Register Report)',
       subtitle: 'মসজিদের সকল আনুষ্ঠানিক ও অনুমোদিত ব্যয়ের রেজিস্টার খতিয়ান',
-      data: filteredReportItems,
+      data: printOrderedReportItems,
       columns: reportColumns,
       summaryMetrics: [
         { label: 'মোট রেকর্ড', value: `${filteredReportSummary.totalTransactionsCount} টি` },
@@ -1024,13 +1020,12 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
       ],
       totalRow: (
         <tr>
-          <td colSpan={6} className="px-3 py-2.5 text-right font-bold text-slate-800">
+          <td colSpan={7} className="px-3 py-2.5 text-right font-bold text-slate-800">
             সর্বমোট অনুমোদিত ব্যয়ের যোগফল:
           </td>
-          <td className="px-3 py-2.5 text-right font-mono font-bold text-rose-800">
-            ৳ {filteredTotalAmount.toLocaleString('en-IN')}
+          <td className="px-3 py-2.5 text-right font-mono font-bold text-rose-800 whitespace-nowrap min-w-[105px] print-amount-cell">
+            {filteredTotalAmount.toLocaleString('en-IN')}
           </td>
-          <td></td>
         </tr>
       ),
       onExcel: () => handleExportCurrentReportExcel('REGISTER'),
@@ -1048,7 +1043,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
     propertyReportData,
     expenseTypeReportData,
     detailedAnalysisData,
-    filteredReportItems,
+    printOrderedReportItems,
     filteredReportSummary,
     filteredTotalAmount,
     reportColumns,
@@ -1343,13 +1338,24 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                             ৳ {Number(exp.amount).toLocaleString('en-IN')}
                           </td>
                           <td className="px-3 py-2.5 text-center">
-                            <button
-                              onClick={() => onPrintVoucher(exp, 'EXPENSE', 'POS_80', true)}
-                              className="p-1.5 text-slate-600 hover:text-rose-700 hover:bg-slate-100 rounded-lg cursor-pointer"
-                              title="ভাউচার প্রিন্ট করুন"
-                            >
-                              <Printer className="w-3.5 h-3.5" />
-                            </button>
+                            <div className="flex items-center justify-center space-x-1">
+                              <button
+                                onClick={() => onPrintVoucher(exp, 'EXPENSE', 'POS_80', true)}
+                                className="p-1.5 text-slate-600 hover:text-rose-700 hover:bg-slate-100 rounded-lg cursor-pointer"
+                                title="ভাউচার প্রিন্ট করুন"
+                              >
+                                <Printer className="w-3.5 h-3.5" />
+                              </button>
+                              {onUpdateExpense && exp.status !== 'CANCELLED' && (
+                                <button
+                                  onClick={() => setEditingItem(exp)}
+                                  className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg cursor-pointer"
+                                  title="সম্পাদনা করুন"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1702,13 +1708,24 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                                   ৳ {Number(exp.amount).toLocaleString('en-IN')}
                                 </td>
                                 <td className="px-4 py-3 text-center">
-                                  <button
-                                    onClick={() => onPrintVoucher(exp, 'EXPENSE', 'POS_80', true)}
-                                    className="p-1.5 text-slate-600 hover:text-rose-700 hover:bg-slate-100 rounded-lg cursor-pointer"
-                                    title="প্রিন্ট ডেবিট ভাউচার"
-                                  >
-                                    <Printer className="w-3.5 h-3.5" />
-                                  </button>
+                                  <div className="flex items-center justify-center space-x-1">
+                                    <button
+                                      onClick={() => onPrintVoucher(exp, 'EXPENSE', 'POS_80', true)}
+                                      className="p-1.5 text-slate-600 hover:text-rose-700 hover:bg-slate-100 rounded-lg cursor-pointer"
+                                      title="প্রিন্ট ডেবিট ভাউচার"
+                                    >
+                                      <Printer className="w-3.5 h-3.5" />
+                                    </button>
+                                    {onUpdateExpense && exp.status !== 'CANCELLED' && (
+                                      <button
+                                        onClick={() => setEditingItem(exp)}
+                                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg cursor-pointer"
+                                        title="সম্পাদনা করুন"
+                                      >
+                                        <Edit2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
                                 </td>
                               </tr>
                             ))
@@ -2082,10 +2099,10 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                             <th className="px-3.5 py-3">ভাউচার নং</th>
                             <th className="px-3.5 py-3">তারিখ</th>
                             <th className="px-3.5 py-3">ব্যয়ের খাত</th>
-                            <th className="px-3.5 py-3">বিবরণ</th>
+                            <th className="px-3.5 py-3 max-w-[155px]">বিবরণ</th>
                             <th className="px-3.5 py-3">প্রাপক / ব্যক্তি</th>
                             <th className="px-3.5 py-3">হিসাব / মাধ্যম</th>
-                            <th className="px-3.5 py-3 text-right">পরিমাণ (৳)</th>
+                            <th className="px-3.5 py-3 text-right whitespace-nowrap min-w-[105px]">পরিমাণ (৳)</th>
                             <th className="px-3.5 py-3 text-center">অবস্থা</th>
                             <th className="px-3.5 py-3 text-center">কার্যক্রম</th>
                           </tr>
@@ -2117,7 +2134,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                                     </span>
                                   )}
                                 </td>
-                                <td className="px-3.5 py-3 text-slate-700 max-w-xs truncate">
+                                <td className="px-3.5 py-3 text-slate-700 max-w-[155px] text-[11px] truncate">
                                   {item.description || '-'}
                                 </td>
                                 <td className="px-3.5 py-3 text-slate-800 font-medium">
@@ -2130,9 +2147,9 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                                   {item.accountName}{' '}
                                   <span className="text-slate-400">({item.paymentMethodLabelBn})</span>
                                 </td>
-                                <td className="px-3.5 py-3 text-right font-mono font-bold text-rose-700">
+                                <td className="px-3.5 py-3 text-right font-mono font-bold text-rose-700 whitespace-nowrap min-w-[105px]">
                                   <span className={item.status === 'CANCELLED' ? 'line-through text-slate-400' : ''}>
-                                    ৳ {Number(item.amount).toLocaleString('en-IN')}
+                                    {Number(item.amount).toLocaleString('en-IN')}
                                   </span>
                                 </td>
                                 <td className="px-3.5 py-3 text-center">
@@ -3843,6 +3860,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
         <EditTransactionModal
           isOpen={!!editingItem}
           onClose={() => setEditingItem(null)}
+          transaction={editingItem}
           item={editingItem}
           type="EXPENSE"
           accountHeads={accountHeads}

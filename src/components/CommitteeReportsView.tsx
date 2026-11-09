@@ -20,6 +20,7 @@ import { CommitteeTerm, CommitteeMember, CommitteeMeeting, MeetingResolution, Su
 import { Language, translations, formatDate } from '../lib/i18n';
 import { toBanglaNumber } from './CommitteeView';
 import { printElement } from '../lib/printUtils';
+import { OfficialReportSignatures } from './common/OfficialReportSignatures';
 
 interface CommitteeReportsViewProps {
   terms: CommitteeTerm[];
@@ -409,18 +410,15 @@ export const CommitteeReportsView: React.FC<CommitteeReportsViewProps> = ({
           </div>
         )}
 
-        {/* Footer Signatures */}
-        <div className="grid grid-cols-3 gap-6 mt-16 pt-8 border-t border-slate-300 text-center text-xs font-sans">
-          <div>
-            <div className="border-t border-slate-700 pt-1 font-bold">সাধারণ সম্পাদক</div>
-          </div>
-          <div>
-            <div className="border-t border-slate-700 pt-1 font-bold">কোষাধ্যক্ষ</div>
-          </div>
-          <div>
-            <div className="border-t border-slate-700 pt-1 font-bold">সভাপতি</div>
-          </div>
-        </div>
+        {/* Official Committee Signatures */}
+        <OfficialReportSignatures
+          currentMosque={mosque}
+          preparerTitle="সদস্য সচিব / প্রস্তুতকারী"
+          secretaryTitle="সাধারণ সম্পাদক / মোতাওয়াল্লী"
+          presidentTitle="সভাপতি"
+          showAuditFooter={true}
+          auditFooterText="মসজিদ লেজার • পরিচালনা কমিটি ও রেজোলিউশন খতিয়ান"
+        />
       </div>
     </div>
   );

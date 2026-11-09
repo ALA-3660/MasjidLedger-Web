@@ -246,18 +246,39 @@ export const PropertyRentReceiptModal: React.FC<PropertyRentReceiptModalProps> =
             </div>
 
             {/* Official Signatures */}
-            <div className="pt-10 grid grid-cols-3 gap-4 text-center text-xs text-slate-700">
-              <div>
-                <div className="border-t border-slate-400 pt-2 font-bold">ভাড়াটিয়া / প্রদানকারী</div>
+            <div className="pt-10 grid grid-cols-3 gap-4 text-center text-xs text-slate-700 break-inside-avoid">
+              <div className="flex flex-col justify-end space-y-1">
+                <div className="h-10 flex items-end justify-center mb-1"></div>
+                <div className="border-t border-slate-400 pt-2 font-bold text-slate-900">ভাড়াটিয়া / প্রদানকারী</div>
                 <p className="text-[10px] text-slate-500 mt-0.5">স্বাক্ষর ও তারিখ</p>
               </div>
-              <div>
-                <div className="border-t border-slate-400 pt-2 font-bold">হিসাবরক্ষক / ক্যাশিয়ার</div>
-                <p className="text-[10px] text-slate-500 mt-0.5">আদায়কারী কর্মকর্তার স্বাক্ষর</p>
+              <div className="flex flex-col justify-end space-y-1">
+                <div className="h-10 flex items-end justify-center mb-1">
+                  {mosque?.secretarySignatureUrl ? (
+                    <img
+                      src={mosque.secretarySignatureUrl}
+                      alt="Secretary Signature"
+                      referrerPolicy="no-referrer"
+                      className="max-h-10 object-contain mx-auto"
+                    />
+                  ) : null}
+                </div>
+                <div className="border-t border-slate-400 pt-2 font-bold text-slate-900">সাধারণ সম্পাদক / মোতাওয়াল্লী</div>
+                <p className="text-[10px] text-slate-500 mt-0.5">স্বাক্ষর ও সীল</p>
               </div>
-              <div>
-                <div className="border-t border-slate-400 pt-2 font-bold">মোতাওয়াল্লি / সাধারণ সম্পাদক</div>
-                <p className="text-[10px] text-slate-500 mt-0.5">অনুমোদন ও সিল</p>
+              <div className="flex flex-col justify-end space-y-1">
+                <div className="h-10 flex items-end justify-center mb-1">
+                  {mosque?.presidentSignatureUrl ? (
+                    <img
+                      src={mosque.presidentSignatureUrl}
+                      alt="President Signature"
+                      referrerPolicy="no-referrer"
+                      className="max-h-10 object-contain mx-auto"
+                    />
+                  ) : null}
+                </div>
+                <div className="border-t border-slate-400 pt-2 font-bold text-slate-900">সভাপতি</div>
+                <p className="text-[10px] text-slate-500 mt-0.5">স্বাক্ষর ও সীল</p>
               </div>
             </div>
 

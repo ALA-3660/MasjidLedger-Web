@@ -21,6 +21,7 @@ import {
 } from '../types';
 import { Language, formatDate } from '../lib/i18n';
 import { printElement } from '../lib/printUtils';
+import { OfficialReportSignatures } from './common/OfficialReportSignatures';
 
 interface CommitteeActionPlanPrintProps {
   isOpen: boolean;
@@ -448,21 +449,15 @@ export const CommitteeActionPlanPrint: React.FC<CommitteeActionPlanPrintProps> =
             </div>
           )}
 
-          {/* Signatures & Seal Box */}
-          <div className="pt-12 grid grid-cols-3 gap-4 text-center text-xs text-slate-800 print:pt-16">
-            <div className="space-y-1">
-              <div className="border-t border-slate-400 w-36 mx-auto pt-1 font-bold">আহ্বায়ক / সমন্বয়কারী</div>
-              <div className="text-slate-500 text-[10px]">কর্মপরিকল্পনা বাস্তবায়ন সেল</div>
-            </div>
-            <div className="space-y-1">
-              <div className="border-t border-slate-400 w-36 mx-auto pt-1 font-bold">সাধারণ সম্পাদক</div>
-              <div className="text-slate-500 text-[10px]">{mosque?.name || 'মসজিদ কমিটি'}</div>
-            </div>
-            <div className="space-y-1">
-              <div className="border-t border-slate-400 w-36 mx-auto pt-1 font-bold">সভাপতি</div>
-              <div className="text-slate-500 text-[10px]">{mosque?.name || 'মসজিদ কমিটি'}</div>
-            </div>
-          </div>
+          {/* Official Signatures & Approval */}
+          <OfficialReportSignatures
+            currentMosque={mosque}
+            preparerTitle="আহ্বায়ক / সমন্বয়কারী (সেল)"
+            secretaryTitle="সাধারণ সম্পাদক / মোতাওয়াল্লী"
+            presidentTitle="সভাপতি"
+            showAuditFooter={true}
+            auditFooterText="মসজিদ লেজার • পরিচালনা কমিটির সার্বিক কর্মপরিকল্পনা বাস্তবায়ন রেজিস্টার"
+          />
         </div>
       </div>
     </div>

@@ -570,8 +570,8 @@ export const OpeningBalanceView: React.FC<OpeningBalanceViewProps> = ({
             { header: 'ধরন', accessor: (a) => a.accountType },
             { header: 'ব্যাংক / বিবরণ', accessor: (a) => a.bankName || a.accountNumber || '-' },
             { header: 'উৎস / কারণ', accessor: (a) => a.openingBalanceSource || 'সফটওয়্যার সেটআপ' },
-            { header: 'প্রারম্ভিক স্থিতি (৳)', accessor: (a) => `৳ ${(a.openingBalance || 0).toLocaleString('en-IN')}` },
-            { header: 'বর্তমান ব্যালেন্স (৳)', accessor: (a) => `৳ ${(a.currentBalance || 0).toLocaleString('en-IN')}` },
+            { header: 'প্রারম্ভিক স্থিতি (৳)', accessor: (a) => (a.openingBalance || 0).toLocaleString('en-IN') },
+            { header: 'বর্তমান ব্যালেন্স (৳)', accessor: (a) => (a.currentBalance || 0).toLocaleString('en-IN') },
           ]}
           data={accounts}
           summaryRows={[

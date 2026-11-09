@@ -861,44 +861,40 @@ export const QuickIncomeExpenseReportModal: React.FC<QuickIncomeExpenseReportMod
               <div className="text-[10px] text-slate-600 font-baloo">হিসাব শাখা</div>
             </div>
 
-            {/* Column 2: Accountant / Auditor */}
+            {/* Column 2: General Secretary / Mutawalli */}
             <div>
               <div className="h-10 flex items-end justify-center mb-1">
-                {currentMosque?.treasurerSignatureUrl && (
+                {currentMosque?.secretarySignatureUrl && (
                   <img
-                    src={currentMosque.treasurerSignatureUrl}
-                    alt="Treasurer Signature"
+                    src={currentMosque.secretarySignatureUrl}
+                    alt="Secretary Signature"
+                    referrerPolicy="no-referrer"
                     className="max-h-9 object-contain mx-auto"
                   />
                 )}
               </div>
               <div className="border-t border-slate-500 pt-1 font-bold font-siliguri text-slate-900 text-xs">
-                হিসাব নিরীক্ষক / কোষাধ্যক্ষ
+                সাধারণ সম্পাদক / মোতাওয়াল্লী
               </div>
-              <div className="text-[10px] text-slate-600 font-baloo">অর্থ উপকমিটি</div>
+              <div className="text-[10px] text-slate-600 font-baloo">স্বাক্ষর ও সীল</div>
             </div>
 
-            {/* Column 3: General Secretary / President */}
+            {/* Column 3: President */}
             <div>
               <div className="h-10 flex items-end justify-center mb-1">
-                {currentMosque?.presidentSignatureUrl ? (
+                {currentMosque?.presidentSignatureUrl && (
                   <img
                     src={currentMosque.presidentSignatureUrl}
                     alt="President Signature"
+                    referrerPolicy="no-referrer"
                     className="max-h-9 object-contain mx-auto"
                   />
-                ) : currentMosque?.secretarySignatureUrl ? (
-                  <img
-                    src={currentMosque.secretarySignatureUrl}
-                    alt="Secretary Signature"
-                    className="max-h-9 object-contain mx-auto"
-                  />
-                ) : null}
+                )}
               </div>
               <div className="border-t border-slate-500 pt-1 font-bold font-siliguri text-slate-900 text-xs">
-                সাধারণ সম্পাদক / সভাপতি
+                সভাপতি
               </div>
-              <div className="text-[10px] text-slate-600 font-baloo">মসজিদ পরিচালনা কমিটি</div>
+              <div className="text-[10px] text-slate-600 font-baloo">স্বাক্ষর ও সীল</div>
             </div>
           </div>
 

@@ -17,6 +17,7 @@ import { CemeteryRecord, Mosque, MosqueProfile } from '../types';
 import { Language, formatDate, formatCurrency } from '../lib/i18n';
 import { DEFAULT_BLOCKS, GRAVE_TYPES, PLOT_STATUSES } from './CemeteryFormModal';
 import { printElement } from '../lib/printUtils';
+import { OfficialReportSignatures } from './common/OfficialReportSignatures';
 
 export type CemeteryReportType =
   | 'TODAY'
@@ -577,27 +578,15 @@ export const CemeteryReportsModal: React.FC<CemeteryReportsModalProps> = ({
               )}
             </div>
 
-            {/* Official Signatures */}
-            <div className="pt-12 mt-8 border-t border-slate-300 grid grid-cols-3 gap-4 text-center text-xs">
-              <div>
-                <div className="border-t border-slate-800 w-36 mx-auto pt-1 font-bold text-slate-900">
-                  প্রস্তুতকারী (সহকারী)
-                </div>
-                <span className="text-[10px] text-slate-500">স্বাক্ষর ও তারিখ</span>
-              </div>
-              <div>
-                <div className="border-t border-slate-800 w-36 mx-auto pt-1 font-bold text-slate-900">
-                  কবরস্থান তত্ত্বাবধায়ক
-                </div>
-                <span className="text-[10px] text-slate-500">স্বাক্ষর ও সিল</span>
-              </div>
-              <div>
-                <div className="border-t border-slate-800 w-36 mx-auto pt-1 font-bold text-slate-900">
-                  সাধারণ সম্পাদক / সভাপতি
-                </div>
-                <span className="text-[10px] text-slate-500">মসজিদ পরিচালনা কমিটি</span>
-              </div>
-            </div>
+            {/* Official Committee Signatures */}
+            <OfficialReportSignatures
+              currentMosque={mosque as any}
+              preparerTitle="কবরস্থান তত্ত্বাবধায়ক / খাদেম"
+              secretaryTitle="সাধারণ সম্পাদক / মোতাওয়াল্লী"
+              presidentTitle="সভাপতি"
+              showAuditFooter={true}
+              auditFooterText="মসজিদ লেজার • কবরস্থান রেজিস্ট্রি ও দাফন খতিয়ান ব্যবস্থাপনা"
+            />
           </div>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   X,
   CheckCircle2,
@@ -216,13 +216,27 @@ export const UnifiedExpenseEntryModal: React.FC<UnifiedExpenseEntryModalProps> =
     return accounts.find((a) => a.id === accountId) || filteredAccounts[0] || accounts[0];
   }, [accounts, accountId, filteredAccounts]);
 
+  const isInitializedRef = useRef<boolean>(false);
+
   // Sync initial type and form reset on open
   useEffect(() => {
     if (!isOpen) {
+      isInitializedRef.current = false;
       setErrorMessage('');
       return;
     }
 
+    // If modal is already open and initialized, do NOT reset user-typed inputs!
+    if (isInitializedRef.current) {
+      if (!accountId && accounts.length > 0) {
+        const defaultAcc = accounts.find((a) => a.accountType === 'CASH') || accounts[0];
+        if (defaultAcc) setAccountId(defaultAcc.id);
+      }
+      return;
+    }
+
+    // First time opening the modal: perform initial setup
+    isInitializedRef.current = true;
     setExpenseType(initialType);
     setEntryDate(new Date().toISOString().split('T')[0]);
     setErrorMessage('');
@@ -235,7 +249,7 @@ export const UnifiedExpenseEntryModal: React.FC<UnifiedExpenseEntryModalProps> =
 
     // Configure initial heads and contextual fields
     applyContextDefaults((initialType as ExpenseEntryType) || 'GENERAL_EXPENSE', initialStaffId, initialAssetId, initialPropertyId, initialMainHeadId);
-  }, [isOpen, initialType, initialStaffId, initialAssetId, initialPropertyId, initialMainHeadId, accounts, accountHeads]);
+  }, [isOpen, initialType, initialStaffId, initialAssetId, initialPropertyId, initialMainHeadId]);
 
   const applyContextDefaults = (
     type: ExpenseEntryType | string,

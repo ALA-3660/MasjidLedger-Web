@@ -229,13 +229,13 @@ export const ActualDonationFormModal: React.FC<ActualDonationFormModalProps> = (
     if (!personSearchQuery.trim()) return persons.slice(0, 8);
     const q = personSearchQuery.toLowerCase().trim();
     return persons
-      .filter(
-        (p) =>
-          p.name.toLowerCase().includes(q) ||
-          (p.personCode && p.personCode.toLowerCase().includes(q)) ||
-          (p.mobile && p.mobile.includes(q)) ||
-          (p.occupation && p.occupation.toLowerCase().includes(q))
-      )
+      .filter((p) => {
+        const name = (p.fullName || (p as any).name || '').toLowerCase();
+        const code = (p.personCode || '').toLowerCase();
+        const mobile = p.mobile || '';
+        const occ = (p.profession || p.occupation || '').toLowerCase();
+        return name.includes(q) || code.includes(q) || mobile.includes(q) || occ.includes(q);
+      })
       .slice(0, 10);
   }, [persons, personSearchQuery]);
 
@@ -279,7 +279,7 @@ export const ActualDonationFormModal: React.FC<ActualDonationFormModalProps> = (
 
       if (donorType === 'REGISTERED') {
         payload.personId = selectedPersonId;
-        payload.donorName = selectedPerson?.name;
+        payload.donorName = selectedPerson?.fullName || (selectedPerson as any)?.name || 'নিবন্ধিত মুসল্লি';
         payload.donorPhone = donorPhone || selectedPerson?.mobile || undefined;
         payload.isAnonymous = false;
         if (selectedPlanId) {
@@ -486,7 +486,7 @@ export const ActualDonationFormModal: React.FC<ActualDonationFormModalProps> = (
                       </div>
                       <div>
                         <div className="font-bold text-slate-900 text-sm flex items-center space-x-2">
-                          <span>{selectedPerson.name}</span>
+                          <span>{selectedPerson.fullName || (selectedPerson as any).name || 'নিবন্ধিত মুসল্লি'}</span>
                           {selectedPerson.isFamilyHead && (
                             <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-bold">
                               {isBn ? 'খানা প্রধান' : 'Head'}
@@ -560,7 +560,9 @@ export const ActualDonationFormModal: React.FC<ActualDonationFormModalProps> = (
                                   {p.personCode}
                                 </span>
                                 <div>
-                                  <div className="font-bold text-slate-800 text-xs">{p.name}</div>
+                                  <div className="font-bold text-slate-800 text-xs">
+                                    {p.fullName || (p as any).name || 'নিবন্ধিত মুসল্লি'}
+                                  </div>
                                   <div className="text-[10px] text-slate-400 flex items-center space-x-2 font-baloo">
                                     {p.mobile && <span>{p.mobile}</span>}
                                     {f && <span>• {f.name}</span>}

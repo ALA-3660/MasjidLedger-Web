@@ -134,18 +134,36 @@ export const PrintableDocument: React.FC<PrintableDocumentProps> = ({
       {activeSignatures && (
         <div className="document-signatures-section mt-12 pt-6 break-inside-avoid">
           <div className="grid grid-cols-3 gap-6 text-center text-xs text-slate-800">
-            {activeSignatures.map((sig, idx) => (
-              <div key={idx} className="space-y-1">
-                <div className="border-t border-slate-700 w-36 mx-auto pt-1 font-bold font-siliguri">
-                  {sig.title}
+            {activeSignatures.map((sig, idx) => {
+              const sigImg =
+                idx === 1
+                  ? mosque?.secretarySignatureUrl
+                  : idx === 2
+                  ? mosque?.presidentSignatureUrl
+                  : null;
+              return (
+                <div key={idx} className="flex flex-col items-center justify-end space-y-1">
+                  <div className="h-12 w-full flex items-end justify-center mb-1">
+                    {sigImg ? (
+                      <img
+                        src={sigImg}
+                        alt="Signature"
+                        referrerPolicy="no-referrer"
+                        className="max-h-12 max-w-full object-contain"
+                      />
+                    ) : null}
+                  </div>
+                  <div className="border-t border-slate-700 w-36 mx-auto pt-1 font-bold font-siliguri">
+                    {sig.title}
+                  </div>
+                  {sig.name && <p className="text-[11px] text-slate-900 font-bold">{sig.name}</p>}
+                  {sig.designation && (
+                    <p className="text-[10px] text-slate-600">{sig.designation}</p>
+                  )}
+                  {sig.date && <p className="text-[9px] text-slate-500">তারিখ: {sig.date}</p>}
                 </div>
-                {sig.name && <p className="text-[11px] text-slate-900 font-bold">{sig.name}</p>}
-                {sig.designation && (
-                  <p className="text-[10px] text-slate-600">{sig.designation}</p>
-                )}
-                {sig.date && <p className="text-[9px] text-slate-500">তারিখ: {sig.date}</p>}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

@@ -112,58 +112,70 @@ export const PersonFormModal: React.FC<PersonFormModalProps> = ({
       (!areaId || f.areaId === areaId)
   );
 
+  const isInitializedRef = useRef(false);
+
   useEffect(() => {
-    if (isOpen) {
-      if (initialData) {
-        setFullName(initialData.fullName || '');
-        setFatherOrHusbandName(initialData.fatherOrHusbandName || '');
-        setGender(initialData.gender || 'MALE');
-        setDateOfBirth(initialData.dateOfBirth || '');
-        setMaritalStatus(initialData.maritalStatus || '');
-        setAreaId(initialData.areaId || '');
-        setFamilyId(initialData.familyId || '');
-        setFamilyRelation(initialData.familyRelation || '');
-        setIsFamilyHead(Boolean(initialData.isFamilyHead));
-        setMobile(initialData.mobile || '');
-        setAlternativeMobile(initialData.alternativeMobile || '');
-        setEmail(initialData.email || '');
-        setHouseRoadBlock(initialData.houseRoadBlock || '');
-        setAddress(initialData.address || '');
-        setProfession(initialData.profession || initialData.occupation || '');
-        setOrganization(initialData.organization || '');
-        setBloodGroup(initialData.bloodGroup || '');
-        setPhotoUrl(initialData.photoUrl || '');
-        setNidNumber(initialData.nidNumber || '');
-        setStatus(initialData.status || 'ACTIVE');
-        setNotes(initialData.notes || '');
-      } else {
-        setFullName('');
-        setFatherOrHusbandName('');
-        setGender('MALE');
-        setDateOfBirth('');
-        setMaritalStatus('');
-        setAreaId(availableAreas.length > 0 ? availableAreas[0].id : '');
-        setFamilyId('');
-        setFamilyRelation('');
-        setIsFamilyHead(false);
-        setMobile('');
-        setAlternativeMobile('');
-        setEmail('');
-        setHouseRoadBlock('');
-        setAddress('');
-        setProfession('');
-        setOrganization('');
-        setBloodGroup('');
-        setPhotoUrl('');
-        setNidNumber('');
-        setStatus('ACTIVE');
-        setNotes('');
-      }
-      setActiveStep(1);
+    if (!isOpen) {
+      isInitializedRef.current = false;
       setError(null);
       setDuplicateWarning(null);
+      return;
     }
-  }, [isOpen, initialData]);
+
+    if (isInitializedRef.current) {
+      return;
+    }
+
+    isInitializedRef.current = true;
+    if (initialData) {
+      setFullName(initialData.fullName || '');
+      setFatherOrHusbandName(initialData.fatherOrHusbandName || '');
+      setGender(initialData.gender || 'MALE');
+      setDateOfBirth(initialData.dateOfBirth || '');
+      setMaritalStatus(initialData.maritalStatus || '');
+      setAreaId(initialData.areaId || '');
+      setFamilyId(initialData.familyId || '');
+      setFamilyRelation(initialData.familyRelation || '');
+      setIsFamilyHead(Boolean(initialData.isFamilyHead));
+      setMobile(initialData.mobile || '');
+      setAlternativeMobile(initialData.alternativeMobile || '');
+      setEmail(initialData.email || '');
+      setHouseRoadBlock(initialData.houseRoadBlock || '');
+      setAddress(initialData.address || '');
+      setProfession(initialData.profession || initialData.occupation || '');
+      setOrganization(initialData.organization || '');
+      setBloodGroup(initialData.bloodGroup || '');
+      setPhotoUrl(initialData.photoUrl || '');
+      setNidNumber(initialData.nidNumber || '');
+      setStatus(initialData.status || 'ACTIVE');
+      setNotes(initialData.notes || '');
+    } else {
+      setFullName('');
+      setFatherOrHusbandName('');
+      setGender('MALE');
+      setDateOfBirth('');
+      setMaritalStatus('');
+      setAreaId(availableAreas.length > 0 ? availableAreas[0].id : '');
+      setFamilyId('');
+      setFamilyRelation('');
+      setIsFamilyHead(false);
+      setMobile('');
+      setAlternativeMobile('');
+      setEmail('');
+      setHouseRoadBlock('');
+      setAddress('');
+      setProfession('');
+      setOrganization('');
+      setBloodGroup('');
+      setPhotoUrl('');
+      setNidNumber('');
+      setStatus('ACTIVE');
+      setNotes('');
+    }
+    setActiveStep(1);
+    setError(null);
+    setDuplicateWarning(null);
+  }, [isOpen, initialData?.id]);
 
   // When family changes, auto-set area and check if family head is empty
   const handleFamilyChange = (selectedFamId: string) => {

@@ -283,18 +283,39 @@ export const PropertyCertificatePrint: React.FC<PropertyCertificatePrintProps> =
             )}
 
             {/* Official Signatures Box */}
-            <div className="pt-16 mt-10 grid grid-cols-3 gap-4 text-center text-xs text-slate-800">
-              <div>
+            <div className="pt-16 mt-10 grid grid-cols-3 gap-4 text-center text-xs text-slate-800 break-inside-avoid">
+              <div className="flex flex-col justify-end space-y-1">
+                <div className="h-10 flex items-end justify-center mb-1"></div>
                 <div className="border-t border-slate-900 pt-1 font-bold">ওয়াকফ ও সম্পত্তি সম্পাদক</div>
                 <div className="text-[10px] text-slate-500">পরিচালনা পরিষদ</div>
               </div>
-              <div>
+              <div className="flex flex-col justify-end space-y-1">
+                <div className="h-10 flex items-end justify-center mb-1">
+                  {mosque?.secretarySignatureUrl ? (
+                    <img
+                      src={mosque.secretarySignatureUrl}
+                      alt="Secretary Signature"
+                      referrerPolicy="no-referrer"
+                      className="max-h-10 object-contain mx-auto"
+                    />
+                  ) : null}
+                </div>
                 <div className="border-t border-slate-900 pt-1 font-bold">সাধারণ সম্পাদক</div>
-                <div className="text-[10px] text-slate-500">মসজিদ পরিচালনা পরিষদ</div>
+                <div className="text-[10px] text-slate-500">স্বাক্ষর ও সীল</div>
               </div>
-              <div>
+              <div className="flex flex-col justify-end space-y-1">
+                <div className="h-10 flex items-end justify-center mb-1">
+                  {mosque?.presidentSignatureUrl ? (
+                    <img
+                      src={mosque.presidentSignatureUrl}
+                      alt="President Signature"
+                      referrerPolicy="no-referrer"
+                      className="max-h-10 object-contain mx-auto"
+                    />
+                  ) : null}
+                </div>
                 <div className="border-t border-slate-900 pt-1 font-bold">সভাপতি / মোতাওয়াল্লী</div>
-                <div className="text-[10px] text-slate-500">মসজিদ ও ওয়াকফ এস্টেট</div>
+                <div className="text-[10px] text-slate-500">স্বাক্ষর ও সীল</div>
               </div>
             </div>
 

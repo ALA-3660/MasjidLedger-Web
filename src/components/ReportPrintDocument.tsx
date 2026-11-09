@@ -221,25 +221,37 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
 
   const isLandscape = reportMeta.isLandscape || (reportType === 'INCOME_EXPENSE_COMBINED' && level === 'DETAILED');
 
-  // Filtered dataset calculations for head breakdowns
+  // Filtered dataset calculations for head breakdowns (sorted chronologically ascending by date)
   const filteredIncomes = useMemo(() => {
-    return incomes.filter((i) => {
-      if (i.status !== 'APPROVED') return false;
-      const matchesDate = i.date >= fromDate && i.date <= toDate;
-      const matchesHead = selectedHeadId === 'ALL' || i.mainHeadId === selectedHeadId;
-      const matchesAccount = selectedAccountId === 'ALL' || i.accountId === selectedAccountId;
-      return matchesDate && matchesHead && matchesAccount;
-    });
+    return incomes
+      .filter((i) => {
+        if (i.status !== 'APPROVED') return false;
+        const matchesDate = i.date >= fromDate && i.date <= toDate;
+        const matchesHead = selectedHeadId === 'ALL' || i.mainHeadId === selectedHeadId;
+        const matchesAccount = selectedAccountId === 'ALL' || i.accountId === selectedAccountId;
+        return matchesDate && matchesHead && matchesAccount;
+      })
+      .sort((a, b) => {
+        const diff = new Date(a.date).getTime() - new Date(b.date).getTime();
+        if (diff !== 0) return diff;
+        return (a.createdAt || a.voucherNumber || '').localeCompare(b.createdAt || b.voucherNumber || '');
+      });
   }, [incomes, fromDate, toDate, selectedHeadId, selectedAccountId]);
 
   const filteredExpenses = useMemo(() => {
-    return expenses.filter((e) => {
-      if (e.status !== 'APPROVED') return false;
-      const matchesDate = e.date >= fromDate && e.date <= toDate;
-      const matchesHead = selectedHeadId === 'ALL' || e.mainHeadId === selectedHeadId;
-      const matchesAccount = selectedAccountId === 'ALL' || e.accountId === selectedAccountId;
-      return matchesDate && matchesHead && matchesAccount;
-    });
+    return expenses
+      .filter((e) => {
+        if (e.status !== 'APPROVED') return false;
+        const matchesDate = e.date >= fromDate && e.date <= toDate;
+        const matchesHead = selectedHeadId === 'ALL' || e.mainHeadId === selectedHeadId;
+        const matchesAccount = selectedAccountId === 'ALL' || e.accountId === selectedAccountId;
+        return matchesDate && matchesHead && matchesAccount;
+      })
+      .sort((a, b) => {
+        const diff = new Date(a.date).getTime() - new Date(b.date).getTime();
+        if (diff !== 0) return diff;
+        return (a.createdAt || a.voucherNumber || '').localeCompare(b.createdAt || b.voucherNumber || '');
+      });
   }, [expenses, fromDate, toDate, selectedHeadId, selectedAccountId]);
 
   const totalIncome = filteredIncomes.reduce((s, i) => s + (Number(i.amount) || 0), 0);
@@ -622,14 +634,14 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
                     <td className="py-1.5 px-1.5 text-left border-r border-slate-300 text-slate-700 text-[11px] break-words">
                       {row.accountName}
                     </td>
-                    <td className="py-1.5 px-1 text-right border-r border-slate-300 font-bold text-emerald-900 font-siliguri text-[11px]">
-                      {row.debit > 0 ? `+ ৳ ${row.debit.toLocaleString('en-IN')}` : '—'}
+                    <td className="py-1.5 px-1 text-right border-r border-slate-300 font-bold text-emerald-900 font-siliguri text-[11px] whitespace-nowrap min-w-[75px]">
+                      {row.debit > 0 ? `+ ${row.debit.toLocaleString('en-IN')}` : '—'}
                     </td>
-                    <td className="py-1.5 px-1 text-right border-r border-slate-300 font-bold text-rose-900 font-siliguri text-[11px]">
-                      {row.credit > 0 ? `- ৳ ${row.credit.toLocaleString('en-IN')}` : '—'}
+                    <td className="py-1.5 px-1 text-right border-r border-slate-300 font-bold text-rose-900 font-siliguri text-[11px] whitespace-nowrap min-w-[75px]">
+                      {row.credit > 0 ? `- ${row.credit.toLocaleString('en-IN')}` : '—'}
                     </td>
-                    <td className="py-1.5 px-1.5 text-right font-bold text-slate-950 bg-slate-50 font-siliguri text-[11px]">
-                      ৳ {row.runningBalance.toLocaleString('en-IN')}
+                    <td className="py-1.5 px-1.5 text-right font-bold text-slate-950 bg-slate-50 font-siliguri text-[11px] whitespace-nowrap min-w-[75px]">
+                      {row.runningBalance.toLocaleString('en-IN')}
                     </td>
                   </tr>
                 ))
@@ -666,9 +678,9 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
                 <th className="py-2 px-2 text-center border-r border-slate-300" style={{ width: '12%' }}>ভাউচার নং</th>
                 <th className="py-2 px-2 text-center border-r border-slate-300" style={{ width: '8%' }}>ধরন</th>
                 <th className="py-2 px-2 text-left border-r border-slate-300" style={{ width: '22%' }}>খাত ও উপ-খাত</th>
-                <th className="py-2 px-2 text-left border-r border-slate-300" style={{ width: '18%' }}>দাতা / গ্রহীতা ও বিবরণ</th>
+                <th className="py-2 px-2 text-left border-r border-slate-300" style={{ width: '15%' }}>দাতা / গ্রহীতা ও বিবরণ</th>
                 <th className="py-2 px-2 text-left border-r border-slate-300" style={{ width: '11%' }}>অ্যাকাউন্ট</th>
-                <th className="py-2 px-2 text-right" style={{ width: '12%' }}>টাকা (৳)</th>
+                <th className="py-2 px-2 text-right whitespace-nowrap" style={{ width: '15%' }}>টাকা (৳)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-300">
@@ -687,8 +699,8 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
                     {i.description && <p className="text-[10px] text-slate-600">{i.description}</p>}
                   </td>
                   <td className="py-1.5 px-2 text-left border-r border-slate-200 text-slate-700">{i.accountName}</td>
-                  <td className="py-1.5 px-2 text-right font-siliguri font-bold text-slate-950">
-                    ৳ {i.amount.toLocaleString('en-IN')}
+                  <td className="py-1.5 px-2 text-right font-siliguri font-bold text-slate-950 whitespace-nowrap">
+                    {i.amount.toLocaleString('en-IN')}
                   </td>
                 </tr>
               ))}
@@ -710,8 +722,8 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
                     {e.description && <p className="text-[10px] text-slate-600">{e.description}</p>}
                   </td>
                   <td className="py-1.5 px-2 text-left border-r border-slate-200 text-slate-700">{e.accountName}</td>
-                  <td className="py-1.5 px-2 text-right font-siliguri font-bold text-slate-950">
-                    ৳ {e.amount.toLocaleString('en-IN')}
+                  <td className="py-1.5 px-2 text-right font-siliguri font-bold text-slate-950 whitespace-nowrap">
+                    {e.amount.toLocaleString('en-IN')}
                   </td>
                 </tr>
               ))}
@@ -800,14 +812,14 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
                       {row.description && <p className="text-[10px] text-slate-600 mt-0.5">{row.description}</p>}
                     </td>
                     <td className="py-1.5 px-2 text-left border-r border-slate-200 text-slate-700">{row.accountName}</td>
-                    <td className="py-1.5 px-2 text-right border-r border-slate-200 font-siliguri font-bold text-emerald-800">
-                      {row.debit > 0 ? `৳ ${row.debit.toLocaleString('en-IN')}` : '—'}
+                    <td className="py-1.5 px-2 text-right border-r border-slate-200 font-siliguri font-bold text-emerald-800 whitespace-nowrap">
+                      {row.debit > 0 ? row.debit.toLocaleString('en-IN') : '—'}
                     </td>
-                    <td className="py-1.5 px-2 text-right border-r border-slate-200 font-siliguri font-bold text-rose-800">
-                      {row.credit > 0 ? `৳ ${row.credit.toLocaleString('en-IN')}` : '—'}
+                    <td className="py-1.5 px-2 text-right border-r border-slate-200 font-siliguri font-bold text-rose-800 whitespace-nowrap">
+                      {row.credit > 0 ? row.credit.toLocaleString('en-IN') : '—'}
                     </td>
-                    <td className="py-1.5 px-2 text-right font-siliguri font-bold text-slate-950 bg-slate-50">
-                      ৳ {row.runningBalance.toLocaleString('en-IN')}
+                    <td className="py-1.5 px-2 text-right font-siliguri font-bold text-slate-950 bg-slate-50 whitespace-nowrap">
+                      {row.runningBalance.toLocaleString('en-IN')}
                     </td>
                   </tr>
                 ))

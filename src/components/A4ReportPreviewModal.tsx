@@ -4,6 +4,7 @@ import { Mosque } from '../types';
 import { formatDate } from '../lib/i18n';
 import { printElement } from '../lib/printUtils';
 import { MosqueOfficialLetterhead } from './common/MosqueOfficialLetterhead';
+import { OfficialReportSignatures } from './common/OfficialReportSignatures';
 import { PrintSettingsBar } from './common/PrintSettingsBar';
 
 export interface ReportColumn<T> {
@@ -132,18 +133,48 @@ export function A4ReportPreviewModal<T>({
 
           {/* Records Table */}
           <div className="border border-slate-300 overflow-hidden">
-            <table className="w-full text-xs text-left border-collapse">
+            <table className="w-full text-xs text-left border-collapse print-report-table">
               <thead className="bg-slate-100 text-slate-800 font-bold border-b border-slate-300">
                 <tr>
-                  <th className="px-3 py-2 text-center w-10 border-r border-slate-200">ক্রঃ</th>
-                  {columns.map((col, idx) => (
-                    <th
-                      key={idx}
-                      className={`px-3 py-2 border-r border-slate-200 last:border-r-0 ${col.className || ''}`}
-                    >
-                      {col.header}
-                    </th>
-                  ))}
+                  <th className="px-3 py-2 text-center w-10 border-r border-slate-200 whitespace-nowrap">ক্রঃ</th>
+                  {columns.map((col, idx) => {
+                    const isAmount =
+                      col.header.includes('(৳)') ||
+                      col.header.includes('পরিমাণ') ||
+                      col.header.includes('টাকা') ||
+                      col.header.includes('মোট ব্যয়') ||
+                      col.header.includes('মোট পরিশোধ') ||
+                      col.header.includes('মোট আয়') ||
+                      col.header.includes('জমা') ||
+                      col.header.includes('খরচ') ||
+                      col.header.includes('স্থিতি') ||
+                      col.header.includes('জের') ||
+                      Boolean(col.className?.includes('text-right'));
+
+                    const isDesc = col.header.includes('বিবরণ') || col.header.includes('Description');
+
+                    return (
+                      <th
+                        key={idx}
+                        className={`px-3 py-2 border-r border-slate-200 last:border-r-0 ${col.className || ''} ${
+                          isAmount
+                            ? 'text-right font-bold whitespace-nowrap min-w-[105px] w-28 print-amount-cell'
+                            : isDesc
+                            ? 'max-w-[155px] w-40 print-desc-cell'
+                            : ''
+                        }`}
+                        style={
+                          isAmount
+                            ? { whiteSpace: 'nowrap', minWidth: '105px', width: '110px', textAlign: 'right' }
+                            : isDesc
+                            ? { maxWidth: '155px' }
+                            : undefined
+                        }
+                      >
+                        {col.header}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
@@ -156,61 +187,75 @@ export function A4ReportPreviewModal<T>({
                 ) : (
                   data.map((item, idx) => (
                     <tr key={idx} className={idx % 2 === 1 ? 'bg-slate-50/60' : 'bg-white'}>
-                      <td className="px-3 py-2 text-center text-slate-500 font-mono border-r border-slate-200">
+                      <td className="px-3 py-2 text-center text-slate-500 font-mono border-r border-slate-200 whitespace-nowrap">
                         {idx + 1}
                       </td>
-                      {columns.map((col, colIdx) => (
-                        <td
-                          key={colIdx}
-                          className={`px-3 py-2 border-r border-slate-200 last:border-r-0 ${col.className || ''}`}
-                        >
-                          {col.render ? col.render(item, idx) : col.accessor ? col.accessor(item, idx) : (item as any)[col.header]}
-                        </td>
-                      ))}
+                      {columns.map((col, colIdx) => {
+                        const isAmount =
+                          col.header.includes('(৳)') ||
+                          col.header.includes('পরিমাণ') ||
+                          col.header.includes('টাকা') ||
+                          col.header.includes('মোট ব্যয়') ||
+                          col.header.includes('মোট পরিশোধ') ||
+                          col.header.includes('মোট আয়') ||
+                          col.header.includes('জমা') ||
+                          col.header.includes('খরচ') ||
+                          col.header.includes('স্থিতি') ||
+                          col.header.includes('জের') ||
+                          Boolean(col.className?.includes('text-right'));
+
+                        const isDesc = col.header.includes('বিবরণ') || col.header.includes('Description');
+
+                        let cellValue = col.render ? col.render(item, idx) : col.accessor ? col.accessor(item, idx) : (item as any)[col.header];
+
+                        // Remove redundant ৳ symbol when (৳) is already present in column header
+                        if (isAmount && typeof cellValue === 'string' && cellValue.includes('৳')) {
+                          cellValue = cellValue.replace(/^[+-]?\s*৳\s*/, (m) => m.includes('-') ? '- ' : m.includes('+') ? '+ ' : '').replace(/৳\s*/g, '');
+                        }
+
+                        return (
+                          <td
+                            key={colIdx}
+                            className={`px-3 py-2 border-r border-slate-200 last:border-r-0 ${col.className || ''} ${
+                              isAmount
+                                ? 'text-right font-mono font-bold whitespace-nowrap min-w-[105px] w-28 print-amount-cell'
+                                : isDesc
+                                ? 'text-slate-700 max-w-[155px] text-[11px] leading-snug break-words print-desc-cell'
+                                : ''
+                            }`}
+                            style={
+                              isAmount
+                                ? { whiteSpace: 'nowrap', minWidth: '105px', width: '110px', textAlign: 'right' }
+                                : isDesc
+                                ? { maxWidth: '155px' }
+                                : undefined
+                            }
+                          >
+                            {cellValue}
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))
                 )}
               </tbody>
               {totalRow && (
-                <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-300 text-slate-900">
+                <tbody className="bg-slate-100 font-bold border-t-2 border-slate-300 text-slate-900 break-inside-avoid">
                   {totalRow}
-                </tfoot>
+                </tbody>
               )}
             </table>
           </div>
 
-          {/* Official Signatures Section */}
-          <div className="pt-10 pb-3 mt-6 border-t border-slate-200 text-xs break-inside-avoid">
-            <div className="grid grid-cols-3 gap-8 text-center mb-6">
-              <div>
-                <div className="border-t border-dashed border-slate-400 pt-1.5 font-bold text-slate-800 font-secondary">
-                  প্রস্তুতকারীর স্বাক্ষর
-                </div>
-                <div className="text-[10px] text-slate-500 font-secondary mt-0.5">হিসাব সহকারী / প্রস্তুতকারক</div>
-                <div className="text-[9px] text-slate-400 mt-0.5">তারিখ: .............................</div>
-              </div>
-              <div>
-                <div className="border-t border-dashed border-slate-400 pt-1.5 font-bold text-slate-800 font-secondary">
-                  হিসাব নিরীক্ষক / ক্যাশিয়ার
-                </div>
-                <div className="text-[10px] text-slate-500 font-secondary mt-0.5">অর্থ সম্পাদক / অডিটর</div>
-                <div className="text-[9px] text-slate-400 mt-0.5">তারিখ: .............................</div>
-              </div>
-              <div>
-                <div className="border-t border-dashed border-slate-400 pt-1.5 font-bold text-slate-800 font-secondary">
-                  সভাপতি / সাধারণ সম্পাদক
-                </div>
-                <div className="text-[10px] text-slate-500 font-secondary mt-0.5">মসজিদ পরিচালনা কমিটি</div>
-                <div className="text-[9px] text-slate-400 mt-0.5">তারিখ: .............................</div>
-              </div>
-            </div>
-
-            {/* Footer Document Audit Note */}
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400 font-secondary">
-              <span>MasjidLedger Pro v2.6 • অফিসিয়াল ব্যয় ও আর্থিক প্রতিবেদন</span>
-              <span>প্রস্তুতের সময়: {new Date().toLocaleString('bn-BD')}</span>
-            </div>
-          </div>
+          {/* Official Signatures Section with President & General Secretary / Mutawalli signatures */}
+          <OfficialReportSignatures
+            currentMosque={currentMosque}
+            preparerTitle="হিসাবরক্ষক / প্রস্তুতকারী"
+            secretaryTitle="সাধারণ সম্পাদক / মোতাওয়াল্লী"
+            presidentTitle="সভাপতি"
+            showAuditFooter={true}
+            auditFooterText="মসজিদ লেজার • অফিসিয়াল আর্থিক প্রতিবেদন ও অডিট খতিয়ান"
+          />
         </div>
       </div>
     </div>

@@ -66,9 +66,9 @@ export const PersonDetailModal: React.FC<PersonDetailModalProps> = ({
   if (!isOpen || !person) return null;
 
   const isBn = language === 'bn';
-  const canEdit = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'MOSQUE_ADMIN' || currentUser?.permissions?.includes('EDIT_MUSALLI');
-  const canReceiveDonation = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'MOSQUE_ADMIN' || currentUser?.permissions?.includes('CREATE_INCOME');
-  const canViewPersonalDocs = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'MOSQUE_ADMIN' || currentUser?.permissions?.includes('VIEW_PERSONAL_DOCUMENTS');
+  const canEdit = !currentUser || currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'MOSQUE_ADMIN' || currentUser.role === 'ADMIN' || currentUser.permissions?.includes('EDIT_MUSALLI');
+  const canReceiveDonation = !currentUser || currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'MOSQUE_ADMIN' || currentUser.role === 'ADMIN' || currentUser.permissions?.includes('CREATE_INCOME');
+  const canViewPersonalDocs = !currentUser || currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'MOSQUE_ADMIN' || currentUser.role === 'ADMIN' || currentUser.permissions?.includes('VIEW_PERSONAL_DOCUMENTS');
 
   const personDonations = donations.filter((d) => d.personId === person.id);
   const completedDonations = personDonations.filter((d) => d.status === 'COMPLETED');

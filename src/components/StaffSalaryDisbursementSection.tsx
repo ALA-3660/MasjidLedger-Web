@@ -22,6 +22,7 @@ import { Staff, StaffPayment, FinancialAccount, Mosque } from '../types';
 import { Language, formatCurrency, formatDate, formatBengaliMonthYear } from '../lib/i18n';
 import { printElement } from '../lib/printUtils';
 import { MosqueOfficialLetterhead } from './common/MosqueOfficialLetterhead';
+import { OfficialReportSignatures } from './common/OfficialReportSignatures';
 
 interface StaffSalaryDisbursementSectionProps {
   staffList: Staff[];
@@ -411,17 +412,15 @@ export const StaffSalaryDisbursementSection: React.FC<StaffSalaryDisbursementSec
           </tbody>
         </table>
 
-        <div className="mt-16 pt-6 border-t border-slate-300 flex justify-between text-xs text-center">
-          <div>
-            <div className="w-36 border-t border-slate-600 pt-1 font-bold">হিসাবরক্ষক</div>
-          </div>
-          <div>
-            <div className="w-36 border-t border-slate-600 pt-1 font-bold">সাধারণ সম্পাদক</div>
-          </div>
-          <div>
-            <div className="w-36 border-t border-slate-600 pt-1 font-bold">সভাপতি / মোতওয়াল্লী</div>
-          </div>
-        </div>
+        {/* Official Signatures */}
+        <OfficialReportSignatures
+          currentMosque={currentMosque}
+          preparerTitle="হিসাবরক্ষক / ক্যাশিয়ার"
+          secretaryTitle="সাধারণ সম্পাদক / মোতাওয়াল্লী"
+          presidentTitle="সভাপতি"
+          showAuditFooter={true}
+          auditFooterText="মসজিদ লেজার • ইমাম ও স্টাফদের মাসিক বেতন বিতরণ খতিয়ান"
+        />
       </div>
     </div>
   );

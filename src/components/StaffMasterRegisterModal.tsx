@@ -318,21 +318,30 @@ export const StaffMasterRegisterModal: React.FC<StaffMasterRegisterModalProps> =
           )}
 
           {/* Signatures Section */}
-          <div className="pt-8 grid grid-cols-3 gap-6 text-center text-slate-800 text-xs">
+          <div className="pt-8 grid grid-cols-3 gap-6 text-center text-slate-800 text-xs break-inside-avoid">
             <div className="flex flex-col justify-end space-y-1">
               <div className="h-10 flex items-end justify-center"></div>
               <div className="border-t border-slate-400 pt-1 font-bold font-siliguri text-slate-900">
                 প্রস্তুতকারী / হিসাবরক্ষক
               </div>
-              <div className="text-[11px] text-slate-600 font-baloo">মসজিদ কার্যালয়</div>
+              <div className="text-[10px] text-slate-600 font-baloo">স্বাক্ষর ও তারিখ</div>
             </div>
 
             <div className="flex flex-col justify-end space-y-1">
-              <div className="h-10 flex items-end justify-center"></div>
-              <div className="border-t border-slate-400 pt-1 font-bold font-siliguri text-slate-900">
-                কোষাধ্যক্ষ
+              <div className="h-10 flex items-end justify-center">
+                {currentMosque?.secretarySignatureUrl ? (
+                  <img
+                    src={currentMosque.secretarySignatureUrl}
+                    alt="Secretary Signature"
+                    referrerPolicy="no-referrer"
+                    className="max-h-10 object-contain mx-auto"
+                  />
+                ) : null}
               </div>
-              <div className="text-[11px] text-slate-600 font-baloo">মসজিদ পরিচালনা কমিটি</div>
+              <div className="border-t border-slate-400 pt-1 font-bold font-siliguri text-slate-900">
+                সাধারণ সম্পাদক / মোতাওয়াল্লী
+              </div>
+              <div className="text-[10px] text-slate-600 font-baloo">স্বাক্ষর ও সীল</div>
             </div>
 
             <div className="flex flex-col justify-end space-y-1">
@@ -341,20 +350,15 @@ export const StaffMasterRegisterModal: React.FC<StaffMasterRegisterModalProps> =
                   <img
                     src={currentMosque.presidentSignatureUrl}
                     alt="President Signature"
-                    className="max-h-10 object-contain mx-auto"
-                  />
-                ) : currentMosque?.secretarySignatureUrl ? (
-                  <img
-                    src={currentMosque.secretarySignatureUrl}
-                    alt="Secretary Signature"
+                    referrerPolicy="no-referrer"
                     className="max-h-10 object-contain mx-auto"
                   />
                 ) : null}
               </div>
               <div className="border-t border-slate-400 pt-1 font-bold font-siliguri text-slate-900">
-                সাধারণ সম্পাদক / সভাপতি
+                সভাপতি
               </div>
-              <div className="text-[11px] text-slate-600 font-baloo">মসজিদ পরিচালনা কমিটি</div>
+              <div className="text-[10px] text-slate-600 font-baloo">স্বাক্ষর ও সীল</div>
             </div>
           </div>
 

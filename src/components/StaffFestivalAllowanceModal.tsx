@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Gift, Check, AlertCircle, Building, DollarSign, Users, Landmark, ShieldCheck, Printer } from 'lucide-react';
 import { Staff, FinancialAccount } from '../types';
 import { Language, translations, formatCurrency } from '../lib/i18n';
@@ -39,34 +39,48 @@ export const StaffFestivalAllowanceModal: React.FC<StaffFestivalAllowanceModalPr
 
   const activeStaff = staffList.filter((s) => s.status === 'ACTIVE');
 
+  const isInitializedRef = useRef<boolean>(false);
+
   useEffect(() => {
-    if (isOpen) {
-      const now = new Date();
-      const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-      const todayStr = now.toISOString().split('T')[0];
-
-      setFestivalName('পবিত্র ঈদুল ফিতর ২০২৬');
-      setPaymentType('FESTIVAL_ALLOWANCE');
-      setPaymentMonth(currentYearMonth);
-      setPaymentDate(todayStr);
-      setAccountId(accounts.find((a) => a.accountType === 'BANK')?.id || accounts[0]?.id || '');
-      setPaymentMethod('BANK');
-      setNotes('');
+    if (!isOpen) {
+      isInitializedRef.current = false;
       setError(null);
-
-      // Default: All active staff selected with 50% of their basic or 5,000 taka
-      const initialMap: Record<string, { selected: boolean; amount: number; notes: string }> = {};
-      activeStaff.forEach((s) => {
-        const defaultBonus = Math.round((s.monthlySalary || 10000) * 0.5);
-        initialMap[s.id] = {
-          selected: true,
-          amount: defaultBonus > 0 ? defaultBonus : 5000,
-          notes: '',
-        };
-      });
-      setAllocations(initialMap);
+      return;
     }
-  }, [isOpen, staffList, accounts]);
+
+    if (isInitializedRef.current) {
+      if (!accountId && accounts.length > 0) {
+        setAccountId(accounts.find((a) => a.accountType === 'BANK')?.id || accounts[0]?.id || '');
+      }
+      return;
+    }
+
+    isInitializedRef.current = true;
+    const now = new Date();
+    const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const todayStr = now.toISOString().split('T')[0];
+
+    setFestivalName('পবিত্র ঈদুল ফিতর ২০২৬');
+    setPaymentType('FESTIVAL_ALLOWANCE');
+    setPaymentMonth(currentYearMonth);
+    setPaymentDate(todayStr);
+    setAccountId(accounts.find((a) => a.accountType === 'BANK')?.id || accounts[0]?.id || '');
+    setPaymentMethod('BANK');
+    setNotes('');
+    setError(null);
+
+    // Default: All active staff selected with 50% of their basic or 5,000 taka
+    const initialMap: Record<string, { selected: boolean; amount: number; notes: string }> = {};
+    activeStaff.forEach((s) => {
+      const defaultBonus = Math.round((s.monthlySalary || 10000) * 0.5);
+      initialMap[s.id] = {
+        selected: true,
+        amount: defaultBonus > 0 ? defaultBonus : 5000,
+        notes: '',
+      };
+    });
+    setAllocations(initialMap);
+  }, [isOpen]);
 
   const handleSelectAll = (select: boolean) => {
     const updated = { ...allocations };

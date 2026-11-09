@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Wrench,
   X,
@@ -50,18 +50,33 @@ export const PropertyExpenseModal: React.FC<PropertyExpenseModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isInitializedRef = useRef<boolean>(false);
+
   useEffect(() => {
-    if (isOpen) {
-      setDate(new Date().toISOString().split('T')[0]);
-      setExpenseCategory('REPAIR');
-      setAmount('');
-      setPayeeName('');
-      setDescription('');
-      const defaultAcc = accounts.find(a => a.type === 'CASH') || accounts[0];
-      setAccountId(defaultAcc ? defaultAcc.id : '');
+    if (!isOpen) {
+      isInitializedRef.current = false;
       setError(null);
+      return;
     }
-  }, [isOpen, accounts]);
+
+    if (isInitializedRef.current) {
+      if (!accountId && accounts.length > 0) {
+        const defaultAcc = accounts.find(a => a.type === 'CASH') || accounts[0];
+        setAccountId(defaultAcc ? defaultAcc.id : '');
+      }
+      return;
+    }
+
+    isInitializedRef.current = true;
+    setDate(new Date().toISOString().split('T')[0]);
+    setExpenseCategory('REPAIR');
+    setAmount('');
+    setPayeeName('');
+    setDescription('');
+    const defaultAcc = accounts.find(a => a.type === 'CASH') || accounts[0];
+    setAccountId(defaultAcc ? defaultAcc.id : '');
+    setError(null);
+  }, [isOpen]);
 
   if (!isOpen || !property) return null;
 

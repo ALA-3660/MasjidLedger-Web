@@ -85,6 +85,7 @@ import { NotificationCenterModal } from './components/NotificationCenterModal';
 import { SaasAdminHubView } from './components/SaasAdminHubView';
 import { BackupRestoreView } from './components/BackupRestoreView';
 import { SmsGatewayView } from './components/SmsGatewayView';
+import { PublicReceiptStandaloneView } from './components/PublicReceiptStandaloneView';
 import { resolveRecordFromSystem } from './services/qrBarcodeService';
 import { QrScanResult, ResolvedRecordItem, RecordSpecificAction, QRDestinationType } from './types/qrBarcodeTypes';
 import {
@@ -108,6 +109,18 @@ import {
 } from 'lucide-react';
 
 export default function App() {
+  // Check if current URL is a standalone public document route (e.g. /public/doc/:token)
+  const isPublicDocRoute = typeof window !== 'undefined' && (
+    window.location.pathname.startsWith('/public/doc/') ||
+    window.location.pathname.startsWith('/public/receipt/') ||
+    window.location.pathname.startsWith('/public/voucher/')
+  );
+
+  if (isPublicDocRoute) {
+    const token = window.location.pathname.replace(/^\/public\/(doc|receipt|voucher)\//, '');
+    return <PublicReceiptStandaloneView token={token} />;
+  }
+
   // App Global State
   const [language, setLanguage] = useState<Language>('bn');
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
@@ -261,6 +274,7 @@ export default function App() {
         auditRes,
         statsRes,
         transfersRes,
+        allMosquesRes,
       ] = await Promise.all([
         api.getMosque().catch(() => null),
         api.getCurrentUser().catch(() => null),
@@ -287,12 +301,17 @@ export default function App() {
         api.getAuditLogs().catch(() => []),
         api.getDashboardStats().catch(() => null),
         api.getTransfers().catch(() => []),
+        api.getMosques().catch(() => []),
       ]);
 
       if (mosqueRes) {
         setMosque(mosqueRes);
-        setAllMosques([mosqueRes]);
         setGlobalMosque(mosqueRes);
+      }
+      if (allMosquesRes && allMosquesRes.length > 0) {
+        setAllMosques(allMosquesRes);
+      } else if (mosqueRes) {
+        setAllMosques([mosqueRes]);
       }
       if (userRes) {
         setCurrentUser(userRes);
@@ -350,6 +369,18 @@ export default function App() {
   useEffect(() => {
     loadData(true);
 
+    const canSafelyBackgroundSync = () => {
+      // Don't background sync if user is typing or a modal dialog is open
+      const activeEl = document.activeElement;
+      const isInputActive = activeEl && (
+        activeEl.tagName === 'INPUT' ||
+        activeEl.tagName === 'TEXTAREA' ||
+        activeEl.tagName === 'SELECT'
+      );
+      const isModalOpen = !!document.querySelector('.fixed.inset-0, [role="dialog"]');
+      return !isInputActive && !isModalOpen;
+    };
+
     // Connect WebSocket for real-time synchronization with Android & other clients
     api.connectWebSocket((event) => {
       // Auto reload data silently on entity changes
@@ -364,13 +395,15 @@ export default function App() {
         event.type?.includes('_STATUS') ||
         event.type === 'DASHBOARD_STATS_UPDATED'
       ) {
-        loadData(false);
+        if (canSafelyBackgroundSync()) {
+          loadData(false);
+        }
       }
     });
 
     // Fallback polling sync (silent background fetch)
     const pollInterval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === 'visible' && canSafelyBackgroundSync()) {
         loadData(false);
       }
     }, 60000);

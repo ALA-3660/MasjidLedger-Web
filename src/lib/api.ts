@@ -181,27 +181,62 @@ class ApiService {
   }
 
   hasToken(): boolean {
-    return !!(this.token || (typeof window !== 'undefined' && localStorage.getItem('ml_token')));
+    return !!(
+      this.token ||
+      this.currentUserId ||
+      (typeof window !== 'undefined' &&
+        (localStorage.getItem('ml_token') || localStorage.getItem('ml_user_id')))
+    );
   }
 
   getToken(): string | null {
     return this.token || (typeof window !== 'undefined' ? localStorage.getItem('ml_token') : null);
   }
 
+  getAuthHeaders(overrideUserId?: string, overrideMosqueId?: string): Record<string, string> {
+    const token = this.getToken();
+    const userId =
+      overrideUserId ||
+      this.currentUserId ||
+      (typeof window !== 'undefined' ? localStorage.getItem('ml_user_id') || '' : '');
+    const mosqueId =
+      overrideMosqueId ||
+      this.currentMosqueId ||
+      (typeof window !== 'undefined' ? localStorage.getItem('ml_mosque_id') || '' : '');
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'x-user-id': userId,
+      'x-mosque-id': mosqueId,
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    return headers;
+  }
+
   private async refreshAccessToken(): Promise<boolean> {
-    if (!this.refreshToken) return false;
+    const activeRefreshToken =
+      this.refreshToken || (typeof window !== 'undefined' ? localStorage.getItem('ml_refresh_token') : null);
+    const activeUserId =
+      this.currentUserId || (typeof window !== 'undefined' ? localStorage.getItem('ml_user_id') || '' : '');
+    if (!activeRefreshToken && !activeUserId) return false;
     if (this.refreshPromise) return this.refreshPromise;
 
     this.refreshPromise = (async () => {
       try {
         const response = await fetch('/api/v1/auth/refresh', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refreshToken: this.refreshToken }),
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': activeUserId,
+          },
+          body: JSON.stringify({
+            refreshToken: activeRefreshToken,
+            userId: activeUserId,
+          }),
         });
 
         if (!response.ok) {
-          this.clearAuth();
           return false;
         }
 
@@ -215,7 +250,6 @@ class ApiService {
           }
           return true;
         }
-        this.clearAuth();
         return false;
       } catch (err) {
         return false;
@@ -249,15 +283,21 @@ class ApiService {
   }
 
   private async executeRequest<T>(endpoint: string, options: RequestInit = {}, retryCount: number = 0): Promise<ApiResponse<T>> {
+    const activeUserId =
+      this.currentUserId || (typeof window !== 'undefined' ? localStorage.getItem('ml_user_id') || '' : '');
+    const activeMosqueId =
+      this.currentMosqueId || (typeof window !== 'undefined' ? localStorage.getItem('ml_mosque_id') || '' : '');
+    const activeToken = this.getToken();
+
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      'x-user-id': this.currentUserId,
-      'x-mosque-id': this.currentMosqueId,
+      'x-user-id': activeUserId,
+      'x-mosque-id': activeMosqueId,
       ...(options.headers as Record<string, string>),
     };
 
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
+    if (activeToken && !headers['Authorization']) {
+      headers['Authorization'] = `Bearer ${activeToken}`;
     }
 
     const controller = new AbortController();
@@ -441,6 +481,11 @@ class ApiService {
   async getMosque(): Promise<Mosque | null> {
     const res = await this.request<Mosque>('/mosques/current');
     return res.data || null;
+  }
+
+  async getMosques(): Promise<Mosque[]> {
+    const res = await this.request<Mosque[]>('/mosques');
+    return res.data || [];
   }
 
   // SaaS Platform Admin Methods
@@ -1884,7 +1929,13 @@ class ApiService {
   async sendSms(phone: string, message: string, tokenUrl?: string): Promise<{ success: boolean; messageId: string }> {
     const res = await this.request<{ success: boolean; messageId: string }>('/sms/send', {
       method: 'POST',
-      body: JSON.stringify({ phone, message, tokenUrl }),
+      body: JSON.stringify({
+        phone,
+        message,
+        recipientPhone: phone,
+        messageText: message,
+        tokenUrl,
+      }),
     });
     if (!res.success) throw new Error(res.error?.message || 'Failed to send SMS');
     return res.data!;

@@ -186,18 +186,44 @@ export const AssetRegisterModal: React.FC<AssetRegisterModalProps> = ({
           </div>
 
           {/* Signatures Section */}
-          <div className="pt-12 grid grid-cols-4 gap-4 text-center text-xs font-semibold text-slate-700 border-t border-slate-200 mt-8">
-            <div>
-              <div className="border-t border-dashed border-slate-400 pt-1">দায়িত্বপ্রাপ্ত কর্মকর্তা</div>
+          <div className="pt-12 grid grid-cols-4 gap-4 text-center text-xs font-semibold text-slate-700 border-t border-slate-200 mt-8 break-inside-avoid">
+            <div className="flex flex-col justify-end space-y-1">
+              <div className="h-10 flex items-end justify-center mb-1"></div>
+              <div className="border-t border-dashed border-slate-400 pt-1 font-bold text-slate-900">দায়িত্বপ্রাপ্ত কর্মকর্তা</div>
+              <div className="text-[10px] text-slate-500 font-normal">স্বাক্ষর ও তারিখ</div>
             </div>
-            <div>
-              <div className="border-t border-dashed border-slate-400 pt-1">কোষাধ্যক্ষ</div>
+            <div className="flex flex-col justify-end space-y-1">
+              <div className="h-10 flex items-end justify-center mb-1"></div>
+              <div className="border-t border-dashed border-slate-400 pt-1 font-bold text-slate-900">কোষাধ্যক্ষ</div>
+              <div className="text-[10px] text-slate-500 font-normal">অর্থ উপকমিটি</div>
             </div>
-            <div>
-              <div className="border-t border-dashed border-slate-400 pt-1">সাধারণ সম্পাদক</div>
+            <div className="flex flex-col justify-end space-y-1">
+              <div className="h-10 flex items-end justify-center mb-1">
+                {currentMosque?.secretarySignatureUrl ? (
+                  <img
+                    src={currentMosque.secretarySignatureUrl}
+                    alt="Secretary Signature"
+                    referrerPolicy="no-referrer"
+                    className="max-h-10 object-contain mx-auto"
+                  />
+                ) : null}
+              </div>
+              <div className="border-t border-dashed border-slate-400 pt-1 font-bold text-slate-900">সাধারণ সম্পাদক / মোতাওয়াল্লী</div>
+              <div className="text-[10px] text-slate-500 font-normal">স্বাক্ষর ও সীল</div>
             </div>
-            <div>
-              <div className="border-t border-dashed border-slate-400 pt-1">সভাপতি / মুতাওয়াল্লী</div>
+            <div className="flex flex-col justify-end space-y-1">
+              <div className="h-10 flex items-end justify-center mb-1">
+                {currentMosque?.presidentSignatureUrl ? (
+                  <img
+                    src={currentMosque.presidentSignatureUrl}
+                    alt="President Signature"
+                    referrerPolicy="no-referrer"
+                    className="max-h-10 object-contain mx-auto"
+                  />
+                ) : null}
+              </div>
+              <div className="border-t border-dashed border-slate-400 pt-1 font-bold text-slate-900">সভাপতি</div>
+              <div className="text-[10px] text-slate-500 font-normal">স্বাক্ষর ও সীল</div>
             </div>
           </div>
         </div>

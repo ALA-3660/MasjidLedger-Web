@@ -288,7 +288,7 @@ export const StaffSalarySlipModal: React.FC<StaffSalarySlipModalProps> = ({
           </div>
 
           {/* Signatures Section */}
-          <div className="pt-8 grid grid-cols-3 gap-6 text-center text-slate-800 text-xs">
+          <div className="pt-8 grid grid-cols-4 gap-4 text-center text-slate-800 text-xs break-inside-avoid">
             {/* Staff Recipient Signature */}
             <div className="flex flex-col justify-end space-y-1">
               <div className="h-10 flex items-end justify-center">
@@ -297,42 +297,53 @@ export const StaffSalarySlipModal: React.FC<StaffSalarySlipModalProps> = ({
               <div className="border-t border-slate-400 pt-1 font-bold font-siliguri text-slate-900">
                 প্রাপকের স্বাক্ষর
               </div>
-              <div className="text-[11px] text-slate-600">({staff.name})</div>
-              <div className="text-[10px] text-slate-500">তারিখ: .......................</div>
+              <div className="text-[10px] text-slate-600">({staff.name})</div>
+              <div className="text-[9px] text-slate-500">তারিখ: .......................</div>
             </div>
 
             {/* Treasurer / Accountant Signature */}
             <div className="flex flex-col justify-end space-y-1">
-              <div className="h-10 flex items-end justify-center">
-                {/* Auto signature placeholder or seal */}
-              </div>
+              <div className="h-10 flex items-end justify-center"></div>
               <div className="border-t border-slate-400 pt-1 font-bold font-siliguri text-slate-900">
                 কোষাধ্যক্ষ / হিসাবরক্ষক
               </div>
-              <div className="text-[11px] text-slate-600">মসজিদ পরিচালনা কমিটি</div>
+              <div className="text-[10px] text-slate-600">মসজিদ পরিচালনা কমিটি</div>
             </div>
 
-            {/* General Secretary / President Signature */}
+            {/* General Secretary / Mutawalli Signature */}
+            <div className="flex flex-col justify-end space-y-1">
+              <div className="h-10 flex items-end justify-center">
+                {currentMosque?.secretarySignatureUrl ? (
+                  <img
+                    src={currentMosque.secretarySignatureUrl}
+                    alt="Secretary Signature"
+                    referrerPolicy="no-referrer"
+                    className="max-h-10 object-contain mx-auto"
+                  />
+                ) : null}
+              </div>
+              <div className="border-t border-slate-400 pt-1 font-bold font-siliguri text-slate-900">
+                সাধারণ সম্পাদক / মোতাওয়াল্লী
+              </div>
+              <div className="text-[10px] text-slate-600">স্বাক্ষর ও সীল</div>
+            </div>
+
+            {/* President Signature */}
             <div className="flex flex-col justify-end space-y-1">
               <div className="h-10 flex items-end justify-center">
                 {currentMosque?.presidentSignatureUrl ? (
                   <img
                     src={currentMosque.presidentSignatureUrl}
                     alt="President Signature"
-                    className="max-h-10 object-contain mx-auto"
-                  />
-                ) : currentMosque?.secretarySignatureUrl ? (
-                  <img
-                    src={currentMosque.secretarySignatureUrl}
-                    alt="Secretary Signature"
+                    referrerPolicy="no-referrer"
                     className="max-h-10 object-contain mx-auto"
                   />
                 ) : null}
               </div>
               <div className="border-t border-slate-400 pt-1 font-bold font-siliguri text-slate-900">
-                সাধারণ সম্পাদক / সভাপতি
+                সভাপতি
               </div>
-              <div className="text-[11px] text-slate-600">মসজিদ পরিচালনা কমিটি</div>
+              <div className="text-[10px] text-slate-600">স্বাক্ষর ও সীল</div>
             </div>
           </div>
 

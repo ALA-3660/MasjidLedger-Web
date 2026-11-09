@@ -320,24 +320,45 @@ export const CemeteryPrintModal: React.FC<CemeteryPrintModalProps> = ({
               </div>
 
               {/* Signatures */}
-              <div className="pt-12 border-t border-slate-300 grid grid-cols-3 gap-4 text-center text-xs">
-                <div>
+              <div className="pt-12 border-t border-slate-300 grid grid-cols-3 gap-4 text-center text-xs break-inside-avoid">
+                <div className="flex flex-col justify-end space-y-1">
+                  <div className="h-10 flex items-end justify-center mb-1"></div>
                   <div className="border-t border-slate-800 w-36 mx-auto pt-1 font-bold text-slate-900">
                     আবেদনকারী / ওয়ারিশ
                   </div>
                   <span className="text-[10px] text-slate-500">স্বাক্ষর ও তারিখ</span>
                 </div>
-                <div>
+                <div className="flex flex-col justify-end space-y-1">
+                  <div className="h-10 flex items-end justify-center mb-1">
+                    {mosque?.secretarySignatureUrl ? (
+                      <img
+                        src={mosque.secretarySignatureUrl}
+                        alt="Secretary Signature"
+                        referrerPolicy="no-referrer"
+                        className="max-h-10 object-contain mx-auto"
+                      />
+                    ) : null}
+                  </div>
                   <div className="border-t border-slate-800 w-36 mx-auto pt-1 font-bold text-slate-900">
-                    কবরস্থান তত্ত্বাবধায়ক
+                    সাধারণ সম্পাদক / মোতাওয়াল্লী
                   </div>
                   <span className="text-[10px] text-slate-500">স্বাক্ষর ও সিল</span>
                 </div>
-                <div>
-                  <div className="border-t border-slate-800 w-36 mx-auto pt-1 font-bold text-slate-900">
-                    সাধারণ সম্পাদক / সভাপতি
+                <div className="flex flex-col justify-end space-y-1">
+                  <div className="h-10 flex items-end justify-center mb-1">
+                    {mosque?.presidentSignatureUrl ? (
+                      <img
+                        src={mosque.presidentSignatureUrl}
+                        alt="President Signature"
+                        referrerPolicy="no-referrer"
+                        className="max-h-10 object-contain mx-auto"
+                      />
+                    ) : null}
                   </div>
-                  <span className="text-[10px] text-slate-500">মসজিদ পরিচালনা কমিটি</span>
+                  <div className="border-t border-slate-800 w-36 mx-auto pt-1 font-bold text-slate-900">
+                    সভাপতি
+                  </div>
+                  <span className="text-[10px] text-slate-500">স্বাক্ষর ও সিল</span>
                 </div>
               </div>
             </div>

@@ -79,8 +79,23 @@ export const PersonManagementSection: React.FC<PersonManagementSectionProps> = (
   const pageSize = 15;
 
   const isBn = language === 'bn';
-  const canCreate = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'MOSQUE_ADMIN' || currentUser?.permissions?.includes('CREATE_MUSALLI');
-  const canEdit = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'MOSQUE_ADMIN' || currentUser?.permissions?.includes('EDIT_MUSALLI');
+  const canCreate =
+    !currentUser ||
+    currentUser.role === 'SUPER_ADMIN' ||
+    currentUser.role === 'MOSQUE_ADMIN' ||
+    currentUser.role === 'ADMIN' ||
+    currentUser.role === 'COMMITTEE' ||
+    currentUser.permissions?.includes('CREATE_MUSALLI') ||
+    currentUser.permissions?.includes('MANAGE_SETTINGS');
+
+  const canEdit =
+    !currentUser ||
+    currentUser.role === 'SUPER_ADMIN' ||
+    currentUser.role === 'MOSQUE_ADMIN' ||
+    currentUser.role === 'ADMIN' ||
+    currentUser.role === 'COMMITTEE' ||
+    currentUser.permissions?.includes('EDIT_MUSALLI') ||
+    currentUser.permissions?.includes('MANAGE_SETTINGS');
 
   // Lookup maps for fast access
   const areaMap = useMemo(() => new Map(areas.map((a) => [a.id, a])), [areas]);
@@ -373,10 +388,10 @@ export const PersonManagementSection: React.FC<PersonManagementSectionProps> = (
               <button
                 type="button"
                 onClick={handleOpenCreate}
-                className="px-4 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl shadow-xs transition-colors flex items-center space-x-1.5 font-siliguri"
+                className="px-4 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl shadow-xs transition-colors flex items-center space-x-1.5 font-siliguri cursor-pointer shrink-0"
               >
                 <Plus className="w-4 h-4" />
-                <span>{isBn ? '+ নতুন মুসল্লি নিবন্ধন' : '+ Register Musalli'}</span>
+                <span>{isBn ? '+ নতুন মুসল্লি / ব্যক্তি যোগ করুন' : '+ Add New Musalli / Person'}</span>
               </button>
             )}
           </div>
@@ -498,6 +513,16 @@ export const PersonManagementSection: React.FC<PersonManagementSectionProps> = (
                     <p className="text-xs text-slate-400 mt-1">
                       {isBn ? 'অনুসন্ধান ফিল্টার পরিবর্তন করুন অথবা নতুন ব্যক্তি নিবন্ধন করুন।' : 'Adjust filters or add a new person.'}
                     </p>
+                    {canCreate && (
+                      <button
+                        type="button"
+                        onClick={handleOpenCreate}
+                        className="mt-3.5 inline-flex items-center space-x-1.5 px-4 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl shadow-xs transition-colors font-siliguri cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>{isBn ? '+ নতুন মুসল্লি / ব্যক্তি যোগ করুন' : '+ Add New Musalli / Person'}</span>
+                      </button>
+                    )}
                   </td>
                 </tr>
               ) : (

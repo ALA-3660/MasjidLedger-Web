@@ -22,6 +22,7 @@ import { Staff, StaffPayment, Mosque, StaffBankTransferLetter } from '../types';
 import { Language, translations, formatDate } from '../lib/i18n';
 import { numberToBanglaWords } from '../lib/banglaNumberToWords';
 import { printElement } from '../lib/printUtils';
+import { OfficialReportSignatures } from './common/OfficialReportSignatures';
 
 export type StaffReportType =
   | 'MASTER_REGISTER'
@@ -970,19 +971,15 @@ export const StaffReportsModal: React.FC<StaffReportsModalProps> = ({
             );
           })()}
 
-          {/* Standard Official Dual Signatures */}
-          <div className="pt-12 grid grid-cols-2 gap-12 text-center text-xs font-semibold text-slate-800">
-            <div className="space-y-1">
-              <div className="w-48 border-t border-slate-900 mx-auto pt-1"></div>
-              <p className="font-bold font-siliguri">কোষাধ্যক্ষ / হিসাবরক্ষক</p>
-              <p className="text-[10px] text-slate-500 font-medium">মসজিদ পরিচালনা কমিটি</p>
-            </div>
-            <div className="space-y-1">
-              <div className="w-48 border-t border-slate-900 mx-auto pt-1"></div>
-              <p className="font-bold font-siliguri">সাধারণ সম্পাদক / সভাপতি</p>
-              <p className="text-[10px] text-slate-500 font-medium">মসজিদ পরিচালনা কমিটি</p>
-            </div>
-          </div>
+          {/* Official Signatures with President and Secretary Signatures */}
+          <OfficialReportSignatures
+            currentMosque={currentMosque}
+            preparerTitle="হিসাবরক্ষক / কোষাধ্যক্ষ"
+            secretaryTitle="সাধারণ সম্পাদক / মোতাওয়াল্লী"
+            presidentTitle="সভাপতি"
+            showAuditFooter={true}
+            auditFooterText="মসজিদলেজার • কর্মকর্তা-কর্মচারী (HRM) ও বেতন বিবরণী রেজিস্টার"
+          />
         </div>
       </div>
     </div>

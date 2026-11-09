@@ -37,6 +37,7 @@ import { OfficialDocumentPrintView } from './OfficialDocumentPrintView';
 import { GlobalAttachmentManager } from './GlobalAttachmentManager';
 import { OfficialDocumentTrackingView } from './OfficialDocumentTrackingView';
 import { OfficialDocumentReportsView } from './OfficialDocumentReportsView';
+import { SmsGatewayView } from '../SmsGatewayView';
 
 interface OfficialDocumentManagementViewProps {
   mosque?: Mosque | null;
@@ -135,6 +136,7 @@ export const OfficialDocumentManagementView: React.FC<OfficialDocumentManagement
     { id: 'dashboard', label: '📊 ড্যাশবোর্ড', subLabel: 'পরিসংখ্যান ও সামগ্রিক চিত্র', badge: stats.total },
     { id: 'all-documents', label: '📄 দাপ্তরিক নথি', subLabel: 'সকল নথির মাস্টার তালিকা', badge: stats.total },
     { id: 'notices', label: '📢 নোটিশ ও বিজ্ঞপ্তি', subLabel: 'সভা ও সাধারণ বিজ্ঞপ্তি', badge: stats.byType?.NOTICE },
+    { id: 'sms-service', label: '💬 এসএমএস সেবা ও সেটিংস', subLabel: 'এসএমএস গেটওয়ে, এপিআই কী ও বার্তা প্রেরণ', badge: 'SMS' },
     { id: 'announcements', label: '📣 ঘোষণা', subLabel: 'জুমার ঘোষণা ও গণবিজ্ঞপ্তি', badge: stats.byType?.ANNOUNCEMENT },
     { id: 'applications', label: '📝 দরখাস্ত ও আবেদন', subLabel: 'স্টাফ ও সাধারণ আবেদন', badge: stats.byType?.APPLICATION },
     { id: 'outgoing', label: '📤 প্রেরিত পত্র', subLabel: 'বহির্গামী স্মারক ও চিঠি', badge: stats.byType?.OUTGOING_LETTER },
@@ -467,6 +469,16 @@ export const OfficialDocumentManagementView: React.FC<OfficialDocumentManagement
               onSelectDocForPreview={setPreviewDoc}
               onSelectDocForEdit={handleOpenEditModal}
               onUpdateStatus={handleUpdateStatus}
+            />
+          )}
+
+          {activeTab === 'sms-service' && (
+            <SmsGatewayView
+              currentMosque={mosque}
+              currentUser={null}
+              members={members}
+              staff={staffList}
+              language="bn"
             />
           )}
 

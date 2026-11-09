@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   DollarSign,
   X,
@@ -44,8 +44,25 @@ export const PropertyRentCollectionModal: React.FC<PropertyRentCollectionModalPr
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isInitializedRef = useRef<boolean>(false);
+
   useEffect(() => {
-    if (isOpen && property) {
+    if (!isOpen) {
+      isInitializedRef.current = false;
+      setError(null);
+      return;
+    }
+
+    if (isInitializedRef.current) {
+      if (!accountId && accounts.length > 0) {
+        const defaultAcc = accounts.find(a => a.type === 'CASH') || accounts[0];
+        setAccountId(defaultAcc ? defaultAcc.id : '');
+      }
+      return;
+    }
+
+    if (property) {
+      isInitializedRef.current = true;
       const activeTenants = (property.tenants || []).filter(t => t.status === 'ACTIVE' || t.status === 'EXPIRING_SOON');
       if (activeTenants.length > 0) {
         const first = activeTenants[0];
@@ -67,7 +84,7 @@ export const PropertyRentCollectionModal: React.FC<PropertyRentCollectionModalPr
       setAccountId(defaultAcc ? defaultAcc.id : '');
       setError(null);
     }
-  }, [isOpen, property, accounts]);
+  }, [isOpen, property?.id]);
 
   // When tenant changes, update default rent & past due if any
   const handleTenantChange = (tenantId: string) => {

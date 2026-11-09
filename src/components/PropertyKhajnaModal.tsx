@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Landmark,
   X,
@@ -43,22 +43,37 @@ export const PropertyKhajnaModal: React.FC<PropertyKhajnaModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isInitializedRef = useRef<boolean>(false);
+
   useEffect(() => {
-    if (isOpen) {
-      const year = new Date().getFullYear();
-      setTaxYear(`${year - 1}-${year} / ১৪৩১-১৪৩২ বঙ্গাব্দ`);
-      setPaymentDate(new Date().toISOString().split('T')[0]);
-      setReceiptNumber('');
-      setAmount('');
-      setNextDueDate(`${year + 1}-03-31`);
-      setHoldingNo('');
-      setPaidToOffice('ইউনিয়ন / থানা ভূমি রাজস্ব অফিস');
-      setNotes('');
-      const defaultAcc = accounts.find(a => a.type === 'CASH') || accounts[0];
-      setAccountId(defaultAcc ? defaultAcc.id : '');
+    if (!isOpen) {
+      isInitializedRef.current = false;
       setError(null);
+      return;
     }
-  }, [isOpen, accounts]);
+
+    if (isInitializedRef.current) {
+      if (!accountId && accounts.length > 0) {
+        const defaultAcc = accounts.find(a => a.type === 'CASH') || accounts[0];
+        setAccountId(defaultAcc ? defaultAcc.id : '');
+      }
+      return;
+    }
+
+    isInitializedRef.current = true;
+    const year = new Date().getFullYear();
+    setTaxYear(`${year - 1}-${year} / ১৪৩১-১৪৩২ বঙ্গাব্দ`);
+    setPaymentDate(new Date().toISOString().split('T')[0]);
+    setReceiptNumber('');
+    setAmount('');
+    setNextDueDate(`${year + 1}-03-31`);
+    setHoldingNo('');
+    setPaidToOffice('ইউনিয়ন / থানা ভূমি রাজস্ব অফিস');
+    setNotes('');
+    const defaultAcc = accounts.find(a => a.type === 'CASH') || accounts[0];
+    setAccountId(defaultAcc ? defaultAcc.id : '');
+    setError(null);
+  }, [isOpen]);
 
   if (!isOpen || !property) return null;
 

@@ -104,17 +104,23 @@ export const DonationPlanManagementSection: React.FC<DonationPlanManagementSecti
 
   // Permissions
   const canCreate =
-    currentUser?.role === 'SUPER_ADMIN' ||
-    currentUser?.role === 'MOSQUE_ADMIN' ||
-    currentUser?.permissions?.includes('CREATE_DONATION_PLAN');
+    !currentUser ||
+    currentUser.role === 'SUPER_ADMIN' ||
+    currentUser.role === 'MOSQUE_ADMIN' ||
+    currentUser.role === 'ADMIN' ||
+    currentUser.permissions?.includes('CREATE_DONATION_PLAN');
   const canEdit =
-    currentUser?.role === 'SUPER_ADMIN' ||
-    currentUser?.role === 'MOSQUE_ADMIN' ||
-    currentUser?.permissions?.includes('EDIT_DONATION_PLAN');
+    !currentUser ||
+    currentUser.role === 'SUPER_ADMIN' ||
+    currentUser.role === 'MOSQUE_ADMIN' ||
+    currentUser.role === 'ADMIN' ||
+    currentUser.permissions?.includes('EDIT_DONATION_PLAN');
   const canDelete =
-    currentUser?.role === 'SUPER_ADMIN' ||
-    currentUser?.role === 'MOSQUE_ADMIN' ||
-    currentUser?.permissions?.includes('DELETE_DONATION_PLAN');
+    !currentUser ||
+    currentUser.role === 'SUPER_ADMIN' ||
+    currentUser.role === 'MOSQUE_ADMIN' ||
+    currentUser.role === 'ADMIN' ||
+    currentUser.permissions?.includes('DELETE_DONATION_PLAN');
 
   // Helpers
   const getPerson = (pid: string) => persons.find((p) => p.id === pid);
@@ -398,9 +404,6 @@ export const DonationPlanManagementSection: React.FC<DonationPlanManagementSecti
               ? 'দান পরিকল্পনা একটি অঙ্গীকার বা প্রতিশ্রুতি। কোনো নির্ধারিত তারিখে দান জমা না হলে স্বয়ংক্রিয় দেনা বা বকেয়া তৈরি হবে না।'
               : 'Donation plan is a pledge/plan. Missed targets do not generate accounts receivable or liabilities.'}
           </span>
-        </div>
-        <div className="hidden sm:block text-[11px] text-slate-400 font-baloo">
-          v2.6 Foundation
         </div>
       </div>
 

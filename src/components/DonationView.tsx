@@ -2891,7 +2891,7 @@ export const DonationView: React.FC<DonationViewProps> = ({
                     <div className="border-t-2 border-slate-900 pt-1.5 font-bold text-slate-950 w-full">
                       সাধারণ সম্পাদক / মোতাওয়াল্লী
                     </div>
-                    <div className="text-[10px] text-slate-600">স্বাক্ষর ও সীল</div>
+                    <div className="text-[10px] font-semibold text-emerald-800">অনুমোদিত স্বাক্ষরিত ও সীল</div>
                   </div>
 
                   {/* Signature 3: President */}
@@ -2909,7 +2909,7 @@ export const DonationView: React.FC<DonationViewProps> = ({
                     <div className="border-t-2 border-slate-900 pt-1.5 font-bold text-slate-950 w-full">
                       সভাপতি / সভাপতি মহোদয়
                     </div>
-                    <div className="text-[10px] text-slate-600">স্বাক্ষর ও সীল</div>
+                    <div className="text-[10px] font-semibold text-emerald-800">অনুমোদিত স্বাক্ষরিত ও সীল</div>
                   </div>
                 </div>
               </div>
@@ -3150,7 +3150,7 @@ export const DonationView: React.FC<DonationViewProps> = ({
                     <div className="border-t-2 border-slate-900 pt-1.5 font-bold text-slate-950 w-full">
                       সাধারণ সম্পাদক / মোতাওয়াল্লী
                     </div>
-                    <div className="text-[10px] text-slate-600">স্বাক্ষর ও সীল</div>
+                    <div className="text-[10px] font-semibold text-emerald-800">অনুমোদিত স্বাক্ষরিত ও সীল</div>
                   </div>
 
                   {/* Signature 3: President */}
@@ -3168,7 +3168,7 @@ export const DonationView: React.FC<DonationViewProps> = ({
                     <div className="border-t-2 border-slate-900 pt-1.5 font-bold text-slate-950 w-full">
                       সভাপতি / সভাপতি মহোদয়
                     </div>
-                    <div className="text-[10px] text-slate-600">স্বাক্ষর ও সীল</div>
+                    <div className="text-[10px] font-semibold text-emerald-800">অনুমোদিত স্বাক্ষরিত ও সীল</div>
                   </div>
                 </div>
               </div>

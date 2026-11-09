@@ -163,10 +163,34 @@ export function printElement(
       display: table-header-group;
     }
     tfoot {
-      display: table-footer-group;
+      display: table-row-group !important;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
     }
     .break-inside-avoid {
       page-break-inside: avoid !important;
+    }
+    /* Amount & numeric columns must NEVER break vertically across lines */
+    .print-amount-cell,
+    th.print-amount-cell,
+    td.print-amount-cell,
+    .col-amount,
+    td.text-right,
+    th.text-right {
+      white-space: nowrap !important;
+      word-break: keep-all !important;
+      overflow-wrap: normal !important;
+      min-width: 105px !important;
+      width: 110px !important;
+      text-align: right !important;
+    }
+    /* Description column restrained to prevent crowding out the amount column */
+    .print-desc-cell,
+    th.print-desc-cell,
+    td.print-desc-cell,
+    .col-description {
+      max-width: 155px !important;
+      word-break: break-word !important;
     }
     ${customStyles}
   </style>

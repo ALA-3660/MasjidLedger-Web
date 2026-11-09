@@ -2380,9 +2380,9 @@ export const BankBookView: React.FC<BankBookViewProps> = ({
               head: 'প্রারম্ভিক স্থিতি (Opening Balance B/F)',
               party: '—',
               account: 'পূর্বের জের',
-              debit: ledgerResult.openingBalance >= 0 ? `৳ ${ledgerResult.openingBalance.toLocaleString('en-IN')}` : '—',
-              credit: ledgerResult.openingBalance < 0 ? `৳ ${Math.abs(ledgerResult.openingBalance).toLocaleString('en-IN')}` : '—',
-              balance: `৳ ${ledgerResult.openingBalance.toLocaleString('en-IN')}`,
+              debit: ledgerResult.openingBalance >= 0 ? ledgerResult.openingBalance.toLocaleString('en-IN') : '—',
+              credit: ledgerResult.openingBalance < 0 ? Math.abs(ledgerResult.openingBalance).toLocaleString('en-IN') : '—',
+              balance: ledgerResult.openingBalance.toLocaleString('en-IN'),
             },
             ...ledgerResult.displayEntries.map((e, idx) => ({
               sl: idx + 1,
@@ -2391,9 +2391,9 @@ export const BankBookView: React.FC<BankBookViewProps> = ({
               head: e.headNameBn + (e.description ? ` (${e.description})` : ''),
               party: e.partyName || '—',
               account: e.accountName,
-              debit: e.debit > 0 ? `৳ ${e.debit.toLocaleString('en-IN')}` : '—',
-              credit: e.credit > 0 ? `৳ ${e.credit.toLocaleString('en-IN')}` : '—',
-              balance: `৳ ${e.runningBalance.toLocaleString('en-IN')}`,
+              debit: e.debit > 0 ? e.debit.toLocaleString('en-IN') : '—',
+              credit: e.credit > 0 ? e.credit.toLocaleString('en-IN') : '—',
+              balance: e.runningBalance.toLocaleString('en-IN'),
             })),
           ]}
         />

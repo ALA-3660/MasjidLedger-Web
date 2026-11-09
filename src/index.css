@@ -582,7 +582,7 @@ aside button,
   .print-modal-paper tfoot,
   .report-modal-print-body tfoot,
   table.print-table tfoot {
-    display: table-footer-group !important;
+    display: table-row-group !important;
     break-inside: avoid !important;
     page-break-inside: avoid !important;
   }
@@ -603,6 +603,30 @@ aside button,
   .report-modal-print-body th {
     overflow-wrap: anywhere !important;
     word-break: break-word !important;
+  }
+
+  /* Protect Amount & Currency Columns from Vertical Line-Breaking in Print */
+  .report-print-root td.text-right,
+  .report-print-root th.text-right,
+  .print-modal-paper td.text-right,
+  .print-modal-paper th.text-right,
+  .report-modal-print-body td.text-right,
+  .report-modal-print-body th.text-right,
+  .report-modal-print-body td.print-amount-cell,
+  .report-modal-print-body th.print-amount-cell,
+  .print-amount-cell {
+    overflow-wrap: normal !important;
+    word-break: keep-all !important;
+    white-space: nowrap !important;
+    min-width: 100px !important;
+    text-align: right !important;
+  }
+
+  /* Restrain Description Columns to prevent crowding out Amount column */
+  .report-modal-print-body td.print-desc-cell,
+  .report-modal-print-body th.print-desc-cell,
+  .print-desc-cell {
+    max-width: 155px !important;
   }
 
   /* ============================================================

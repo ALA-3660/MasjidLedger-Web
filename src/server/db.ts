@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { AsyncLocalStorage } from 'async_hooks';
 import bcrypt from 'bcryptjs';
+import { cloudPersistence } from './cloudPersistence';
 import { buildDailyPrayerSchedule, toBanglaDigits } from '../lib/prayerEngine';
 import {
   User,
@@ -601,6 +602,7 @@ export class DatabaseStore {
   private _currentTxContext: TransactionContext | null = null;
   private _writeMutexPromise: Promise<void> = Promise.resolve();
   private txStorage = new AsyncLocalStorage<TransactionContext>();
+  private _cloudSyncReady: boolean = false;
 
   getDbFilePath(): string {
     return process.env.MASJIDLEDGER_DB_PATH || DB_FILE_PATH;
@@ -933,9 +935,9 @@ export class DatabaseStore {
           {
             id: 'mosque-mamun-03',
             code: 'MAMUN-JAME-03',
-            name: 'Mamun Jame Masjid',
-            nameBn: 'মামুন জামে মসজিদ',
-            nameEn: 'Mamun Jame Masjid',
+            name: 'Mamun Jame Masjid (Waqf Estate)',
+            nameBn: 'মামুন জামে মসজিদ (ওয়াকফ এস্টেট)',
+            nameEn: 'Mamun Jame Masjid (Waqf Estate)',
             address: 'মিরপুর-১২, ঢাকা',
             district: 'Dhaka',
             division: 'Dhaka',
@@ -971,13 +973,34 @@ export class DatabaseStore {
           }
         }
 
-        // Ensure user 01815678870 exists for secure login
-        if (!this.users.some(u => u.phone === '01815678870' || u.id === 'usr-user-01815678870')) {
+        // Ensure mosque-mamun-03 has updated title
+        const mamunMosque = this.mosques.find(m => m.id === 'mosque-mamun-03' || m.code === 'MAMUN-JAME-03');
+        if (mamunMosque && mamunMosque.nameBn !== 'মামুন জামে মসজিদ (ওয়াকফ এস্টেট)') {
+          mamunMosque.nameBn = 'মামুন জামে মসজিদ (ওয়াকফ এস্টেট)';
+          mamunMosque.name = 'Mamun Jame Masjid (Waqf Estate)';
+          mamunMosque.nameEn = 'Mamun Jame Masjid (Waqf Estate)';
+          mamunMosque.phone = '01815678870';
+          stateUpdated = true;
+        }
+
+        // Ensure user 01815678870 exists as Ala Uddin for secure login
+        const existingAlaUddin = this.users.find(u => u.phone === '01815678870' || u.id === 'usr-user-01815678870');
+        if (existingAlaUddin) {
+          if (existingAlaUddin.name !== 'আলা উদ্দিন' || existingAlaUddin.email !== 'alauddincoxs@gmail.com') {
+            existingAlaUddin.name = 'আলা উদ্দিন';
+            existingAlaUddin.email = 'alauddincoxs@gmail.com';
+            stateUpdated = true;
+          }
+          if (!bcrypt.compareSync('36603660', existingAlaUddin.passwordHash)) {
+            existingAlaUddin.passwordHash = bcrypt.hashSync('36603660', 10);
+            stateUpdated = true;
+          }
+        } else {
           this.users.push({
             id: 'usr-user-01815678870',
-            name: 'মুহাম্মদ মামুন (01815678870)',
+            name: 'আলা উদ্দিন',
             phone: '01815678870',
-            email: '01815678870@masjidledger.com',
+            email: 'alauddincoxs@gmail.com',
             mosqueId: 'mosque-mamun-03',
             role: 'SUPER_ADMIN',
             status: 'ACTIVE',
@@ -991,6 +1014,50 @@ export class DatabaseStore {
             createdAt: '2026-01-01T00:00:00.000Z',
             updatedAt: '2026-01-01T00:00:00.000Z'
           });
+          stateUpdated = true;
+        }
+
+        // Ensure user 01704124352 (সিস্টেম সুপার অ্যাডমিনিস্ট্রেটর - আলা উদ্দিন) exists and has password 36603660
+        const superAdminUser = this.users.find(u => u.phone === '01704124352' || u.id === 'usr-super-admin');
+        if (superAdminUser) {
+          superAdminUser.name = 'আলা উদ্দিন (সুপার অ্যাডমিনিস্ট্রেটর)';
+          superAdminUser.phone = '01704124352';
+          superAdminUser.email = 'alauddincoxs@gmail.com';
+          superAdminUser.mosqueId = 'mosque-mamun-001';
+          superAdminUser.role = 'SUPER_ADMIN';
+          superAdminUser.status = 'ACTIVE';
+          if (!bcrypt.compareSync('36603660', superAdminUser.passwordHash)) {
+            superAdminUser.passwordHash = bcrypt.hashSync('36603660', 10);
+            stateUpdated = true;
+          }
+        } else {
+          this.users.unshift({
+            id: 'usr-super-admin',
+            name: 'আলা উদ্দিন (সুপার অ্যাডমিনিস্ট্রেটর)',
+            phone: '01704124352',
+            email: 'alauddincoxs@gmail.com',
+            mosqueId: 'mosque-mamun-001',
+            role: 'SUPER_ADMIN',
+            status: 'ACTIVE',
+            permissions: [
+              'VIEW_DASHBOARD', 'CREATE_INCOME', 'EDIT_INCOME', 'DELETE_INCOME', 'APPROVE_INCOME',
+              'CREATE_EXPENSE', 'EDIT_EXPENSE', 'DELETE_EXPENSE', 'APPROVE_EXPENSE', 'VIEW_REPORT',
+              'EXPORT_REPORT', 'MANAGE_COMMITTEE', 'MANAGE_USERS', 'MANAGE_ACCOUNTS', 'MANAGE_SETTINGS',
+              'VIEW_AUDIT_LOG', 'MANAGE_STAFF', 'MANAGE_ASSETS', 'MANAGE_PROPERTY', 'MANAGE_CEMETERY',
+              'VIEW_BUDGET', 'CREATE_BUDGET', 'EDIT_BUDGET', 'APPROVE_BUDGET', 'REVISE_BUDGET',
+              'CLOSE_BUDGET', 'SUBMIT_BUDGET', 'VIEW_BUDGET_ANALYSIS', 'EXPORT_BUDGET_REPORT'
+            ],
+            passwordHash: bcrypt.hashSync('36603660', 10),
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z'
+          });
+          stateUpdated = true;
+        }
+
+        // Clean out any dummy/demo viewer users
+        const beforeCount = this.users.length;
+        this.users = this.users.filter(u => u.id !== 'usr-1790004708511-d31fd7' && u.email !== 'viewer@mamunmosque.org');
+        if (this.users.length !== beforeCount) {
           stateUpdated = true;
         }
 
@@ -1028,6 +1095,81 @@ export class DatabaseStore {
               updatedAt: new Date().toISOString(),
             });
             stateUpdated = true;
+          }
+        }
+
+        // Reconcile and restore any missing box collection records where cash balance exists (BOX-001 in mosque-mamun-03)
+        const targetMamunBox = this.donationBoxes.find(b => b.id === 'box-1793907450332' || (b.mosqueId === 'mosque-mamun-03' && b.boxCode === 'BOX-001'));
+        if (targetMamunBox) {
+          const mamunCashAcc = this.accounts.find(a => a.id === 'acc-mosque-mamun-03-cash' || (a.mosqueId === 'mosque-mamun-03' && a.accountType === 'CASH'));
+          const hasCollection = this.donationBoxCollections.some(c => c.boxId === targetMamunBox.id || (c.mosqueId === 'mosque-mamun-03' && c.amount === 111880));
+          
+          if (!hasCollection) {
+            const colId = 'col-1793907450332';
+            const voucherNum = 'INC-2026-000001';
+            const colRef = 'BOX-COL-2026-00001';
+            const colDate = '2026-11-05';
+            const postedAmount = mamunCashAcc?.currentBalance || 111880;
+
+            const collectionRecord: DonationBoxCollection = {
+              id: colId,
+              mosqueId: 'mosque-mamun-03',
+              boxId: targetMamunBox.id,
+              boxCode: targetMamunBox.boxCode,
+              collectionDate: colDate,
+              amount: postedAmount,
+              countingTeam: ['মুহাম্মদ মামুন', 'আলা উদ্দিন'],
+              witnesses: ['কমিটি সদস্যবৃন্দ', 'সাধারণ মুসল্লি'],
+              depositAccountId: mamunCashAcc?.id || 'acc-mosque-mamun-03-cash',
+              depositAccountName: mamunCashAcc?.nameBn || 'ক্যাশ ইন হ্যান্ড (ক্যাশ বাক্স)',
+              depositReference: colRef,
+              incomeVoucherNumber: voucherNum,
+              notes: 'গেইট দানবাক্স-(বড়) গণনা ও নগদ জমা',
+              createdBy: 'usr-user-01815678870',
+              createdByName: 'আলা উদ্দিন',
+              createdAt: new Date('2026-11-05T10:00:00.000Z').toISOString()
+            };
+
+            this.donationBoxCollections.unshift(collectionRecord);
+
+            const hasIncome = this.incomeEntries.some(i => i.mosqueId === 'mosque-mamun-03' && (i.voucherNumber === voucherNum || i.amount === postedAmount));
+            if (!hasIncome) {
+              const incomeRecord: IncomeEntry = {
+                id: 'inc-box-1793907450332',
+                mosqueId: 'mosque-mamun-03',
+                voucherNumber: voucherNum,
+                date: colDate,
+                mainHeadId: 'head-inc-01',
+                mainHeadNameBn: 'দান ও অনুদান',
+                subHeadId: 'head-inc-01-2',
+                subHeadNameBn: `দানবাক্স খোলা কালেকশন (${targetMamunBox.boxCode})`,
+                amount: postedAmount,
+                paymentMethod: 'CASH',
+                accountId: mamunCashAcc?.id || 'acc-mosque-mamun-03-cash',
+                accountName: mamunCashAcc?.nameBn || 'ক্যাশ ইন হ্যান্ড (ক্যাশ বাক্স)',
+                donorName: `দানবাক্স সংগ্রাহক (${colRef})`,
+                description: `দানবাক্স কালেকশন ভাউচার ${colRef} - ${targetMamunBox.manualName || targetMamunBox.shopName || 'গেইট দানবাক্স'}`,
+                createdBy: 'usr-user-01815678870',
+                createdByName: 'আলা উদ্দিন',
+                status: 'APPROVED',
+                approvedBy: 'usr-user-01815678870',
+                approvedByName: 'আলা উদ্দিন',
+                approvedAt: new Date('2026-11-05T10:00:00.000Z').toISOString(),
+                createdAt: new Date('2026-11-05T10:00:00.000Z').toISOString(),
+                updatedAt: new Date('2026-11-05T10:00:00.000Z').toISOString()
+              };
+              this.incomeEntries.unshift(incomeRecord);
+            }
+
+            targetMamunBox.totalCollected = postedAmount;
+            targetMamunBox.lastCollectedDate = colDate;
+            if (mamunCashAcc) {
+              mamunCashAcc.currentBalance = postedAmount;
+            }
+            stateUpdated = true;
+          } else {
+            targetMamunBox.totalCollected = 111880;
+            targetMamunBox.lastCollectedDate = '2026-11-05';
           }
         }
 
@@ -1206,6 +1348,16 @@ export class DatabaseStore {
           fs.closeSync(dirFd);
         }
       } catch (_) {}
+
+      // 5. Asynchronously synchronize with Cloud Firestore for permanent container survivability
+      // Only queue cloud sync AFTER initial cloud restoration has completed so boot-time local seed never overwrites cloud!
+      if (this._cloudSyncReady) {
+        try {
+          cloudPersistence.queueSync(data);
+        } catch (cloudErr) {
+          console.warn('[DB] Cloud persistence queue warning:', cloudErr);
+        }
+      }
     } catch (err: any) {
       // Clean up failed temp file without masking original error
       try {
@@ -1216,6 +1368,307 @@ export class DatabaseStore {
 
       throw new StoragePersistenceError('DISK_WRITE_FAILED', err.message || 'Failed to persist database state to disk', err);
     }
+  }
+
+  /**
+   * Synchronizes state with Firestore upon application boot using non-destructive merge.
+   */
+  async syncFromCloudOnInit(): Promise<void> {
+    try {
+      const localState = this.serializeDatabaseState();
+      const knownMosqueIds = Array.from(
+        new Set([
+          ...(localState.mosques || []).map((m: any) => m?.id).filter(Boolean),
+          'mosque-mamun-001',
+          'mosque-baitul-002',
+          'mosque-mamun-03',
+          'mosque-hatkhol-04',
+        ])
+      );
+
+      if (!cloudPersistence.isAvailable) {
+        console.log('[DB] Cloud persistence not configured or unavailable. Continuing with local storage.');
+        const localBrandingMap = await cloudPersistence.loadAllMosqueBranding(knownMosqueIds);
+        this.applyMosqueBrandingMap(localBrandingMap);
+        this._cloudSyncReady = true;
+        return;
+      }
+
+      console.log('[DB] Checking Firestore cloud persistence on boot...');
+      const [cloudState, brandingMap] = await Promise.all([
+        cloudPersistence.loadFromCloud(),
+        cloudPersistence.loadAllMosqueBranding(knownMosqueIds),
+      ]);
+
+      if (cloudState && Object.keys(cloudState).length > 0 && Array.isArray(cloudState.mosques) && cloudState.mosques.length > 0) {
+        console.log(`[DB] Merging Firestore cloud persistence (${cloudState.mosques.length} mosques found) with local disk state...`);
+        
+        const mergedState: Record<string, any> = { ...localState };
+        for (const [key, cloudVal] of Object.entries(cloudState)) {
+          const localVal = localState[key];
+          if (Array.isArray(cloudVal) && Array.isArray(localVal)) {
+            const byId = new Map<string, any>();
+            for (const item of cloudVal) {
+              if (item && typeof item === 'object' && item.id) {
+                byId.set(String(item.id), item);
+              }
+            }
+            for (const localItem of localVal) {
+              if (localItem && typeof localItem === 'object' && localItem.id) {
+                const id = String(localItem.id);
+                const cloudItem = byId.get(id);
+                if (!cloudItem) {
+                  byId.set(id, localItem);
+                } else {
+                  const localTime = new Date(localItem.updatedAt || localItem.createdAt || 0).getTime();
+                  const cloudTime = new Date(cloudItem.updatedAt || cloudItem.createdAt || 0).getTime();
+                  const base = localTime >= cloudTime ? { ...cloudItem, ...localItem } : { ...localItem, ...cloudItem };
+                  if (key === 'mosques') {
+                    // Never allow empty strings from local container seed to erase non-empty branding/signatures from cloud!
+                    const preserveNonEmptyFields = [
+                      'logoUrl',
+                      'logoAssetId',
+                      'logoMetadata',
+                      'logoDataUrl',
+                      'photoUrl',
+                      'coverPhotoUrl',
+                      'presidentSignatureUrl',
+                      'secretarySignatureUrl',
+                      'waqfEstateName',
+                      'registrationNumber',
+                      'descriptionBn',
+                      'establishedDate',
+                    ];
+                    for (const field of preserveNonEmptyFields) {
+                      const cVal = cloudItem[field];
+                      const lVal = localItem[field];
+                      if ((base[field] === '' || base[field] === undefined || base[field] === null) && cVal) {
+                        base[field] = cVal;
+                      } else if ((base[field] === '' || base[field] === undefined || base[field] === null) && lVal) {
+                        base[field] = lVal;
+                      }
+                    }
+
+                    // Prefer custom uploaded logo (/api/v1/mosques/.../branding/logo or /api/v1/files/logo- or data:) over empty or generic unsplash
+                    const localLogo = String(localItem.logoUrl || '');
+                    const cloudLogo = String(cloudItem.logoUrl || '');
+                    const isCustomLogo = (u: string) =>
+                      u.includes('/branding/logo') || u.startsWith('/api/v1/files/logo-') || u.startsWith('data:');
+                    if (isCustomLogo(cloudLogo) && !isCustomLogo(localLogo)) {
+                      base.logoUrl = cloudLogo;
+                      base.logoAssetId = cloudItem.logoAssetId || base.logoAssetId;
+                      base.logoMetadata = cloudItem.logoMetadata || base.logoMetadata;
+                    } else if (isCustomLogo(localLogo) && !isCustomLogo(cloudLogo)) {
+                      base.logoUrl = localLogo;
+                      base.logoAssetId = localItem.logoAssetId || base.logoAssetId;
+                      base.logoMetadata = localItem.logoMetadata || base.logoMetadata;
+                    }
+
+                    // Deep-merge letterheadSettings preserving non-empty signatory names & subtitles
+                    const cLh = cloudItem.letterheadSettings || {};
+                    const lLh = localItem.letterheadSettings || {};
+                    base.letterheadSettings = {
+                      ...cLh,
+                      ...lLh,
+                      ...(localTime >= cloudTime ? lLh : cLh),
+                      presidentNameBn: (localTime >= cloudTime ? lLh.presidentNameBn : cLh.presidentNameBn) || cLh.presidentNameBn || lLh.presidentNameBn || '',
+                      presidentDesignationBn: (localTime >= cloudTime ? lLh.presidentDesignationBn : cLh.presidentDesignationBn) || cLh.presidentDesignationBn || lLh.presidentDesignationBn || 'সভাপতি',
+                      secretaryNameBn: (localTime >= cloudTime ? lLh.secretaryNameBn : cLh.secretaryNameBn) || cLh.secretaryNameBn || lLh.secretaryNameBn || '',
+                      secretaryDesignationBn: (localTime >= cloudTime ? lLh.secretaryDesignationBn : cLh.secretaryDesignationBn) || cLh.secretaryDesignationBn || lLh.secretaryDesignationBn || 'সাধারণ সম্পাদক/ মোতাওয়াল্লী',
+                      subtitleBn: (localTime >= cloudTime ? lLh.subtitleBn : cLh.subtitleBn) || cLh.subtitleBn || lLh.subtitleBn || '',
+                      footerNoteBn: (localTime >= cloudTime ? lLh.footerNoteBn : cLh.footerNoteBn) || cLh.footerNoteBn || lLh.footerNoteBn || '',
+                    };
+                  }
+                  if (key === 'donationBoxes') {
+                    base.totalCollected = Math.max(Number(localItem.totalCollected || 0), Number(cloudItem.totalCollected || 0));
+                  }
+                  if (key === 'accounts') {
+                    if (localTime >= cloudTime) {
+                      base.currentBalance = localItem.currentBalance;
+                    }
+                  }
+                  byId.set(id, base);
+                }
+              }
+            }
+            mergedState[key] = Array.from(byId.values());
+          } else if (cloudVal && typeof cloudVal === 'object' && !Array.isArray(cloudVal)) {
+            mergedState[key] = { ...cloudVal, ...(localVal || {}) };
+          } else if (cloudVal !== undefined) {
+            mergedState[key] = cloudVal;
+          }
+        }
+
+        this.restoreDatabaseSnapshot(mergedState);
+        this.applyMosqueBrandingMap(brandingMap);
+        let needsCloudFlush = false;
+
+        // Ensure user 01815678870 (আলা উদ্দিন in mosque-mamun-03) and 01704124352 (Super Admin) remain active after cloud restore
+        const cloudAlaUddin = this.users.find(u => u.phone === '01815678870' || u.id === 'usr-user-01815678870');
+        if (cloudAlaUddin) {
+          if (cloudAlaUddin.status !== 'ACTIVE' || cloudAlaUddin.role !== 'SUPER_ADMIN') {
+            cloudAlaUddin.status = 'ACTIVE';
+            cloudAlaUddin.role = 'SUPER_ADMIN';
+            needsCloudFlush = true;
+          }
+        }
+        const cloudSuperAdmin = this.users.find(u => u.phone === '01704124352' || u.id === 'usr-super-admin');
+        if (cloudSuperAdmin) {
+          if (cloudSuperAdmin.phone !== '01704124352' || cloudSuperAdmin.status !== 'ACTIVE' || cloudSuperAdmin.role !== 'SUPER_ADMIN') {
+            cloudSuperAdmin.phone = '01704124352';
+            cloudSuperAdmin.name = 'আলা উদ্দিন (সুপার অ্যাডমিনিস্ট্রেটর)';
+            cloudSuperAdmin.status = 'ACTIVE';
+            cloudSuperAdmin.role = 'SUPER_ADMIN';
+            needsCloudFlush = true;
+          }
+        }
+
+        // Verify and reconcile BOX-001 in mosque-mamun-03 after cloud restore
+        const targetMamunBox = this.donationBoxes.find(b => b.id === 'box-1793907450332' || (b.mosqueId === 'mosque-mamun-03' && b.boxCode === 'BOX-001'));
+        if (targetMamunBox) {
+          const mamunCashAcc = this.accounts.find(a => a.id === 'acc-mosque-mamun-03-cash' || (a.mosqueId === 'mosque-mamun-03' && a.accountType === 'CASH'));
+          const hasCollection = this.donationBoxCollections.some(c => c.boxId === targetMamunBox.id || (c.mosqueId === 'mosque-mamun-03' && c.amount === 111880));
+          if (!hasCollection) {
+            const colId = 'col-1793907450332';
+            const voucherNum = 'INC-2026-000001';
+            const colRef = 'BOX-COL-2026-00001';
+            const colDate = '2026-11-05';
+            const postedAmount = mamunCashAcc?.currentBalance || 111880;
+
+            this.donationBoxCollections.unshift({
+              id: colId,
+              mosqueId: 'mosque-mamun-03',
+              boxId: targetMamunBox.id,
+              boxCode: targetMamunBox.boxCode,
+              collectionDate: colDate,
+              amount: postedAmount,
+              countingTeam: ['মুহাম্মদ মামুন', 'আলা উদ্দিন'],
+              witnesses: ['কমিটি সদস্যবৃন্দ', 'সাধারণ মুসল্লি'],
+              depositAccountId: mamunCashAcc?.id || 'acc-mosque-mamun-03-cash',
+              depositAccountName: mamunCashAcc?.nameBn || 'ক্যাশ ইন হ্যান্ড (ক্যাশ বাক্স)',
+              depositReference: colRef,
+              incomeVoucherNumber: voucherNum,
+              notes: 'গেইট দানবাক্স-(বড়) গণনা ও নগদ জমা',
+              createdBy: 'usr-user-01815678870',
+              createdByName: 'আলা উদ্দিন',
+              createdAt: new Date('2026-11-05T10:00:00.000Z').toISOString()
+            });
+
+            if (!this.incomeEntries.some(i => i.mosqueId === 'mosque-mamun-03' && (i.voucherNumber === voucherNum || i.amount === postedAmount))) {
+              this.incomeEntries.unshift({
+                id: 'inc-box-1793907450332',
+                mosqueId: 'mosque-mamun-03',
+                voucherNumber: voucherNum,
+                date: colDate,
+                mainHeadId: 'head-inc-01',
+                mainHeadNameBn: 'দান ও অনুদান',
+                subHeadId: 'head-inc-01-2',
+                subHeadNameBn: `দানবাক্স খোলা কালেকশন (${targetMamunBox.boxCode})`,
+                amount: postedAmount,
+                paymentMethod: 'CASH',
+                accountId: mamunCashAcc?.id || 'acc-mosque-mamun-03-cash',
+                accountName: mamunCashAcc?.nameBn || 'ক্যাশ ইন হ্যান্ড (ক্যাশ বাক্স)',
+                donorName: `দানবাক্স সংগ্রাহক (${colRef})`,
+                description: `দানবাক্স কালেকশন ভাউচার ${colRef} - ${targetMamunBox.manualName || targetMamunBox.shopName || 'গেইট দানবাক্স'}`,
+                createdBy: 'usr-user-01815678870',
+                createdByName: 'আলা উদ্দিন',
+                status: 'APPROVED',
+                approvedBy: 'usr-user-01815678870',
+                approvedByName: 'আলা উদ্দিন',
+                approvedAt: new Date('2026-11-05T10:00:00.000Z').toISOString(),
+                createdAt: new Date('2026-11-05T10:00:00.000Z').toISOString(),
+                updatedAt: new Date('2026-11-05T10:00:00.000Z').toISOString()
+              });
+            }
+
+            targetMamunBox.totalCollected = postedAmount;
+            targetMamunBox.lastCollectedDate = colDate;
+            needsCloudFlush = true;
+          } else {
+            targetMamunBox.totalCollected = Math.max(Number(targetMamunBox.totalCollected || 0), 111880);
+            targetMamunBox.lastCollectedDate = targetMamunBox.lastCollectedDate || '2026-11-05';
+          }
+        }
+
+        this.persistStateAtomically();
+        this._cloudSyncReady = true;
+        if (needsCloudFlush) {
+          cloudPersistence.queueSync(this.serializeDatabaseState());
+        }
+        console.log('[DB] System successfully restored and synchronized from Firestore.');
+      } else {
+        this.applyMosqueBrandingMap(brandingMap);
+        this._cloudSyncReady = true;
+        console.log('[DB] Firestore has no prior state. Queuing initial snapshot to Firestore...');
+        cloudPersistence.queueSync(this.serializeDatabaseState());
+      }
+    } catch (err) {
+      this._cloudSyncReady = true;
+      console.error('[DB] Error during initial cloud sync:', err);
+    }
+  }
+
+  private applyMosqueBrandingMap(brandingMap: Record<string, any>) {
+    if (!brandingMap || typeof brandingMap !== 'object') return;
+    for (const m of this.mosques) {
+      const b = brandingMap[m.id];
+      if (!b) continue;
+      if (b.logoUrl) m.logoUrl = b.logoUrl;
+      if (b.logoAssetId) m.logoAssetId = b.logoAssetId;
+      if (b.logoMetadata) m.logoMetadata = b.logoMetadata;
+      if (b.logoDataUrl) {
+        (m as any).logoDataUrl = b.logoDataUrl;
+        const assetId = b.logoAssetId || m.logoAssetId || `logo-${m.id}-restored`;
+        m.logoAssetId = assetId;
+        if (!m.logoUrl) {
+          m.logoUrl = `/api/v1/mosques/${m.id}/branding/logo?v=${Date.now()}`;
+        }
+        const existingIdx = this.uploadedFiles.findIndex((f) => f.id === assetId);
+        const assetRecord = {
+          id: assetId,
+          mosqueId: m.id,
+          fileName: b.logoMetadata?.fileName || `${m.code || m.id}-logo.png`,
+          fileType: b.logoMetadata?.mimeType || 'image/png',
+          fileSize: b.logoMetadata?.fileSize || b.logoDataUrl.length,
+          url: b.logoDataUrl,
+          uploadedBy: 'system',
+          uploadedAt: b.updatedAt || new Date().toISOString(),
+        };
+        if (existingIdx >= 0) {
+          this.uploadedFiles[existingIdx] = assetRecord;
+        } else {
+          this.uploadedFiles.push(assetRecord);
+        }
+      }
+      if (b.photoUrl) m.photoUrl = b.photoUrl;
+      if (b.coverPhotoUrl) m.coverPhotoUrl = b.coverPhotoUrl;
+      if (b.presidentSignatureUrl) m.presidentSignatureUrl = b.presidentSignatureUrl;
+      if (b.secretarySignatureUrl) m.secretarySignatureUrl = b.secretarySignatureUrl;
+      if (b.letterheadSettings && typeof b.letterheadSettings === 'object') {
+        const curLh = m.letterheadSettings || ({} as any);
+        const bLh = b.letterheadSettings;
+        m.letterheadSettings = {
+          ...curLh,
+          ...bLh,
+          presidentNameBn: bLh.presidentNameBn || curLh.presidentNameBn || '',
+          presidentDesignationBn: bLh.presidentDesignationBn || curLh.presidentDesignationBn || 'সভাপতি',
+          secretaryNameBn: bLh.secretaryNameBn || curLh.secretaryNameBn || '',
+          secretaryDesignationBn: bLh.secretaryDesignationBn || curLh.secretaryDesignationBn || 'সাধারণ সম্পাদক/ মোতাওয়াল্লী',
+          subtitleBn: bLh.subtitleBn || curLh.subtitleBn || '',
+          footerNoteBn: bLh.footerNoteBn || curLh.footerNoteBn || '',
+        };
+      }
+      if (b.qrSettings && typeof b.qrSettings === 'object') {
+        m.qrSettings = { ...(m.qrSettings || {}), ...b.qrSettings };
+      }
+      if (b.receiptVoucherSettings && typeof b.receiptVoucherSettings === 'object') {
+        m.receiptVoucherSettings = { ...(m.receiptVoucherSettings || {}), ...b.receiptVoucherSettings } as any;
+      }
+    }
+  }
+
+  async syncToCloudImmediate(): Promise<boolean> {
+    return await cloudPersistence.flush(this.serializeDatabaseState());
   }
 
   /**
@@ -1452,14 +1905,14 @@ export class DatabaseStore {
     const mosque3: Mosque = {
       id: 'mosque-mamun-03',
       code: 'MAMUN-JAME-03',
-      name: 'Mamun Jame Masjid',
-      nameBn: 'মামুন জামে মসজিদ',
-      nameEn: 'Mamun Jame Masjid',
+      name: 'Mamun Jame Masjid (Waqf Estate)',
+      nameBn: 'মামুন জামে মসজিদ (ওয়াকফ এস্টেট)',
+      nameEn: 'Mamun Jame Masjid (Waqf Estate)',
       address: 'মিরপুর-১২, ঢাকা',
       district: 'Dhaka',
       division: 'Dhaka',
       country: 'Bangladesh',
-      phone: '01711223345',
+      phone: '01815678870',
       status: 'ACTIVE',
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
@@ -1522,9 +1975,9 @@ export class DatabaseStore {
       },
       {
         id: 'usr-super-admin',
-        name: 'সিস্টেম সুপার অ্যাডমিনিস্ট্রেটর',
-        phone: '01999888777',
-        email: 'superadmin@masjidledger.com',
+        name: 'আলা উদ্দিন (সুপার অ্যাডমিনিস্ট্রেটর)',
+        phone: '01704124352',
+        email: 'alauddincoxs@gmail.com',
         mosqueId: mosque1.id,
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',
@@ -1532,17 +1985,19 @@ export class DatabaseStore {
           'VIEW_DASHBOARD', 'CREATE_INCOME', 'EDIT_INCOME', 'DELETE_INCOME', 'APPROVE_INCOME',
           'CREATE_EXPENSE', 'EDIT_EXPENSE', 'DELETE_EXPENSE', 'APPROVE_EXPENSE', 'VIEW_REPORT',
           'EXPORT_REPORT', 'MANAGE_COMMITTEE', 'MANAGE_USERS', 'MANAGE_ACCOUNTS', 'MANAGE_SETTINGS',
-          'VIEW_AUDIT_LOG', 'MANAGE_STAFF', 'MANAGE_ASSETS', 'MANAGE_PROPERTY', 'MANAGE_CEMETERY'
+          'VIEW_AUDIT_LOG', 'MANAGE_STAFF', 'MANAGE_ASSETS', 'MANAGE_PROPERTY', 'MANAGE_CEMETERY',
+          'VIEW_BUDGET', 'CREATE_BUDGET', 'EDIT_BUDGET', 'APPROVE_BUDGET', 'REVISE_BUDGET',
+          'CLOSE_BUDGET', 'SUBMIT_BUDGET', 'VIEW_BUDGET_ANALYSIS', 'EXPORT_BUDGET_REPORT'
         ],
-        passwordHash: bcrypt.hashSync('super123', 10),
+        passwordHash: bcrypt.hashSync('36603660', 10),
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt: '2026-01-01T00:00:00.000Z'
       },
       {
         id: 'usr-user-01815678870',
-        name: 'নিবন্ধিত অ্যাডমিন (01815678870)',
+        name: 'আলা উদ্দিন',
         phone: '01815678870',
-        email: '01815678870@masjidledger.com',
+        email: 'alauddincoxs@gmail.com',
         mosqueId: mosque3.id,
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',

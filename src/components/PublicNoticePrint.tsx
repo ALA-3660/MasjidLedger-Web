@@ -121,12 +121,32 @@ export const PublicNoticePrint: React.FC<PublicNoticePrintProps> = ({
         <div className="pt-8 border-t border-slate-300 text-xs">
           <div className="grid grid-cols-2 gap-12 text-center pt-8">
             <div className="space-y-1">
-              <div className="border-t border-slate-400 pt-1 font-bold text-slate-800">সাধারণ সম্পাদক</div>
-              <div className="text-[10px] text-slate-500">মসজিদ পরিচালনা কমিটি</div>
+              <div className="h-12 flex items-end justify-center mb-1">
+                {mosque?.secretarySignatureUrl ? (
+                  <img
+                    src={mosque.secretarySignatureUrl}
+                    alt="Secretary Signature"
+                    referrerPolicy="no-referrer"
+                    className="max-h-12 object-contain mx-auto"
+                  />
+                ) : null}
+              </div>
+              <div className="border-t border-slate-800 pt-1 font-bold text-slate-800">সাধারণ সম্পাদক / মোতাওয়াল্লী</div>
+              <div className="text-[10px] text-slate-500">স্বাক্ষর ও সীল</div>
             </div>
             <div className="space-y-1">
-              <div className="border-t border-slate-400 pt-1 font-bold text-slate-800">সভাপতি / মুতাওয়াল্লী</div>
-              <div className="text-[10px] text-slate-500">মসজিদ পরিচালনা কমিটি</div>
+              <div className="h-12 flex items-end justify-center mb-1">
+                {mosque?.presidentSignatureUrl ? (
+                  <img
+                    src={mosque.presidentSignatureUrl}
+                    alt="President Signature"
+                    referrerPolicy="no-referrer"
+                    className="max-h-12 object-contain mx-auto"
+                  />
+                ) : null}
+              </div>
+              <div className="border-t border-slate-800 pt-1 font-bold text-slate-800">সভাপতি</div>
+              <div className="text-[10px] text-slate-500">স্বাক্ষর ও সীল</div>
             </div>
           </div>
           <div className="text-center pt-6 text-[10px] text-slate-400">

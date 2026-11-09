@@ -450,6 +450,15 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
     return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [incomes, effectiveDates, registerSearch, registerStatus, registerHeadId, registerAccountId]);
 
+  // Chronological (ascending date) order for Report Preview, Print, and Excel Export
+  const printOrderedIncomes = useMemo(() => {
+    return [...filteredIncomes].sort((a, b) => {
+      const dateDiff = new Date(a.date).getTime() - new Date(b.date).getTime();
+      if (dateDiff !== 0) return dateDiff;
+      return (a.createdAt || a.voucherNumber || '').localeCompare(b.createdAt || b.voucherNumber || '');
+    });
+  }, [filteredIncomes]);
+
   const filteredTotalAmount = useMemo(
     () => filteredIncomes.reduce((s, i) => (i.status === 'CANCELLED' ? s : s + (Number(i.amount) || 0)), 0),
     [filteredIncomes]
@@ -471,12 +480,11 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
         { header: 'দানশীল / দাতা', accessor: (i) => i.donorName || '-' },
         { header: 'হিসাব / মাধ্যম', accessor: (i) => `${i.accountName} (${i.paymentMethod})` },
         { header: 'পরিমাণ (৳)', accessor: (i) => Number(i.amount) || 0 },
-        { header: 'অবস্থা', accessor: (i) => (i.status === 'CANCELLED' ? 'বাতিলকৃত' : 'অনুমোদিত') },
         { header: 'রেফারেন্স / নোট', accessor: (i) => i.reference || '-' },
       ],
-      data: filteredIncomes,
+      data: printOrderedIncomes,
       summaryRows: [
-        { label: 'মোট রেকর্ড সংখ্যা', value: `${filteredIncomes.length} টি` },
+        { label: 'মোট রেকর্ড সংখ্যা', value: `${printOrderedIncomes.length} টি` },
         { label: 'সর্বমোট অনুমোদিত আয়', value: `৳ ${filteredTotalAmount.toLocaleString('en-IN')}` },
       ],
     });
@@ -506,7 +514,7 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
     },
     {
       header: 'বিবরণ',
-      className: 'text-slate-700',
+      className: 'text-slate-700 max-w-[155px] text-[11px] leading-snug break-words print-desc-cell',
       render: (i) => i.description || '-',
     },
     {
@@ -521,23 +529,10 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
     },
     {
       header: 'পরিমাণ (৳)',
-      className: 'text-right font-mono font-bold text-emerald-700',
+      className: 'text-right font-mono font-bold text-emerald-700 whitespace-nowrap min-w-[105px] w-28 print-amount-cell',
       render: (i) => (
         <span className={i.status === 'CANCELLED' ? 'line-through text-slate-400' : ''}>
-          ৳ {Number(i.amount).toLocaleString('en-IN')}
-        </span>
-      ),
-    },
-    {
-      header: 'অবস্থা',
-      className: 'text-center',
-      render: (i) => (
-        <span
-          className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
-            i.status === 'CANCELLED' ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'
-          }`}
-        >
-          {i.status === 'CANCELLED' ? 'বাতিল' : 'অনুমোদিত'}
+          {Number(i.amount).toLocaleString('en-IN')}
         </span>
       ),
     },
@@ -917,13 +912,24 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
                             ৳ {Number(inc.amount).toLocaleString('en-IN')}
                           </td>
                           <td className="px-3 py-2.5 text-center">
-                            <button
-                              onClick={() => onPrintVoucher(inc, 'INCOME', 'POS_80', true)}
-                              className="p-1.5 text-slate-600 hover:text-emerald-700 hover:bg-slate-100 rounded-lg cursor-pointer"
-                              title="ভাউচার প্রিন্ট করুন"
-                            >
-                              <Printer className="w-3.5 h-3.5" />
-                            </button>
+                            <div className="flex items-center justify-center space-x-1">
+                              <button
+                                onClick={() => onPrintVoucher(inc, 'INCOME', 'POS_80', true)}
+                                className="p-1.5 text-slate-600 hover:text-emerald-700 hover:bg-slate-100 rounded-lg cursor-pointer"
+                                title="ভাউচার প্রিন্ট করুন"
+                              >
+                                <Printer className="w-3.5 h-3.5" />
+                              </button>
+                              {onUpdateIncome && inc.status !== 'CANCELLED' && (
+                                <button
+                                  onClick={() => setEditingItem(inc)}
+                                  className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg cursor-pointer"
+                                  title="সম্পাদনা করুন"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1051,13 +1057,24 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
                               ৳ {Number(juma.amount).toLocaleString('en-IN')}
                             </td>
                             <td className="px-4 py-3 text-center">
-                              <button
-                                onClick={() => onPrintVoucher(juma, 'INCOME', 'POS_80', true)}
-                                className="p-1.5 text-slate-600 hover:text-teal-700 hover:bg-slate-100 rounded-lg cursor-pointer"
-                                title="প্রিন্ট ভাউচার"
-                              >
-                                <Printer className="w-3.5 h-3.5" />
-                              </button>
+                              <div className="flex items-center justify-center space-x-1">
+                                <button
+                                  onClick={() => onPrintVoucher(juma, 'INCOME', 'POS_80', true)}
+                                  className="p-1.5 text-slate-600 hover:text-teal-700 hover:bg-slate-100 rounded-lg cursor-pointer"
+                                  title="প্রিন্ট ভাউচার"
+                                >
+                                  <Printer className="w-3.5 h-3.5" />
+                                </button>
+                                {onUpdateIncome && juma.status !== 'CANCELLED' && (
+                                  <button
+                                    onClick={() => setEditingItem(juma)}
+                                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg cursor-pointer"
+                                    title="সম্পাদনা করুন"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         ))
@@ -1434,34 +1451,24 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
                         <th className="px-3 py-2.5">ভাউচার</th>
                         <th className="px-3 py-2.5">তারিখ</th>
                         <th className="px-3 py-2.5">খাত</th>
-                        <th className="px-3 py-2.5">বিবরণ</th>
+                        <th className="px-3 py-2.5 max-w-[155px]">বিবরণ</th>
                         <th className="px-3 py-2.5">দাতা</th>
                         <th className="px-3 py-2.5">হিসাব</th>
-                        <th className="px-3 py-2.5 text-right">পরিমাণ (৳)</th>
-                        <th className="px-3 py-2.5 text-center">অবস্থা</th>
+                        <th className="px-3 py-2.5 text-right whitespace-nowrap min-w-[105px]">পরিমাণ (৳)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {filteredIncomes.map((item, idx) => (
+                      {printOrderedIncomes.map((item, idx) => (
                         <tr key={item.id} className="hover:bg-slate-50">
                           <td className="px-3 py-2 text-center text-slate-400 font-mono">{idx + 1}</td>
                           <td className="px-3 py-2 font-mono font-bold text-slate-900">{item.voucherNumber}</td>
                           <td className="px-3 py-2 font-mono text-slate-600">{formatDate(item.date)}</td>
                           <td className="px-3 py-2 text-slate-900">{item.mainHeadNameBn}</td>
-                          <td className="px-3 py-2 text-slate-600">{item.description || '-'}</td>
+                          <td className="px-3 py-2 text-slate-600 max-w-[155px] text-[11px] truncate">{item.description || '-'}</td>
                           <td className="px-3 py-2 text-slate-800 font-medium">{item.donorName || '-'}</td>
                           <td className="px-3 py-2 text-slate-500 text-[11px]">{item.accountName}</td>
-                          <td className="px-3 py-2 text-right font-mono font-bold text-emerald-700">
-                            ৳ {Number(item.amount).toLocaleString('en-IN')}
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <span
-                              className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
-                                item.status === 'CANCELLED' ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'
-                              }`}
-                            >
-                              {item.status === 'CANCELLED' ? 'বাতিল' : 'অনুমোদিত'}
-                            </span>
+                          <td className="px-3 py-2 text-right font-mono font-bold text-emerald-700 whitespace-nowrap min-w-[105px]">
+                            {Number(item.amount).toLocaleString('en-IN')}
                           </td>
                         </tr>
                       ))}
@@ -1790,6 +1797,7 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
         <EditTransactionModal
           isOpen={!!editingItem}
           onClose={() => setEditingItem(null)}
+          transaction={editingItem}
           item={editingItem}
           type="INCOME"
           accountHeads={accountHeads}
@@ -1811,9 +1819,9 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
         periodLabel={effectiveDates.labelBn}
         currentMosque={currentMosque}
         columns={reportColumns}
-        data={filteredIncomes}
+        data={printOrderedIncomes}
         summaryMetrics={[
-          { label: 'মোট রেকর্ড', value: `${filteredIncomes.length} টি` },
+          { label: 'মোট রেকর্ড', value: `${printOrderedIncomes.length} টি` },
           { label: 'সর্বমোট আয়', value: filteredTotalAmount, color: 'text-emerald-700 font-bold' },
         ]}
         totalRow={
@@ -1821,10 +1829,9 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
             <td colSpan={7} className="px-3 py-2.5 text-right font-bold text-slate-800">
               সর্বমোট আয়ের যোগফল:
             </td>
-            <td className="px-3 py-2.5 text-right font-mono font-bold text-emerald-800">
-              ৳ {filteredTotalAmount.toLocaleString('en-IN')}
+            <td className="px-3 py-2.5 text-right font-mono font-bold text-emerald-800 whitespace-nowrap min-w-[105px] print-amount-cell">
+              {filteredTotalAmount.toLocaleString('en-IN')}
             </td>
-            <td></td>
           </tr>
         }
         onExcel={handleExportExcel}

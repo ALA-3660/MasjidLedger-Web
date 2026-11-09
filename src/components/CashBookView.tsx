@@ -906,9 +906,9 @@ export const CashBookView: React.FC<CashBookViewProps> = ({
             { header: 'ভাউচার নং', accessor: (item: any) => item.voucherNumber },
             { header: 'বিবরণ / খাত', accessor: (item: any) => item.headNameBn },
             { header: 'পার্টি / দাতা / প্রাপক', accessor: (item: any) => item.partyName },
-            { header: 'নগদ জমা (৳)', accessor: (item: any) => (item.debit > 0 ? `৳ ${item.debit.toLocaleString('en-IN')}` : '-') },
-            { header: 'নগদ খরচ (৳)', accessor: (item: any) => (item.credit > 0 ? `৳ ${item.credit.toLocaleString('en-IN')}` : '-') },
-            { header: 'চলমান স্থিতি (৳)', accessor: (item: any) => `৳ ${item.runningBalance.toLocaleString('en-IN')}` },
+            { header: 'নগদ জমা (৳)', accessor: (item: any) => (item.debit > 0 ? item.debit.toLocaleString('en-IN') : '-') },
+            { header: 'নগদ খরচ (৳)', accessor: (item: any) => (item.credit > 0 ? item.credit.toLocaleString('en-IN') : '-') },
+            { header: 'চলমান স্থিতি (৳)', accessor: (item: any) => item.runningBalance.toLocaleString('en-IN') },
           ]}
           data={ledgerResult.displayEntries}
           summaryRows={[

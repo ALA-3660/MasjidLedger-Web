@@ -382,10 +382,11 @@ export const MeetingResolutionPrint: React.FC<MeetingResolutionPrintProps> = ({
                 <div className="mt-14 pt-8 border-t border-slate-300 grid grid-cols-2 gap-8 text-center text-xs font-siliguri print:mt-16">
                   <div className="flex flex-col items-center">
                     <div className="h-16 flex items-end justify-center mb-1">
-                      {res.secretarySignatureUrl ? (
+                      {res.secretarySignatureUrl || mosque?.secretarySignatureUrl ? (
                         <img
-                          src={res.secretarySignatureUrl}
+                          src={res.secretarySignatureUrl || mosque?.secretarySignatureUrl}
                           alt="সাধারণ সম্পাদক স্বাক্ষর"
+                          referrerPolicy="no-referrer"
                           className="max-h-14 object-contain"
                         />
                       ) : (
@@ -402,10 +403,11 @@ export const MeetingResolutionPrint: React.FC<MeetingResolutionPrintProps> = ({
 
                   <div className="flex flex-col items-center">
                     <div className="h-16 flex items-end justify-center mb-1">
-                      {res.presidentSignatureUrl ? (
+                      {res.presidentSignatureUrl || mosque?.presidentSignatureUrl ? (
                         <img
-                          src={res.presidentSignatureUrl}
+                          src={res.presidentSignatureUrl || mosque?.presidentSignatureUrl}
                           alt="সভাপতি স্বাক্ষর"
+                          referrerPolicy="no-referrer"
                           className="max-h-14 object-contain"
                         />
                       ) : (

@@ -55,25 +55,50 @@ export const SmsPreviewModal: React.FC<SmsPreviewModalProps> = ({
       setSendSuccess(false);
       setErrorMessage('');
 
-      // Generate a mock short secure doc link token
-      const token = Math.random().toString(36).substring(2, 10);
-      const shortUrl = `${window.location.origin}/public/doc/${token}`;
-      setDocTokenUrl(shortUrl);
+      const resolveTokenAndMessage = async () => {
+        let token = documentId || voucherNumber || Math.random().toString(36).substring(2, 10);
+        try {
+          if (documentType && (documentId || voucherNumber)) {
+            const res = await fetch('/api/v1/public/document-token', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+              },
+              body: JSON.stringify({
+                documentType,
+                documentId: documentId || voucherNumber,
+              }),
+            });
+            const json = await res.json();
+            if (json.success && json.data?.token) {
+              token = json.data.token;
+            }
+          }
+        } catch (err) {
+          // Fallback to local token
+        }
 
-      const mosqueTitle = mosque?.nameBn || 'মসজিদুল মামুর কমপ্লেক্স';
-      let defaultMsg = '';
+        const shortUrl = `${window.location.origin}/public/doc/${token}`;
+        setDocTokenUrl(shortUrl);
 
-      if (documentType === 'DONATION_RECEIPT' || documentType === 'INCOME_RECEIPT') {
-        defaultMsg = `${mosqueTitle}: মুহতারাম ${donorOrPayeeName}, আপনার ৳ ${amount.toLocaleString('en-IN')} অনুদান সফলভাবে গৃহীত হয়েছে। রসিদ নং: ${voucherNumber}। ডিজিটাল রসিদ লিংক: ${shortUrl}। জাযাকাল্লাহু খাইরান।`;
-      } else if (documentType === 'EXPENSE_VOUCHER') {
-        defaultMsg = `${mosqueTitle}: জনাব ${donorOrPayeeName}, ভাউচার নং ${voucherNumber} এর বিপরীতে ৳ ${amount.toLocaleString('en-IN')} প্রদান সম্পন্ন হয়েছে। ভাউচার লিংক: ${shortUrl}`;
-      } else {
-        defaultMsg = `${mosqueTitle}: মুহতারাম মুসল্লি, মসজিদ কমপ্লেক্সের জরুরি বিজ্ঞপ্তি: ${shortUrl} - ধন্যবাদ।`;
-      }
+        const mosqueTitle = mosque?.nameBn || mosque?.name || 'মামুন জামে মসজিদ (ওয়াকফ এস্টেট)';
+        let defaultMsg = '';
 
-      setMessageText(defaultMsg);
+        if (documentType === 'DONATION_RECEIPT' || documentType === 'INCOME_RECEIPT') {
+          defaultMsg = `${mosqueTitle}: মুহতারাম ${donorOrPayeeName}, আপনার ৳ ${amount.toLocaleString('en-IN')} অনুদান সফলভাবে গৃহীত হয়েছে। রসিদ নং: ${voucherNumber || token}। ডিজিটাল রসিদ লিংক: ${shortUrl}। জাযাকাল্লাহু খাইরান।`;
+        } else if (documentType === 'EXPENSE_VOUCHER') {
+          defaultMsg = `${mosqueTitle}: জনাব ${donorOrPayeeName}, ভাউচার নং ${voucherNumber || token} এর বিপরীতে ৳ ${amount.toLocaleString('en-IN')} প্রদান সম্পন্ন হয়েছে। ভাউচার লিংক: ${shortUrl}`;
+        } else {
+          defaultMsg = `${mosqueTitle}: মুহতারাম মুসল্লি, মসজিদ কমপ্লেক্সের জরুরি বিজ্ঞপ্তি: ${shortUrl} - ধন্যবাদ।`;
+        }
+
+        setMessageText(defaultMsg);
+      };
+
+      resolveTokenAndMessage();
     }
-  }, [isOpen, recipientPhone, donorOrPayeeName, amount, voucherNumber, documentType, mosque]);
+  }, [isOpen, recipientPhone, donorOrPayeeName, amount, voucherNumber, documentType, documentId, mosque]);
 
   if (!isOpen) return null;
 

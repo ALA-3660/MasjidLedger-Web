@@ -203,9 +203,6 @@ export const MusalliDonorManagementView: React.FC<MusalliDonorManagementViewProp
                 <h1 className="text-xl md:text-2xl font-bold text-slate-900 font-siliguri tracking-tight">
                   {isBn ? '👥 মুসল্লি ও দাতা ডেটাবেস' : '👥 Musalli & Donor Database'}
                 </h1>
-                <span className="bg-emerald-100 text-emerald-800 text-xs px-2.5 py-0.5 rounded-full font-baloo font-bold">
-                  v2.6 Foundation
-                </span>
               </div>
               <p className="text-xs md:text-sm text-slate-500 font-tiro mt-1">
                 {isBn

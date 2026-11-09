@@ -3122,14 +3122,38 @@ export const CommitteeView: React.FC<CommitteeViewProps> = ({
               </div>
 
               {/* Signature Section */}
-              <div className="pt-16 grid grid-cols-2 gap-8 text-center text-xs font-siliguri text-slate-800 print:pt-20">
-                <div className="space-y-2">
-                  <div className="border-t border-slate-400 w-48 mx-auto pt-1 font-bold">সভাপতি</div>
-                  <div className="text-slate-500 text-[11px]">{mosque?.name || 'মসজিদ কমিটি'}</div>
+              <div className="pt-12 grid grid-cols-2 gap-8 text-center text-xs font-siliguri text-slate-800 break-inside-avoid">
+                <div className="flex flex-col items-center">
+                  <div className="h-12 flex items-end justify-center mb-1">
+                    {mosque?.secretarySignatureUrl ? (
+                      <img
+                        src={mosque.secretarySignatureUrl}
+                        alt="Secretary Signature"
+                        referrerPolicy="no-referrer"
+                        className="max-h-12 object-contain mx-auto"
+                      />
+                    ) : null}
+                  </div>
+                  <div className="border-t border-slate-700 w-48 mx-auto pt-1 font-bold text-slate-900">
+                    সাধারণ সম্পাদক / মোতাওয়াল্লী
+                  </div>
+                  <div className="text-slate-500 text-[10px]">স্বাক্ষর ও সীল</div>
                 </div>
-                <div className="space-y-2">
-                  <div className="border-t border-slate-400 w-48 mx-auto pt-1 font-bold">সাধারণ সম্পাদক</div>
-                  <div className="text-slate-500 text-[11px]">{mosque?.name || 'মসজিদ কমিটি'}</div>
+                <div className="flex flex-col items-center">
+                  <div className="h-12 flex items-end justify-center mb-1">
+                    {mosque?.presidentSignatureUrl ? (
+                      <img
+                        src={mosque.presidentSignatureUrl}
+                        alt="President Signature"
+                        referrerPolicy="no-referrer"
+                        className="max-h-12 object-contain mx-auto"
+                      />
+                    ) : null}
+                  </div>
+                  <div className="border-t border-slate-700 w-48 mx-auto pt-1 font-bold text-slate-900">
+                    সভাপতি
+                  </div>
+                  <div className="text-slate-500 text-[10px]">স্বাক্ষর ও সীল</div>
                 </div>
               </div>
             </div>

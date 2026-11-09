@@ -200,10 +200,22 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
   const [letterheadBodyMode, setLetterheadBodyMode] = useState<LetterheadBodyMode>('blank');
   const [letterheadZoom, setLetterheadZoom] = useState<number>(100);
   const [showLetterheadSigImages, setShowLetterheadSigImages] = useState<boolean>(true);
+  const lastSyncedMosqueKeyRef = useRef<string>('');
 
-  // Sync with currentMosque baseline
+  // Sync with currentMosque baseline only when mosque ID or server-side timestamp/assets change
   useEffect(() => {
     if (currentMosque) {
+      const syncKey = [
+        currentMosque.id,
+        currentMosque.updatedAt || '',
+        currentMosque.logoUrl || '',
+        (currentMosque.presidentSignatureUrl || '').length,
+        (currentMosque.secretarySignatureUrl || '').length,
+      ].join('|');
+      if (lastSyncedMosqueKeyRef.current === syncKey) {
+        return;
+      }
+      lastSyncedMosqueKeyRef.current = syncKey;
       setFormData({
         name: currentMosque.name || '',
         nameBn: currentMosque.nameBn || '',
@@ -481,7 +493,7 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+    if (!['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(file.type.toLowerCase())) {
       setErrorMsg('শুধুমাত্র PNG, JPEG বা WebP ইমেজ ফরম্যাট অনুমোদিত।');
       return;
     }
@@ -492,38 +504,87 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
     }
 
     setLogoUploading(true);
+    setErrorMsg('');
+
+    const compressLogoIfNeeded = (dataUrl: string, mimeType: string): Promise<{ base64Data: string; mimeType: string }> => {
+      return new Promise((resolve) => {
+        const rawBase64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+        if (rawBase64.length < 60000) {
+          resolve({ base64Data: rawBase64, mimeType });
+          return;
+        }
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const maxDim = 384;
+            let width = img.width || maxDim;
+            let height = img.height || maxDim;
+            if (width > maxDim || height > maxDim) {
+              if (width > height) {
+                height = Math.round((height * maxDim) / width);
+                width = maxDim;
+              } else {
+                width = Math.round((width * maxDim) / height);
+                height = maxDim;
+              }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, width, height);
+              const outMime = mimeType === 'image/png' ? 'image/png' : 'image/webp';
+              const compressedUrl = canvas.toDataURL(outMime, 0.86);
+              const compressedB64 = compressedUrl.split(',')[1] || rawBase64;
+              resolve({ base64Data: compressedB64, mimeType: outMime });
+              return;
+            }
+          } catch (_) {}
+          resolve({ base64Data: rawBase64, mimeType });
+        };
+        img.onerror = () => resolve({ base64Data: rawBase64, mimeType });
+        img.src = dataUrl;
+      });
+    };
+
     const reader = new FileReader();
     reader.onload = async (evt) => {
-      const base64Data = (evt.target?.result as string).split(',')[1];
+      const fullDataUrl = (evt.target?.result as string) || '';
       try {
+        const { base64Data, mimeType: effectiveMime } = await compressLogoIfNeeded(fullDataUrl, file.type);
+
+        if (currentUser?.id && currentMosque?.id) {
+          api.setAuth(currentUser.id, currentMosque.id);
+        }
+
         const res = await fetch('/api/v1/mosques/current/branding/logo', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-user-id': currentUser?.id || '',
-            'x-mosque-id': currentMosque?.id || '',
-          },
+          headers: api.getAuthHeaders(currentUser?.id, currentMosque?.id),
           body: JSON.stringify({
             base64Data,
-            mimeType: file.type,
+            mimeType: effectiveMime,
             fileName: file.name,
           }),
         });
 
         const data = await res.json();
         if (data.success && data.data) {
+          setLogoError(false);
           setFormData(prev => ({
             ...prev,
             logoUrl: data.data.logoUrl,
             logoAssetId: data.data.logoAssetId,
             logoMetadata: data.data.logoMetadata,
           }));
-          await onSaveMosque({
-            logoUrl: data.data.logoUrl,
-            logoAssetId: data.data.logoAssetId,
-            logoMetadata: data.data.logoMetadata,
-          });
-          setSuccessMsg('মসজিদের অফিসিয়াল লোগো সফলভাবে আপলোড ও আপডেট করা হয়েছে।');
+          try {
+            await onSaveMosque({
+              logoUrl: data.data.logoUrl,
+              logoAssetId: data.data.logoAssetId,
+              logoMetadata: data.data.logoMetadata,
+            });
+          } catch (_) {}
+          setSuccessMsg('মসজিদের অফিসিয়াল লোগো সফলভাবে আপলোড ও স্থায়ীভাবে সংরক্ষিত হয়েছে।');
         } else {
           setErrorMsg(data.error?.message || 'লোগো আপলোড ব্যর্থ হয়েছে।');
         }
@@ -539,30 +600,33 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
   const handleDriveImport = async () => {
     if (!driveImportUrl.trim()) return;
     setDriveImporting(true);
+    setErrorMsg('');
     try {
+      if (currentUser?.id && currentMosque?.id) {
+        api.setAuth(currentUser.id, currentMosque.id);
+      }
       const res = await fetch('/api/v1/mosques/current/branding/import-drive', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': currentUser?.id || '',
-          'x-mosque-id': currentMosque?.id || '',
-        },
+        headers: api.getAuthHeaders(currentUser?.id, currentMosque?.id),
         body: JSON.stringify({ driveUrl: driveImportUrl.trim() }),
       });
       const data = await res.json();
       if (data.success && data.data) {
+        setLogoError(false);
         setFormData(prev => ({
           ...prev,
           logoUrl: data.data.logoUrl,
           logoAssetId: data.data.logoAssetId,
           logoMetadata: data.data.logoMetadata,
         }));
-        await onSaveMosque({
-          logoUrl: data.data.logoUrl,
-          logoAssetId: data.data.logoAssetId,
-          logoMetadata: data.data.logoMetadata,
-        });
-        setSuccessMsg('Google Drive থেকে অফিসিয়াল লোগো সফলভাবে ইমপোর্ট করা হয়েছে।');
+        try {
+          await onSaveMosque({
+            logoUrl: data.data.logoUrl,
+            logoAssetId: data.data.logoAssetId,
+            logoMetadata: data.data.logoMetadata,
+          });
+        } catch (_) {}
+        setSuccessMsg('Google Drive থেকে অফিসিয়াল লোগো সফলভাবে ইমপোর্ট ও সংরক্ষিত হয়েছে।');
         setDriveImportUrl('');
       } else {
         setErrorMsg(data.error?.message || 'Google Drive থেকে লোগো আনতে ব্যর্থ হয়েছে।');
@@ -584,11 +648,18 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
       onConfirm: async () => {
         setConfirmDialog(null);
         try {
+          try {
+            await fetch('/api/v1/mosques/current/branding/logo', {
+              method: 'DELETE',
+              headers: api.getAuthHeaders(currentUser?.id, currentMosque?.id),
+            });
+          } catch (_) {}
           await onSaveMosque({
             logoUrl: '',
             logoAssetId: undefined,
             logoMetadata: undefined,
-          });
+            _explicitRemoveLogo: true,
+          } as any);
           setFormData(prev => ({
             ...prev,
             logoUrl: '',
@@ -603,23 +674,76 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
     });
   };
 
+  const compressSignatureDataUrl = (dataUrl: string, mimeType: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const maxW = 480;
+          const maxH = 200;
+          let width = img.width || maxW;
+          let height = img.height || maxH;
+          if (width > maxW || height > maxH) {
+            const ratio = Math.min(maxW / width, maxH / height);
+            width = Math.max(1, Math.round(width * ratio));
+            height = Math.max(1, Math.round(height * ratio));
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const outMime = mimeType === 'image/png' ? 'image/png' : 'image/webp';
+            resolve(canvas.toDataURL(outMime, 0.85));
+            return;
+          }
+        } catch (_) {}
+        resolve(dataUrl);
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  };
+
   const handleSignatureUpload = (type: 'president' | 'secretary', e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (evt) => {
-      const dataUrl = evt.target?.result as string;
-      if (dataUrl) {
-        if (type === 'president') {
-          handleInputChange('presidentSignatureUrl', dataUrl);
-        } else {
-          handleInputChange('secretarySignatureUrl', dataUrl);
+    reader.onload = async (evt) => {
+      const rawDataUrl = evt.target?.result as string;
+      if (rawDataUrl) {
+        const compressedDataUrl = await compressSignatureDataUrl(rawDataUrl, file.type || 'image/png');
+        const fieldName = type === 'president' ? 'presidentSignatureUrl' : 'secretarySignatureUrl';
+        setFormData(prev => ({ ...prev, [fieldName]: compressedDataUrl }));
+        try {
+          await onSaveMosque({
+            [fieldName]: compressedDataUrl,
+            letterheadSettings: formData.letterheadSettings,
+          });
+          setSuccessMsg(`${type === 'president' ? 'সভাপতির' : 'সাধারণ সম্পাদকের'} স্বাক্ষর সফলভাবে আপলোড ও স্থায়ীভাবে সংরক্ষিত হয়েছে।`);
+        } catch (_) {
+          setSuccessMsg(`${type === 'president' ? 'সভাপতি' : 'সাধারণ সম্পাদক'} স্বাক্ষর সংযুক্ত হয়েছে। সংরক্ষণ করুন।`);
         }
-        setSuccessMsg(`${type === 'president' ? 'সভাপতি' : 'সাধারণ সম্পাদক'} স্বাক্ষর সংযুক্ত হয়েছে। সংরক্ষণ করুন।`);
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleRemoveSignature = async (type: 'president' | 'secretary') => {
+    const fieldName = type === 'president' ? 'presidentSignatureUrl' : 'secretarySignatureUrl';
+    const flagName = type === 'president' ? '_explicitRemovePresidentSig' : '_explicitRemoveSecretarySig';
+    setFormData(prev => ({ ...prev, [fieldName]: '' }));
+    try {
+      await onSaveMosque({
+        [fieldName]: '',
+        [flagName]: true,
+      } as any);
+      setSuccessMsg(`${type === 'president' ? 'সভাপতির' : 'সাধারণ সম্পাদকের'} স্বাক্ষর মুছে ফেলা হয়েছে।`);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'স্বাক্ষর মোছা সম্ভব হয়নি।');
+    }
   };
 
   // Sidebar Menu Items Definition (Strict 12 Options)
@@ -1408,6 +1532,29 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
                     </button>
                   </div>
                 </div>
+
+                {canEdit && (
+                  <div className="pt-4 border-t border-slate-200 flex items-center justify-end">
+                    <button
+                      type="button"
+                      disabled={isSaving}
+                      onClick={() => handleSave()}
+                      className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-md flex items-center space-x-2 transition-all cursor-pointer active:scale-95"
+                    >
+                      {isSaving ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>সংরক্ষণ হচ্ছে...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-4 h-4" />
+                          <span>লোগো ও ব্র্যান্ডিং কনফিগারেশন সংরক্ষণ</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1976,7 +2123,7 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
                       <button
                         type="button"
                         disabled={!canEdit}
-                        onClick={() => handleInputChange('presidentSignatureUrl', '')}
+                        onClick={() => handleRemoveSignature('president')}
                         className="px-3 py-1.5 bg-rose-50 text-rose-700 rounded-lg text-xs font-semibold cursor-pointer"
                       >
                         মুছে ফেলুন
@@ -2073,7 +2220,7 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
                       <button
                         type="button"
                         disabled={!canEdit}
-                        onClick={() => handleInputChange('secretarySignatureUrl', '')}
+                        onClick={() => handleRemoveSignature('secretary')}
                         className="px-3 py-1.5 bg-rose-50 text-rose-700 rounded-lg text-xs font-semibold cursor-pointer"
                       >
                         মুছে ফেলুন
@@ -2124,6 +2271,29 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
                   </div>
                 </div>
               </div>
+
+              {canEdit && (
+                <div className="pt-2 flex items-center justify-end">
+                  <button
+                    type="button"
+                    disabled={isSaving}
+                    onClick={() => handleSave()}
+                    className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-md flex items-center space-x-2 transition-all cursor-pointer active:scale-95"
+                  >
+                    {isSaving ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>সংরক্ষণ হচ্ছে...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4" />
+                        <span>অনুমোদিত স্বাক্ষর ও নাম-পদবি সংরক্ষণ</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

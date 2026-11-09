@@ -269,6 +269,190 @@ export class JsonMosqueIdentityReadOnlyRepository implements IMosqueIdentityRead
 /**
  * Read-Only Account Head Repository implementation backed by in-memory JSON dataset (Phase 1B.9).
  */
+function ensureMosqueDefaultAccountHeads(dataSource: JsonDataSourceContract, mosqueId: string): void {
+  if (dataSource !== db || !mosqueId) return;
+  if (!dataSource.accountHeads) dataSource.accountHeads = [];
+  const existing = dataSource.accountHeads.filter((h) => h.mosqueId === mosqueId);
+
+  const prefix = mosqueId === 'mosque-001' ? 'head' : `head-${mosqueId}`;
+  const defaults: AccountHead[] = [
+    {
+      id: `${prefix}-inc-01`,
+      mosqueId,
+      code: 'INC-100',
+      nameBn: 'দান ও অনুদান (Donation)',
+      nameEn: 'Donations & Grants',
+      type: 'INCOME',
+      parentId: null,
+      isSystem: true,
+      isActive: true,
+    },
+    {
+      id: `${prefix}-inc-01-1`,
+      mosqueId,
+      code: 'INC-101',
+      nameBn: 'জুমার সাধারণ দান (Friday Collection)',
+      nameEn: 'Friday General Donation',
+      type: 'INCOME',
+      parentId: `${prefix}-inc-01`,
+      isActive: true,
+    },
+    {
+      id: `${prefix}-inc-01-2`,
+      mosqueId,
+      code: 'INC-102',
+      nameBn: 'স্থায়ী দানবাক্স প্রাপ্তি (Donation Box)',
+      nameEn: 'Donation Box Collections',
+      type: 'INCOME',
+      parentId: `${prefix}-inc-01`,
+      isActive: true,
+    },
+    {
+      id: `${prefix}-inc-01-3`,
+      mosqueId,
+      code: 'INC-103',
+      nameBn: 'মাসিক চাঁদা ও সদস্য ফি (Monthly Subscription)',
+      nameEn: 'Monthly Subscription',
+      type: 'INCOME',
+      parentId: `${prefix}-inc-01`,
+      isActive: true,
+    },
+    {
+      id: `${prefix}-inc-01-4`,
+      mosqueId,
+      code: 'INC-104',
+      nameBn: 'মসজিদ উন্নয়ন ও নির্মাণ তহবিল (Construction Fund)',
+      nameEn: 'Mosque Construction Fund',
+      type: 'INCOME',
+      parentId: `${prefix}-inc-01`,
+      isActive: true,
+    },
+    {
+      id: `${prefix}-inc-02`,
+      mosqueId,
+      code: 'INC-200',
+      nameBn: 'ওয়াকফ ও দোকান ভাড়া আয় (Waqf & Rent)',
+      nameEn: 'Waqf & Rental Income',
+      type: 'INCOME',
+      parentId: null,
+      isSystem: true,
+      isActive: true,
+    },
+    {
+      id: `${prefix}-inc-02-1`,
+      mosqueId,
+      code: 'INC-201',
+      nameBn: 'মসজিদ মার্কেট দোকান ভাড়া (Shop Rent)',
+      nameEn: 'Mosque Shop Rent',
+      type: 'INCOME',
+      parentId: `${prefix}-inc-02`,
+      isActive: true,
+    },
+    {
+      id: `${prefix}-exp-01`,
+      mosqueId,
+      code: 'EXP-100',
+      nameBn: 'ইমাম ও স্টাফ বেতন-ভাতা (Staff Salary)',
+      nameEn: 'Staff Salary & Allowance',
+      type: 'EXPENSE',
+      parentId: null,
+      isSystem: true,
+      isActive: true,
+    },
+    {
+      id: `${prefix}-exp-01-1`,
+      mosqueId,
+      code: 'EXP-101',
+      nameBn: 'সম্মানিত খতীব ও ইমামের হাদিয়া/বেতন',
+      nameEn: 'Imam & Khatib Honorarium',
+      type: 'EXPENSE',
+      parentId: `${prefix}-exp-01`,
+      isActive: true,
+    },
+    {
+      id: `${prefix}-exp-01-2`,
+      mosqueId,
+      code: 'EXP-102',
+      nameBn: 'মুয়াজ্জিন ও খাদেমের বেতন',
+      nameEn: 'Muezzin & Khadem Salary',
+      type: 'EXPENSE',
+      parentId: `${prefix}-exp-01`,
+      isActive: true,
+    },
+    {
+      id: `${prefix}-exp-02`,
+      mosqueId,
+      code: 'EXP-200',
+      nameBn: 'বিদ্যুৎ, পানি ও গ্যাস বিল (Utilities)',
+      nameEn: 'Utility Bills',
+      type: 'EXPENSE',
+      parentId: null,
+      isSystem: true,
+      isActive: true,
+    },
+    {
+      id: `${prefix}-exp-02-1`,
+      mosqueId,
+      code: 'EXP-201',
+      nameBn: 'মসজিদ ও এসি বিদ্যুৎ বিল',
+      nameEn: 'Electricity Bill',
+      type: 'EXPENSE',
+      parentId: `${prefix}-exp-02`,
+      isActive: true,
+    },
+    {
+      id: `${prefix}-exp-02-2`,
+      mosqueId,
+      code: 'EXP-202',
+      nameBn: 'ওয়াসা ও পানির পাম্প খরচ',
+      nameEn: 'Water & Pump Maintenance',
+      type: 'EXPENSE',
+      parentId: `${prefix}-exp-02`,
+      isActive: true,
+    },
+    {
+      id: `${prefix}-exp-03`,
+      mosqueId,
+      code: 'EXP-300',
+      nameBn: 'মেরামত, রক্ষণাবেক্ষণ ও সংস্কার (Maintenance)',
+      nameEn: 'Repair & Maintenance',
+      type: 'EXPENSE',
+      parentId: null,
+      isSystem: true,
+      isActive: true,
+    },
+    {
+      id: `${prefix}-exp-03-1`,
+      mosqueId,
+      code: 'EXP-301',
+      nameBn: 'সাউন্ড সিস্টেম ও এসি সার্ভিসিং',
+      nameEn: 'Sound & AC Servicing',
+      type: 'EXPENSE',
+      parentId: `${prefix}-exp-03`,
+      isActive: true,
+    },
+  ];
+
+  let added = false;
+  for (const def of defaults) {
+    const alreadyHasById = existing.some((h) => h.id === def.id);
+    if (!alreadyHasById) {
+      const codeTaken = dataSource.accountHeads.some(
+        (h) => h.mosqueId === mosqueId && h.code === def.code
+      );
+      const headToInsert: AccountHead = codeTaken
+        ? { ...def, code: `SYS-${def.code}` }
+        : def;
+      dataSource.accountHeads.push(headToInsert);
+      existing.push(headToInsert);
+      added = true;
+    }
+  }
+  if (added && typeof dataSource.save === 'function') {
+    dataSource.save();
+  }
+}
+
 export class JsonAccountHeadReadOnlyRepository implements Pick<IAccountHeadRepository, 'list' | 'findById'> {
   constructor(
     protected dataSource: JsonDataSourceContract = db,
@@ -278,6 +462,7 @@ export class JsonAccountHeadReadOnlyRepository implements Pick<IAccountHeadRepos
   async list(options: DALOptions): Promise<AccountHead[]> {
     const activeOptions = options || this.defaultOptions;
     const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    ensureMosqueDefaultAccountHeads(this.dataSource, mosqueId);
     const heads = (this.dataSource.accountHeads || []).filter((h) => h.mosqueId === mosqueId);
     return heads.map((h) => ({ ...h }));
   }
@@ -285,6 +470,7 @@ export class JsonAccountHeadReadOnlyRepository implements Pick<IAccountHeadRepos
   async findById(options: DALOptions, headId: string): Promise<AccountHead | null> {
     const activeOptions = options || this.defaultOptions;
     const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    ensureMosqueDefaultAccountHeads(this.dataSource, mosqueId);
     const item = (this.dataSource.accountHeads || []).find(
       (h) => h.id === headId && h.mosqueId === mosqueId
     );
@@ -1192,19 +1378,24 @@ export class JsonIncomeParityRepository implements IIncomeRepository {
       }
     }
 
+    ensureMosqueDefaultAccountHeads(this.dataSource, mosqueId);
     const heads = this.dataSource.accountHeads || [];
-    if (updates.mainHeadId !== undefined) {
+    if (updates.mainHeadId) {
       const mh = heads.find(
-        (h) => h.id === updates.mainHeadId && (h.mosqueId === mosqueId || !h.mosqueId)
+        (h) =>
+          h.id === updates.mainHeadId &&
+          (h.mosqueId === mosqueId || !h.mosqueId || (this.dataSource === db && h.id.startsWith('head-')))
       );
       if (!mh) {
         throw new DalDomainError('HEAD_NOT_FOUND', 'প্রধান আয় খাত পাওয়া যায়নি।');
       }
     }
 
-    if (updates.subHeadId !== undefined) {
+    if (updates.subHeadId) {
       const sh = heads.find(
-        (h) => h.id === updates.subHeadId && (h.mosqueId === mosqueId || !h.mosqueId)
+        (h) =>
+          h.id === updates.subHeadId &&
+          (h.mosqueId === mosqueId || !h.mosqueId || (this.dataSource === db && h.id.startsWith('head-')))
       );
       if (!sh) {
         throw new DalDomainError('SUBHEAD_NOT_FOUND', 'উপ-আয় খাত পাওয়া যায়নি।');
@@ -1232,7 +1423,7 @@ export class JsonIncomeParityRepository implements IIncomeRepository {
         throw new DalDomainError('ALREADY_CANCELLED', 'বাতিলকৃত আয় ভাউচার সংশোধন করা সম্ভব নয়।');
       }
 
-      const oldAmount = item.amount;
+      const oldAmount = Number(item.amount) || 0;
       const oldAccountId = item.accountId;
 
       if (updates.amount !== undefined || updates.accountId !== undefined) {
@@ -1273,20 +1464,36 @@ export class JsonIncomeParityRepository implements IIncomeRepository {
         item.amount = targetAmount;
       }
 
-      if (updates.mainHeadId !== undefined) {
+      if (updates.mainHeadId) {
         item.mainHeadId = updates.mainHeadId;
         const mh = (this.dataSource.accountHeads || []).find(
-          (h) => h.id === updates.mainHeadId && (h.mosqueId === mosqueId || !h.mosqueId)
+          (h) =>
+            h.id === updates.mainHeadId &&
+            (h.mosqueId === mosqueId || !h.mosqueId || (this.dataSource === db && h.id.startsWith('head-')))
         );
         if (mh) item.mainHeadNameBn = mh.nameBn;
       }
       if (updates.subHeadId !== undefined) {
-        item.subHeadId = updates.subHeadId;
-        const sh = (this.dataSource.accountHeads || []).find(
-          (h) => h.id === updates.subHeadId && (h.mosqueId === mosqueId || !h.mosqueId)
-        );
-        if (sh) item.subHeadNameBn = sh.nameBn;
+        if (!updates.subHeadId) {
+          item.subHeadId = undefined;
+          item.subHeadNameBn = undefined;
+        } else {
+          item.subHeadId = updates.subHeadId;
+          const sh = (this.dataSource.accountHeads || []).find(
+            (h) =>
+              h.id === updates.subHeadId &&
+              (h.mosqueId === mosqueId || !h.mosqueId || (this.dataSource === db && h.id.startsWith('head-')))
+          );
+          if (sh) item.subHeadNameBn = sh.nameBn;
+        }
+      } else if (updates.mainHeadId && item.subHeadId) {
+        const currentSh = (this.dataSource.accountHeads || []).find((h) => h.id === item.subHeadId);
+        if (currentSh && currentSh.parentId !== updates.mainHeadId) {
+          item.subHeadId = undefined;
+          item.subHeadNameBn = undefined;
+        }
       }
+      if (updates.paymentMethod !== undefined) item.paymentMethod = updates.paymentMethod;
       if (updates.donorName !== undefined) item.donorName = updates.donorName;
       if (updates.donorPhone !== undefined) item.donorPhone = updates.donorPhone;
       if (updates.reference !== undefined) item.reference = updates.reference;
@@ -1294,6 +1501,63 @@ export class JsonIncomeParityRepository implements IIncomeRepository {
       if (updates.date !== undefined) item.date = updates.date;
       if (updates.denominationData !== undefined) item.denominationData = updates.denominationData;
       item.updatedAt = new Date().toISOString();
+
+      // Sync linked Donation record if any
+      const linkedDonation = (this.dataSource.donations || []).find(
+        (d: any) =>
+          d.mosqueId === mosqueId &&
+          (d.incomeEntryId === item.id || item.reference === `Receipt: ${d.receiptNumber}`)
+      );
+      if (linkedDonation) {
+        linkedDonation.amount = item.amount;
+        if (updates.donorName !== undefined && item.donorName) linkedDonation.donorName = item.donorName;
+        if (updates.donorPhone !== undefined) linkedDonation.donorPhone = item.donorPhone;
+        if (updates.date !== undefined && item.date) linkedDonation.date = item.date;
+        if (updates.accountId !== undefined) {
+          linkedDonation.accountId = item.accountId;
+          linkedDonation.accountName = item.accountName;
+        }
+        if (updates.paymentMethod !== undefined && item.paymentMethod) {
+          linkedDonation.paymentMethod = item.paymentMethod;
+        }
+        if (updates.description !== undefined) linkedDonation.description = item.description;
+      }
+
+      // Sync linked Donation Box Collection & Box totalCollected if any
+      const linkedBoxCol = (this.dataSource.donationBoxCollections || []).find(
+        (c: any) =>
+          c.mosqueId === mosqueId &&
+          (c.incomeVoucherNumber === item.voucherNumber ||
+            (c.depositReference &&
+              ((item.description || '').includes(c.depositReference) ||
+                (item.donorName || '').includes(c.depositReference))))
+      );
+      if (linkedBoxCol) {
+        linkedBoxCol.amount = item.amount;
+        if (updates.date !== undefined && item.date) linkedBoxCol.collectionDate = item.date;
+        if (updates.accountId !== undefined) {
+          linkedBoxCol.depositAccountId = item.accountId;
+          linkedBoxCol.depositAccountName = item.accountName;
+        }
+        if (oldAmount !== item.amount) {
+          const linkedBox = (this.dataSource.donationBoxes || []).find(
+            (b: any) =>
+              b.mosqueId === mosqueId &&
+              (b.id === linkedBoxCol.boxId || b.boxCode === linkedBoxCol.boxCode)
+          );
+          if (linkedBox) {
+            const boxCols = (this.dataSource.donationBoxCollections || []).filter(
+              (c: any) =>
+                c.mosqueId === mosqueId &&
+                (c.boxId === linkedBox.id || c.boxCode === linkedBox.boxCode)
+            );
+            linkedBox.totalCollected = boxCols.reduce(
+              (sum: number, c: any) => sum + (Number(c.amount) || 0),
+              0
+            );
+          }
+        }
+      }
 
       const actorName = resolveActorName(this.dataSource, activeOptions!);
       tx.logAudit(
@@ -1698,7 +1962,7 @@ export class JsonExpenseParityRepository implements IExpenseRepository {
     }
 
     const heads = this.dataSource.accountHeads || [];
-    if (updates.mainHeadId !== undefined) {
+    if (updates.mainHeadId) {
       const mh = heads.find(
         (h) => h.id === updates.mainHeadId && (h.mosqueId === mosqueId || !h.mosqueId)
       );
@@ -1707,7 +1971,7 @@ export class JsonExpenseParityRepository implements IExpenseRepository {
       }
     }
 
-    if (updates.subHeadId !== undefined) {
+    if (updates.subHeadId) {
       const sh = heads.find(
         (h) => h.id === updates.subHeadId && (h.mosqueId === mosqueId || !h.mosqueId)
       );
@@ -1737,7 +2001,7 @@ export class JsonExpenseParityRepository implements IExpenseRepository {
         throw new DalDomainError('ALREADY_CANCELLED', 'বাতিলকৃত ব্যয় ভাউচার সংশোধন করা সম্ভব নয়।');
       }
 
-      const oldAmount = item.amount;
+      const oldAmount = Number(item.amount) || 0;
       const oldAccountId = item.accountId;
 
       if (updates.amount !== undefined || updates.accountId !== undefined) {
@@ -1778,7 +2042,7 @@ export class JsonExpenseParityRepository implements IExpenseRepository {
         item.amount = targetAmount;
       }
 
-      if (updates.mainHeadId !== undefined) {
+      if (updates.mainHeadId) {
         item.mainHeadId = updates.mainHeadId;
         const mh = (this.dataSource.accountHeads || []).find(
           (h) => h.id === updates.mainHeadId && (h.mosqueId === mosqueId || !h.mosqueId)
@@ -1786,12 +2050,24 @@ export class JsonExpenseParityRepository implements IExpenseRepository {
         if (mh) item.mainHeadNameBn = mh.nameBn;
       }
       if (updates.subHeadId !== undefined) {
-        item.subHeadId = updates.subHeadId;
-        const sh = (this.dataSource.accountHeads || []).find(
-          (h) => h.id === updates.subHeadId && (h.mosqueId === mosqueId || !h.mosqueId)
-        );
-        if (sh) item.subHeadNameBn = sh.nameBn;
+        if (!updates.subHeadId) {
+          item.subHeadId = undefined;
+          item.subHeadNameBn = undefined;
+        } else {
+          item.subHeadId = updates.subHeadId;
+          const sh = (this.dataSource.accountHeads || []).find(
+            (h) => h.id === updates.subHeadId && (h.mosqueId === mosqueId || !h.mosqueId)
+          );
+          if (sh) item.subHeadNameBn = sh.nameBn;
+        }
+      } else if (updates.mainHeadId && item.subHeadId) {
+        const currentSh = (this.dataSource.accountHeads || []).find((h) => h.id === item.subHeadId);
+        if (currentSh && currentSh.parentId !== updates.mainHeadId) {
+          item.subHeadId = undefined;
+          item.subHeadNameBn = undefined;
+        }
       }
+      if (updates.paymentMethod !== undefined) item.paymentMethod = updates.paymentMethod;
       if (updates.payeeName !== undefined) item.payeeName = updates.payeeName;
       if (updates.payeePhone !== undefined) item.payeePhone = updates.payeePhone;
       if (updates.reference !== undefined) item.reference = updates.reference;
@@ -2638,8 +2914,25 @@ export class JsonDonationBoxParityRepository implements IDonationBoxRepository {
   async listBoxesAndCollections(options: DALOptions): Promise<{ boxes: any[]; collections: any[] }> {
     const activeOptions = options || this.defaultOptions;
     const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
-    const boxes = (this.dataSource.donationBoxes || []).filter((b: any) => b.mosqueId === mosqueId);
     const collections = (this.dataSource.donationBoxCollections || []).filter((c: any) => c.mosqueId === mosqueId);
+    const rawBoxes = (this.dataSource.donationBoxes || []).filter((b: any) => b.mosqueId === mosqueId);
+
+    const boxes = rawBoxes.map((box: any) => {
+      const boxColls = collections.filter((c: any) => c.boxId === box.id || c.boxCode === box.boxCode);
+      const sumCalculated = boxColls.reduce((s: number, c: any) => s + (Number(c.amount) || 0), 0);
+      const effectiveTotal = Math.max(Number(box.totalCollected) || 0, sumCalculated);
+      const sortedDates = boxColls
+        .map((c: any) => c.collectionDate)
+        .filter(Boolean)
+        .sort((a: string, b: string) => b.localeCompare(a));
+      const latestDate = sortedDates[0] || box.lastCollectedDate || '2026-01-01';
+      return {
+        ...box,
+        totalCollected: effectiveTotal,
+        lastCollectedDate: latestDate,
+      };
+    });
+
     return { boxes, collections };
   }
 
@@ -2781,11 +3074,21 @@ export class JsonDonationBoxParityRepository implements IDonationBoxRepository {
     const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
     const actor = resolveActorMeta(this.dataSource, activeOptions);
 
-    const { boxId, amount, witnesses, countingTeam, notes, accountId, date, denominationData, _idempotencyKey } = payload;
+    const targetAccountId = payload.accountId || payload.depositAccountId;
+    const targetDate = payload.date || payload.collectionDate || new Date().toISOString().split('T')[0];
+    const { boxId, amount, witnesses, countingTeam, notes, denominationData, _idempotencyKey } = payload;
     const numAmount = Number(amount);
-    const box = (this.dataSource.donationBoxes || []).find((b: any) => b.id === boxId && b.mosqueId === mosqueId);
+
+    let box = (this.dataSource.donationBoxes || []).find(
+      (b: any) => (b.id === boxId || b.boxCode === boxId) && b.mosqueId === mosqueId
+    );
+    if (!box) {
+      box = (this.dataSource.donationBoxes || []).find((b: any) => b.id === boxId || b.boxCode === boxId);
+    }
+
     const account =
-      (this.dataSource.accounts || []).find((a: any) => a.id === accountId) ||
+      (this.dataSource.accounts || []).find((a: any) => a.id === targetAccountId && a.mosqueId === mosqueId) ||
+      (this.dataSource.accounts || []).find((a: any) => a.id === targetAccountId) ||
       (this.dataSource.accounts || []).find((a: any) => a.mosqueId === mosqueId) ||
       (this.dataSource.accounts || [])[0];
 
@@ -2797,7 +3100,7 @@ export class JsonDonationBoxParityRepository implements IDonationBoxRepository {
     const count = (this.dataSource.donationBoxCollections || []).filter((c: any) => c.mosqueId === mosqueId).length + 1;
     const collectionNumber = `BOX-COL-${year}-${String(count).padStart(5, '0')}`;
 
-    const colDate = date || new Date().toISOString().split('T')[0];
+    const colDate = targetDate;
     const colWitnesses = Array.isArray(witnesses) ? witnesses : (witnesses ? String(witnesses).split(',') : ['কমিটি সদস্যবৃন্দ']);
     const colCountingTeam = Array.isArray(countingTeam) ? countingTeam : (countingTeam ? String(countingTeam).split(',') : [actor.userName]);
 
@@ -2806,18 +3109,18 @@ export class JsonDonationBoxParityRepository implements IDonationBoxRepository {
     const collection: any = {
       id: `col-${Date.now()}`,
       mosqueId,
-      boxId: box?.id || 'box-01',
+      boxId: box?.id || boxId || 'box-01',
       boxCode: box?.boxCode || 'BOX-01',
       collectionDate: colDate,
       amount: numAmount,
       countingTeam: colCountingTeam,
       witnesses: colWitnesses,
-      depositAccountId: account.id,
-      depositAccountName: account.nameBn,
+      depositAccountId: account?.id || 'acc-cash-01',
+      depositAccountName: account?.nameBn || 'প্রধান ক্যাশ',
       depositReference: collectionNumber,
       incomeVoucherNumber: incVoucherNumber,
-      denominationData: denominationData || undefined,
-      notes,
+      denominationData: denominationData || null,
+      notes: notes || '',
       createdBy: actor.userId,
       createdByName: actor.userName,
       createdAt: new Date().toISOString()
@@ -2827,9 +3130,11 @@ export class JsonDonationBoxParityRepository implements IDonationBoxRepository {
     const responsePayload = await runWithDomainErrorUnwrap(this.dataSource, (tx) => {
       if (box) {
         box.lastCollectedDate = colDate;
-        box.totalCollected = (box.totalCollected || 0) + numAmount;
+        box.totalCollected = (Number(box.totalCollected) || 0) + numAmount;
       }
-      account.currentBalance += numAmount;
+      if (account) {
+        account.currentBalance = (Number(account.currentBalance) || 0) + numAmount;
+      }
 
       incEntry = {
         id: `inc-box-${Date.now()}`,
@@ -2842,11 +3147,11 @@ export class JsonDonationBoxParityRepository implements IDonationBoxRepository {
         subHeadNameBn: `দানবাক্স খোলা কালেকশন (${box?.boxCode || 'বাক্স'})`,
         amount: numAmount,
         paymentMethod: 'CASH' as const,
-        accountId: account.id,
-        accountName: account.nameBn,
+        accountId: account?.id || 'acc-cash-01',
+        accountName: account?.nameBn || 'প্রধান ক্যাশ',
         donorName: `দানবাক্স সংগ্রাহক (${collectionNumber})`,
         description: `দানবাক্স কালেকশন ভাউচার ${collectionNumber}`,
-        denominationData: denominationData || undefined,
+        denominationData: denominationData || null,
         createdBy: actor.userId,
         createdByName: actor.userName,
         status: 'APPROVED' as const,

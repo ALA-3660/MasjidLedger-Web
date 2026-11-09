@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, DollarSign, AlertCircle, AlertTriangle, CheckCircle, Wallet, Calendar, FileText } from 'lucide-react';
 import { Staff, StaffPayment, FinancialAccount } from '../types';
 import { Language, translations, formatCurrency } from '../lib/i18n';
@@ -46,31 +46,45 @@ export const StaffPaymentModal: React.FC<StaffPaymentModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isInitializedRef = useRef<boolean>(false);
+
   // Initialize form state
   useEffect(() => {
-    if (isOpen) {
-      const defaultStaff = (initialStaffId && staffList.find((s) => s.id === initialStaffId)) ||
-        (activeStaff[0] || staffList[0]);
-
-      const now = new Date();
-      const currentYearMonth = initialMonth || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-      const todayStr = now.toISOString().split('T')[0];
-
-      if (defaultStaff) {
-        setSelectedStaffId(defaultStaff.id);
-        setBasicSalary(defaultStaff.monthlySalary || 0);
-      }
-      setPaymentMonth(currentYearMonth);
-      setPaymentDate(todayStr);
-      setBonus(0);
-      setOtherAllowance(0);
-      setDeduction(0);
-      setAccountId(accounts[0]?.id || '');
-      setPaymentMethod('CASH');
-      setNotes('');
+    if (!isOpen) {
+      isInitializedRef.current = false;
       setError(null);
+      return;
     }
-  }, [isOpen, initialStaffId, initialMonth, staffList, accounts]);
+
+    if (isInitializedRef.current) {
+      if (!accountId && accounts.length > 0) {
+        setAccountId(accounts[0]?.id || '');
+      }
+      return;
+    }
+
+    isInitializedRef.current = true;
+    const defaultStaff = (initialStaffId && staffList.find((s) => s.id === initialStaffId)) ||
+      (activeStaff[0] || staffList[0]);
+
+    const now = new Date();
+    const currentYearMonth = initialMonth || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const todayStr = now.toISOString().split('T')[0];
+
+    if (defaultStaff) {
+      setSelectedStaffId(defaultStaff.id);
+      setBasicSalary(defaultStaff.monthlySalary || 0);
+    }
+    setPaymentMonth(currentYearMonth);
+    setPaymentDate(todayStr);
+    setBonus(0);
+    setOtherAllowance(0);
+    setDeduction(0);
+    setAccountId(accounts[0]?.id || '');
+    setPaymentMethod('CASH');
+    setNotes('');
+    setError(null);
+  }, [isOpen, initialStaffId, initialMonth]);
 
   // When selected staff changes, auto-fill basic salary
   const handleStaffChange = (staffId: string) => {

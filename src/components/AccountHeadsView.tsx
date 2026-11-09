@@ -26,6 +26,7 @@ import {
 import { AccountHead, Mosque, IncomeEntry, ExpenseEntry } from '../types';
 import { Language, translations } from '../lib/i18n';
 import { FinancialSecondarySidebar, SecondarySidebarItem } from './FinancialSecondarySidebar';
+import { OfficialReportSignatures } from './common/OfficialReportSignatures';
 
 interface AccountHeadsViewProps {
   accountHeads: AccountHead[];
@@ -1356,6 +1357,16 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
                   </tbody>
                 </table>
               </div>
+
+              {/* Official Committee Approval Signatures */}
+              <OfficialReportSignatures
+                currentMosque={currentMosque}
+                preparerTitle="হিসাবরক্ষক / প্রস্তুতকারী"
+                secretaryTitle="সাধারণ সম্পাদক / মোতাওয়াল্লী"
+                presidentTitle="সভাপতি"
+                showAuditFooter={true}
+                auditFooterText="মসজিদ লেজার • অনুমোদিত চার্ট অব অ্যাকাউন্টস (COA) খতিয়ান"
+              />
             </div>
           </div>
         </div>

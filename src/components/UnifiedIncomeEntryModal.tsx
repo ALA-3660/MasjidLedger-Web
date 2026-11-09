@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   X,
   CheckCircle2,
@@ -247,9 +247,12 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
     }
   }, [isOpen]);
 
+  const isInitializedRef = useRef<boolean>(false);
+
   // Sync initial setup when modal opens
   useEffect(() => {
     if (!isOpen) {
+      isInitializedRef.current = false;
       setErrorMessage('');
       setDenominationData(null);
       setSavedDonationForReceipt(null);
@@ -257,6 +260,18 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
       return;
     }
 
+    // If modal is already open and initialized, do NOT reset user-typed inputs!
+    if (isInitializedRef.current) {
+      // Safe non-destructive fallback: only populate account if none is selected yet
+      if (!accountId && accounts.length > 0) {
+        const defaultAcc = accounts.find((a) => a.type === 'CASH') || accounts[0];
+        if (defaultAcc) setAccountId(defaultAcc.id);
+      }
+      return;
+    }
+
+    // First time opening the modal: perform initial setup
+    isInitializedRef.current = true;
     setIncomeType(initialType);
     setErrorMessage('');
     setDenominationData(null);
@@ -355,7 +370,7 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
       setDescription('');
       setReference('');
     }
-  }, [isOpen, initialType, initialPersonId, initialPlanId, initialCollection, initialBoxId, initialPropertyId, initialTenantId, accounts, donationBoxes, properties, plans, accountHeads]);
+  }, [isOpen, initialType, initialPersonId, initialPlanId, initialCollection, initialBoxId, initialPropertyId, initialTenantId]);
 
   // Selected Property details & Active Tenants
   const selectedProperty = useMemo(() => {
@@ -439,6 +454,8 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
     setPersonSearchQuery('');
 
     if (person.mobile) setDonorPhone(person.mobile);
+    if (person.address) setDonorAddress(person.address);
+    if (person.fullName) setManualDonorName(person.fullName);
 
     const activePlans = plans.filter((p) => p.personId === person.id && p.status === 'ACTIVE');
     if (activePlans.length > 0) {
@@ -474,13 +491,13 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
     if (!personSearchQuery.trim()) return persons.slice(0, 8);
     const q = personSearchQuery.toLowerCase().trim();
     return persons
-      .filter(
-        (p) =>
-          p.name.toLowerCase().includes(q) ||
-          (p.personCode && p.personCode.toLowerCase().includes(q)) ||
-          (p.mobile && p.mobile.includes(q)) ||
-          (p.occupation && p.occupation.toLowerCase().includes(q))
-      )
+      .filter((p) => {
+        const name = (p.fullName || (p as any).name || '').toLowerCase();
+        const code = (p.personCode || '').toLowerCase();
+        const mobile = p.mobile || '';
+        const occ = (p.profession || p.occupation || '').toLowerCase();
+        return name.includes(q) || code.includes(q) || mobile.includes(q) || occ.includes(q);
+      })
       .slice(0, 10);
   }, [persons, personSearchQuery]);
 
@@ -686,9 +703,9 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
         } else if (donorMode === 'REGISTERED' && selectedPerson) {
           payload.isAnonymous = false;
           payload.personId = selectedPerson.id;
-          payload.donorName = selectedPerson.name;
+          payload.donorName = selectedPerson.fullName || (selectedPerson as any).name || 'নিবন্ধিত মুসল্লি';
           payload.donorPhone = donorPhone || selectedPerson.mobile || undefined;
-          payload.donorAddress = selectedPerson.address || undefined;
+          payload.donorAddress = donorAddress || selectedPerson.address || undefined;
           if (selectedPlanId) payload.donationPlanId = selectedPlanId;
           if (selectedPerson.familyId) payload.familyId = selectedPerson.familyId;
           if (selectedPerson.areaId) payload.areaId = selectedPerson.areaId;
@@ -1394,7 +1411,9 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
                                       className="w-full p-2.5 text-left hover:bg-blue-50/80 flex items-center justify-between text-xs transition-colors cursor-pointer"
                                     >
                                       <div>
-                                        <div className="font-bold text-slate-800 font-siliguri">{p.name}</div>
+                                        <div className="font-bold text-slate-800 font-siliguri">
+                                          {p.fullName || (p as any).name || 'নিবন্ধিত মুসল্লি'}
+                                        </div>
                                         <div className="text-[11px] text-slate-500 font-tiro flex items-center space-x-2">
                                           <span>কোড: {p.personCode || '-'}</span>
                                           {p.mobile && <span>• মোবা: {p.mobile}</span>}
@@ -1418,12 +1437,12 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
                           <div className="p-3.5 bg-blue-50/80 border border-blue-200 rounded-xl flex items-center justify-between">
                             <div className="flex items-center space-x-3">
                               <div className="w-10 h-10 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-sm font-siliguri">
-                                {selectedPerson.name.slice(0, 1)}
+                                {(selectedPerson.fullName || (selectedPerson as any).name || 'মু').slice(0, 1)}
                               </div>
                               <div>
                                 <div className="flex items-center space-x-2">
                                   <h4 className="font-bold text-slate-900 text-sm font-siliguri">
-                                    {selectedPerson.name}
+                                    {selectedPerson.fullName || (selectedPerson as any).name || 'নিবন্ধিত মুসল্লি'}
                                   </h4>
                                   <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-800 font-bold rounded-md font-mono">
                                     {selectedPerson.personCode || selectedPerson.id}
@@ -1436,11 +1455,11 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
                                       <span>{selectedPerson.mobile}</span>
                                     </span>
                                   )}
-                                  {personFamily && <span>• পরিবার: {personFamily.familyName}</span>}
+                                  {personFamily && <span>• পরিবার: {personFamily.name || (personFamily as any).familyName}</span>}
                                   {personArea && (
                                     <span className="flex items-center space-x-0.5">
                                       <MapPin className="w-3 h-3 text-slate-400" />
-                                      <span>{personArea.nameBn || personArea.nameEn}</span>
+                                      <span>{personArea.name || (personArea as any).nameBn || (personArea as any).nameEn}</span>
                                     </span>
                                   )}
                                 </div>

@@ -25,6 +25,7 @@ import { MosqueProperty, MosqueProfile, Mosque } from '../types';
 import { Language, formatCurrency, formatDate } from '../lib/i18n';
 import { PROPERTY_CATEGORIES, POSSESSION_STATUSES, PROPERTY_STATUSES } from './PropertyFormModal';
 import { printElement } from '../lib/printUtils';
+import { OfficialReportSignatures } from './common/OfficialReportSignatures';
 
 export type PropertyReportType =
   | 'PROPERTY_REGISTER'
@@ -942,26 +943,18 @@ export const PropertyReportsModal: React.FC<PropertyReportsModalProps> = ({
                 </div>
               )}
 
-              {/* Official Signatures Block - Print Safe */}
-              <div className="pt-12 grid grid-cols-3 gap-6 text-center text-xs text-slate-700">
-                <div>
-                  <div className="border-t border-slate-400 pt-2 font-bold">ওয়াকফ এস্টেট ম্যানেজার / হিসাবরক্ষক</div>
-                  <p className="text-[10px] text-slate-500 mt-0.5">প্রতিবেদন প্রস্তুতকারীর স্বাক্ষর</p>
-                </div>
-                <div>
-                  <div className="border-t border-slate-400 pt-2 font-bold">ওয়াকফ ও সম্পদ সাব-কমিটি আহ্বায়ক</div>
-                  <p className="text-[10px] text-slate-500 mt-0.5">যাচাই ও সুপারিশ</p>
-                </div>
-                <div>
-                  <div className="border-t border-slate-400 pt-2 font-bold">মোতাওয়াল্লি / সাধারণ সম্পাদক</div>
-                  <p className="text-[10px] text-slate-500 mt-0.5">চূড়ান্ত অনুমোদন ও এস্টেট সিল</p>
-                </div>
-              </div>
-
-              {/* System Footer Notice */}
-              <div className="mt-8 pt-3 border-t border-slate-200 text-center text-[10px] text-slate-400">
-                MasjidLedger ওয়াকফ সম্পত্তি ও এস্টেট অডিট সিস্টেম কর্তৃক স্বয়ংক্রিয়ভাবে প্রস্তুতকৃত অফিসিয়াল রেকর্ড। (Mosque Waqf Register & Estate Directorate)
-              </div>
+              {/* Official Committee Signatures Block */}
+              <OfficialReportSignatures
+                currentMosque={mosque as any}
+                preparerTitle="ওয়াকফ এস্টেট ম্যানেজার / হিসাবরক্ষক"
+                preparerSubtitle="প্রতিবেদন প্রস্তুতকারীর স্বাক্ষর"
+                secretaryTitle="মোতাওয়াল্লী / সাধারণ সম্পাদক"
+                secretarySubtitle="স্বাক্ষর ও সীল"
+                presidentTitle="সভাপতি"
+                presidentSubtitle="স্বাক্ষর ও সীল"
+                showAuditFooter={true}
+                auditFooterText="MasjidLedger ওয়াকফ সম্পত্তি ও এস্টেট অডিট সিস্টেম কর্তৃক স্বয়ংক্রিয়ভাবে প্রস্তুতকৃত অফিসিয়াল রেকর্ড"
+              />
 
             </div>
           </div>

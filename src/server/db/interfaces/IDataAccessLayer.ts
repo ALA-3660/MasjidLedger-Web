@@ -158,6 +158,7 @@ export interface UpdateIncomeInput {
   date?: string;
   denominationData?: any;
   accountId?: string;
+  paymentMethod?: any;
   mainHeadId?: string;
   subHeadId?: string;
 }
@@ -182,6 +183,7 @@ export interface UpdateExpenseInput {
   mainHeadId?: string;
   subHeadId?: string;
   accountId?: string;
+  paymentMethod?: any;
   payeeName?: string;
   payeePhone?: string;
   reference?: string;

@@ -54,7 +54,7 @@ export const SmsGatewayView: React.FC<SmsGatewayViewProps> = ({
   const [isSending, setIsSending] = useState<boolean>(false);
 
   // Settings State
-  const [provider, setProvider] = useState<string>('Greenweb SMS Gateway');
+  const [provider, setProvider] = useState<string>('Qolek SMS');
   const [apiKey, setApiKey] = useState<string>('gw_live_89a24d7f9');
   const [senderId, setSenderId] = useState<string>('MASJID');
   const [autoDonationSms, setAutoDonationSms] = useState<boolean>(true);
@@ -74,7 +74,7 @@ export const SmsGatewayView: React.FC<SmsGatewayViewProps> = ({
       ]);
       if (settingsRes) {
         setSettings(settingsRes);
-        setProvider(settingsRes.provider || 'Greenweb SMS Gateway');
+        setProvider(settingsRes.provider || 'Qolek SMS');
         setApiKey(settingsRes.apiKey || 'gw_live_89a24d7f9');
         setSenderId(settingsRes.senderId || 'MASJID');
         setAutoDonationSms(!!settingsRes.autoDonationSms);
@@ -535,8 +535,14 @@ export const SmsGatewayView: React.FC<SmsGatewayViewProps> = ({
                   onChange={(e) => setProvider(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 outline-hidden"
                 >
+                  <option value="Qolek SMS">Qolek SMS (মেয়াদ বিহীন / Lifetime Validity)</option>
+                  <option value="GIO SMS">GIO SMS (মেয়াদ বিহীন / Lifetime Validity)</option>
+                  <option value="Automas Technologies">Automas Technologies (মেয়াদ বিহীন / Lifetime Validity)</option>
+                  <option value="ZAMAN IT">ZAMAN IT (মেয়াদ বিহীন / Lifetime Validity)</option>
                   <option value="Greenweb SMS Gateway">Greenweb SMS Gateway BD</option>
                   <option value="BulkSMS BD">BulkSMS BD API</option>
+                  <option value="Elitbuzz SMS">Elitbuzz SMS BD</option>
+                  <option value="SSL Wireless">SSL Wireless SMS</option>
                   <option value="Infobip Gateway">Infobip Global Gateway</option>
                   <option value="Custom HTTP API">Custom HTTP SMS Gateway</option>
                 </select>

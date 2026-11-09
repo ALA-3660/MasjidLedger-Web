@@ -52,7 +52,7 @@ export const AdminLoginScreen: React.FC<AdminLoginScreenProps> = ({
   const [viewMode, setViewMode] = useState<'login' | 'register'>('login');
 
   // Login form state
-  const [identifier, setIdentifier] = useState('01815678870');
+  const [identifier, setIdentifier] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [selectedMosqueId, setSelectedMosqueId] = useState(currentMosque?.id || mosques[0]?.id || 'mosque-1');
   const [rememberMe, setRememberMe] = useState(true);
@@ -147,7 +147,7 @@ export const AdminLoginScreen: React.FC<AdminLoginScreenProps> = ({
       const res = await api.forgotPassword(forgotIdentifier.trim());
       setForgotMessage({
         type: 'success',
-        text: `ওটিপি কোড জেনারেট হয়েছে। (ডেমো কোড: ${res.resetToken})`,
+        text: `ওটিপি কোড পাঠানো হয়েছে (যাচাইকরণ কোড: ${res.resetToken})`,
       });
       setResetToken(res.resetToken || '');
       setForgotStep('reset');
@@ -194,16 +194,17 @@ export const AdminLoginScreen: React.FC<AdminLoginScreenProps> = ({
 
       {/* Top Header Branding */}
       <div className="sm:mx-auto sm:w-full sm:max-w-4xl text-center z-10 space-y-2 mb-6 sm:mb-8">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 shadow-xl shadow-emerald-900/40 border border-emerald-400/30 mb-2">
-          <Building className="w-8 h-8 text-white" />
+        <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-slate-900 shadow-2xl shadow-emerald-950/90 border-2 border-emerald-400/50 mb-2 p-1 overflow-hidden ring-4 ring-emerald-500/30">
+          <img
+            src="/mosque_dome_logo.jpg"
+            alt="মসজিদে নববীর সবুজ গম্বুজ - মসজিদ লেজার লোগো"
+            className="w-full h-full object-cover rounded-full"
+          />
         </div>
-        <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white flex items-center justify-center gap-2">
-          <span>মসজিদলেজার প্রো</span>
-          <span className="px-2.5 py-0.5 text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-full">
-            Enterprise Ready
-          </span>
+        <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white flex items-center justify-center font-siliguri">
+          <span>মসজিদ লেজার</span>
         </h1>
-        <p className="text-xs sm:text-sm text-emerald-200/80 font-medium max-w-xl mx-auto">
+        <p className="text-xs sm:text-sm text-emerald-200/80 font-medium max-w-xl mx-auto font-baloo">
           শত শত মসজিদ ও ওয়াকফ এস্টেটের জন্য আধুনিক, নিরাপদ ও সেন্ট্রাল ফাইন্যান্সিয়াল প্ল্যাটফর্ম
         </p>
       </div>
@@ -340,12 +341,8 @@ export const AdminLoginScreen: React.FC<AdminLoginScreenProps> = ({
                 </form>
               </div>
 
-              <div className="pt-4 border-t border-slate-800/80 space-y-3">
-                <div className="text-xs text-slate-400 leading-relaxed">
-                  ডেমো লগইন: মোবাইল <code className="text-emerald-300 bg-slate-800 px-1 py-0.5 rounded">01711223344</code>, পাসওয়ার্ড <code className="text-emerald-300 bg-slate-800 px-1 py-0.5 rounded">admin123</code>
-                </div>
-
-                <div className="text-center pt-2 border-t border-slate-800/50 text-xs text-slate-300">
+              <div className="pt-4 border-t border-slate-800/80">
+                <div className="text-center text-xs text-slate-300">
                   <span>আপনি নতুন ব্যবহারকারী? </span>
                   <button
                     type="button"

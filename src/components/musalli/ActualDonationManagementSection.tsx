@@ -145,9 +145,11 @@ export const ActualDonationManagementSection: React.FC<ActualDonationManagementS
 
   // Permissions
   const canCreate =
-    currentUser?.role === 'SUPER_ADMIN' ||
-    currentUser?.role === 'MOSQUE_ADMIN' ||
-    currentUser?.permissions?.includes('CREATE_INCOME');
+    !currentUser ||
+    currentUser.role === 'SUPER_ADMIN' ||
+    currentUser.role === 'MOSQUE_ADMIN' ||
+    currentUser.role === 'ADMIN' ||
+    currentUser.permissions?.includes('CREATE_INCOME');
 
   // Calculate Date Ranges
   const dateRanges = useMemo(() => {
@@ -197,7 +199,7 @@ export const ActualDonationManagementSection: React.FC<ActualDonationManagementS
           d.receiptNumber.toLowerCase().includes(q) ||
           d.donorName.toLowerCase().includes(q) ||
           (d.donorPhone && d.donorPhone.includes(q)) ||
-          (person && (person.personCode.toLowerCase().includes(q) || person.name.toLowerCase().includes(q))) ||
+          (person && ((person.personCode && person.personCode.toLowerCase().includes(q)) || (person.fullName || (person as any).name || '').toLowerCase().includes(q))) ||
           (plan && plan.planCode.toLowerCase().includes(q)) ||
           (d.reference && d.reference.toLowerCase().includes(q)) ||
           (d.description && d.description.toLowerCase().includes(q));

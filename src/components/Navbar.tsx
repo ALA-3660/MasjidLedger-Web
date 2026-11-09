@@ -111,14 +111,13 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
 
             <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white shadow-xs">
-                <Building2 className="w-4.5 h-4.5 text-white" />
+              <div className="w-9 h-9 rounded-full overflow-hidden border border-emerald-500/40 shadow-xs flex items-center justify-center bg-slate-900 ring-1 ring-emerald-500/30 shrink-0">
+                <img src="/mosque_dome_logo.jpg" alt="মসজিদে নববীর সবুজ গম্বুজ" className="w-full h-full object-cover rounded-full" />
               </div>
               <div>
                 <div className="flex items-center space-x-1.5">
                   <h1 className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-1 font-siliguri">
-                    <span>{language === 'bn' ? 'মসজিদলেজার' : 'MasjidLedger'}</span>
-                    <span className="text-emerald-600 italic font-black text-sm">Pro</span>
+                    <span>{language === 'bn' ? 'মসজিদ লেজার' : 'Masjid Ledger'}</span>
                   </h1>
                   <span className="bg-emerald-50 text-emerald-700 text-[11px] font-bold px-2 py-0.5 rounded-full border border-emerald-200/60 hidden sm:inline-block uppercase font-siliguri">
                     v2.6

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   Check,
@@ -40,7 +40,8 @@ import { Language, translations } from '../lib/i18n';
 interface EditTransactionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  transaction: IncomeEntry | ExpenseEntry | null;
+  transaction?: IncomeEntry | ExpenseEntry | null;
+  item?: IncomeEntry | ExpenseEntry | null;
   type: 'INCOME' | 'EXPENSE';
   accountHeads: AccountHead[];
   accounts: FinancialAccount[];
@@ -52,45 +53,105 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   isOpen,
   onClose,
   transaction,
+  item,
   type,
   accountHeads,
   accounts,
   language = 'bn',
   onSave,
 }) => {
+  const activeTransaction = transaction || item || null;
+
+  const [amount, setAmount] = useState('');
+  const [mainHeadId, setMainHeadId] = useState('');
+  const [subHeadId, setSubHeadId] = useState('');
+  const [accountId, setAccountId] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('CASH');
   const [personName, setPersonName] = useState('');
   const [personPhone, setPersonPhone] = useState('');
   const [date, setDate] = useState('');
   const [reference, setReference] = useState('');
   const [description, setDescription] = useState('');
-  const [subHeadId, setSubHeadId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const prevTxIdRef = useRef<string | null>(null);
+
+  const availableMainHeads = accountHeads.filter(
+    (h) => h.type === type && !h.parentId && h.status !== 'ARCHIVED'
+  );
 
   useEffect(() => {
-    if (transaction) {
-      setPersonName(('donorName' in transaction ? transaction.donorName : transaction.payeeName) || '');
-      setPersonPhone(('donorPhone' in transaction ? transaction.donorPhone : transaction.payeePhone) || '');
-      setDate(transaction.date || '');
-      setReference(transaction.reference || '');
-      setDescription(transaction.description || '');
-      setSubHeadId(transaction.subHeadId || '');
+    if (!isOpen || !activeTransaction) {
+      prevTxIdRef.current = null;
+      return;
+    }
+
+    if (activeTransaction.id !== prevTxIdRef.current) {
+      prevTxIdRef.current = activeTransaction.id;
+      setAmount(String(activeTransaction.amount ?? ''));
+      let resolvedMainHeadId = activeTransaction.mainHeadId || '';
+      if (!resolvedMainHeadId || !availableMainHeads.some((h) => h.id === resolvedMainHeadId)) {
+        const byName = availableMainHeads.find(
+          (h) =>
+            h.nameBn === activeTransaction.mainHeadNameBn ||
+            (activeTransaction.mainHeadNameBn && h.nameBn.includes(activeTransaction.mainHeadNameBn))
+        );
+        resolvedMainHeadId = byName?.id || availableMainHeads[0]?.id || resolvedMainHeadId;
+      }
+      setMainHeadId(resolvedMainHeadId);
+      setSubHeadId(activeTransaction.subHeadId || '');
+      setAccountId(activeTransaction.accountId || accounts[0]?.id || '');
+      setPaymentMethod(activeTransaction.paymentMethod || 'CASH');
+      setPersonName(
+        ('donorName' in activeTransaction ? activeTransaction.donorName : activeTransaction.payeeName) || ''
+      );
+      setPersonPhone(
+        ('donorPhone' in activeTransaction ? activeTransaction.donorPhone : activeTransaction.payeePhone) || ''
+      );
+      setDate(activeTransaction.date ? activeTransaction.date.split('T')[0] : '');
+      setReference(activeTransaction.reference || '');
+      setDescription(activeTransaction.description || '');
       setError('');
     }
-  }, [transaction]);
+  }, [isOpen, activeTransaction?.id]);
 
-  if (!isOpen || !transaction) return null;
+  if (!isOpen || !activeTransaction) return null;
+
+  const matchingSubHeads = accountHeads.filter(
+    (h) => h.parentId === mainHeadId && h.status !== 'ARCHIVED'
+  );
+
+  const numericAmount = Number(amount);
+  const amountDiff =
+    !isNaN(numericAmount) && numericAmount > 0 ? numericAmount - Number(activeTransaction.amount || 0) : 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!numericAmount || isNaN(numericAmount) || numericAmount <= 0) {
+      setError('টাকার পরিমাণ অবশ্যই শূন্যের চেয়ে বেশি হতে হবে।');
+      return;
+    }
+    if (!mainHeadId) {
+      setError('প্রধান খাত নির্বাচন করুন।');
+      return;
+    }
+    if (!accountId) {
+      setError('আর্থিক হিসাব (Account) নির্বাচন করুন।');
+      return;
+    }
+
     setIsSubmitting(true);
     setError('');
     try {
       const payload: any = {
+        amount: numericAmount,
+        mainHeadId,
+        subHeadId: subHeadId || '',
+        accountId,
+        paymentMethod,
         date,
         reference,
         description,
-        subHeadId,
       };
       if (type === 'INCOME') {
         payload.donorName = personName;
@@ -99,7 +160,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
         payload.payeeName = personName;
         payload.payeePhone = personPhone;
       }
-      await onSave(transaction.id, payload);
+      await onSave(activeTransaction.id, payload);
       onClose();
     } catch (err: any) {
       setError(err.message || 'আপডেট করতে ব্যর্থ হয়েছে।');
@@ -108,19 +169,32 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     }
   };
 
-  const matchingSubHeads = accountHeads.filter((h) => h.parentId === transaction.mainHeadId);
-
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50 animate-in fade-in duration-150">
-      <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="px-5 py-4 bg-slate-800 text-white flex items-center justify-between">
+      <div className="bg-white rounded-2xl max-w-xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
+        <div
+          className={`px-5 py-4 text-white flex items-center justify-between ${
+            type === 'INCOME'
+              ? 'bg-gradient-to-r from-emerald-700 to-teal-800'
+              : 'bg-gradient-to-r from-rose-700 to-slate-900'
+          }`}
+        >
           <div className="flex items-center space-x-2">
-            <Edit className="w-5 h-5 text-blue-400" />
-            <h3 className="text-sm sm:text-base font-bold">
-              {type === 'INCOME' ? 'আয় ভাউচার তথ্য সংশোধন' : 'ব্যয় ভাউচার তথ্য সংশোধন'} ({transaction.voucherNumber})
-            </h3>
+            <Edit className="w-5 h-5 text-white/90" />
+            <div>
+              <h3 className="text-sm sm:text-base font-bold">
+                {type === 'INCOME' ? 'আয় ভাউচার পূর্ণাঙ্গ সংশোধন' : 'ব্যয় ভাউচার পূর্ণাঙ্গ সংশোধন'}
+              </h3>
+              <p className="text-[11px] text-white/80 font-mono">
+                ভাউচার নং: {activeTransaction.voucherNumber}
+              </p>
+            </div>
           </div>
-          <button onClick={onClose} className="p-1 hover:bg-white/10 rounded-lg text-white/80 hover:text-white">
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 hover:bg-white/10 rounded-lg text-white/80 hover:text-white cursor-pointer"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -133,70 +207,76 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* Row 1: Date & Amount */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">তারিখ</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">তারিখ *</label>
               <input
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
                 required
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
+                className="w-full px-3 py-2 bg-slate-50 focus:bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-900"
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">টাকার পরিমাণ (ফিক্সড)</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                টাকার পরিমাণ (৳) *
+              </label>
               <input
-                type="text"
-                disabled
-                value={`৳ ${transaction.amount.toLocaleString('en-IN')}`}
-                className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded-xl text-xs font-bold text-slate-600 font-mono cursor-not-allowed"
+                type="number"
+                min="1"
+                step="any"
+                required
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className={`w-full px-3 py-2 border rounded-xl text-sm font-black font-mono focus:bg-white ${
+                  type === 'INCOME'
+                    ? 'bg-emerald-50/50 border-emerald-300 text-emerald-800'
+                    : 'bg-rose-50/50 border-rose-300 text-rose-800'
+                }`}
               />
+              {amountDiff !== 0 && (
+                <span className="block text-[10px] mt-1 font-semibold text-blue-700">
+                  পূর্বের পরিমাণ: ৳ {Number(activeTransaction.amount).toLocaleString('en-IN')} &rarr; নতুন: ৳{' '}
+                  {numericAmount.toLocaleString('en-IN')} (ব্যালেন্স স্বয়ংক্রিয়ভাবে সমন্বয় হবে)
+                </span>
+              )}
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              {type === 'INCOME' ? 'দাতা / প্রদানকারীর নাম' : 'গ্রহীতা / ভেন্ডরের নাম'}
-            </label>
-            <input
-              type="text"
-              value={personName}
-              onChange={(e) => setPersonName(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
+          {/* Row 2: Main Head & Sub Head */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">মোবাইল নম্বর</label>
-              <input
-                type="tel"
-                value={personPhone}
-                onChange={(e) => setPersonPhone(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono"
-              />
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                {type === 'INCOME' ? 'আয়ের প্রধান খাত *' : 'ব্যয়ের প্রধান খাত *'}
+              </label>
+              <select
+                required
+                value={mainHeadId}
+                onChange={(e) => {
+                  setMainHeadId(e.target.value);
+                  setSubHeadId('');
+                }}
+                className="w-full px-3 py-2 bg-slate-50 focus:bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900"
+              >
+                <option value="">-- প্রধান খাত নির্বাচন করুন --</option>
+                {availableMainHeads.map((h) => (
+                  <option key={h.id} value={h.id}>
+                    {h.nameBn}
+                  </option>
+                ))}
+              </select>
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">রেফারেন্স / স্লিপ নং</label>
-              <input
-                type="text"
-                value={reference}
-                onChange={(e) => setReference(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
-              />
-            </div>
-          </div>
 
-          {matchingSubHeads.length > 0 && (
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">উপ-খাত (Sub-head)</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">উপ-খাত (Sub-head)</label>
               <select
                 value={subHeadId}
                 onChange={(e) => setSubHeadId(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
+                className="w-full px-3 py-2 bg-slate-50 focus:bg-white border border-slate-300 rounded-xl text-xs text-slate-900"
               >
-                <option value="">-- উপ-খাত নির্বাচন করুন --</option>
+                <option value="">-- উপ-খাত নেই / সাধারণ --</option>
                 {matchingSubHeads.map((sh) => (
                   <option key={sh.id} value={sh.id}>
                     {sh.nameBn}
@@ -204,33 +284,117 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 ))}
               </select>
             </div>
-          )}
+          </div>
 
+          {/* Row 3: Account & Payment Method */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                {type === 'INCOME' ? 'জমার হিসাব (Account) *' : 'পরিশোধের হিসাব (Account) *'}
+              </label>
+              <select
+                required
+                value={accountId}
+                onChange={(e) => setAccountId(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 focus:bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900"
+              >
+                {accounts.map((acc) => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.nameBn} (স্থিতি: ৳{Number(acc.currentBalance || 0).toLocaleString('en-IN')})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">পেমেন্ট মাধ্যম *</label>
+              <select
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 focus:bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900"
+              >
+                <option value="CASH">ক্যাশ / নগদ (Cash)</option>
+                <option value="BANK">ব্যাংক ট্রান্সফার / চেক (Bank)</option>
+                <option value="BKASH">বিকাশ (bKash)</option>
+                <option value="NAGAD">নগদ (Nagad)</option>
+                <option value="ROCKET">রকেট (Rocket)</option>
+                <option value="OTHER">অন্যান্য (Other)</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Row 4: Donor/Payee Name & Phone */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                {type === 'INCOME' ? 'দাতা / প্রদানকারীর নাম' : 'গ্রহীতা / ভেন্ডরের নাম'}
+              </label>
+              <input
+                type="text"
+                value={personName}
+                onChange={(e) => setPersonName(e.target.value)}
+                placeholder={type === 'INCOME' ? 'দাতার নাম...' : 'প্রাপকের নাম...'}
+                className="w-full px-3 py-2 bg-slate-50 focus:bg-white border border-slate-300 rounded-xl text-xs text-slate-900"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">মোবাইল নম্বর</label>
+              <input
+                type="tel"
+                value={personPhone}
+                onChange={(e) => setPersonPhone(e.target.value)}
+                placeholder="01XXXXXXXXX"
+                className="w-full px-3 py-2 bg-slate-50 focus:bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-900"
+              />
+            </div>
+          </div>
+
+          {/* Row 5: Reference */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">বিবরণ / নোট</label>
-            <textarea
-              rows={3}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
+            <label className="block text-xs font-bold text-slate-700 mb-1">
+              রেফারেন্স / রিসিট নং / বিল বা চেক নং
+            </label>
+            <input
+              type="text"
+              value={reference}
+              onChange={(e) => setReference(e.target.value)}
+              placeholder="রেফারেন্স বা স্লিপ নং..."
+              className="w-full px-3 py-2 bg-slate-50 focus:bg-white border border-slate-300 rounded-xl text-xs text-slate-900"
             />
           </div>
 
-          <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-200">
+          {/* Row 6: Description */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">বিবরণ / নোট</label>
+            <textarea
+              rows={2}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="ভাউচারের বিস্তারিত বিবরণ..."
+              className="w-full px-3 py-2 bg-slate-50 focus:bg-white border border-slate-300 rounded-xl text-xs text-slate-900"
+            />
+          </div>
+
+          <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-200">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+              className="px-4 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
             >
               বাতিল
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors flex items-center space-x-1.5"
+              className={`px-5 py-2 text-white rounded-xl text-xs font-bold shadow-xs transition-colors flex items-center space-x-1.5 cursor-pointer ${
+                type === 'INCOME'
+                  ? 'bg-emerald-600 hover:bg-emerald-700'
+                  : 'bg-rose-600 hover:bg-rose-700'
+              }`}
             >
               <Check className="w-4 h-4" />
-              <span>{isSubmitting ? 'সংরক্ষণ হচ্ছে...' : 'সংরক্ষণ করুন'}</span>
+              <span>{isSubmitting ? 'সংরক্ষণ হচ্ছে...' : 'পরিবর্তন সংরক্ষণ করুন'}</span>
             </button>
           </div>
         </form>
