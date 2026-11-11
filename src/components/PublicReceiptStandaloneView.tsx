@@ -242,7 +242,7 @@ export const PublicReceiptStandaloneView: React.FC<PublicReceiptStandaloneViewPr
           {/* Official Signatures Section */}
           <div className="pt-10 grid grid-cols-2 gap-8 text-center text-xs">
             <div className="flex flex-col items-center justify-end">
-              <div className="h-12 w-full flex items-end justify-center mb-1">
+              <div className="h-14 w-full flex items-end justify-center mb-1">
                 {mosque?.secretarySignatureUrl ? (
                   <img
                     src={mosque.secretarySignatureUrl}
@@ -251,11 +251,7 @@ export const PublicReceiptStandaloneView: React.FC<PublicReceiptStandaloneViewPr
                     referrerPolicy="no-referrer"
                   />
                 ) : (
-                  <div className="flex flex-col items-center justify-center pb-0.5">
-                    <span className="font-tiro italic font-bold text-slate-800 text-sm tracking-wide select-none">
-                      আলহাজ্ব মো: রফিকুল ইসলাম
-                    </span>
-                  </div>
+                  <div className="h-12" />
                 )}
               </div>
               <div className="border-t-2 border-slate-700 pt-1.5 font-bold text-slate-900 font-siliguri w-full">
@@ -264,7 +260,7 @@ export const PublicReceiptStandaloneView: React.FC<PublicReceiptStandaloneViewPr
             </div>
 
             <div className="flex flex-col items-center justify-end">
-              <div className="h-12 w-full flex items-end justify-center mb-1">
+              <div className="h-14 w-full flex items-end justify-center mb-1">
                 {mosque?.presidentSignatureUrl ? (
                   <img
                     src={mosque.presidentSignatureUrl}
@@ -273,11 +269,7 @@ export const PublicReceiptStandaloneView: React.FC<PublicReceiptStandaloneViewPr
                     referrerPolicy="no-referrer"
                   />
                 ) : (
-                  <div className="flex flex-col items-center justify-center pb-0.5">
-                    <span className="font-tiro italic font-bold text-slate-800 text-sm tracking-wide select-none">
-                      হাজী মোঃ শামসুল আলম
-                    </span>
-                  </div>
+                  <div className="h-12" />
                 )}
               </div>
               <div className="border-t-2 border-slate-700 pt-1.5 font-bold text-slate-900 font-siliguri w-full">

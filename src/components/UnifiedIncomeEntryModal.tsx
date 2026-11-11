@@ -133,6 +133,7 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
 
   // Master Data States (with fallbacks / async fetch if not passed)
   const [accounts, setAccounts] = useState<FinancialAccount[]>(initialAccounts || []);
+  const [heads, setHeads] = useState<AccountHead[]>(accountHeads || []);
   const [donationBoxes, setDonationBoxes] = useState<DonationBox[]>(initialDonationBoxes || []);
   const [properties, setProperties] = useState<MosqueProperty[]>(initialProperties || []);
   const [persons, setPersons] = useState<PersonMaster[]>(initialPersons || []);
@@ -140,6 +141,10 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
   const [families, setFamilies] = useState<FamilyMaster[]>(initialFamilies || []);
   const [areas, setAreas] = useState<AreaMaster[]>(initialAreas || []);
   const [collectionWorkers, setCollectionWorkers] = useState<CollectionWorker[]>(initialWorkers || []);
+
+  const incomeAccountHeads = useMemo(() => {
+    return (heads || []).filter(h => h.type === 'INCOME' && h.isActive !== false && h.status !== 'INACTIVE' && h.status !== 'ARCHIVED');
+  }, [heads]);
 
   // 1. Entry Type Selection
   const [incomeType, setIncomeType] = useState<IncomeEntryType>(initialType);
@@ -203,6 +208,14 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
   // Load auxiliary data if missing
   useEffect(() => {
     if (!isOpen) return;
+
+    if (!accountHeads || accountHeads.length === 0) {
+      api.getAccountHeads().then((res) => {
+        if (Array.isArray(res)) setHeads(res);
+      }).catch(() => {});
+    } else {
+      setHeads(accountHeads);
+    }
 
     if (!initialPersons || initialPersons.length === 0) {
       api.getPersons().then((res) => setPersons(res)).catch(() => {});
@@ -1218,16 +1231,21 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
                     <select
                       value={donationCategory}
                       onChange={(e) => setDonationCategory(e.target.value)}
-                      className="px-2.5 py-1 bg-blue-50 border border-blue-300 rounded-lg text-xs font-bold text-blue-800 focus:bg-white focus:ring-2 focus:ring-blue-500"
+                      className="px-2.5 py-1 bg-blue-50 border border-blue-300 rounded-lg text-xs font-bold text-blue-800 focus:bg-white focus:ring-2 focus:ring-blue-500 max-w-[260px] truncate"
                     >
-                      <option value="GENERAL">সাধারণ দান (General)</option>
-                      <option value="CONSTRUCTION">মসজিদ নির্মাণ ও সংস্কার তহবিল</option>
-                      <option value="WAQF">ওয়াকফ দান (Waqf)</option>
-                      <option value="GRAVEYARD">কবরস্থান উন্নয়ন</option>
-                      <option value="WASH_BLOCK">অজু খানা ও ওয়াশ ব্লক</option>
-                      <option value="MAKTAB">মক্তব ও কোরআন শিক্ষা</option>
-                      <option value="SPECIAL_PROJECT">বিশেষ প্রকল্প</option>
-                      <option value="OTHER">অন্যান্য শুভ অনুদান</option>
+                      {incomeAccountHeads.length > 0 ? (
+                        incomeAccountHeads.map((head) => (
+                          <option key={head.id} value={head.nameBn || head.id}>
+                            {head.code ? `[${head.code}] ` : ''}{head.nameBn || head.nameEn}
+                          </option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="GENERAL">সাধারণ দান (General)</option>
+                          <option value="INC-105">অতিথিদের দান (INC-105)</option>
+                          <option value="INC-106">মসজিদের মুসল্লিদের দান (INC-106)</option>
+                        </>
+                      )}
                     </select>
                   </div>
                 </div>

@@ -21,6 +21,9 @@ import {
   TrendingUp,
   FileText,
   UserCheck,
+  UserPlus,
+  PlusCircle,
+  Plus,
 } from 'lucide-react';
 import { CommitteeTerm, CommitteeMember, Mosque } from '../types';
 import { Language, translations, formatDate } from '../lib/i18n';
@@ -34,6 +37,7 @@ interface CurrentCommitteeViewProps {
   language: Language;
   onViewMemberProfile: (member: CommitteeMember) => void;
   onOpenAddMemberModal: () => void;
+  onOpenAddTermModal?: () => void;
   onNavigateToSection: (section: any) => void;
 }
 
@@ -78,6 +82,7 @@ export const CurrentCommitteeView: React.FC<CurrentCommitteeViewProps> = ({
   language,
   onViewMemberProfile,
   onOpenAddMemberModal,
+  onOpenAddTermModal,
   onNavigateToSection,
 }) => {
   const isBn = language === 'bn';
@@ -200,6 +205,36 @@ export const CurrentCommitteeView: React.FC<CurrentCommitteeViewProps> = ({
             </div>
           </div>
         )}
+
+        {/* Action Buttons Bar in Hero Banner */}
+        <div className="mt-5 pt-4 border-t border-white/10 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={onOpenAddMemberModal}
+              className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-md transition-all cursor-pointer"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>{isBn ? '+ নতুন সদস্য এন্ট্রি করুন' : '+ Add New Member'}</span>
+            </button>
+            <button
+              onClick={() => {
+                if (onOpenAddTermModal) onOpenAddTermModal();
+                else onNavigateToSection('terms');
+              }}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-md transition-all cursor-pointer"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>{isBn ? '+ নতুন কমিটি / মেয়াদ গঠন করুন' : '+ Add New Committee / Term'}</span>
+            </button>
+            <button
+              onClick={() => onNavigateToSection('terms')}
+              className="px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-medium flex items-center space-x-1.5 transition-all cursor-pointer border border-white/15"
+            >
+              <Clock className="w-3.5 h-3.5 text-blue-300" />
+              <span>{isBn ? 'মেয়াদকাল ও ইতিহাস পরিচালনা' : 'Terms & History'}</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Leadership Organogram Preview Cards */}
@@ -215,6 +250,13 @@ export const CurrentCommitteeView: React.FC<CurrentCommitteeViewProps> = ({
             </p>
           </div>
           <div className="flex items-center space-x-2">
+            <button
+              onClick={onOpenAddMemberModal}
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-colors shadow-xs cursor-pointer"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>{isBn ? 'নতুন সদস্য যোগ করুন' : 'Add Member'}</span>
+            </button>
             <button
               onClick={handlePrintOrganogram}
               className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-colors cursor-pointer"
@@ -291,16 +333,25 @@ export const CurrentCommitteeView: React.FC<CurrentCommitteeViewProps> = ({
             </h3>
           </div>
 
-          {/* Search */}
-          <div className="relative w-full sm:w-64">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={isBn ? 'নাম, পদবী বা ফোন দিয়ে খুঁজুন...' : 'Search by name or position...'}
-              className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:bg-white focus:outline-hidden focus:border-blue-500"
-            />
+          {/* Action & Search */}
+          <div className="flex items-center space-x-2 w-full sm:w-auto">
+            <div className="relative flex-1 sm:w-64">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={isBn ? 'নাম, পদবী বা ফোন দিয়ে খুঁজুন...' : 'Search by name or position...'}
+                className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:bg-white focus:outline-hidden focus:border-blue-500"
+              />
+            </div>
+            <button
+              onClick={onOpenAddMemberModal}
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-colors cursor-pointer shrink-0 shadow-xs"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>{isBn ? '+ সদস্য যোগ' : '+ Add Member'}</span>
+            </button>
           </div>
         </div>
 
@@ -329,15 +380,27 @@ export const CurrentCommitteeView: React.FC<CurrentCommitteeViewProps> = ({
               {isBn ? 'কোন সদস্য পাওয়া যায়নি' : 'No committee members found'}
             </p>
             <p className="text-xs text-slate-500 mt-1">
-              {isBn ? 'অনুগ্রহ করে নতুন সদস্য যুক্ত করুন অথবা ফিল্টার রিসেট করুন।' : 'Add new committee members or reset filter.'}
+              {isBn ? 'অনুগ্রহ করে নতুন সদস্য যুক্ত করুন অথবা নতুন কমিটি/মেয়াদ এন্ট্রি করুন।' : 'Add new committee members or create a new committee term.'}
             </p>
-            <button
-              onClick={onOpenAddMemberModal}
-              className="mt-3 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer inline-flex items-center space-x-1.5"
-            >
-              <UserCheck className="w-3.5 h-3.5" />
-              <span>{isBn ? 'সদস্য যুক্ত করুন' : 'Add Member'}</span>
-            </button>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+              <button
+                onClick={onOpenAddMemberModal}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer inline-flex items-center space-x-1.5 shadow-xs"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>{isBn ? '+ নতুন সদস্য অন্তর্ভুক্তি' : '+ Add Member'}</span>
+              </button>
+              <button
+                onClick={() => {
+                  if (onOpenAddTermModal) onOpenAddTermModal();
+                  else onNavigateToSection('terms');
+                }}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer inline-flex items-center space-x-1.5 shadow-xs"
+              >
+                <PlusCircle className="w-4 h-4" />
+                <span>{isBn ? '+ নতুন কমিটি / মেয়াদ গঠন' : '+ Add Committee / Term'}</span>
+              </button>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">

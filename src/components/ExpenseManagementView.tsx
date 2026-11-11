@@ -56,6 +56,7 @@ import {
 import { ExpenseReconciliationView } from './ExpenseReconciliationView';
 import { BudgetControlView } from './BudgetControlView';
 import { Language, translations, formatCurrency, formatDate } from '../lib/i18n';
+import { api } from '../lib/api';
 import { ChangeCalculatorModal } from './ChangeCalculatorModal';
 import { EditTransactionModal } from './EditModals';
 import { SmsPreviewModal } from './SmsPreviewModal';
@@ -135,6 +136,7 @@ interface ExpenseManagementViewProps {
   onAddExpense: (data: any, options?: { print?: boolean; format?: 'A4' | 'POS_80' | 'POS_58' }) => Promise<any>;
   onUpdateExpense?: (id: string, data: any) => Promise<void>;
   onReverseExpense: (id: string, reason: string) => Promise<void>;
+  onRestoreExpense?: (id: string, reason?: string) => Promise<void>;
   onPrintVoucher: (
     item: ExpenseEntry,
     type: 'EXPENSE',
@@ -163,6 +165,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
   onAddExpense,
   onUpdateExpense,
   onReverseExpense,
+  onRestoreExpense,
   onPrintVoucher,
   onSendSms,
 }) => {
@@ -327,6 +330,22 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
       setReversalReason('');
     } catch (err: any) {
       alert(err.message || 'ভাউচার বাতিল করতে ব্যর্থ হয়েছে');
+    }
+  };
+
+  const handleRestoreExpense = async (id: string) => {
+    if (!window.confirm('আপনি কি নিশ্চিত যে আপনি এই বাতিলকৃত ব্যয় ভাউচারটি পুনরায় অনুমোদন/পুনরুদ্ধার করতে চান? এর ফলে সমপরিমাণ টাকা পুনরায় হিসাবের সাথে সমন্বয় হবে।')) {
+      return;
+    }
+    try {
+      if (onRestoreExpense) {
+        await onRestoreExpense(id);
+      } else {
+        await api.restoreExpense(id);
+      }
+      alert('ব্যয় ভাউচার সফলভাবে পুনরায় অনুমোদন/পুনরুদ্ধার করা হয়েছে!');
+    } catch (err: any) {
+      alert(err.message || 'ভাউচার পুনরুদ্ধার করতে ব্যর্থ হয়েছে');
     }
   };
 
@@ -2181,13 +2200,22 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                                         <Edit2 className="w-3.5 h-3.5" />
                                       </button>
                                     )}
-                                    {item.status !== 'CANCELLED' && (
+                                    {item.status !== 'CANCELLED' ? (
                                       <button
                                         onClick={() => setReversalTarget(item.rawEntry)}
                                         className="p-1 text-rose-600 hover:bg-rose-50 rounded-md cursor-pointer"
                                         title="ভাউচার বাতিল / রিভার্স করুন"
                                       >
                                         <XCircle className="w-3.5 h-3.5" />
+                                      </button>
+                                    ) : (
+                                      <button
+                                        onClick={() => handleRestoreExpense(item.id)}
+                                        className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded shadow-xs cursor-pointer flex items-center space-x-1"
+                                        title="অনুমোদন / পুনরুদ্ধার করুন"
+                                      >
+                                        <RotateCcw className="w-3 h-3" />
+                                        <span>অনুমোদন / পুনরুদ্ধার</span>
                                       </button>
                                     )}
                                   </div>

@@ -1845,14 +1845,19 @@ export const DonationView: React.FC<DonationViewProps> = ({
                     onChange={(e) => setCategory(e.target.value as any)}
                     className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:bg-white font-medium outline-hidden"
                   >
-                    <option value="GENERAL">সাধারণ দান (General)</option>
-                    <option value="CONSTRUCTION">মসজিদ নির্মাণ ও সংস্কার তহবিল</option>
-                    <option value="WAQF">ওয়াকফ দান (Waqf)</option>
-                    <option value="CEMETERY">কবরস্থান উন্নয়ন</option>
-                    <option value="WUDU_KHANA">অজু খানা ও ওয়াশ ব্লক</option>
-                    <option value="MADRASA">মক্তব ও কোরআন শিক্ষা</option>
-                    <option value="SPECIAL_PROJECT">বিশেষ প্রকল্প</option>
-                    <option value="OTHER">অন্যান্য শুভ অনুদান</option>
+                    {(accountHeads || []).filter(h => h.type === 'INCOME' && h.isActive !== false).length > 0 ? (
+                      (accountHeads || []).filter(h => h.type === 'INCOME' && h.isActive !== false).map((head) => (
+                        <option key={head.id} value={head.nameBn || head.id}>
+                          {head.code ? `[${head.code}] ` : ''}{head.nameBn || head.nameEn}
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="GENERAL">সাধারণ দান (General)</option>
+                        <option value="INC-105">অতিথিদের দান (INC-105)</option>
+                        <option value="INC-106">মসজিদের মুসল্লিদের দান (INC-106)</option>
+                      </>
+                    )}
                   </select>
                 </div>
 

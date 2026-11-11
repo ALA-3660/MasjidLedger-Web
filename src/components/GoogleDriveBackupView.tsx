@@ -21,9 +21,16 @@ import {
   Activity,
   Sliders,
   Save,
-  Clock
+  Clock,
+  LogOut
 } from 'lucide-react';
-import { googleDriveService, DriveFileItem } from '../services/googleDriveService';
+import {
+  googleDriveService,
+  DriveFileItem,
+  initAuth,
+  googleSignIn,
+  logoutDriveAuth,
+} from '../services/googleDriveService';
 import { api } from '../lib/api';
 import { Mosque } from '../types';
 
@@ -46,7 +53,11 @@ interface VerificationResult {
 }
 
 export const GoogleDriveBackupView: React.FC<GoogleDriveBackupViewProps> = ({ currentMosque }) => {
-  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(googleDriveService.getAccessToken());
+  const [connectedEmail, setConnectedEmail] = useState<string | null>(
+    googleDriveService.getConnectedUser()?.email || null
+  );
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string; details?: string } | null>(null);
   const [backupFiles, setBackupFiles] = useState<DriveFileItem[]>([]);
@@ -78,18 +89,27 @@ export const GoogleDriveBackupView: React.FC<GoogleDriveBackupViewProps> = ({ cu
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsSuccess, setSettingsSuccess] = useState(false);
 
-  // Load Google Identity Services script
+  // Initialize Firebase Google Auth state listener and load health/settings
   useEffect(() => {
-    const existingScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
-    if (!existingScript) {
-      const script = document.createElement('script');
-      script.src = 'https://accounts.google.com/gsi/client';
-      script.async = true;
-      script.defer = true;
-      document.body.appendChild(script);
+    const unsubscribe = initAuth(
+      (user, token) => {
+        setAccessToken(token);
+        setConnectedEmail(user.email || user.displayName || null);
+      },
+      () => {
+        setAccessToken(null);
+        setConnectedEmail(null);
+      }
+    );
+
+    if (googleDriveService.getAccessToken()) {
+      fetchDriveBackups();
     }
 
     loadHealthAndSettings();
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
   }, [currentMosque?.id]);
 
   const loadHealthAndSettings = async () => {
@@ -105,25 +125,48 @@ export const GoogleDriveBackupView: React.FC<GoogleDriveBackupViewProps> = ({ cu
     }
   };
 
-  const handleAuthClick = () => {
-    if (!(window as any).google || !(window as any).google.accounts) {
-      setStatusMessage({ type: 'error', text: 'গুগল অথেন্টিকেশন স্ক্রিপ্ট লোড হচ্ছে। অনুগ্রহ করে ২ সেকেন্ড পর আবার চেষ্টা করুন।' });
-      return;
-    }
-
-    googleDriveService.initClient(
-      (token) => {
-        setAccessToken(token);
-        setStatusMessage({ type: 'success', text: 'গুগল ড্রাইভ সফলভাবে সংযুক্ত হয়েছে।' });
-        fetchDriveBackups();
-      },
-      (err) => {
-        console.error('Google Auth Error:', err);
-        setStatusMessage({ type: 'error', text: 'গুগল ড্রাইভ অথেন্টিকেশন সম্পন্ন করা সম্ভব হয়নি।' });
+  const handleAuthClick = async () => {
+    setIsLoggingIn(true);
+    setStatusMessage(null);
+    try {
+      const result = await googleSignIn();
+      if (result && result.accessToken) {
+        setAccessToken(result.accessToken);
+        setConnectedEmail(result.user.email || result.user.displayName || null);
+        setStatusMessage({
+          type: 'success',
+          text: `গুগল ড্রাইভ সফলভাবে সংযুক্ত হয়েছে (${result.user.email || 'Connected'})।`,
+        });
+        await fetchDriveBackups();
       }
-    );
+    } catch (err: any) {
+      console.error('Google Auth Error:', err);
+      const errCode = err?.code || '';
+      if (errCode === 'auth/popup-closed-by-user') {
+        setStatusMessage({
+          type: 'info',
+          text: 'সাইন-ইন পপআপটি বন্ধ করা হয়েছে। কানেক্ট করতে পুনরায় চেষ্টা করুন।',
+        });
+      } else {
+        setStatusMessage({
+          type: 'error',
+          text: 'গুগল ড্রাইভ অথেন্টিকেশন সম্পন্ন করা সম্ভব হয়নি: ' + (err?.message || 'অজ্ঞাত ত্রুটি'),
+        });
+      }
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
 
-    googleDriveService.requestAccessToken();
+  const handleDisconnectDrive = async () => {
+    await logoutDriveAuth();
+    setAccessToken(null);
+    setConnectedEmail(null);
+    setBackupFiles([]);
+    setStatusMessage({
+      type: 'info',
+      text: 'গুগল ড্রাইভ অ্যাকাউন্ট সংযোগ বিচ্ছিন্ন করা হয়েছে।',
+    });
   };
 
   const fetchDriveBackups = async () => {
@@ -381,10 +424,36 @@ export const GoogleDriveBackupView: React.FC<GoogleDriveBackupViewProps> = ({ cu
           <button
             type="button"
             onClick={handleAuthClick}
-            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md hover:shadow-lg flex items-center gap-2 mx-auto transition-all cursor-pointer"
+            disabled={isLoggingIn}
+            className="gsi-material-button px-5 py-2.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 rounded-xl text-xs font-bold shadow-sm hover:shadow-md inline-flex items-center gap-2.5 mx-auto transition-all cursor-pointer disabled:opacity-60"
           >
-            <Cloud className="w-4 h-4" />
-            <span>Google Drive এ Sign in করুন</span>
+            <div className="w-4 h-4 shrink-0">
+              <svg
+                version="1.1"
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 48 48"
+                className="w-4 h-4 block"
+              >
+                <path
+                  fill="#EA4335"
+                  d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
+                ></path>
+                <path
+                  fill="#4285F4"
+                  d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"
+                ></path>
+                <path
+                  fill="#FBBC05"
+                  d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"
+                ></path>
+                <path
+                  fill="#34A853"
+                  d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
+                ></path>
+                <path fill="none" d="M0 0h48v48H0z"></path>
+              </svg>
+            </div>
+            <span>{isLoggingIn ? 'সংযুক্ত হচ্ছে...' : 'Google Drive এ Sign in করুন'}</span>
           </button>
         </div>
       ) : (
@@ -397,9 +466,14 @@ export const GoogleDriveBackupView: React.FC<GoogleDriveBackupViewProps> = ({ cu
                   <CheckCircle2 className="w-6 h-6" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <h4 className="text-sm font-bold text-slate-900">গুগল ড্রাইভ সংযুক্ত রয়েছে</h4>
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    {connectedEmail && (
+                      <span className="text-[11px] font-mono bg-white/80 border border-emerald-200 text-emerald-800 px-2 py-0.5 rounded-md">
+                        {connectedEmail}
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-slate-600 mt-0.5">
                     মসজিদ কোড: <span className="font-bold text-slate-800">{currentMosque?.code || currentMosque?.id}</span> | ফোল্ডার: <span className="font-mono text-slate-800">MasjidLedger_Backups</span>
@@ -407,24 +481,35 @@ export const GoogleDriveBackupView: React.FC<GoogleDriveBackupViewProps> = ({ cu
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={handleUploadEncryptedBackup}
-                disabled={isUploading}
-                className="px-5 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md shrink-0"
-              >
-                {isUploading ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>{uploadStep || 'প্রক্রিয়াধীন...'}</span>
-                  </>
-                ) : (
-                  <>
-                    <CloudUpload className="w-4 h-4" />
-                    <span>গুগল ড্রাইভে সম্পূর্ণ ব্যাকআপ নিন</span>
-                  </>
-                )}
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleDisconnectDrive}
+                  className="px-3 py-3 bg-white hover:bg-rose-50 text-slate-600 hover:text-rose-700 border border-slate-200 hover:border-rose-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  title="গুগল ড্রাইভ সংযোগ বিচ্ছিন্ন করুন"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span className="hidden sm:inline">ডিসকানেক্ট</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleUploadEncryptedBackup}
+                  disabled={isUploading}
+                  className="px-5 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md shrink-0"
+                >
+                  {isUploading ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>{uploadStep || 'প্রক্রিয়াধীন...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <CloudUpload className="w-4 h-4" />
+                      <span>গুগল ড্রাইভে সম্পূর্ণ ব্যাকআপ নিন</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
 
             {/* Health Monitor Card */}

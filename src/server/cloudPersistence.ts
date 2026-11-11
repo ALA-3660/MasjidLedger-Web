@@ -58,7 +58,18 @@ class CloudPersistenceService {
       }
 
       const raw = fs.readFileSync(configPath, 'utf8');
-      const config = JSON.parse(raw);
+      const parsedConfig = JSON.parse(raw);
+      const config = parsedConfig.firestoreDatabaseId
+        ? parsedConfig
+        : {
+            projectId: 'zealous-orbit-xdtd0',
+            appId: '1:989373574278:web:2c49927633220f275ef507',
+            apiKey: 'AIzaSyDueOPb85OGK_Kh_28HX5avnBkPRQhhSvo',
+            authDomain: 'zealous-orbit-xdtd0.firebaseapp.com',
+            firestoreDatabaseId: 'ai-studio-masjidledger-18666ccf-b29d-45dd-a1a0-4c29705846f2',
+            storageBucket: 'zealous-orbit-xdtd0.firebasestorage.app',
+            messagingSenderId: '989373574278',
+          };
       if (!config.projectId || !config.firestoreDatabaseId) {
         console.warn('[CloudPersistence] Invalid Firestore config. Operating in local mode only.');
         return;

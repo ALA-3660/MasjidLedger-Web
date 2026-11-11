@@ -5186,6 +5186,34 @@ app.post('/api/v1/accounting/income/:id/reverse', authenticate, dalContextMiddle
   }
 });
 
+// Restore / Re-approve Cancelled Income Voucher
+app.post('/api/v1/accounting/income/:id/restore', authenticate, dalContextMiddleware, requirePermission('APPROVE_INCOME'), async (req: AuthRequest, res: Response) => {
+  const { reason } = req.body;
+  try {
+    const item = await req.dal!.income!.restore!(req.dalOptions!, req.params.id, reason);
+
+    realtime.broadcastToMosque(req.currentMosque!.id, 'INCOME_UPDATED', item, { senderId: req.user!.id });
+    realtime.broadcastToMosque(req.currentMosque!.id, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(req.currentMosque!.id));
+
+    res.json({ success: true, data: item, message: 'বাতিলকৃত ভাউচার সফলভাবে পুনঃঅনুমোদন/পুনরুদ্ধার করা হয়েছে এবং ব্যালেন্স সমন্বয় করা হয়েছে।' });
+  } catch (err: any) {
+    if (err?.name === 'TenantSecurityError') {
+      const status = err.code === 'TENANT_REQUIRED' ? 401 : 403;
+      return res.status(status).json({
+        success: false,
+        error: { code: err.code, message: err.message }
+      });
+    }
+    if (err?.code === 'NOT_FOUND') {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: err.message }
+      });
+    }
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message || 'ভাউচার পুনরুদ্ধার করতে ব্যর্থ হয়েছে।' } });
+  }
+});
+
 // ==========================================
 // 6. EXPENSE MANAGEMENT (With Idempotency)
 // ==========================================
@@ -5413,6 +5441,34 @@ app.post('/api/v1/accounting/expense/:id/reverse', authenticate, dalContextMiddl
       return res.status(500).json({ success: false, error: { code: 'PERSISTENCE_FAILED', message: 'ব্যয় ভাউচার বাতিলকরণ সংরক্ষণ ব্যর্থ হয়েছে। ডেটাবেজ রোলব্যাক সম্পন্ন।' } });
     }
     throw err;
+  }
+});
+
+// Restore / Re-approve Cancelled Expense Voucher
+app.post('/api/v1/accounting/expense/:id/restore', authenticate, dalContextMiddleware, requirePermission('APPROVE_EXPENSE'), async (req: AuthRequest, res: Response) => {
+  const { reason } = req.body;
+  try {
+    const item = await req.dal!.expense!.restore!(req.dalOptions!, req.params.id, reason);
+
+    realtime.broadcastToMosque(req.currentMosque!.id, 'EXPENSE_UPDATED', item, { senderId: req.user!.id });
+    realtime.broadcastToMosque(req.currentMosque!.id, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(req.currentMosque!.id));
+
+    res.json({ success: true, data: item, message: 'বাতিলকৃত ব্যয় ভাউচার সফলভাবে পুনঃঅনুমোদন/পুনরুদ্ধার করা হয়েছে এবং ব্যালেন্স সমন্বয় করা হয়েছে।' });
+  } catch (err: any) {
+    if (err?.name === 'TenantSecurityError') {
+      const status = err.code === 'TENANT_REQUIRED' ? 401 : 403;
+      return res.status(status).json({
+        success: false,
+        error: { code: err.code, message: err.message }
+      });
+    }
+    if (err?.code === 'NOT_FOUND') {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: err.message }
+      });
+    }
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message || 'ব্যয় ভাউচার পুনরুদ্ধার করতে ব্যর্থ হয়েছে।' } });
   }
 });
 
@@ -5729,6 +5785,35 @@ app.post('/api/v1/donations/:id/cancel', authenticate, dalContextMiddleware, req
     res.json(payload);
   } catch (err: any) {
     return handleDomainDalError(res, err, 'দান রসিদ বাতিল সংরক্ষণ ব্যর্থ হয়েছে। ডেটাবেজ রোলব্যাক সম্পন্ন।');
+  }
+});
+
+// Restore / Re-approve Cancelled Donation Endpoint
+app.post('/api/v1/donations/:id/restore', authenticate, dalContextMiddleware, requirePermission('CREATE_INCOME'), async (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
+  const dalOptions = req.dalOptions!;
+
+  try {
+    const { reason } = req.body;
+    const result = await req.dal!.donations!.restore!(dalOptions, req.params.id, reason);
+
+    const donation = result?.donation || result;
+    const incEntry = result?.incEntry;
+    const payload = result?.payload || {
+      success: true,
+      data: donation,
+      message: 'দান রসিদ সফলভাবে পুনরায় অনুমোদন ও আর্থিক সমন্বয় সম্পন্ন হয়েছে।'
+    };
+
+    realtime.broadcastToMosque(mosqueId, 'DONATION_UPDATED', donation, { senderId: req.user!.id });
+    if (incEntry) {
+      realtime.broadcastToMosque(mosqueId, 'INCOME_UPDATED', incEntry, { senderId: req.user!.id });
+    }
+    realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+    res.json(payload);
+  } catch (err: any) {
+    return handleDomainDalError(res, err, 'দান রসিদ পুনরুদ্বোর/অনুমোদন সংরক্ষণ ব্যর্থ হয়েছে।');
   }
 });
 

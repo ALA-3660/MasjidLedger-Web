@@ -72,6 +72,8 @@ interface IncomeExpenseViewProps {
   onUpdateExpense?: (id: string, data: any) => Promise<void>;
   onReverseIncome: (id: string, reason: string) => Promise<void>;
   onReverseExpense: (id: string, reason: string) => Promise<void>;
+  onRestoreIncome?: (id: string, reason?: string) => Promise<void>;
+  onRestoreExpense?: (id: string, reason?: string) => Promise<void>;
   onPrintVoucher: (
     item: IncomeEntry | ExpenseEntry,
     type: 'INCOME' | 'EXPENSE',
@@ -98,6 +100,8 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
   onUpdateExpense,
   onReverseIncome,
   onReverseExpense,
+  onRestoreIncome,
+  onRestoreExpense,
   onPrintVoucher,
   onSendSms,
 }) => {
@@ -298,6 +302,34 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
       setReversalReason('');
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  // Restore Execution
+  const handleRestore = async (id: string, type: 'INCOME' | 'EXPENSE') => {
+    if (!window.confirm('আপনি কি নিশ্চিত যে আপনি এই বাতিলকৃত ভাউচারটি পুনরায় অনুমোদন/পুনরুদ্ধার করতে চান? এর ফলে সমপরিমাণ টাকা মূল হিসাবের সাথে পুনরায় যুক্ত হবে।')) {
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      if (type === 'INCOME') {
+        if (onRestoreIncome) {
+          await onRestoreIncome(id);
+        } else {
+          await api.restoreIncome(id);
+        }
+      } else {
+        if (onRestoreExpense) {
+          await onRestoreExpense(id);
+        } else {
+          await api.restoreExpense(id);
+        }
+      }
+      alert('ভাউচার সফলভাবে পুনরায় অনুমোদন/পুনরুদ্ধার করা হয়েছে!');
+    } catch (err: any) {
+      alert(err.message || 'ভাউচার পুনরুদ্ধার করতে ব্যর্থ হয়েছে');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -904,6 +936,17 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
                             <RotateCcw className="w-3.5 h-3.5" />
                           </button>
                         )}
+
+                        {(item.status === 'CANCELLED' || item.status === 'REJECTED') && (
+                          <button
+                            onClick={() => handleRestore(item.id, 'INCOME')}
+                            className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow-xs transition-colors cursor-pointer inline-flex items-center gap-1"
+                            title="অনুমোদন / পুনরুদ্ধার করুন"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>অনুমোদন / পুনরুদ্ধার</span>
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))
@@ -1045,6 +1088,17 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
                             title="বাতিল ও রিভার্সাল"
                           >
                             <RotateCcw className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+
+                        {(item.status === 'CANCELLED' || item.status === 'REJECTED') && (
+                          <button
+                            onClick={() => handleRestore(item.id, 'EXPENSE')}
+                            className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow-xs transition-colors cursor-pointer inline-flex items-center gap-1"
+                            title="অনুমোদন / পুনরুদ্ধার করুন"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>অনুমোদন / পুনরুদ্ধার</span>
                           </button>
                         )}
                       </td>

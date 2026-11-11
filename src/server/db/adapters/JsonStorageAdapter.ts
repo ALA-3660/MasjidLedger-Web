@@ -269,10 +269,21 @@ export class JsonMosqueIdentityReadOnlyRepository implements IMosqueIdentityRead
 /**
  * Read-Only Account Head Repository implementation backed by in-memory JSON dataset (Phase 1B.9).
  */
+const initializedMosquesForAccountHeads = new Set<string>();
+
 function ensureMosqueDefaultAccountHeads(dataSource: JsonDataSourceContract, mosqueId: string): void {
   if (dataSource !== db || !mosqueId) return;
+  if (initializedMosquesForAccountHeads.has(mosqueId)) return;
+
   if (!dataSource.accountHeads) dataSource.accountHeads = [];
   const existing = dataSource.accountHeads.filter((h) => h.mosqueId === mosqueId);
+
+  if (existing.length > 0) {
+    initializedMosquesForAccountHeads.add(mosqueId);
+    return;
+  }
+
+  initializedMosquesForAccountHeads.add(mosqueId);
 
   const prefix = mosqueId === 'mosque-001' ? 'head' : `head-${mosqueId}`;
   const defaults: AccountHead[] = [
@@ -1699,6 +1710,56 @@ export class JsonIncomeParityRepository implements IIncomeRepository {
       return { ...item };
     });
   }
+
+  async restore(options: DALOptions, entryId: string, reason?: string): Promise<IncomeEntry> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+
+    const initialItem = (this.dataSource.incomeEntries || []).find(
+      (i) => i.id === entryId && i.mosqueId === mosqueId
+    );
+    if (!initialItem) {
+      throw new DalDomainError('NOT_FOUND', 'ভাউচার পাওয়া যায়নি।');
+    }
+    if (initialItem.status === 'APPROVED') {
+      throw new DalDomainError('ALREADY_APPROVED', 'এই ভাউচার ইতিমধ্যে অনুমোদিত রয়েছে।');
+    }
+
+    return runWithDomainErrorUnwrap(this.dataSource, (tx) => {
+      const item = (this.dataSource.incomeEntries || []).find(
+        (i) => i.id === entryId && i.mosqueId === mosqueId
+      );
+      if (!item) {
+        throw new DalDomainError('NOT_FOUND', 'ভাউচার পাওয়া যায়নি।');
+      }
+
+      const account = (this.dataSource.accounts || []).find(
+        (a) => a.id === item.accountId && a.mosqueId === mosqueId
+      );
+      if (account) {
+        account.currentBalance += item.amount;
+      }
+
+      item.status = 'APPROVED';
+      item.rejectionReason = undefined;
+      item.updatedAt = new Date().toISOString();
+
+      const actorName = resolveActorName(this.dataSource, activeOptions!);
+      tx.logAudit(
+        mosqueId,
+        activeOptions!.userContext.userId,
+        actorName,
+        activeOptions!.userContext.userRole,
+        'APPROVE',
+        'INCOME',
+        `বাতিলকৃত আয় ভাউচার পুনরায় অনুমোদন/পুনরুদ্ধার (${item.voucherNumber}): ৳ ${item.amount}${reason ? ' - কারণ: ' + reason : ''}`,
+        item.id,
+        activeOptions!.clientIp
+      );
+
+      return { ...item };
+    });
+  }
 }
 
 /**
@@ -2159,6 +2220,57 @@ export class JsonExpenseParityRepository implements IExpenseRepository {
         'CANCEL',
         'EXPENSE',
         `ব্যয় ভাউচার বাতিল (${item.voucherNumber}): ৳${item.amount} ফেরত প্রদান করা হয়েছে (${account ? account.nameBn : 'হিসাব'}). কারণ: ${reason || 'রিভার্সাল'}`,
+        item.id,
+        activeOptions!.clientIp
+      );
+
+      return { ...item };
+    });
+  }
+
+  async restore(options: DALOptions, entryId: string, reason?: string): Promise<ExpenseEntry> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+
+    const initialItem = (this.dataSource.expenseEntries || []).find(
+      (e) => e.id === entryId && e.mosqueId === mosqueId
+    );
+    if (!initialItem) {
+      throw new DalDomainError('NOT_FOUND', 'ভাউচার পাওয়া যায়নি।');
+    }
+    if (initialItem.status === 'APPROVED') {
+      throw new DalDomainError('ALREADY_APPROVED', 'এই ভাউচার ইতিমধ্যে অনুমোদিত রয়েছে।');
+    }
+
+    return runWithDomainErrorUnwrap(this.dataSource, (tx) => {
+      const item = (this.dataSource.expenseEntries || []).find(
+        (e) => e.id === entryId && e.mosqueId === mosqueId
+      );
+      if (!item) {
+        throw new DalDomainError('NOT_FOUND', 'ভাউচার পাওয়া যায়নি।');
+      }
+
+      const account = (this.dataSource.accounts || []).find(
+        (a) => a.id === item.accountId && a.mosqueId === mosqueId
+      );
+      if (account) {
+        account.currentBalance -= item.amount;
+      }
+
+      item.status = 'APPROVED';
+      item.isReversal = false;
+      item.rejectionReason = undefined;
+      item.updatedAt = new Date().toISOString();
+
+      const actorName = resolveActorName(this.dataSource, activeOptions!);
+      tx.logAudit(
+        mosqueId,
+        activeOptions!.userContext.userId,
+        actorName,
+        activeOptions!.userContext.userRole,
+        'APPROVE',
+        'EXPENSE',
+        `বাতিলকৃত ব্যয় ভাউচার পুনরায় অনুমোদন/পুনরুদ্ধার (${item.voucherNumber}): ৳ ${item.amount}${reason ? ' - কারণ: ' + reason : ''}`,
         item.id,
         activeOptions!.clientIp
       );
@@ -2899,6 +3011,57 @@ export class JsonDonationParityRepository implements IDonationRepository {
     }
 
     return donation;
+  }
+
+  async restore(
+    options: DALOptions,
+    id: string,
+    reason?: string
+  ): Promise<{ donation: any; payload: any; incEntry?: any; updatedCollection?: any }> {
+    const activeOptions = options || this.defaultOptions;
+    const mosqueId = verifyJsonTenantAccess(this.dataSource, activeOptions);
+    const actor = resolveActorMeta(this.dataSource, activeOptions);
+
+    const donation = (this.dataSource.donations || []).find((d: any) => d.id === id && d.mosqueId === mosqueId);
+    if (!donation) {
+      throw new DalDomainError('NOT_FOUND', 'দান রসিদ পাওয়া যায়নি।');
+    }
+
+    return runWithDomainErrorUnwrap(this.dataSource, (tx) => {
+      const account = (tx.accounts || []).find((a: any) => a.id === donation.accountId && a.mosqueId === mosqueId);
+      if (account) {
+        account.currentBalance += donation.amount;
+      }
+
+      const incEntry = (tx.incomeEntries || []).find(
+        (i: any) => (i.id === donation.incomeEntryId || i.reference === `Receipt: ${donation.receiptNumber}`) && i.mosqueId === mosqueId
+      );
+      if (incEntry) {
+        incEntry.status = 'APPROVED';
+        incEntry.rejectionReason = undefined;
+        incEntry.updatedAt = new Date().toISOString();
+      }
+
+      donation.status = 'APPROVED';
+      donation.cancellationReason = undefined;
+      donation.cancelledAt = undefined;
+      donation.cancelledBy = undefined;
+      donation.updatedAt = new Date().toISOString();
+      donation.updatedBy = actor.userId;
+
+      tx.logAudit(
+        mosqueId,
+        actor.userId,
+        actor.userName,
+        actor.userRole,
+        'APPROVE',
+        'DONATION',
+        `বাতিলকৃত দান রসিদ পুনরায় অনুমোদন/পুনরুদ্ধার (${donation.receiptNumber}): ৳ ${donation.amount}${reason ? ' - ' + reason : ''}`
+      );
+
+      const payload = { success: true, data: donation, message: 'দান রসিদ সফলভাবে পুনরায় অনুমোদন ও আর্থিক সমন্বয় সম্পন্ন হয়েছে।' };
+      return { donation, payload, incEntry };
+    });
   }
 }
 

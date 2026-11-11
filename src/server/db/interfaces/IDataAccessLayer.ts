@@ -173,6 +173,7 @@ export interface IIncomeRepository {
   update(options: DALOptions, entryId: string, updates: UpdateIncomeInput): Promise<IncomeEntry>;
   updateDenomination(options: DALOptions, entryId: string, denominationData: any, editReason?: string): Promise<IncomeEntry>;
   reverse(options: DALOptions, entryId: string, reason: string): Promise<IncomeEntry>;
+  restore?(options: DALOptions, entryId: string, reason?: string): Promise<IncomeEntry>;
 }
 
 /**
@@ -200,6 +201,7 @@ export interface IExpenseRepository {
   create(options: DALOptions, entry: Omit<ExpenseEntry, 'id' | 'voucherNumber'>): Promise<ExpenseEntry>;
   update(options: DALOptions, entryId: string, updates: UpdateExpenseInput): Promise<ExpenseEntry>;
   reverse(options: DALOptions, entryId: string, reason: string): Promise<ExpenseEntry>;
+  restore?(options: DALOptions, entryId: string, reason?: string): Promise<ExpenseEntry>;
 }
 
 /**
@@ -268,6 +270,7 @@ export interface IDonationRepository {
   findById(options: DALOptions, id: string): Promise<any | null>;
   create(options: DALOptions, payload: Record<string, any>): Promise<any>;
   cancel(options: DALOptions, id: string, reason?: string): Promise<any>;
+  restore?(options: DALOptions, id: string, reason?: string): Promise<any>;
   updateDenomination(options: DALOptions, id: string, denominationData: any, editReason?: string): Promise<any>;
 }
 

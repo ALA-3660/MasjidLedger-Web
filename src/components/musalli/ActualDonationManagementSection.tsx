@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   XCircle,
   Eye,
+  RotateCcw,
   FileSpreadsheet,
   Layers,
   ArrowUpDown,
@@ -59,6 +60,7 @@ interface ActualDonationManagementSectionProps {
   onSaveDonation?: (payload: any, submitMode: 'SAVE_AND_PRINT' | 'SAVE_ONLY') => Promise<Donation | void>;
   onPrintReceipt?: (donation: Donation, format?: 'A4' | 'POS_80' | 'POS_58') => void;
   onCancelDonation?: (id: string, reason: string) => Promise<void>;
+  onRestoreDonation?: (id: string, reason?: string) => Promise<void>;
   loading?: boolean;
   initialOpenCreateModal?: boolean;
   initialPersonId?: string;
@@ -81,6 +83,7 @@ export const ActualDonationManagementSection: React.FC<ActualDonationManagementS
   onSaveDonation,
   onPrintReceipt,
   onCancelDonation,
+  onRestoreDonation,
   loading = false,
   initialOpenCreateModal = false,
   initialPersonId,
@@ -116,6 +119,23 @@ export const ActualDonationManagementSection: React.FC<ActualDonationManagementS
       await api.cancelDonation(id, reason);
     }
     if (onRefresh) onRefresh();
+  };
+
+  const handleRestoreDonation = async (id: string) => {
+    if (!window.confirm(isBn ? 'আপনি কি নিশ্চিত যে আপনি এই বাতিলকৃত দান রসিদটি পুনরায় অনুমোদন/পুনরুদ্ধার করতে চান? এর ফলে সমপরিমাণ টাকা পুনরায় তহবিলের সাথে যুক্ত হবে।' : 'Are you sure you want to restore/re-approve this cancelled donation?')) {
+      return;
+    }
+    try {
+      if (onRestoreDonation) {
+        await onRestoreDonation(id);
+      } else {
+        await api.restoreDonation(id);
+      }
+      alert(isBn ? 'দান রসিদ সফলভাবে পুনরায় অনুমোদন/পুনরুদ্ধার করা হয়েছে!' : 'Donation restored successfully!');
+      if (onRefresh) onRefresh();
+    } catch (err: any) {
+      alert(err.message || (isBn ? 'দান রসিদ পুনরুদ্ধার করতে ব্যর্থ হয়েছে' : 'Failed to restore donation'));
+    }
   };
 
   const handlePrintReceipt = (donation: Donation, format?: 'A4' | 'POS_80' | 'POS_58') => {
@@ -768,6 +788,18 @@ export const ActualDonationManagementSection: React.FC<ActualDonationManagementS
                           >
                             <Printer className="w-3.5 h-3.5" />
                           </button>
+
+                          {isCancelled && (
+                            <button
+                              type="button"
+                              onClick={() => handleRestoreDonation(donation.id)}
+                              title={isBn ? 'অনুমোদন / পুনরুদ্ধার করুন' : 'Restore'}
+                              className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] rounded shadow-xs transition-colors cursor-pointer flex items-center space-x-1"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              <span>{isBn ? 'পুনরুদ্ধার' : 'Restore'}</span>
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

@@ -19,6 +19,9 @@ import {
   AlertTriangle,
   LucideIcon,
   CheckCircle2,
+  Plus,
+  UserPlus,
+  PlusCircle,
 } from 'lucide-react';
 import { CommitteeTerm } from '../types';
 import { Language, translations } from '../lib/i18n';
@@ -289,6 +292,24 @@ export const CommitteeSecondarySidebar: React.FC<CommitteeSecondarySidebarProps>
             );
           })}
         </nav>
+
+        {/* Quick Committee Action Buttons */}
+        <div className="mt-3 p-2.5 bg-blue-50/80 border border-blue-200/80 rounded-xl space-y-1.5 font-sans">
+          <button
+            onClick={() => handleSelect('members')}
+            className="w-full px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center justify-center space-x-1.5 transition-colors cursor-pointer shadow-2xs"
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            <span>{isBn ? '+ সদস্য যোগ / এন্ট্রি' : '+ Add Member'}</span>
+          </button>
+          <button
+            onClick={() => handleSelect('terms')}
+            className="w-full px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center justify-center space-x-1.5 transition-colors cursor-pointer shadow-2xs"
+          >
+            <PlusCircle className="w-3.5 h-3.5" />
+            <span>{isBn ? '+ নতুন কমিটি / মেয়াদ' : '+ Add Committee Term'}</span>
+          </button>
+        </div>
 
         {/* Active Committee Term Quick Stat Box */}
         {activeTerm && tenure && (

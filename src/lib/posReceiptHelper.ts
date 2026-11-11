@@ -143,7 +143,7 @@ export function getSmartPosReceiptFooter(
 
   switch (category) {
     case 'DONATION':
-      return 'আল্লাহ তাআলা আপনার দান কবুল করুন ও উত্তম প্রতিদান দিন করুন। (আমিন)';
+      return 'আল্লাহ তাআলা আপনার দান কবুল করুন ও উত্তম প্রতিদান দিন। (আমিন)';
     case 'RENT':
       return 'আপনার ভাড়া পরিশোধের জন্য ধন্যবাদ। আল্লাহ তাআলা আপনার রিজিকে বরকত দিন। (আমিন)';
     case 'SALES':

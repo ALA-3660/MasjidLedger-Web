@@ -67,7 +67,6 @@ import { PwaManager } from './components/PwaManager';
 import { MoneyReceiptModal, VoucherModal, PrintFormat } from './components/PrintModals';
 import { ChangeCalculatorModal } from './components/ChangeCalculatorModal';
 import { UniversalScannerModal } from './components/UniversalScannerModal';
-import { FloatingFinancialActions } from './components/FloatingFinancialActions';
 import { UnifiedIncomeEntryModal } from './components/UnifiedIncomeEntryModal';
 import { UnifiedExpenseEntryModal } from './components/UnifiedExpenseEntryModal';
 import { JumaCollectionModal } from './components/JumaCollectionModal';
@@ -235,6 +234,15 @@ export default function App() {
     }
     setErrorMessage('');
     try {
+      // Check 1-hour (3,600,000 ms) inactivity expiry before restoring session
+      const INACTIVITY_LIMIT_MS = 60 * 60 * 1000;
+      const savedLastActivity = typeof window !== 'undefined' ? localStorage.getItem('ml_last_activity_at') : null;
+      if (savedLastActivity && Date.now() - Number(savedLastActivity) >= INACTIVITY_LIMIT_MS) {
+        api.clearAuth();
+      } else if (api.hasToken() && !savedLastActivity && typeof window !== 'undefined') {
+        localStorage.setItem('ml_last_activity_at', String(Date.now()));
+      }
+
       // If there is no token in storage, only load public mosque identity and present login
       if (!api.hasToken()) {
         const mosqueRes = await api.getMosque().catch(() => null);
@@ -728,6 +736,90 @@ export default function App() {
     }
   };
 
+  // Automatic Logout after 1 Hour (3,600,000 ms) of Inactivity on Computer or Mobile
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const INACTIVITY_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let lastRecordedUpdate = 0;
+
+    const checkAndEnforceInactivity = () => {
+      const savedLastActivity = localStorage.getItem('ml_last_activity_at');
+      const lastActivityTime = savedLastActivity ? Number(savedLastActivity) : Date.now();
+      const elapsed = Date.now() - lastActivityTime;
+
+      if (elapsed >= INACTIVITY_TIMEOUT_MS) {
+        handleLogout();
+        return true;
+      }
+      return false;
+    };
+
+    const resetInactivityTimer = () => {
+      const now = Date.now();
+      // Throttle localStorage writes to once every 5 seconds for optimal performance
+      if (now - lastRecordedUpdate >= 5000) {
+        lastRecordedUpdate = now;
+        localStorage.setItem('ml_last_activity_at', String(now));
+      }
+
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+
+      timeoutId = setTimeout(() => {
+        if (!checkAndEnforceInactivity()) {
+          // If another tab updated activity more recently, reschedule remaining time
+          const saved = Number(localStorage.getItem('ml_last_activity_at') || Date.now());
+          const remaining = Math.max(1000, INACTIVITY_TIMEOUT_MS - (Date.now() - saved));
+          timeoutId = setTimeout(checkAndEnforceInactivity, remaining);
+        }
+      }, INACTIVITY_TIMEOUT_MS);
+    };
+
+    // Initialize activity timestamp if not already set or check if already expired
+    if (checkAndEnforceInactivity()) {
+      return;
+    }
+    resetInactivityTimer();
+
+    const activityEvents = [
+      'mousemove',
+      'mousedown',
+      'keydown',
+      'touchstart',
+      'touchmove',
+      'scroll',
+      'click',
+      'wheel',
+    ];
+
+    activityEvents.forEach((event) => {
+      window.addEventListener(event, resetInactivityTimer, { passive: true });
+    });
+
+    // Also check periodically & when device wakes from sleep or tab becomes visible
+    const intervalId = setInterval(checkAndEnforceInactivity, 15000);
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        checkAndEnforceInactivity();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    window.addEventListener('focus', handleVisibilityOrFocus);
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      clearInterval(intervalId);
+      activityEvents.forEach((event) => {
+        window.removeEventListener(event, resetInactivityTimer);
+      });
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+    };
+  }, [isAuthenticated]);
+
   const handleAddIncome = async (data: any, options?: { print?: boolean; format?: PrintFormat }) => {
     const created = await api.createIncome(data);
     await loadData(false);
@@ -773,6 +865,16 @@ export default function App() {
 
   const handleReverseExpense = async (id: string, reason: string) => {
     await api.reverseExpense(id, reason);
+    await loadData(false);
+  };
+
+  const handleRestoreIncome = async (id: string, reason?: string) => {
+    await api.restoreIncome(id, reason);
+    await loadData(false);
+  };
+
+  const handleRestoreExpense = async (id: string, reason?: string) => {
+    await api.restoreExpense(id, reason);
     await loadData(false);
   };
 
@@ -1054,8 +1156,9 @@ export default function App() {
   };
 
   const handleAddProperty = async (data: any) => {
-    await api.createProperty(data);
+    const created = await api.createProperty(data);
     await loadData(false);
+    return created;
   };
 
   const handleUpdateProperty = async (id: string, data: any) => {
@@ -1280,6 +1383,9 @@ export default function App() {
           onOpenScanner={() => setIsScannerOpen(true)}
           onOpenActionQrHub={() => setIsActionCardHubOpen(true)}
           onOpenJumaModal={() => setIsGlobalJumaModalOpen(true)}
+          onOpenIncomeModal={() => setIsGlobalIncomeModalOpen(true)}
+          onOpenExpenseModal={() => setIsGlobalExpenseModalOpen(true)}
+          onOpenCalculator={() => setIsGlobalCalculatorOpen(true)}
           onRefresh={() => loadData(false)}
         />
       )}
@@ -1329,6 +1435,7 @@ export default function App() {
           onAddIncome={handleAddIncome}
           onUpdateIncome={handleUpdateIncome}
           onReverseIncome={handleReverseIncome}
+          onRestoreIncome={handleRestoreIncome}
           onPrintVoucher={(item, type, format = 'POS_80', isReprint = true) =>
             setActiveVoucher({ item, type, format, isReprint })
           }
@@ -1369,6 +1476,7 @@ export default function App() {
           onAddExpense={handleAddExpense}
           onUpdateExpense={handleUpdateExpense}
           onReverseExpense={handleReverseExpense}
+          onRestoreExpense={handleRestoreExpense}
           onPrintVoucher={(item, type, format = 'POS_80', isReprint = true) =>
             setActiveVoucher({ item, type, format, isReprint })
           }
@@ -2095,15 +2203,6 @@ export default function App() {
         initialFormat={activeVoucher.format || 'POS_80'}
         isReprint={activeVoucher.isReprint ?? false}
         autoPrint={activeVoucher.autoPrint ?? false}
-      />
-
-      {/* 4 Floating Quick Actions (Income, Expense, Juma, Scanner) */}
-      <FloatingFinancialActions
-        onOpenIncome={() => setIsGlobalIncomeModalOpen(true)}
-        onOpenExpense={() => setIsGlobalExpenseModalOpen(true)}
-        onOpenJuma={() => setIsGlobalJumaModalOpen(true)}
-        onOpenScanner={() => setIsScannerOpen(true)}
-        language={language}
       />
 
       {/* Global Direct Unified Income Entry Modal (Quick Action) */}

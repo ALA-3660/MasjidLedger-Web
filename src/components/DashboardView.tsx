@@ -47,6 +47,7 @@ import {
 import { Language, translations, formatCurrency, formatDate } from '../lib/i18n';
 import { NavTab } from './Sidebar';
 import { hasPermission } from '../lib/permissions';
+import { FloatingFinancialActions } from './FloatingFinancialActions';
 
 export interface DashboardViewProps {
   stats?: DashboardStats | null;
@@ -71,6 +72,9 @@ export interface DashboardViewProps {
   onOpenScanner?: () => void;
   onOpenActionQrHub?: () => void;
   onOpenJumaModal?: () => void;
+  onOpenIncomeModal?: () => void;
+  onOpenExpenseModal?: () => void;
+  onOpenCalculator?: () => void;
   onRefresh?: () => void;
 }
 
@@ -97,6 +101,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenScanner,
   onOpenActionQrHub,
   onOpenJumaModal,
+  onOpenIncomeModal,
+  onOpenExpenseModal,
+  onOpenCalculator,
   onRefresh,
 }) => {
   const t = translations[language] || translations.bn;
@@ -554,7 +561,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* ========================================================================= */}
       {/* 1. HEADER: MOSQUE IDENTITY + BANGLADESH CLOCK (PURE FINANCIAL / ADMIN) */}
       {/* ========================================================================= */}
-      <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 shadow-xs relative overflow-hidden">
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 shadow-xs relative z-20">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
           {/* Mosque Identity Information */}
           <div className="space-y-1.5 max-w-2xl">
@@ -594,41 +601,66 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </p>
           </div>
 
-          {/* Simple Live Clock & Header Controls */}
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3 lg:gap-4 shrink-0">
-            {/* Clock Widget (BST / UTC+6) */}
-            <div className="bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-xs border border-slate-800 flex items-center space-x-3.5">
-              <div className="w-9 h-9 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
-                <ClockIcon className="w-5 h-5 animate-pulse" />
-              </div>
-              <div className="min-w-[150px]">
-                <div className="flex items-center space-x-1.5">
-                  <span className="text-base font-bold font-mono tracking-wider text-emerald-400">
-                    {timeFormatted}
-                  </span>
-                  <span className="text-[10px] bg-slate-800 text-slate-300 font-mono px-1.5 py-0.2 rounded border border-slate-700">
-                    BST
-                  </span>
+          {/* Simple Live Clock, Refresh & Quick Action Underneath Clock */}
+          <div className="flex flex-col sm:items-end gap-2.5 shrink-0">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 lg:gap-4">
+              {/* Clock Widget (BST / UTC+6) */}
+              <div className="bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-xs border border-slate-800 flex items-center space-x-3.5">
+                <div className="w-9 h-9 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
+                  <ClockIcon className="w-5 h-5 animate-pulse" />
                 </div>
-                <div className="text-[11px] text-slate-300 font-medium truncate mt-0.5">
-                  {dateFormatted}
+                <div className="min-w-[150px]">
+                  <div className="flex items-center space-x-1.5">
+                    <span className="text-base font-bold font-mono tracking-wider text-emerald-400">
+                      {timeFormatted}
+                    </span>
+                    <span className="text-[10px] bg-slate-800 text-slate-300 font-mono px-1.5 py-0.2 rounded border border-slate-700">
+                      BST
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-300 font-medium truncate mt-0.5">
+                    {dateFormatted}
+                  </div>
                 </div>
               </div>
+
+              {/* Refresh Button */}
+              {onRefresh && (
+                <button
+                  id="dash-btn-refresh"
+                  type="button"
+                  onClick={onRefresh}
+                  title={language === 'bn' ? 'তথ্য রিফ্রেশ করুন' : 'Refresh Data'}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-3.5 py-2.5 rounded-xl flex items-center justify-center space-x-1.5 transition-colors border border-slate-200 cursor-pointer"
+                >
+                  <RefreshCw className="w-4 h-4 text-slate-600" />
+                  <span className="hidden sm:inline">{language === 'bn' ? 'রিফ্রেশ' : 'Refresh'}</span>
+                </button>
+              )}
             </div>
 
-            {/* Refresh Button */}
-            {onRefresh && (
-              <button
-                id="dash-btn-refresh"
-                type="button"
-                onClick={onRefresh}
-                title={language === 'bn' ? 'তথ্য রিফ্রেশ করুন' : 'Refresh Data'}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-3.5 py-2.5 rounded-xl flex items-center justify-center space-x-1.5 transition-colors border border-slate-200 cursor-pointer"
-              >
-                <RefreshCw className="w-4 h-4 text-slate-600" />
-                <span className="hidden sm:inline">{language === 'bn' ? 'রিফ্রেশ' : 'Refresh'}</span>
-              </button>
-            )}
+            {/* Quick Action Button Positioned Directly Below the Clock */}
+            <FloatingFinancialActions
+              onOpenIncome={() => {
+                if (onOpenIncomeModal) onOpenIncomeModal();
+                else if (onQuickAction) onQuickAction('income');
+                else onNavigate('income');
+              }}
+              onOpenExpense={() => {
+                if (onOpenExpenseModal) onOpenExpenseModal();
+                else if (onQuickAction) onQuickAction('expense');
+                else onNavigate('expense');
+              }}
+              onOpenJuma={() => {
+                if (onOpenJumaModal) onOpenJumaModal();
+                else if (onQuickAction) onQuickAction('juma');
+              }}
+              onOpenScanner={() => {
+                if (onOpenScanner) onOpenScanner();
+              }}
+              onOpenCalculator={onOpenCalculator}
+              language={language}
+            />
           </div>
         </div>
       </div>

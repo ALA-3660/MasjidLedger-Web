@@ -163,6 +163,7 @@ export const AssetWaqfManagementView: React.FC<AssetWaqfManagementViewProps> = (
   const [isPropertyReportsOpen, setIsPropertyReportsOpen] = useState(false);
 
   // Sub-record modals
+  const [isTenantModalOpen, setIsTenantModalOpen] = useState(false);
   const [tenantModalProperty, setTenantModalProperty] = useState<MosqueProperty | null>(null);
   const [selectedTenantForEdit, setSelectedTenantForEdit] = useState<PropertyTenant | null>(null);
   const [rentModalData, setRentModalData] = useState<{ property: MosqueProperty; tenant: PropertyTenant } | null>(null);
@@ -176,6 +177,18 @@ export const AssetWaqfManagementView: React.FC<AssetWaqfManagementViewProps> = (
 
   const isBn = language === 'bn';
   const canEdit = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'MOSQUE_ADMIN' || currentUser?.role === 'ACCOUNTANT';
+
+  const handleOpenAddTenant = (defaultProp?: MosqueProperty | null) => {
+    setSelectedTenantForEdit(null);
+    setTenantModalProperty(defaultProp || properties[0] || null);
+    setIsTenantModalOpen(true);
+  };
+
+  const handleOpenEditTenant = (tenant: PropertyTenant, prop: MosqueProperty) => {
+    setSelectedTenantForEdit(tenant);
+    setTenantModalProperty(prop);
+    setIsTenantModalOpen(true);
+  };
 
   // Extract all tenants and leases across all properties
   const allTenantsList = useMemo(() => {
@@ -359,8 +372,7 @@ export const AssetWaqfManagementView: React.FC<AssetWaqfManagementViewProps> = (
             setIsPropertyFormOpen(true);
           }}
           onOpenNewTenant={() => {
-            setSelectedTenantForEdit(null);
-            setTenantModalProperty(properties[0] || null);
+            handleOpenAddTenant();
           }}
           canEdit={canEdit}
         />
@@ -724,6 +736,20 @@ export const AssetWaqfManagementView: React.FC<AssetWaqfManagementViewProps> = (
                     <Printer className="w-3.5 h-3.5" />
                     <span>ওয়াকফ বিবরণী</span>
                   </button>
+
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPropertyForEdit(null);
+                        setIsPropertyFormOpen(true);
+                      }}
+                      className="px-3 py-1.5 bg-gradient-to-r from-amber-600 to-orange-700 hover:from-amber-700 hover:to-orange-800 text-white rounded-xl text-xs font-bold flex items-center space-x-1 cursor-pointer shadow-xs active:scale-95"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>+ নতুন সম্পত্তি</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -733,8 +759,21 @@ export const AssetWaqfManagementView: React.FC<AssetWaqfManagementViewProps> = (
                   <Building className="w-12 h-12 text-slate-300 mx-auto" />
                   <div className="font-bold text-slate-700 text-sm">কোনো ওয়াকফ সম্পত্তি পাওয়া যায়নি</div>
                   <p className="text-xs text-slate-400 font-tiro max-w-sm mx-auto">
-                    মসজিদের জমি, মার্কেট বা দোকান অন্তর্ভুক্ত করতে উপরে "+ নতুন ওয়াকফ সম্পত্তি" বাটনে ক্লিক করুন।
+                    মসজিদের জমি, মার্কেট বা দোকান অন্তর্ভুক্ত করতে নিচে "+ নতুন ওয়াকফ সম্পত্তি" বাটনে ক্লিক করুন।
                   </p>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPropertyForEdit(null);
+                        setIsPropertyFormOpen(true);
+                      }}
+                      className="mt-2 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-xs inline-flex items-center space-x-1.5 cursor-pointer active:scale-95"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>+ নতুন ওয়াকফ সম্পত্তি যোগ করুন</span>
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -825,10 +864,7 @@ export const AssetWaqfManagementView: React.FC<AssetWaqfManagementViewProps> = (
                             <div className="flex items-center space-x-1">
                               <button
                                 type="button"
-                                onClick={() => {
-                                  setTenantModalProperty(prop);
-                                  setSelectedTenantForEdit(null);
-                                }}
+                                onClick={() => handleOpenAddTenant(prop)}
                                 className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold flex items-center space-x-1 cursor-pointer"
                                 title="ভাড়াটিয়া যোগ করুন"
                               >
@@ -892,14 +928,11 @@ export const AssetWaqfManagementView: React.FC<AssetWaqfManagementViewProps> = (
                 {canEdit && (
                   <button
                     type="button"
-                    onClick={() => {
-                      setSelectedTenantForEdit(null);
-                      setTenantModalProperty(properties[0] || null);
-                    }}
+                    onClick={() => handleOpenAddTenant()}
                     className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-1.5 transition-all cursor-pointer whitespace-nowrap active:scale-95"
                   >
                     <Plus className="w-4 h-4" />
-                    <span>+ নতুন ভাড়াটিয়া / ইজারাদার</span>
+                    <span>নতুন ভাড়াটিয়া / ইজারাদার</span>
                   </button>
                 )}
               </div>
@@ -909,20 +942,32 @@ export const AssetWaqfManagementView: React.FC<AssetWaqfManagementViewProps> = (
                   <Users2 className="w-12 h-12 text-slate-300 mx-auto" />
                   <div className="font-bold text-slate-700 text-sm">কোনো ভাড়াটিয়া বা ইজারাদার পাওয়া যায়নি</div>
                   <p className="text-xs text-slate-400 font-tiro max-w-sm mx-auto">
-                    সম্পত্তির দোকান বা ইউনিটে ভাড়াটিয়া যোগ করতে নতুন ভাড়াটিয়া বাটনে ক্লিক করুন।
+                    সম্পত্তির দোকান বা ইউনিটে ভাড়াটিয়া যোগ করতে নিচের বাটনে ক্লিক করুন।
                   </p>
                   {canEdit && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedTenantForEdit(null);
-                        setTenantModalProperty(properties[0] || null);
-                      }}
-                      className="mt-2 px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs font-bold shadow-xs inline-flex items-center space-x-1.5 cursor-pointer"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>নতুন ভাড়াটিয়া এন্ট্রি ফরম খুলুন</span>
-                    </button>
+                    <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenAddTenant()}
+                        className="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs font-bold shadow-xs inline-flex items-center space-x-1.5 cursor-pointer active:scale-95"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>নতুন ভাড়াটিয়া এন্ট্রি ফরম খুলুন</span>
+                      </button>
+                      {properties.length === 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedPropertyForEdit(null);
+                            setIsPropertyFormOpen(true);
+                          }}
+                          className="px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold inline-flex items-center space-x-1.5 cursor-pointer active:scale-95"
+                        >
+                          <Building className="w-4 h-4 text-amber-700" />
+                          <span>+ নতুন ওয়াকফ সম্পত্তি / দোকান যোগ করুন</span>
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               ) : (
@@ -981,11 +1026,9 @@ export const AssetWaqfManagementView: React.FC<AssetWaqfManagementViewProps> = (
                               {canEdit && (
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    setTenantModalProperty(property);
-                                    setSelectedTenantForEdit(tenant);
-                                  }}
+                                  onClick={() => handleOpenEditTenant(tenant, property)}
                                   className="p-1 text-slate-500 hover:text-blue-700"
+                                  title="সম্পাদনা"
                                 >
                                   <Edit2 className="w-3.5 h-3.5" />
                                 </button>
@@ -1013,45 +1056,77 @@ export const AssetWaqfManagementView: React.FC<AssetWaqfManagementViewProps> = (
                     আইনি চুক্তিনামা, মেয়াদ, মাসিক ভাড়া ও জামানতের কেন্দ্রীয় তদারকি
                   </p>
                 </div>
-                <span className="px-3 py-1 bg-amber-200/60 text-amber-900 rounded-xl text-xs font-bold font-baloo">
-                  মোট চুক্তি: {toBanglaNumber(allTenantsList.length)} টি
-                </span>
+                <div className="flex items-center space-x-2">
+                  <span className="px-3 py-1 bg-amber-200/60 text-amber-900 rounded-xl text-xs font-bold font-baloo">
+                    মোট চুক্তি: {toBanglaNumber(allTenantsList.length)} টি
+                  </span>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenAddTenant()}
+                      className="px-3 py-1 bg-amber-700 hover:bg-amber-800 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-1 cursor-pointer active:scale-95"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>+ নতুন চুক্তি</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
-              <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-2xs">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
-                    <tr>
-                      <th className="px-4 py-3">চুক্তি নং</th>
-                      <th className="px-4 py-3">সম্পত্তি ও কক্ষ/দোকান</th>
-                      <th className="px-4 py-3">ভাড়াটিয়া / ইজারাদার</th>
-                      <th className="px-4 py-3 text-right">নির্ধারিত ভাড়া</th>
-                      <th className="px-4 py-3 text-right">জামানত স্থিতি</th>
-                      <th className="px-4 py-3">চুক্তির মেয়াদ</th>
-                      <th className="px-4 py-3">অবস্থা</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-slate-700">
-                    {allTenantsList.map(({ tenant, property }) => (
-                      <tr key={tenant.id} className="hover:bg-slate-50/80">
-                        <td className="px-4 py-3 font-bold text-indigo-900 font-baloo">{tenant.agreementNo || `AGR-${tenant.tenantCode}`}</td>
-                        <td className="px-4 py-3 font-semibold text-slate-800">
-                          {property.name || property.propertyCode} ({tenant.unitOrShopNo || 'সাধারণ'})
-                        </td>
-                        <td className="px-4 py-3 font-semibold text-slate-900">{tenant.name}</td>
-                        <td className="px-4 py-3 text-right font-baloo font-bold text-emerald-800">{formatCurrency(tenant.monthlyRent)}</td>
-                        <td className="px-4 py-3 text-right font-baloo text-slate-600">{formatCurrency(tenant.securityDeposit || 0)}</td>
-                        <td className="px-4 py-3 font-baloo text-[11px]">{tenant.startDate} হতে {tenant.endDate}</td>
-                        <td className="px-4 py-3">
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                            {tenant.status === 'ACTIVE' ? 'কার্যকর' : 'মেয়াদোত্তীর্ণ'}
-                          </span>
-                        </td>
+              {allTenantsList.length === 0 ? (
+                <div className="bg-white p-12 text-center rounded-3xl border border-dashed border-slate-300 space-y-3">
+                  <FileText className="w-12 h-12 text-slate-300 mx-auto" />
+                  <div className="font-bold text-slate-700 text-sm">কোনো চুক্তি বা ইজারা রেকর্ড পাওয়া যায়নি</div>
+                  <p className="text-xs text-slate-400 font-tiro max-w-sm mx-auto">
+                    ওয়াকফ সম্পত্তির দোকান বা ইউনিটের নতুন চুক্তি সম্পাদন করতে ভাড়াটিয়া এন্ট্রি ফরম খুলুন।
+                  </p>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenAddTenant()}
+                      className="mt-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-xs inline-flex items-center space-x-1.5 cursor-pointer active:scale-95"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>+ নতুন চুক্তি ও ভাড়াটিয়া যোগ করুন</span>
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-2xs">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
+                      <tr>
+                        <th className="px-4 py-3">চুক্তি নং</th>
+                        <th className="px-4 py-3">সম্পত্তি ও কক্ষ/দোকান</th>
+                        <th className="px-4 py-3">ভাড়াটিয়া / ইজারাদার</th>
+                        <th className="px-4 py-3 text-right">নির্ধারিত ভাড়া</th>
+                        <th className="px-4 py-3 text-right">জামানত স্থিতি</th>
+                        <th className="px-4 py-3">চুক্তির মেয়াদ</th>
+                        <th className="px-4 py-3">অবস্থা</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-slate-700">
+                      {allTenantsList.map(({ tenant, property }) => (
+                        <tr key={tenant.id} className="hover:bg-slate-50/80">
+                          <td className="px-4 py-3 font-bold text-indigo-900 font-baloo">{tenant.agreementNo || `AGR-${tenant.tenantCode}`}</td>
+                          <td className="px-4 py-3 font-semibold text-slate-800">
+                            {property.name || property.propertyCode} ({tenant.unitOrShopNo || 'সাধারণ'})
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-slate-900">{tenant.name}</td>
+                          <td className="px-4 py-3 text-right font-baloo font-bold text-emerald-800">{formatCurrency(tenant.monthlyRent)}</td>
+                          <td className="px-4 py-3 text-right font-baloo text-slate-600">{formatCurrency(tenant.securityDeposit || 0)}</td>
+                          <td className="px-4 py-3 font-baloo text-[11px]">{tenant.startDate} হতে {tenant.endDate}</td>
+                          <td className="px-4 py-3">
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                              {tenant.status === 'ACTIVE' ? 'কার্যকর' : 'মেয়াদোত্তীর্ণ'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 
@@ -1066,46 +1141,69 @@ export const AssetWaqfManagementView: React.FC<AssetWaqfManagementViewProps> = (
                   <span className="text-[11px] text-slate-500 font-tiro">খাজনা ও নামজারি রেকর্ডসহ</span>
                 </div>
 
-                <div className="divide-y divide-slate-100">
-                  {properties.map((prop) => (
-                    <div key={prop.id} className="p-4 sm:p-5 space-y-3 hover:bg-slate-50/50">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <div>
-                          <span className="text-[10px] font-bold font-baloo px-2 py-0.5 rounded bg-amber-100 text-amber-900 mr-2">
-                            {prop.propertyCode}
-                          </span>
-                          <span className="font-bold text-slate-900 text-sm">
-                            {prop.name || prop.description}
-                          </span>
+                {properties.length === 0 ? (
+                  <div className="p-12 text-center space-y-3">
+                    <Layers className="w-12 h-12 text-slate-300 mx-auto" />
+                    <div className="font-bold text-slate-700 text-sm">কোনো ভূমি বা ওয়াকফ রেকর্ড পাওয়া যায়নি</div>
+                    <p className="text-xs text-slate-400 font-tiro max-w-sm mx-auto">
+                      মৌজা, জে.এল নং, খতিয়ান ও দাগসহ ওয়াকফ সম্পত্তি তালিকাভুক্ত করতে নতুন সম্পত্তি যুক্ত করুন।
+                    </p>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedPropertyForEdit(null);
+                          setIsPropertyFormOpen(true);
+                        }}
+                        className="mt-2 px-4 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold shadow-xs inline-flex items-center space-x-1.5 cursor-pointer active:scale-95"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>+ নতুন ওয়াকফ সম্পত্তি / জমি যোগ করুন</span>
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-100">
+                    {properties.map((prop) => (
+                      <div key={prop.id} className="p-4 sm:p-5 space-y-3 hover:bg-slate-50/50">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div>
+                            <span className="text-[10px] font-bold font-baloo px-2 py-0.5 rounded bg-amber-100 text-amber-900 mr-2">
+                              {prop.propertyCode}
+                            </span>
+                            <span className="font-bold text-slate-900 text-sm">
+                              {prop.name || prop.description}
+                            </span>
+                          </div>
+                          <div className="text-xs text-slate-600 font-baloo">
+                            জমির পরিমাণ: <strong>{prop.area || '—'}</strong>
+                          </div>
                         </div>
-                        <div className="text-xs text-slate-600 font-baloo">
-                          জমির পরিমাণ: <strong>{prop.area || '—'}</strong>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-tiro bg-slate-50 p-3 rounded-xl">
+                          <div><strong>মৌজা:</strong> {prop.mouza || '—'}</div>
+                          <div><strong>জে.এল নং:</strong> {prop.jlNumber || '—'}</div>
+                          <div><strong>বি.এস দাগ:</strong> {prop.bsPlotNo || prop.plotNo || '—'}</div>
+                          <div><strong>নামজারি খতিয়ান:</strong> {prop.mutationKhatianNo || prop.bsKhatianNo || '—'}</div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs pt-1">
+                          <span className="text-[11px] text-slate-500 font-tiro">
+                            সাব-রেজিস্ট্রি: {prop.subRegistryOffice || 'কক্সবাজার সদর'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setKhajnaModalProperty(prop)}
+                            className="px-2.5 py-1 bg-teal-50 hover:bg-teal-100 text-teal-800 rounded-lg text-xs font-bold flex items-center space-x-1 cursor-pointer"
+                          >
+                            <Receipt className="w-3 h-3" />
+                            <span>ভূমি উন্নয়ন কর / খাজনা দাখিলা</span>
+                          </button>
                         </div>
                       </div>
-
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-tiro bg-slate-50 p-3 rounded-xl">
-                        <div><strong>মৌজা:</strong> {prop.mouza || '—'}</div>
-                        <div><strong>জে.এল নং:</strong> {prop.jlNumber || '—'}</div>
-                        <div><strong>বি.এস দাগ:</strong> {prop.bsPlotNo || prop.plotNo || '—'}</div>
-                        <div><strong>নামজারি খতিয়ান:</strong> {prop.mutationKhatianNo || prop.bsKhatianNo || '—'}</div>
-                      </div>
-
-                      <div className="flex items-center justify-between text-xs pt-1">
-                        <span className="text-[11px] text-slate-500 font-tiro">
-                          সাব-রেজিস্ট্রি: {prop.subRegistryOffice || 'কক্সবাজার সদর'}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setKhajnaModalProperty(prop)}
-                          className="px-2.5 py-1 bg-teal-50 hover:bg-teal-100 text-teal-800 rounded-lg text-xs font-bold flex items-center space-x-1"
-                        >
-                          <Receipt className="w-3 h-3" />
-                          <span>ভূমি উন্নয়ন কর / খাজনা দাখিলা</span>
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1133,34 +1231,57 @@ export const AssetWaqfManagementView: React.FC<AssetWaqfManagementViewProps> = (
                 )}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {properties.map((prop) => (
-                  <div key={prop.id} className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3 shadow-2xs">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <span className="text-[10px] font-bold font-baloo px-2 py-0.5 rounded bg-amber-100 text-amber-900">
-                          {prop.propertyCode}
-                        </span>
-                        <h4 className="font-bold text-slate-900 text-sm mt-1">{prop.name || prop.description}</h4>
+              {properties.length === 0 ? (
+                <div className="bg-white p-12 text-center rounded-3xl border border-dashed border-slate-300 space-y-3">
+                  <FolderOpen className="w-12 h-12 text-slate-300 mx-auto" />
+                  <div className="font-bold text-slate-700 text-sm">কোনো ওয়াকফ দলিল বা নথি পাওয়া যায়নি</div>
+                  <p className="text-xs text-slate-400 font-tiro max-w-sm mx-auto">
+                    ওয়াকফ দলিল, নামজারি ও সাব-রেজিস্ট্রি নথি সংরক্ষণ করতে প্রথমে ওয়াকফ সম্পত্তি এন্ট্রি করুন।
+                  </p>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPropertyForEdit(null);
+                        setIsPropertyFormOpen(true);
+                      }}
+                      className="mt-2 px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold shadow-xs inline-flex items-center space-x-1.5 cursor-pointer active:scale-95"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>+ নতুন ওয়াকফ সম্পত্তি যোগ করুন</span>
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {properties.map((prop) => (
+                    <div key={prop.id} className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3 shadow-2xs">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <span className="text-[10px] font-bold font-baloo px-2 py-0.5 rounded bg-amber-100 text-amber-900">
+                            {prop.propertyCode}
+                          </span>
+                          <h4 className="font-bold text-slate-900 text-sm mt-1">{prop.name || prop.description}</h4>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setDocModalProperty(prop)}
+                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold flex items-center space-x-1 cursor-pointer"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>নথি যুক্ত</span>
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setDocModalProperty(prop)}
-                        className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold flex items-center space-x-1"
-                      >
-                        <Plus className="w-3 h-3" />
-                        <span>নথি যুক্ত</span>
-                      </button>
-                    </div>
 
-                    <div className="p-3 bg-slate-50 rounded-xl space-y-1 text-xs text-slate-600 font-tiro">
-                      <div><strong>ওয়াকফ দলিল নং:</strong> {prop.waqfDeedNo || 'অনির্ধারিত'}</div>
-                      <div><strong>দলিলের তারিখ:</strong> {prop.waqfDeedDate || '—'}</div>
-                      <div><strong>ওয়াকিফের নাম:</strong> {prop.waqifName || '—'}</div>
+                      <div className="p-3 bg-slate-50 rounded-xl space-y-1 text-xs text-slate-600 font-tiro">
+                        <div><strong>ওয়াকফ দলিল নং:</strong> {prop.waqfDeedNo || 'অনির্ধারিত'}</div>
+                        <div><strong>দলিলের তারিখ:</strong> {prop.waqfDeedDate || '—'}</div>
+                        <div><strong>ওয়াকিফের নাম:</strong> {prop.waqifName || '—'}</div>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -1169,41 +1290,64 @@ export const AssetWaqfManagementView: React.FC<AssetWaqfManagementViewProps> = (
           {/* ========================================================================= */}
           {activeSection === 'boundaries' && (
             <div className="space-y-5 animate-in fade-in duration-200">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {properties.map((prop) => (
-                  <div key={prop.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <span className="text-[10px] font-bold font-baloo px-2 py-0.5 rounded bg-amber-100 text-amber-900">
-                          {prop.propertyCode}
-                        </span>
-                        <h4 className="font-bold text-slate-900 text-sm mt-1">{prop.name || prop.description}</h4>
-                        <p className="text-xs text-slate-500 font-tiro">{prop.location} ({prop.mouza || ''})</p>
+              {properties.length === 0 ? (
+                <div className="bg-white p-12 text-center rounded-3xl border border-dashed border-slate-300 space-y-3">
+                  <Compass className="w-12 h-12 text-slate-300 mx-auto" />
+                  <div className="font-bold text-slate-700 text-sm">কোনো সম্পত্তির চতুঃসীমানা তথ্য নেই</div>
+                  <p className="text-xs text-slate-400 font-tiro max-w-sm mx-auto">
+                    উত্তর, দক্ষিণ, পূর্ব ও পশ্চিমের সীমানা রেকর্ড সংরক্ষণের জন্য ওয়াকফ সম্পত্তি যুক্ত করুন।
+                  </p>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPropertyForEdit(null);
+                        setIsPropertyFormOpen(true);
+                      }}
+                      className="mt-2 px-4 py-2 bg-rose-700 hover:bg-rose-800 text-white rounded-xl text-xs font-bold shadow-xs inline-flex items-center space-x-1.5 cursor-pointer active:scale-95"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>+ নতুন ওয়াকফ সম্পত্তি যোগ করুন</span>
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {properties.map((prop) => (
+                    <div key={prop.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <span className="text-[10px] font-bold font-baloo px-2 py-0.5 rounded bg-amber-100 text-amber-900">
+                            {prop.propertyCode}
+                          </span>
+                          <h4 className="font-bold text-slate-900 text-sm mt-1">{prop.name || prop.description}</h4>
+                          <p className="text-xs text-slate-500 font-tiro">{prop.location} ({prop.mouza || ''})</p>
+                        </div>
+                        <Compass className="w-5 h-5 text-indigo-600 shrink-0" />
                       </div>
-                      <Compass className="w-5 h-5 text-indigo-600 shrink-0" />
-                    </div>
 
-                    <div className="grid grid-cols-2 gap-2 bg-slate-50 p-3 rounded-xl text-xs font-tiro">
-                      <div className="p-2 bg-white rounded-lg border border-slate-200/60">
-                        <span className="text-[10px] font-bold text-slate-400 block">উত্তর:</span>
-                        <span className="text-slate-800">{prop.boundaryNorth || 'অনির্ধারিত'}</span>
-                      </div>
-                      <div className="p-2 bg-white rounded-lg border border-slate-200/60">
-                        <span className="text-[10px] font-bold text-slate-400 block">দক্ষিণ:</span>
-                        <span className="text-slate-800">{prop.boundarySouth || 'অনির্ধারিত'}</span>
-                      </div>
-                      <div className="p-2 bg-white rounded-lg border border-slate-200/60">
-                        <span className="text-[10px] font-bold text-slate-400 block">পূর্ব:</span>
-                        <span className="text-slate-800">{prop.boundaryEast || 'অনির্ধারিত'}</span>
-                      </div>
-                      <div className="p-2 bg-white rounded-lg border border-slate-200/60">
-                        <span className="text-[10px] font-bold text-slate-400 block">পশ্চিম:</span>
-                        <span className="text-slate-800">{prop.boundaryWest || 'অনির্ধারিত'}</span>
+                      <div className="grid grid-cols-2 gap-2 bg-slate-50 p-3 rounded-xl text-xs font-tiro">
+                        <div className="p-2 bg-white rounded-lg border border-slate-200/60">
+                          <span className="text-[10px] font-bold text-slate-400 block">উত্তর:</span>
+                          <span className="text-slate-800">{prop.boundaryNorth || 'অনির্ধারিত'}</span>
+                        </div>
+                        <div className="p-2 bg-white rounded-lg border border-slate-200/60">
+                          <span className="text-[10px] font-bold text-slate-400 block">দক্ষিণ:</span>
+                          <span className="text-slate-800">{prop.boundarySouth || 'অনির্ধারিত'}</span>
+                        </div>
+                        <div className="p-2 bg-white rounded-lg border border-slate-200/60">
+                          <span className="text-[10px] font-bold text-slate-400 block">পূর্ব:</span>
+                          <span className="text-slate-800">{prop.boundaryEast || 'অনির্ধারিত'}</span>
+                        </div>
+                        <div className="p-2 bg-white rounded-lg border border-slate-200/60">
+                          <span className="text-[10px] font-bold text-slate-400 block">পশ্চিম:</span>
+                          <span className="text-slate-800">{prop.boundaryWest || 'অনির্ধারিত'}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -1330,8 +1474,7 @@ export const AssetWaqfManagementView: React.FC<AssetWaqfManagementViewProps> = (
           onClose={() => setSelectedPropertyForDetails(null)}
           property={selectedPropertyForDetails}
           onOpenTenantModal={(prop) => {
-            setTenantModalProperty(prop);
-            setSelectedTenantForEdit(null);
+            handleOpenAddTenant(prop);
           }}
           onOpenDocumentModal={(prop) => setDocModalProperty(prop)}
           onOpenInspectionModal={(prop) => setInspectionModalProperty(prop)}
@@ -1364,20 +1507,47 @@ export const AssetWaqfManagementView: React.FC<AssetWaqfManagementViewProps> = (
       )}
 
       {/* 9. Property Tenant Modal */}
-      {(tenantModalProperty || selectedTenantForEdit) && (
+      {isTenantModalOpen && (
         <PropertyTenantModal
-          isOpen={Boolean(tenantModalProperty || selectedTenantForEdit)}
+          isOpen={isTenantModalOpen}
           onClose={() => {
+            setIsTenantModalOpen(false);
             setTenantModalProperty(null);
             setSelectedTenantForEdit(null);
           }}
           property={tenantModalProperty}
           properties={properties}
           tenant={selectedTenantForEdit}
-          onSubmit={async (tenantData, chosenPropertyId) => {
-            const targetPropId = chosenPropertyId || tenantModalProperty?.id || properties[0]?.id;
+          onOpenCreateProperty={() => {
+            setIsTenantModalOpen(false);
+            setSelectedPropertyForEdit(null);
+            setIsPropertyFormOpen(true);
+          }}
+          onSubmit={async (tenantData: any, chosenPropertyId) => {
+            let targetPropId = chosenPropertyId || tenantModalProperty?.id || properties[0]?.id;
+
+            // Auto create property if no properties existed
+            if (!targetPropId && tenantData._autoCreatePropertyName && onAddProperty) {
+              const newProp: any = await onAddProperty({
+                name: tenantData._autoCreatePropertyName,
+                nameBn: tenantData._autoCreatePropertyName,
+                category: 'MARKET',
+                propertyType: 'SHOP',
+                propertyCode: 'PROP-001',
+                location: currentMosque?.address || 'মসজিদ সংলগ্ন',
+                possessionStatus: 'RENTED',
+                status: 'RENTED',
+                monthlyIncome: tenantData.monthlyRent || 0
+              });
+              if (newProp && newProp.id) {
+                targetPropId = newProp.id;
+              }
+            }
+
             if (onAddPropertyTenant && targetPropId) {
-              await onAddPropertyTenant(targetPropId, tenantData);
+              const cleanData = { ...tenantData };
+              delete cleanData._autoCreatePropertyName;
+              await onAddPropertyTenant(targetPropId, cleanData);
             }
           }}
           language={language}

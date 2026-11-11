@@ -258,8 +258,25 @@ export class StorageManager {
           StorageManager.verifyTenantAccess(options, context);
           const entry = db.incomeEntries.find(i => i.id === entryId && i.mosqueId === options.mosqueId);
           if (!entry) throw new Error('Income entry not found');
+          const acc = db.accounts.find(a => a.id === entry.accountId && a.mosqueId === options.mosqueId);
+          if (acc && entry.status === 'APPROVED') {
+            acc.currentBalance -= entry.amount;
+          }
           entry.status = 'CANCELLED';
           entry.rejectionReason = reason;
+          db.save();
+          return entry as any;
+        },
+        restore: async (options, entryId, reason) => {
+          StorageManager.verifyTenantAccess(options, context);
+          const entry = db.incomeEntries.find(i => i.id === entryId && i.mosqueId === options.mosqueId);
+          if (!entry) throw new Error('Income entry not found');
+          const acc = db.accounts.find(a => a.id === entry.accountId && a.mosqueId === options.mosqueId);
+          if (acc && entry.status !== 'APPROVED') {
+            acc.currentBalance += entry.amount;
+          }
+          entry.status = 'APPROVED';
+          entry.rejectionReason = undefined;
           db.save();
           return entry as any;
         },
@@ -292,8 +309,25 @@ export class StorageManager {
           StorageManager.verifyTenantAccess(options, context);
           const entry = db.expenseEntries.find(e => e.id === entryId && e.mosqueId === options.mosqueId);
           if (!entry) throw new Error('Expense entry not found');
+          const acc = db.accounts.find(a => a.id === entry.accountId && a.mosqueId === options.mosqueId);
+          if (acc && entry.status === 'APPROVED') {
+            acc.currentBalance += entry.amount;
+          }
           entry.status = 'CANCELLED';
           entry.rejectionReason = reason;
+          db.save();
+          return entry as any;
+        },
+        restore: async (options, entryId, reason) => {
+          StorageManager.verifyTenantAccess(options, context);
+          const entry = db.expenseEntries.find(e => e.id === entryId && e.mosqueId === options.mosqueId);
+          if (!entry) throw new Error('Expense entry not found');
+          const acc = db.accounts.find(a => a.id === entry.accountId && a.mosqueId === options.mosqueId);
+          if (acc && entry.status !== 'APPROVED') {
+            acc.currentBalance -= entry.amount;
+          }
+          entry.status = 'APPROVED';
+          entry.rejectionReason = undefined;
           db.save();
           return entry as any;
         },

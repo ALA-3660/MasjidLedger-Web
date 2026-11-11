@@ -165,6 +165,7 @@ class ApiService {
     }
     localStorage.setItem('ml_user_id', userId);
     localStorage.setItem('ml_mosque_id', mosqueId);
+    localStorage.setItem('ml_last_activity_at', String(Date.now()));
   }
 
   clearAuth() {
@@ -176,6 +177,7 @@ class ApiService {
     localStorage.removeItem('ml_refresh_token');
     localStorage.removeItem('ml_user_id');
     localStorage.removeItem('ml_mosque_id');
+    localStorage.removeItem('ml_last_activity_at');
     this.inFlightRequests.clear();
     this.refreshPromise = null;
   }
@@ -953,6 +955,15 @@ class ApiService {
     return res.data!;
   }
 
+  async restoreIncome(id: string, reason?: string): Promise<IncomeEntry> {
+    const res = await this.request<IncomeEntry>(`/accounting/income/${id}/restore`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to restore income');
+    return res.data!;
+  }
+
   async getExpenses(): Promise<ExpenseEntry[]> {
     const res = await this.request<ExpenseEntry[]>('/accounting/expense');
     return res.data || [];
@@ -985,6 +996,15 @@ class ApiService {
     return res.data!;
   }
 
+  async restoreExpense(id: string, reason?: string): Promise<ExpenseEntry> {
+    const res = await this.request<ExpenseEntry>(`/accounting/expense/${id}/restore`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to restore expense');
+    return res.data!;
+  }
+
   // Donations & Donation Boxes
   async getDonations(): Promise<Donation[]> {
     const res = await this.request<Donation[]>('/donations');
@@ -1011,6 +1031,15 @@ class ApiService {
       body: JSON.stringify({ reason }),
     });
     if (!res.success) throw new Error(res.error?.message || 'Failed to cancel donation');
+    return res.data!;
+  }
+
+  async restoreDonation(id: string, reason?: string): Promise<Donation> {
+    const res = await this.request<Donation>(`/donations/${id}/restore`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+    if (!res.success) throw new Error(res.error?.message || 'Failed to restore donation');
     return res.data!;
   }
 

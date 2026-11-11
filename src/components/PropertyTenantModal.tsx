@@ -26,7 +26,8 @@ interface PropertyTenantModalProps {
   property?: MosqueProperty | null;
   properties?: MosqueProperty[];
   tenant?: PropertyTenant | null;
-  onSubmit: (tenantData: Partial<PropertyTenant>, propertyId?: string) => Promise<void>;
+  onSubmit: (tenantData: Partial<PropertyTenant> & { _autoCreatePropertyName?: string }, propertyId?: string) => Promise<void>;
+  onOpenCreateProperty?: () => void;
   language?: Language;
 }
 
@@ -37,9 +38,11 @@ export const PropertyTenantModal: React.FC<PropertyTenantModalProps> = ({
   properties = [],
   tenant,
   onSubmit,
+  onOpenCreateProperty,
   language = 'bn'
 }) => {
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>('');
+  const [newPropertyName, setNewPropertyName] = useState<string>('মসজিদ মার্কেট ও দোকান কমপ্লেক্স');
   const [formData, setFormData] = useState({
     tenantCode: '',
     name: '',
@@ -140,8 +143,12 @@ export const PropertyTenantModal: React.FC<PropertyTenantModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPropertyId && !property?.id) {
-      setError('অনুগ্রহ করে সংশ্লিষ্ট ওয়াকফ সম্পত্তি নির্বাচন করুন');
-      return;
+      if (properties.length === 0 && newPropertyName.trim()) {
+        // Will auto create property
+      } else {
+        setError('অনুগ্রহ করে সংশ্লিষ্ট ওয়াকফ সম্পত্তি নির্বাচন করুন');
+        return;
+      }
     }
     if (!formData.name.trim()) {
       setError('ভাড়াটিয়া / ইজারাদারের নাম আবশ্যক');
@@ -160,7 +167,8 @@ export const PropertyTenantModal: React.FC<PropertyTenantModalProps> = ({
         {
           ...(tenant ? { id: tenant.id } : {}),
           ...formData,
-          annualRent: formData.annualRent || formData.monthlyRent * 12
+          annualRent: formData.annualRent || formData.monthlyRent * 12,
+          ...(properties.length === 0 && !selectedPropertyId && !property?.id ? { _autoCreatePropertyName: newPropertyName.trim() } : {})
         },
         targetPropertyId
       );
@@ -226,7 +234,7 @@ export const PropertyTenantModal: React.FC<PropertyTenantModalProps> = ({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Property Select Dropdown */}
+              {/* Property Select Dropdown / Quick Create */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
                   ওয়াকফ সম্পত্তি / জমিজমা নির্বাচন <span className="text-rose-500">*</span>
@@ -241,17 +249,40 @@ export const PropertyTenantModal: React.FC<PropertyTenantModalProps> = ({
                     <option value="">-- সম্পত্তি নির্বাচন করুন --</option>
                     {properties.map((p) => (
                       <option key={p.id} value={p.id}>
-                        [{p.propertyCode}] {p.name || p.description} {p.mouza ? `(মৌজা: ${p.mouza})` : ''}
+                        [{p.propertyCode}] {p.name || p.nameBn || p.description} {p.mouza ? `(মৌজা: ${p.mouza})` : ''}
                       </option>
                     ))}
                   </select>
-                ) : (
+                ) : property ? (
                   <input
                     type="text"
                     readOnly
-                    value={property?.name || 'ডিফল্ট সম্পত্তি'}
+                    value={property?.name || property?.nameBn || 'ওয়াকফ সম্পত্তি'}
                     className="w-full px-3 py-2 bg-slate-200 border border-slate-300 rounded-xl text-xs text-slate-700 font-medium"
                   />
+                ) : (
+                  <div className="space-y-1.5">
+                    <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 font-tiro leading-relaxed">
+                      💡 মসজিদে এখনও কোনো ওয়াকফ সম্পত্তি (দোকান/মার্কেট) নেই। নিচে উল্লেখিত নামে স্বয়ংক্রিয়ভাবে একটি সম্পত্তি তৈরি হয়ে ভাড়াটিয়া যুক্ত হবে:
+                    </div>
+                    <input
+                      type="text"
+                      value={newPropertyName}
+                      onChange={(e) => setNewPropertyName(e.target.value)}
+                      placeholder="ওয়াকফ সম্পত্তির নাম (যেমন: মসজিদ মার্কেট ও দোকান কমপ্লেক্স)"
+                      required
+                      className="w-full px-3 py-2 bg-white border border-amber-300 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-amber-500"
+                    />
+                    {onOpenCreateProperty && (
+                      <button
+                        type="button"
+                        onClick={onOpenCreateProperty}
+                        className="text-[11px] text-blue-700 hover:text-blue-900 font-bold underline inline-flex items-center space-x-1 cursor-pointer pt-0.5"
+                      >
+                        <span>বা পূর্ণাঙ্গ ওয়াকফ সম্পত্তি এন্ট্রি ফর্ম খুলুন ↗</span>
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
 

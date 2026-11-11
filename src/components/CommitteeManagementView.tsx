@@ -586,7 +586,14 @@ export const CommitteeManagementView: React.FC<CommitteeManagementViewProps> = (
                 </p>
               </div>
 
-              <div className="flex items-center space-x-2 shrink-0">
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <button
+                  onClick={handleOpenAddTerm}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs transition-colors cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>{isBn ? 'নতুন কমিটি / মেয়াদ এন্ট্রি' : 'Add Committee Term'}</span>
+                </button>
                 <button
                   onClick={handleOpenAddMember}
                   className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs transition-colors cursor-pointer"
@@ -872,7 +879,14 @@ export const CommitteeManagementView: React.FC<CommitteeManagementViewProps> = (
                   </p>
                 </div>
 
-                <div className="flex items-center space-x-2 shrink-0">
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    onClick={handleOpenAddTerm}
+                    className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>{isBn ? 'নতুন কমিটি / মেয়াদ গঠন' : 'Add Committee Term'}</span>
+                  </button>
                   <button
                     onClick={() => setIsMemberPrintModalOpen(true)}
                     className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-colors cursor-pointer"
@@ -1048,6 +1062,7 @@ export const CommitteeManagementView: React.FC<CommitteeManagementViewProps> = (
             language={language}
             onViewMemberProfile={handleOpenMemberProfile}
             onOpenAddMemberModal={handleOpenAddMember}
+            onOpenAddTermModal={handleOpenAddTerm}
             onNavigateToSection={(sec) => setActiveSection(sec)}
           />
         )}

@@ -1,12 +1,11 @@
 {
-  "projectId": "zealous-orbit-xdtd0",
-  "appId": "1:989373574278:web:2c49927633220f275ef507",
-  "apiKey": "AIzaSyDueOPb85OGK_Kh_28HX5avnBkPRQhhSvo",
-  "authDomain": "zealous-orbit-xdtd0.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-masjidledger-18666ccf-b29d-45dd-a1a0-4c29705846f2",
-  "storageBucket": "zealous-orbit-xdtd0.firebasestorage.app",
-  "messagingSenderId": "989373574278",
+  "projectId": "gen-lang-client-0318796532",
+  "appId": "1:696509436262:web:fa2422f80cf54e957a38a7",
+  "apiKey": "AIzaSyDTks8kZIW9mkoLZEb1A0Es7glKzqo26Rw",
+  "authDomain": "gen-lang-client-0318796532.firebaseapp.com",
+  "storageBucket": "gen-lang-client-0318796532.firebasestorage.app",
+  "messagingSenderId": "696509436262",
   "measurementId": "",
-  "oAuthClientId": "989373574278-gg9veiesjgn9tp8rpips4fs5oua2o4tf.apps.googleusercontent.com",
+  "oAuthClientId": "696509436262-j8v5m1n5trpfmgqhoo93e9rrh40bt8ha.apps.googleusercontent.com",
   "recaptchaSiteKey": ""
 }

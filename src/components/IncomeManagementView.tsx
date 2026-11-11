@@ -47,6 +47,7 @@ import {
   MosqueProperty,
 } from '../types';
 import { Language, translations, formatCurrency, formatDate } from '../lib/i18n';
+import { api } from '../lib/api';
 import { ChangeCalculatorModal } from './ChangeCalculatorModal';
 import { DenominationDetailModal } from './DenominationDetailModal';
 import { EditTransactionModal } from './EditModals';
@@ -96,6 +97,7 @@ interface IncomeManagementViewProps {
   onAddIncome: (data: any, options?: { print?: boolean; format?: 'A4' | 'POS_80' | 'POS_58' }) => Promise<any>;
   onUpdateIncome?: (id: string, data: any) => Promise<void>;
   onReverseIncome: (id: string, reason: string) => Promise<void>;
+  onRestoreIncome?: (id: string, reason?: string) => Promise<void>;
   onAddDonation?: (data: any) => Promise<Donation>;
   onCollectBox?: (data: any) => Promise<void>;
   onAddDonationBox?: (data: any) => Promise<void>;
@@ -129,6 +131,7 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
   onAddIncome,
   onUpdateIncome,
   onReverseIncome,
+  onRestoreIncome,
   onAddDonation,
   onCollectBox,
   onAddDonationBox,
@@ -334,6 +337,22 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
       setReversalReason('');
     } catch (err: any) {
       alert(err.message || 'ভাউচার বাতিল করতে ব্যর্থ হয়েছে');
+    }
+  };
+
+  const handleRestoreIncome = async (id: string) => {
+    if (!window.confirm('আপনি কি নিশ্চিত যে আপনি এই বাতিলকৃত আয় ভাউচারটি পুনরায় অনুমোদন/পুনরুদ্ধার করতে চান? এর ফলে আবার মূল হিসাবের সাথে টাকা সমন্বয় হয়ে যাবে।')) {
+      return;
+    }
+    try {
+      if (onRestoreIncome) {
+        await onRestoreIncome(id);
+      } else {
+        await api.restoreIncome(id);
+      }
+      alert('আয় ভাউচার সফলভাবে পুনরায় অনুমোদন/পুনরুদ্ধার করা হয়েছে!');
+    } catch (err: any) {
+      alert(err.message || 'ভাউচার পুনরুদ্ধার করতে ব্যর্থ হয়েছে');
     }
   };
 
@@ -1291,13 +1310,22 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
                                     <Edit2 className="w-3.5 h-3.5" />
                                   </button>
                                 )}
-                                {item.status !== 'CANCELLED' && (
+                                {item.status !== 'CANCELLED' ? (
                                   <button
                                     onClick={() => setReversalTarget(item)}
                                     className="p-1 text-rose-600 hover:bg-rose-50 rounded-md cursor-pointer"
                                     title="ভাউচার বাতিল / রিভার্স করুন"
                                   >
                                     <XCircle className="w-3.5 h-3.5" />
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => handleRestoreIncome(item.id)}
+                                    className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded shadow-xs cursor-pointer flex items-center space-x-1"
+                                    title="অনুমোদন / পুনরুদ্ধার করুন"
+                                  >
+                                    <RotateCcw className="w-3 h-3" />
+                                    <span>অনুমোদন / পুনরুদ্ধার</span>
                                   </button>
                                 )}
                               </div>

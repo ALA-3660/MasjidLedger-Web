@@ -290,7 +290,7 @@ export const AssetWaqfSecondarySidebar: React.FC<AssetWaqfSecondarySidebarProps>
               <div className="text-[10px] font-bold text-amber-900 uppercase tracking-wider px-1">
                 দ্রুত অন্তর্ভুক্তি
               </div>
-              <div className="grid grid-cols-2 gap-1.5">
+              <div className="grid grid-cols-3 gap-1">
                 {onOpenNewProperty && (
                   <button
                     type="button"
@@ -298,9 +298,10 @@ export const AssetWaqfSecondarySidebar: React.FC<AssetWaqfSecondarySidebarProps>
                       onOpenNewProperty();
                       setIsMobileOpen(false);
                     }}
-                    className="px-2 py-1.5 bg-white hover:bg-amber-100/80 text-amber-900 rounded-xl text-[11px] font-bold border border-amber-200 flex items-center justify-center space-x-1 shadow-2xs cursor-pointer transition-all active:scale-95"
+                    className="px-1.5 py-1.5 bg-white hover:bg-amber-100/80 text-amber-900 rounded-xl text-[10px] font-bold border border-amber-200 flex flex-col items-center justify-center shadow-2xs cursor-pointer transition-all active:scale-95"
+                    title="নতুন ওয়াকফ সম্পত্তি বা জমি যোগ করুন"
                   >
-                    <Plus className="w-3 h-3 text-amber-700" />
+                    <Plus className="w-3 h-3 text-amber-700 mb-0.5" />
                     <span>ওয়াকফ জমি</span>
                   </button>
                 )}
@@ -311,10 +312,25 @@ export const AssetWaqfSecondarySidebar: React.FC<AssetWaqfSecondarySidebarProps>
                       onOpenNewAsset();
                       setIsMobileOpen(false);
                     }}
-                    className="px-2 py-1.5 bg-white hover:bg-emerald-100/80 text-emerald-900 rounded-xl text-[11px] font-bold border border-emerald-200 flex items-center justify-center space-x-1 shadow-2xs cursor-pointer transition-all active:scale-95"
+                    className="px-1.5 py-1.5 bg-white hover:bg-emerald-100/80 text-emerald-900 rounded-xl text-[10px] font-bold border border-emerald-200 flex flex-col items-center justify-center shadow-2xs cursor-pointer transition-all active:scale-95"
+                    title="নতুন সরঞ্জাম বা সম্পদ যোগ করুন"
                   >
-                    <Plus className="w-3 h-3 text-emerald-700" />
-                    <span>নতুন সরঞ্জাম</span>
+                    <Plus className="w-3 h-3 text-emerald-700 mb-0.5" />
+                    <span>সরঞ্জাম</span>
+                  </button>
+                )}
+                {onOpenNewTenant && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenNewTenant();
+                      setIsMobileOpen(false);
+                    }}
+                    className="px-1.5 py-1.5 bg-white hover:bg-blue-100/80 text-blue-900 rounded-xl text-[10px] font-bold border border-blue-200 flex flex-col items-center justify-center shadow-2xs cursor-pointer transition-all active:scale-95"
+                    title="নতুন ভাড়াটিয়া বা ইজারাদার যোগ করুন"
+                  >
+                    <Plus className="w-3 h-3 text-blue-700 mb-0.5" />
+                    <span>ভাড়াটিয়া</span>
                   </button>
                 )}
               </div>

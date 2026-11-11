@@ -99,18 +99,28 @@ export const LegalManagementView: React.FC<LegalManagementViewProps> = ({
   const [formData, setFormData] = useState<any>({});
   const [formError, setFormError] = useState<string | null>(null);
 
+  // Auth headers helper
+  const getAuthHeaders = () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('ml_token') : null;
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    };
+  };
+
   const fetchData = async () => {
     try {
       setLoading(true);
+      const headers = getAuthHeaders();
       const [casesRes, courtsRes, hearingsRes, actionsRes, ordersRes, partiesRes, lawyersRes, statsRes] = await Promise.all([
-        fetch('/api/v1/legal/cases'),
-        fetch('/api/v1/legal/courts'),
-        fetch('/api/v1/legal/hearings'),
-        fetch('/api/v1/legal/actions'),
-        fetch('/api/v1/legal/orders'),
-        fetch('/api/v1/legal/parties'),
-        fetch('/api/v1/legal/lawyers'),
-        fetch('/api/v1/legal/stats'),
+        fetch('/api/v1/legal/cases', { headers }),
+        fetch('/api/v1/legal/courts', { headers }),
+        fetch('/api/v1/legal/hearings', { headers }),
+        fetch('/api/v1/legal/actions', { headers }),
+        fetch('/api/v1/legal/orders', { headers }),
+        fetch('/api/v1/legal/parties', { headers }),
+        fetch('/api/v1/legal/lawyers', { headers }),
+        fetch('/api/v1/legal/stats', { headers }),
       ]);
 
       if (casesRes.ok) {
@@ -166,7 +176,7 @@ export const LegalManagementView: React.FC<LegalManagementViewProps> = ({
 
       const res = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify(formData),
       });
 

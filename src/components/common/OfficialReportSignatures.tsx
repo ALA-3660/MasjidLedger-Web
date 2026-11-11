@@ -119,11 +119,7 @@ export const OfficialReportSignatures: React.FC<OfficialReportSignaturesProps> =
                 referrerPolicy="no-referrer"
                 className="max-h-12 max-w-full object-contain"
               />
-            ) : (
-              <span className="font-tiro italic font-bold text-slate-800 text-sm select-none">
-                আলহাজ্ব মো: রফিকুল ইসলাম
-              </span>
-            )}
+            ) : null}
           </div>
           <div className="border-t-2 border-slate-900 pt-1.5 font-bold text-slate-950 w-full font-siliguri">
             {secretaryTitle}
@@ -141,11 +137,7 @@ export const OfficialReportSignatures: React.FC<OfficialReportSignaturesProps> =
                 referrerPolicy="no-referrer"
                 className="max-h-12 max-w-full object-contain"
               />
-            ) : (
-              <span className="font-tiro italic font-bold text-slate-800 text-sm select-none">
-                হাজী মোঃ শামসুল আলম
-              </span>
-            )}
+            ) : null}
           </div>
           <div className="border-t-2 border-slate-900 pt-1.5 font-bold text-slate-950 w-full font-siliguri">
             {presidentTitle}
