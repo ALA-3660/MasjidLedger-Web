@@ -26,6 +26,13 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   KeyRound,
+  Sparkles,
+  Cpu,
+  Save,
+  RotateCcw,
+  Zap,
+  Loader2,
+  Info,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { Language, translations } from '../lib/i18n';
@@ -49,7 +56,20 @@ export const SaasAdminHubView: React.FC<SaasAdminHubViewProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
-  const [activeTab, setActiveTab] = useState<'mosques' | 'broadcast' | 'audit'>('mosques');
+  const [activeTab, setActiveTab] = useState<'mosques' | 'broadcast' | 'aiSettings'>('mosques');
+
+  // Central AI Model Settings State
+  const [aiSettings, setAiSettings] = useState<any | null>(null);
+  const [aiModelInput, setAiModelInput] = useState<string>('');
+  const [aiModelNotes, setAiModelNotes] = useState<string>('');
+  const [isSavingAiModel, setIsSavingAiModel] = useState<boolean>(false);
+  const [isTestingAiModel, setIsTestingAiModel] = useState<boolean>(false);
+  const [aiTestResult, setAiTestResult] = useState<{
+    type: 'success' | 'error';
+    text: string;
+    latencyMs?: number;
+    preview?: string;
+  } | null>(null);
 
   // Broadcast Modal State
   const [isBroadcastModalOpen, setIsBroadcastModalOpen] = useState<boolean>(false);
@@ -108,18 +128,108 @@ export const SaasAdminHubView: React.FC<SaasAdminHubViewProps> = ({
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [statsRes, mosquesRes, broadcastsRes] = await Promise.all([
+      const [statsRes, mosquesRes, broadcastsRes, aiSettingsRes] = await Promise.all([
         api.getSaasStats().catch(() => null),
         api.getSaasMosques().catch(() => []),
         api.getSaasBroadcasts().catch(() => []),
+        api.getSaasAiSettings().catch(() => null),
       ]);
       if (statsRes) setStats(statsRes);
       if (mosquesRes) setMosques(mosquesRes);
       if (broadcastsRes) setBroadcasts(broadcastsRes);
+      if (aiSettingsRes) {
+        setAiSettings(aiSettingsRes);
+        setAiModelInput(aiSettingsRes.overrideModel || aiSettingsRes.activeModel || '');
+        setAiModelNotes(aiSettingsRes.notes || '');
+      }
     } catch (err: any) {
       setNotificationMsg({ type: 'error', text: err.message || 'ডাটা লোড করতে ব্যর্থ হয়েছে।' });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSaveAiModel = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = aiModelInput.trim();
+    if (!trimmed) {
+      setNotificationMsg({
+        type: 'error',
+        text: 'অনুগ্রহ করে একটি বৈধ Gemini মডেলের নাম লিখুন (যেমন: gemini-4-hydrogen)।',
+      });
+      return;
+    }
+    setIsSavingAiModel(true);
+    setAiTestResult(null);
+    try {
+      const res = await api.updateSaasAiSettings({
+        modelName: trimmed,
+        notes: aiModelNotes.trim(),
+      });
+      if (res.data) {
+        setAiSettings(res.data);
+        setAiModelInput(res.data.overrideModel || res.data.activeModel || trimmed);
+        setAiModelNotes(res.data.notes || '');
+        setStats((prev: any) => (prev ? { ...prev, activeAiModel: res.data.activeModel } : prev));
+      }
+      setNotificationMsg({
+        type: 'success',
+        text: res.message || `সেন্ট্রাল AI মডেল "${trimmed}" সফলভাবে সংরক্ষণ করা হয়েছে।`,
+      });
+    } catch (err: any) {
+      setNotificationMsg({
+        type: 'error',
+        text: err?.message || 'AI মডেল সেভ করতে সমস্যা হয়েছে।',
+      });
+    } finally {
+      setIsSavingAiModel(false);
+    }
+  };
+
+  const handleResetAiModelToDefault = async () => {
+    setIsSavingAiModel(true);
+    setAiTestResult(null);
+    try {
+      const res = await api.updateSaasAiSettings({ modelName: '', notes: '' });
+      if (res.data) {
+        setAiSettings(res.data);
+        setAiModelInput(res.data.activeModel || '');
+        setAiModelNotes('');
+        setStats((prev: any) => (prev ? { ...prev, activeAiModel: res.data.activeModel } : prev));
+      }
+      setNotificationMsg({
+        type: 'success',
+        text: res.message || 'AI মডেল ডিফল্ট কনফিগারেশনে রিসেট করা হয়েছে।',
+      });
+    } catch (err: any) {
+      setNotificationMsg({
+        type: 'error',
+        text: err?.message || 'ডিফল্টে রিসেট করতে সমস্যা হয়েছে।',
+      });
+    } finally {
+      setIsSavingAiModel(false);
+    }
+  };
+
+  const handleTestAiModel = async (overrideCandidate?: string) => {
+    const candidate = (overrideCandidate ?? aiModelInput).trim();
+    setIsTestingAiModel(true);
+    setAiTestResult(null);
+    try {
+      const res = await api.testSaasAiModel(candidate);
+      setAiTestResult({
+        type: 'success',
+        text: `মডেল "${res.modelName}" সক্রিয়ভাবে সাড়া দিয়েছে।`,
+        latencyMs: res.latencyMs,
+        preview: res.replyPreviewBn,
+      });
+    } catch (err: any) {
+      setAiTestResult({
+        type: 'error',
+        text: err?.message || 'মডেল সংযোগ পরীক্ষা ব্যর্থ হয়েছে।',
+      });
+    } finally {
+      setIsTestingAiModel(false);
     }
   };
 
@@ -332,6 +442,11 @@ export const SaasAdminHubView: React.FC<SaasAdminHubViewProps> = ({
             <div className="text-[11px] text-slate-500 mt-1 font-mono">
               ভার্সন: {stats?.version || '2.6.0-SaaS'}
             </div>
+            {(aiSettings?.activeModel || stats?.activeAiModel) && (
+              <div className="text-[11px] text-indigo-700 mt-0.5 font-mono font-semibold truncate">
+                AI: {aiSettings?.activeModel || stats?.activeAiModel}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -362,6 +477,24 @@ export const SaasAdminHubView: React.FC<SaasAdminHubViewProps> = ({
         >
           <Radio className="w-4 h-4" />
           <span>সেন্ট্রাল ব্রডকাস্ট হাব ({broadcasts.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('aiSettings')}
+          className={`py-3.5 px-5 text-xs font-bold border-b-2 flex items-center space-x-2 whitespace-nowrap transition-all cursor-pointer ${
+            activeTab === 'aiSettings'
+              ? 'border-indigo-600 text-indigo-600'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Sparkles className="w-4 h-4" />
+          <span>AI মডেল সেটিংস</span>
+          {(aiSettings?.activeModel || stats?.activeAiModel) && (
+            <span className="ml-1 px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 font-mono text-[10px]">
+              {aiSettings?.activeModel || stats?.activeAiModel}
+            </span>
+          )}
         </button>
       </div>
 
@@ -561,6 +694,269 @@ export const SaasAdminHubView: React.FC<SaasAdminHubViewProps> = ({
               ))
             )}
           </div>
+        </div>
+      )}
+
+      {/* ==================== TAB 3: CENTRAL AI MODEL SETTINGS ==================== */}
+      {activeTab === 'aiSettings' && (
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 space-y-6">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Cpu className="w-5 h-5 text-indigo-600" />
+                <span>সেন্ট্রাল AI মডেল সেটিংস (Central AI Configuration)</span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-1">
+                সফটওয়্যারের সকল AI ফিচার (অডিটর, চ্যাট, স্মার্ট এন্ট্রি, কমিটি, আয়-ব্যয় বিশ্লেষণ, ডাটা মাইগ্রেশন) এখান থেকে নির্ধারিত একটি সেন্ট্রাল মডেল ব্যবহার করে।
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={loadData}
+              className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+              <span>স্ট্যাটাস রিফ্রেশ</span>
+            </button>
+          </div>
+
+          {/* Current Active Model Banner */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="lg:col-span-2 bg-gradient-to-br from-indigo-50 via-white to-emerald-50/60 border border-indigo-200/80 rounded-2xl p-5 space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold text-indigo-800 uppercase tracking-wide flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  বর্তমান সক্রিয় AI মডেল
+                </span>
+                <span className="px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] font-bold">
+                  {aiSettings?.sourceLabelBn || 'সিস্টেম ডিফল্ট'}
+                </span>
+              </div>
+
+              <div className="text-2xl font-black font-mono text-slate-900 tracking-tight">
+                {aiSettings?.activeModel || stats?.activeAiModel || 'gemini-4-hydrogen'}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-600 pt-1">
+                <span>
+                  এনভায়রনমেন্ট ভেরিয়েবল (<code className="font-mono text-indigo-700">GEMINI_MODEL</code> / <code className="font-mono text-indigo-700">VITE_GEMINI_MODEL</code>):{' '}
+                  <strong className="font-mono text-slate-800">
+                    {aiSettings?.envModel || 'সেট করা নেই'}
+                  </strong>
+                </span>
+                <span>•</span>
+                <span>
+                  সিস্টেম ডিফল্ট:{' '}
+                  <strong className="font-mono text-slate-800">
+                    {aiSettings?.defaultModel || 'gemini-4-hydrogen'}
+                  </strong>
+                </span>
+              </div>
+
+              {aiSettings?.updatedAt && (
+                <div className="text-[11px] text-slate-500 pt-1 border-t border-indigo-100">
+                  সর্বশেষ আপডেট: <strong>{new Date(aiSettings.updatedAt).toLocaleString('bn-BD')}</strong>
+                  {aiSettings.updatedByName ? ` — ${aiSettings.updatedByName}` : ''}
+                  {aiSettings.notes ? ` (${aiSettings.notes})` : ''}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-2">
+              <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <Info className="w-4 h-4 text-indigo-600" />
+                <span>মডেল লোড হওয়ার অগ্রাধিকার ক্রম</span>
+              </div>
+              <ol className="text-xs text-slate-600 space-y-1.5 list-decimal list-inside leading-relaxed">
+                <li>
+                  <strong className="text-slate-800">সুপার অ্যাডমিন সেটিংস</strong> (এই প্যানেল থেকে সেভ করা মডেল)
+                </li>
+                <li>
+                  <strong className="text-slate-800">এনভায়রনমেন্ট ভেরিয়েবল</strong> (<code className="font-mono text-[11px]">GEMINI_MODEL</code> / <code className="font-mono text-[11px]">VITE_GEMINI_MODEL</code>)
+                </li>
+                <li>
+                  <strong className="text-slate-800">সিস্টেম ডিফল্ট</strong> (সেন্ট্রাল <code className="font-mono text-[11px]">aiConfig.ts</code>)
+                </li>
+              </ol>
+            </div>
+          </div>
+
+          {/* Model Edit Form */}
+          <form onSubmit={handleSaveAiModel} className="space-y-5 bg-slate-50/70 border border-slate-200 rounded-2xl p-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-800 mb-1.5">
+                  নতুন Gemini মডেলের নাম <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={aiModelInput}
+                  onChange={(e) => {
+                    setAiModelInput(e.target.value);
+                    setAiTestResult(null);
+                  }}
+                  placeholder="যেমন: gemini-4-hydrogen বা gemini-3.1-flash-lite"
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-mono font-bold text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-hidden"
+                />
+                <p className="text-[11px] text-slate-500 mt-1.5">
+                  ভবিষ্যতে গুগল নতুন কোনো মডেল রিলিজ করলে কোড পরিবর্তন না করেই এখানে নতুন মডেলের নাম লিখে সেভ করতে পারবেন।
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-800 mb-1.5">
+                  পরিবর্তনের নোট / কারণ (ঐচ্ছিক)
+                </label>
+                <input
+                  type="text"
+                  value={aiModelNotes}
+                  onChange={(e) => setAiModelNotes(e.target.value)}
+                  placeholder="যেমন: সর্বশেষ স্টেবল ফ্ল্যাশ মডেলে আপগ্রেড"
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-hidden"
+                />
+                <p className="text-[11px] text-slate-500 mt-1.5">
+                  অডিট লগ এবং ইতিহাস সংরক্ষণের জন্য সংক্ষিপ্ত নোট লিখে রাখতে পারেন।
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Select Preset Models */}
+            <div className="space-y-2">
+              <div className="text-xs font-bold text-slate-700">দ্রুত নির্বাচন (প্রস্তাবিত মডেল তালিকা):</div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {(aiSettings?.recommendedModels || [
+                  {
+                    id: 'gemini-4-hydrogen',
+                    labelBn: 'Gemini 4 Hydrogen (সর্বশেষ সক্রিয় ফ্ল্যাশ)',
+                    descriptionBn: 'বাংলা আর্থিক বিশ্লেষণ, রসিদ/ছবি পড়া, চ্যাট ও দ্রুত কাজের জন্য বর্তমানে সবচেয়ে স্থিতিশীল ও সচল ফ্ল্যাশ মডেল।',
+                    badgeBn: 'সুপারিশকৃত',
+                    recommended: true,
+                  },
+                  {
+                    id: 'gemini-3.1-flash-lite',
+                    labelBn: 'Gemini 3.1 Flash Lite (দ্রুত ও হালকা)',
+                    descriptionBn: 'অতি দ্রুত উত্তর ও হালকা বাংলা কাজের জন্য সাশ্রয়ী ফ্ল্যাশ লাইট মডেল।',
+                    badgeBn: 'হালকা ও দ্রুত',
+                  },
+                  {
+                    id: 'gemini-2.5-flash',
+                    labelBn: 'Gemini 2.5 Flash (লিগ্যাসি/কাস্টম API)',
+                    descriptionBn: 'শুধুমাত্র যেসব কাস্টম API কী-তে 2.5 Flash সক্রিয় আছে সেগুলোর জন্য।',
+                    badgeBn: 'লিগ্যাসি',
+                  },
+                ]).map((opt: any) => {
+                  const isSelected = aiModelInput.trim() === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        setAiModelInput(opt.id);
+                        setAiTestResult(null);
+                      }}
+                      className={`text-left p-3.5 rounded-xl border transition-all cursor-pointer space-y-1.5 ${
+                        isSelected
+                          ? 'bg-indigo-50 border-indigo-500 ring-2 ring-indigo-200'
+                          : 'bg-white border-slate-200 hover:border-indigo-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono text-xs font-extrabold text-slate-900">{opt.id}</span>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                            opt.recommended
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                              : 'bg-slate-100 text-slate-600 border border-slate-200'
+                          }`}
+                        >
+                          {opt.badgeBn}
+                        </span>
+                      </div>
+                      <div className="text-[11px] font-bold text-indigo-800">{opt.labelBn}</div>
+                      <p className="text-[11px] text-slate-600 leading-relaxed">{opt.descriptionBn}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Live Connection Test Result */}
+            {aiTestResult && (
+              <div
+                className={`p-4 rounded-xl border text-xs space-y-1 ${
+                  aiTestResult.type === 'success'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                    : 'bg-rose-50 border-rose-200 text-rose-900'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2 font-bold">
+                  <div className="flex items-center gap-2">
+                    {aiTestResult.type === 'success' ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    )}
+                    <span>{aiTestResult.text}</span>
+                  </div>
+                  {typeof aiTestResult.latencyMs === 'number' && (
+                    <span className="font-mono text-[11px] px-2 py-0.5 rounded-md bg-white border border-emerald-200 text-emerald-700">
+                      {aiTestResult.latencyMs} ms
+                    </span>
+                  )}
+                </div>
+                {aiTestResult.preview && (
+                  <p className="text-[11px] text-emerald-800 pl-6">
+                    AI উত্তর: “{aiTestResult.preview}”
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-200">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <button
+                  type="submit"
+                  disabled={isSavingAiModel || !aiModelInput.trim()}
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-sm flex items-center gap-2 transition cursor-pointer"
+                >
+                  {isSavingAiModel ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  <span>{isSavingAiModel ? 'সেভ হচ্ছে...' : 'নতুন মডেল সেভ করুন'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isTestingAiModel || !aiModelInput.trim()}
+                  onClick={() => handleTestAiModel()}
+                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-sm flex items-center gap-2 transition cursor-pointer"
+                >
+                  {isTestingAiModel ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Zap className="w-4 h-4" />
+                  )}
+                  <span>{isTestingAiModel ? 'পরীক্ষা চলছে...' : 'মডেল সংযোগ পরীক্ষা করুন'}</span>
+                </button>
+              </div>
+
+              {aiSettings?.overrideModel && (
+                <button
+                  type="button"
+                  disabled={isSavingAiModel}
+                  onClick={handleResetAiModelToDefault}
+                  className="px-4 py-2.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-bold rounded-xl flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>ডিফল্টে রিসেট করুন</span>
+                </button>
+              )}
+            </div>
+          </form>
         </div>
       )}
 

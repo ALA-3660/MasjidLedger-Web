@@ -8,6 +8,7 @@ import {
   AccountOpeningBalancePayload,
   AccountTransfer,
   IncomeEntry,
+  CashDenominationData,
   ExpenseEntry,
   Donation,
   DonationBox,
@@ -132,6 +133,11 @@ import {
   QuranReferenceStatus,
   QuranRangeResult,
 } from '../types/quran';
+import {
+  saveRecordToClientVault,
+  mergeAndInspectClientVault,
+  FinanceVaultRecordType,
+} from './clientFinanceVault';
 
 class ApiService {
   private token: string | null = null;
@@ -529,6 +535,63 @@ class ApiService {
     return res.success;
   }
 
+  async getSaasAiSettings(): Promise<{
+    activeModel: string;
+    source: 'SUPER_ADMIN_OVERRIDE' | 'ENV_VARIABLE' | 'SYSTEM_DEFAULT';
+    sourceLabelBn: string;
+    overrideModel: string;
+    envModel: string;
+    defaultModel: string;
+    updatedAt: string | null;
+    updatedBy: string | null;
+    updatedByName: string | null;
+    notes: string;
+    recommendedModels: Array<{
+      id: string;
+      labelBn: string;
+      descriptionBn: string;
+      badgeBn: string;
+      recommended?: boolean;
+    }>;
+  }> {
+    const res = await this.request<any>('/saas/ai-settings');
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'AI মডেল সেটিংস লোড করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async updateSaasAiSettings(payload: { modelName: string; notes?: string }): Promise<{
+    data: any;
+    message?: string;
+  }> {
+    const res = await this.request<any>('/saas/ai-settings', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success) {
+      throw new Error(res.error?.message || 'AI মডেল সেভ করতে ব্যর্থ হয়েছে');
+    }
+    return { data: res.data, message: res.message };
+  }
+
+  async testSaasAiModel(modelName?: string): Promise<{
+    ok: boolean;
+    modelName: string;
+    latencyMs: number;
+    replyPreviewBn: string;
+    testedAt: string;
+  }> {
+    const res = await this.request<any>('/saas/ai-settings/test', {
+      method: 'POST',
+      body: JSON.stringify({ modelName: modelName || '' }),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'AI মডেল পরীক্ষা ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
   // Backup & Restore Suite
   async downloadMosqueBackup(): Promise<void> {
     const response = await fetch('/api/v1/backup/export', {
@@ -922,10 +985,37 @@ class ApiService {
     if (!res.success) throw new Error(res.error?.message || 'Failed to delete account head');
   }
 
+  private getActiveMosqueId(): string {
+    return (
+      this.currentMosqueId ||
+      (typeof window !== 'undefined' ? localStorage.getItem('ml_mosque_id') || '' : '')
+    );
+  }
+
+  private reconcileMissingVaultRecordsWithServer(
+    type: FinanceVaultRecordType,
+    records: any[]
+  ): void {
+    if (!Array.isArray(records) || records.length === 0) return;
+    this.request('/accounting/reconcile-vault', {
+      method: 'POST',
+      body: JSON.stringify({ [type]: records }),
+    }).catch(() => {});
+  }
+
   // Incomes & Expenses
   async getIncomes(): Promise<IncomeEntry[]> {
     const res = await this.request<IncomeEntry[]>('/accounting/income');
-    return res.data || [];
+    const serverList = res.data || [];
+    const { mergedList, missingOrNewerInVault } = mergeAndInspectClientVault(
+      this.getActiveMosqueId(),
+      'incomeEntries',
+      serverList
+    );
+    if (missingOrNewerInVault.length > 0) {
+      this.reconcileMissingVaultRecordsWithServer('incomeEntries', missingOrNewerInVault);
+    }
+    return mergedList;
   }
 
   async createIncome(data: any): Promise<IncomeEntry> {
@@ -934,6 +1024,7 @@ class ApiService {
       body: JSON.stringify(data),
     });
     if (!res.success) throw new Error(res.error?.message || 'Failed to add income');
+    saveRecordToClientVault(this.getActiveMosqueId(), 'incomeEntries', res.data!);
     return res.data!;
   }
 
@@ -943,6 +1034,7 @@ class ApiService {
       body: JSON.stringify(data),
     });
     if (!res.success) throw new Error(res.error?.message || 'Failed to update income');
+    saveRecordToClientVault(this.getActiveMosqueId(), 'incomeEntries', res.data!);
     return res.data!;
   }
 
@@ -952,6 +1044,7 @@ class ApiService {
       body: JSON.stringify({ reason }),
     });
     if (!res.success) throw new Error(res.error?.message || 'Failed to reverse income');
+    saveRecordToClientVault(this.getActiveMosqueId(), 'incomeEntries', res.data!);
     return res.data!;
   }
 
@@ -961,12 +1054,22 @@ class ApiService {
       body: JSON.stringify({ reason }),
     });
     if (!res.success) throw new Error(res.error?.message || 'Failed to restore income');
+    saveRecordToClientVault(this.getActiveMosqueId(), 'incomeEntries', res.data!);
     return res.data!;
   }
 
   async getExpenses(): Promise<ExpenseEntry[]> {
     const res = await this.request<ExpenseEntry[]>('/accounting/expense');
-    return res.data || [];
+    const serverList = res.data || [];
+    const { mergedList, missingOrNewerInVault } = mergeAndInspectClientVault(
+      this.getActiveMosqueId(),
+      'expenseEntries',
+      serverList
+    );
+    if (missingOrNewerInVault.length > 0) {
+      this.reconcileMissingVaultRecordsWithServer('expenseEntries', missingOrNewerInVault);
+    }
+    return mergedList;
   }
 
   async createExpense(data: any): Promise<ExpenseEntry> {
@@ -975,6 +1078,7 @@ class ApiService {
       body: JSON.stringify(data),
     });
     if (!res.success) throw new Error(res.error?.message || 'Failed to add expense');
+    saveRecordToClientVault(this.getActiveMosqueId(), 'expenseEntries', res.data!);
     return res.data!;
   }
 
@@ -984,6 +1088,7 @@ class ApiService {
       body: JSON.stringify(data),
     });
     if (!res.success) throw new Error(res.error?.message || 'Failed to update expense');
+    saveRecordToClientVault(this.getActiveMosqueId(), 'expenseEntries', res.data!);
     return res.data!;
   }
 
@@ -993,6 +1098,7 @@ class ApiService {
       body: JSON.stringify({ reason }),
     });
     if (!res.success) throw new Error(res.error?.message || 'Failed to reverse expense');
+    saveRecordToClientVault(this.getActiveMosqueId(), 'expenseEntries', res.data!);
     return res.data!;
   }
 
@@ -1002,13 +1108,23 @@ class ApiService {
       body: JSON.stringify({ reason }),
     });
     if (!res.success) throw new Error(res.error?.message || 'Failed to restore expense');
+    saveRecordToClientVault(this.getActiveMosqueId(), 'expenseEntries', res.data!);
     return res.data!;
   }
 
   // Donations & Donation Boxes
   async getDonations(): Promise<Donation[]> {
     const res = await this.request<Donation[]>('/donations');
-    return res.data || [];
+    const serverList = res.data || [];
+    const { mergedList, missingOrNewerInVault } = mergeAndInspectClientVault(
+      this.getActiveMosqueId(),
+      'donations',
+      serverList
+    );
+    if (missingOrNewerInVault.length > 0) {
+      this.reconcileMissingVaultRecordsWithServer('donations', missingOrNewerInVault);
+    }
+    return mergedList;
   }
 
   async createDonation(data: any, idempotencyKey?: string): Promise<Donation> {
@@ -1022,6 +1138,7 @@ class ApiService {
       body: JSON.stringify(data),
     });
     if (!res.success) throw new Error(res.error?.message || 'Failed to create donation');
+    saveRecordToClientVault(this.getActiveMosqueId(), 'donations', res.data!);
     return res.data!;
   }
 
@@ -1031,6 +1148,7 @@ class ApiService {
       body: JSON.stringify({ reason }),
     });
     if (!res.success) throw new Error(res.error?.message || 'Failed to cancel donation');
+    saveRecordToClientVault(this.getActiveMosqueId(), 'donations', res.data!);
     return res.data!;
   }
 
@@ -1040,6 +1158,7 @@ class ApiService {
       body: JSON.stringify({ reason }),
     });
     if (!res.success) throw new Error(res.error?.message || 'Failed to restore donation');
+    saveRecordToClientVault(this.getActiveMosqueId(), 'donations', res.data!);
     return res.data!;
   }
 
@@ -1050,7 +1169,16 @@ class ApiService {
 
   async getDonationBoxCollections(): Promise<DonationBoxCollection[]> {
     const res = await this.request<{ boxes: DonationBox[]; collections: DonationBoxCollection[] }>('/donation-boxes');
-    return res.data?.collections || [];
+    const serverList = res.data?.collections || [];
+    const { mergedList, missingOrNewerInVault } = mergeAndInspectClientVault(
+      this.getActiveMosqueId(),
+      'donationBoxCollections',
+      serverList
+    );
+    if (missingOrNewerInVault.length > 0) {
+      this.reconcileMissingVaultRecordsWithServer('donationBoxCollections', missingOrNewerInVault);
+    }
+    return mergedList;
   }
 
   async createDonationBox(data: any): Promise<DonationBox> {
@@ -1077,6 +1205,12 @@ class ApiService {
       body: JSON.stringify(data),
     });
     if (!res.success) throw new Error(res.error?.message || 'Failed to collect donation box');
+    if (res.data?.collection) {
+      saveRecordToClientVault(this.getActiveMosqueId(), 'donationBoxCollections', res.data.collection);
+    }
+    if (res.data?.incomeEntry) {
+      saveRecordToClientVault(this.getActiveMosqueId(), 'incomeEntries', res.data.incomeEntry);
+    }
     return res.data!;
   }
 
@@ -1087,6 +1221,7 @@ class ApiService {
       body: JSON.stringify({ denominationData, editReason }),
     });
     if (!res.success) throw new Error(res.error?.message || 'Failed to update income denomination');
+    saveRecordToClientVault(this.getActiveMosqueId(), 'incomeEntries', res.data!);
     return res.data!;
   }
 
@@ -1096,6 +1231,7 @@ class ApiService {
       body: JSON.stringify({ denominationData, editReason }),
     });
     if (!res.success) throw new Error(res.error?.message || 'Failed to update donation denomination');
+    saveRecordToClientVault(this.getActiveMosqueId(), 'donations', res.data!);
     return res.data!;
   }
 
@@ -1105,6 +1241,7 @@ class ApiService {
       body: JSON.stringify({ denominationData, editReason }),
     });
     if (!res.success) throw new Error(res.error?.message || 'Failed to update box collection denomination');
+    saveRecordToClientVault(this.getActiveMosqueId(), 'donationBoxCollections', res.data!);
     return res.data!;
   }
 
@@ -2349,12 +2486,1324 @@ class ApiService {
     return res.data;
   }
 
-  // AI Advisor / Financial Auditor
+  // AI Smart Auditor, Smart Entry & Floating Chatbot
   async askAi(question: string, language: string = 'bn') {
-    return this.request<{ answer: string }>('/ai/financial-audit', {
+    return this.request<any>('/ai/financial-audit', {
       method: 'POST',
       body: JSON.stringify({ question, language }),
     });
+  }
+
+  async runAiSmartAudit(question?: string) {
+    const res = await this.request<any>('/ai/financial-audit', {
+      method: 'POST',
+      body: JSON.stringify({ question: question || '' }),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'AI স্মার্ট অডিট বিশ্লেষণ ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async parseAiSmartEntry(payload: {
+    mode: 'RECEIPT_SCAN' | 'TEXT_ENTRY';
+    entryType: 'INCOME' | 'EXPENSE';
+    text?: string;
+    imageBase64?: string;
+    mimeType?: string;
+  }) {
+    const res = await this.request<{
+      date: string;
+      amount: number;
+      mainHeadId: string;
+      mainHeadNameBn: string;
+      subHeadId: string;
+      subHeadNameBn: string;
+      personName: string;
+      personPhone: string;
+      paymentMethod: 'CASH' | 'BANK' | 'BKASH' | 'NAGAD' | 'ROCKET';
+      reference: string;
+      description: string;
+      suggestedIncomeType?: 'JUMMA' | 'DONATION' | 'DONATION_BOX' | 'WAQF_RENT' | 'OTHER_INCOME';
+      suggestedExpenseType?: 'GENERAL_EXPENSE' | 'STAFF_EXPENSE' | 'ASSET_EXPENSE' | 'PROPERTY_EXPENSE';
+      matchedStaffId?: string;
+      confidenceNoteBn: string;
+    }>('/ai/smart-entry', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'AI স্মার্ট এন্ট্রি বিশ্লেষণ ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async chatWithMasjidAi(
+    message: string,
+    history: { role: 'user' | 'model'; text: string }[] = []
+  ) {
+    const res = await this.request<{ answer: string; generatedAt: string }>('/ai/chat', {
+      method: 'POST',
+      body: JSON.stringify({ message, history }),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'AI চ্যাটবট থেকে উত্তর পাওয়া যায়নি।');
+    }
+    return res.data;
+  }
+
+  async extractSmartMigrationData(payload: {
+    migrationType: 'MUSALLI_DONOR' | 'WAQF_PROPERTY_TENANT' | 'LEDGER_OPENING_BALANCE';
+    files: Array<{
+      fileName: string;
+      mimeType: string;
+      base64Data?: string;
+      extractedText?: string;
+    }>;
+    extraInstruction?: string;
+  }) {
+    const res = await this.request<{
+      summaryBn: string;
+      totalExtracted: number;
+      needsReviewCount: number;
+      rows: Array<{
+        rowId: string;
+        sourceFile: string;
+        recordKind: 'DONOR' | 'WAQF_TENANT' | 'INCOME' | 'EXPENSE' | 'OPENING_BALANCE';
+        name: string;
+        fatherOrSpouseName: string;
+        mobile: string;
+        address: string;
+        propertyOrUnitName: string;
+        categoryLabelBn: string;
+        mainHeadId: string;
+        accountId: string;
+        date: string;
+        amount: number;
+        securityDeposit: number;
+        notes: string;
+        needsReview: boolean;
+        warningNoteBn: string;
+      }>;
+      availableIncomeHeads: Array<{ id: string; nameBn: string }>;
+      availableExpenseHeads: Array<{ id: string; nameBn: string }>;
+      availableAccounts: Array<{ id: string; nameBn: string; type: string }>;
+    }>('/ai/smart-migration/extract', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'AI ফাইল বিশ্লেষণে ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async commitSmartMigrationData(payload: {
+    migrationType: 'MUSALLI_DONOR' | 'WAQF_PROPERTY_TENANT' | 'LEDGER_OPENING_BALANCE';
+    rows: any[];
+  }) {
+    const res = await this.request<{
+      personsCreated: number;
+      donationPlansCreated: number;
+      propertiesCreated: number;
+      tenantsCreated: number;
+      incomesCreated: number;
+      expensesCreated: number;
+      openingBalancesUpdated: number;
+      skipped: number;
+      errors: string[];
+      totalSaved: number;
+    }>('/ai/smart-migration/commit', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'ডাটাবেসে সংরক্ষণ করতে ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  // ==========================================
+  // COMMITTEE MANAGEMENT AI AUTOMATIONS
+  // ==========================================
+  async generateCommitteeMeetingMinutesAi(payload: {
+    mode: 'NOTES' | 'HANDWRITTEN_SCAN';
+    meetingDate?: string;
+    meetingTime?: string;
+    venue?: string;
+    meetingTypeBn?: string;
+    chairmanName?: string;
+    secretaryName?: string;
+    attendeeNames?: string[];
+    rawNotes?: string;
+    imageBase64?: string;
+    mimeType?: string;
+  }) {
+    const res = await this.request<{
+      meetingTitleBn: string;
+      meetingDate: string;
+      dayNameBn: string;
+      timeBn: string;
+      venueBn: string;
+      meetingTypeBn: string;
+      chairmanName: string;
+      secretaryName: string;
+      attendeeNames: string[];
+      openingRemarksBn: string;
+      agendas: string[];
+      resolutions: Array<{
+        decisionNumber: string;
+        agendaTopic: string;
+        discussionSummaryBn: string;
+        proposerName: string;
+        seconderName: string;
+        decisionTextBn: string;
+        responsiblePersonName: string;
+        targetDeadline: string;
+        estimatedBudget: number;
+      }>;
+      closingRemarksBn: string;
+      ocrConfidenceNoteBn: string;
+    }>('/ai/committee/meeting-minutes', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'AI কার্যবিবরণী তৈরি করতে ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async extractCommitteeActionPlansAi(payload: {
+    meetingId?: string;
+    resolutionId?: string;
+    rawText?: string;
+    termId?: string;
+  }) {
+    const res = await this.request<{
+      sourceSummaryBn: string;
+      actionItems: Array<{
+        tempId: string;
+        title: string;
+        category: string;
+        description: string;
+        priority: 'URGENT' | 'HIGH' | 'MEDIUM' | 'NORMAL';
+        responsibleMemberId: string;
+        responsibleMemberName: string;
+        startDate: string;
+        dueDate: string;
+        estimatedBudget: number;
+        remarks: string;
+        meetingId?: string;
+        meetingNumber?: string;
+        resolutionId?: string;
+        resolutionNumber?: string;
+      }>;
+    }>('/ai/committee/extract-action-plans', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'কার্যবিবরণী থেকে টাস্ক বের করতে ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async analyzeCommitteeActionPlansAi(termId?: string) {
+    const res = await this.request<{
+      metrics: {
+        total: number;
+        completed: number;
+        inProgress: number;
+        todo: number;
+        overdue: number;
+        completionRate: number;
+      };
+      overallStatusBn: string;
+      executiveSummaryBn: string;
+      keyHighlightsBn: string[];
+      riskAlertsBn: string[];
+      reminderMessages: Array<{
+        planId: string;
+        planTitle: string;
+        responsibleName: string;
+        daysOverdue: number;
+        recipientLabelBn: string;
+        subjectBn: string;
+        messageDraftBn: string;
+      }>;
+      generatedAt: string;
+    }>('/ai/committee/action-plan-insights', {
+      method: 'POST',
+      body: JSON.stringify({ termId }),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'কর্মপরিকল্পনা বিশ্লেষণে ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async getCommitteeMemberPerformanceAi(termId?: string) {
+    const res = await this.request<{
+      termTitle: string;
+      overallSummaryBn: string;
+      topPerformerNoteBn: string;
+      improvementFocusBn: string;
+      members: Array<{
+        memberId: string;
+        memberName: string;
+        designationBn: string;
+        totalMeetings: number;
+        meetingsAttended: number;
+        attendanceRate: number;
+        assignedWorksCount: number;
+        completedWorksCount: number;
+        taskCompletionRate: number;
+        activitiesCount: number;
+        donationsCount: number;
+        totalDonatedAmount: number;
+        suggestedScore: number;
+        suggestedStars: number;
+        evaluationSummaryBn: string;
+        strengthsBn: string;
+        improvementTipBn: string;
+      }>;
+      generatedAt: string;
+    }>('/ai/committee/member-performance', {
+      method: 'POST',
+      body: JSON.stringify({ termId }),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'সদস্য মূল্যায়ন বিশ্লেষণে ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async generateCommitteeHandoverProtocolAi(payload: {
+    outgoingTermId?: string;
+    incomingTermId?: string;
+    handoverDate?: string;
+  }) {
+    const res = await this.request<{
+      protocolTitleBn: string;
+      memoNoSuggestion: string;
+      executiveDeclarationBn: string;
+      financialHandoverSummaryBn: string;
+      waqfAndPropertySummaryBn: string;
+      ongoingProjectsSummaryBn: string;
+      recommendationsForIncomingBn: string[];
+      closingPledgeBn: string;
+      liveSnapshot: {
+        outgoingTermTitle: string;
+        incomingTermTitle: string;
+        handoverDate: string;
+        cashBalance: number;
+        bankTotalBalance: number;
+        totalFundBalance: number;
+        cashAccounts: Array<{ nameBn: string; balance: number }>;
+        bankBalances: Array<{ nameBn: string; accountNumber: string; bankName: string; accountType: string; balance: number }>;
+        waqfStats: {
+          totalProperties: number;
+          totalActiveTenants: number;
+          totalMonthlyExpectedRent: number;
+          totalDueRent: number;
+          dueTenantsCount: number;
+          dueTenantsList: Array<{ propertyName: string; tenantName: string; shopNo: string; dueAmount: number }>;
+        };
+        pendingProjects: Array<{
+          planNumber: string;
+          title: string;
+          category: string;
+          status: string;
+          progressPercentage: number;
+          dueDate: string;
+          estimatedBudget: number;
+          actualCost: number;
+          responsibleName: string;
+        }>;
+        pendingTasksCount: number;
+        totalMeetingsCount: number;
+        totalResolutionsCount: number;
+      };
+      generatedAt: string;
+    }>('/ai/committee/handover-protocol', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'দায়িত্ব হস্তান্তর প্রতিবেদন তৈরি করতে ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async getCommitteeHealthCheckAi(payload?: { termId?: string; includeAiCommentary?: boolean }) {
+    const res = await this.request<{
+      metrics: {
+        hasActiveTerm: boolean;
+        activeTermTitle: string;
+        startDate: string;
+        endDate: string;
+        daysRemaining: number;
+        totalDays: number;
+        elapsedPercent: number;
+        isExpired: boolean;
+        isNearEnd: boolean;
+        totalMembers: number;
+        activeMembers: number;
+        totalMeetings: number;
+        recentMeetings90Days: number;
+        totalResolutions: number;
+        totalActionPlans: number;
+        completedActionPlans: number;
+        inProgressActionPlans: number;
+        overdueActionPlans: number;
+        completionPercent: number;
+      };
+      aiAssessment: {
+        healthScore: number;
+        healthStatusLabelBn: string;
+        summaryBn: string;
+        strengthsBn: string[];
+        priorityActionsBn: string[];
+      } | null;
+      generatedAt: string;
+    }>('/ai/committee/health-check', {
+      method: 'POST',
+      body: JSON.stringify(payload || {}),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'কমিটি হেলথ চেক লোড করতে ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  // ==========================================
+  // INCOME MANAGEMENT AI AUTOMATIONS (GEMINI 2.5 FLASH)
+  // ==========================================
+  async parseIncomeNoteCounterAi(payload: { text: string; context?: 'JUMA' | 'BOX' }) {
+    const res = await this.request<{
+      denominationData: CashDenominationData;
+      items: Array<{ labelBn: string; denom: number; count: number; subtotal: number; isCoin: boolean }>;
+      grandTotal: number;
+      totalNotesCount: number;
+      totalCoinsCount: number;
+      breakdownSummaryBn: string;
+    }>('/ai/income/note-counter', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'AI নোট হিসাব বিশ্লেষণ ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async getJumaFourWeekComparisonAi() {
+    const res = await this.request<{
+      latestJumaDate: string | null;
+      currentWeekAmount: number;
+      fourWeekAvg: number;
+      comparedWeeksCount: number;
+      diffAmount: number;
+      percentChange: number | null;
+      trend: 'UP' | 'DOWN' | 'STEADY' | 'NO_DATA';
+      oneLineCommentBn: string;
+      weeklyHistory: Array<{ date: string; amount: number; count: number }>;
+      generatedAt: string;
+    }>('/ai/income/juma-comparison', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'জুমার গড় তুলনা বিশ্লেষণ ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async generateDonationAppreciationAi(payload: {
+    donorName: string;
+    amount: number;
+    date: string;
+    categoryBn?: string;
+    receiptNo?: string;
+    tone?: 'FORMAL' | 'WARM_DUA' | 'SHORT_SMS';
+  }) {
+    const res = await this.request<{
+      messageBn: string;
+      shortSmsBn: string;
+      mosqueName: string;
+      generatedAt: string;
+    }>('/ai/income/appreciation-message', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'কৃতজ্ঞতা বার্তা তৈরি করতে ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async checkWaqfRentDuesAi(payload?: { billingMonth?: string }) {
+    const res = await this.request<{
+      billingMonth: string;
+      billingMonthLabelBn: string;
+      totalProperties: number;
+      totalActiveTenants: number;
+      paidTenantsCount: number;
+      unpaidCount: number;
+      totalDueAmount: number;
+      summaryBn: string;
+      unpaidTenants: Array<{
+        propertyId: string;
+        propertyName: string;
+        propertyCode: string;
+        tenantId: string;
+        tenantName: string;
+        phone: string;
+        unitOrShopNo: string;
+        monthlyRent: number;
+        paidThisMonth: number;
+        dueAmount: number;
+        status: 'UNPAID_THIS_MONTH' | 'PARTIAL_DUE';
+        reminderDraftBn: string;
+      }>;
+      generatedAt: string;
+    }>('/ai/income/waqf-dues', {
+      method: 'POST',
+      body: JSON.stringify(payload || {}),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'ওয়াক্ফ ভাড়া বকেয়া যাচাই ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async checkIncomeRegisterDuplicatesAi(payload?: { fromDate?: string; toDate?: string }) {
+    const res = await this.request<{
+      scannedCount: number;
+      duplicateIds: string[];
+      groups: Array<{
+        groupKey: string;
+        date: string;
+        amount: number;
+        riskLevel: 'HIGH' | 'MEDIUM';
+        entryIds: string[];
+        voucherNumbers: string[];
+        donorOrHeadBn: string;
+        reasonBn: string;
+      }>;
+      summaryBn: string;
+      generatedAt: string;
+    }>('/ai/income/duplicate-check', {
+      method: 'POST',
+      body: JSON.stringify(payload || {}),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'ডাবল এন্ট্রি যাচাই ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async getIncomeFinancialInsightsAi() {
+    const res = await this.request<{
+      currentMonthLabelBn: string;
+      previousMonthLabelBn: string;
+      nextMonthLabelBn: string;
+      currentMonthTotal: number;
+      previousMonthTotal: number;
+      momDiff: number;
+      momChangePercent: number | null;
+      allTimeTotal: number;
+      totalVouchers: number;
+      topHeadNameBn: string;
+      topHeadAmount: number;
+      topHeadSharePercent: number;
+      topHeadsBreakdown: Array<{ nameBn: string; total: number; currentMonth: number; count: number }>;
+      monthlyHistory: Array<{ monthKey: string; labelBn: string; total: number; count: number }>;
+      topHeadInsightBn: string;
+      momComparisonBn: string;
+      nextMonthForecastAmount: number;
+      forecastRangeBn: string;
+      forecastReasoningBn: string;
+      executiveSummaryBn: string;
+      recommendationsBn: string[];
+      generatedAt: string;
+    }>('/ai/income/financial-insights', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'আয় আর্থিক বিশ্লেষণ লোড করতে ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  // ============================================================
+  // EXPENSE MANAGEMENT AI AUTOMATIONS
+  // ============================================================
+
+  async analyzeUtilityBillAi(payload: {
+    imageBase64?: string;
+    mimeType?: string;
+    text?: string;
+    utilityHint?: 'ELECTRICITY' | 'GAS' | 'WATER' | 'ALL';
+    compareOnly?: boolean;
+  }) {
+    const res = await this.request<{
+      mode: 'BILL_SCAN' | 'HISTORICAL_CHECK';
+      utilityType: string;
+      utilityTypeBn: string;
+      providerName: string;
+      billingMonth: string;
+      billingMonthBn: string;
+      amount: number;
+      dueDate: string;
+      meterOrAccountNo: string;
+      reference: string;
+      mainHeadId: string;
+      mainHeadNameBn: string;
+      subHeadId: string;
+      subHeadNameBn: string;
+      descriptionBn: string;
+      last3MonthsAvg: number;
+      last3MonthsBreakdown: Array<{ monthKey: string; monthLabelBn: string; total: number }>;
+      percentChange: number | null;
+      spikeAlert: boolean;
+      spikeWarningBn: string;
+      commentaryBn: string;
+      confidenceNoteBn: string;
+      generatedAt: string;
+    }>('/ai/expense/utility-scan', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'ইউটিলিটি বিল বিশ্লেষণ ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async prepareMonthlyPayrollDraftAi(payload?: { salaryMonth?: string }) {
+    const res = await this.request<{
+      salaryMonth: string;
+      salaryMonthLabelBn: string;
+      totalActiveStaff: number;
+      alreadyPaidCount: number;
+      pendingCount: number;
+      totalGrossSalary: number;
+      totalOutstandingAdvance: number;
+      totalRecommendedDeduction: number;
+      totalNetPayable: number;
+      summaryBn: string;
+      advanceAdvisoryBn: string;
+      rows: Array<{
+        staffId: string;
+        staffName: string;
+        designationBn: string;
+        phone: string;
+        baseSalary: number;
+        allowance: number;
+        grossSalary: number;
+        outstandingAdvance: number;
+        recommendedAdvanceDeduction: number;
+        netPayable: number;
+        alreadyPaid: boolean;
+        alreadyPaidAmount: number;
+        suggestedMainHeadId: string;
+        suggestedMainHeadNameBn: string;
+        voucherDescriptionBn: string;
+      }>;
+      generatedAt: string;
+    }>('/ai/expense/payroll-draft', {
+      method: 'POST',
+      body: JSON.stringify(payload || {}),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'মাসিক বেতন ড্রাফট তৈরি ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async auditExpenseReconciliationAi(payload?: { fromDate?: string; toDate?: string }) {
+    const res = await this.request<{
+      scannedVoucherCount: number;
+      totalScannedExpenseAmount: number;
+      duplicateGroupCount: number;
+      duplicateEntryIds: string[];
+      duplicateGroups: Array<{
+        groupKey: string;
+        date: string;
+        amount: number;
+        entryIds: string[];
+        voucherNumbers: string[];
+        payeeOrHeadBn: string;
+        riskLevel: 'HIGH' | 'MEDIUM';
+        reasonBn: string;
+      }>;
+      mismatchedAccountCount: number;
+      balanceDiscrepancies: Array<{
+        accountId: string;
+        accountNameBn: string;
+        accountType: string;
+        openingBalance: number;
+        totalIncomes: number;
+        totalExpenses: number;
+        expectedBalance: number;
+        recordedBalance: number;
+        delta: number;
+        hasMismatch: boolean;
+        explanationBn: string;
+      }>;
+      orphanExpenses: Array<{
+        id: string;
+        voucherNumber: string;
+        date: string;
+        amount: number;
+        payeeName: string;
+        issue: string;
+      }>;
+      riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+      auditHeadlineBn: string;
+      executiveSummaryBn: string;
+      actionChecklistBn: string[];
+      generatedAt: string;
+    }>('/ai/expense/reconciliation-audit', {
+      method: 'POST',
+      body: JSON.stringify(payload || {}),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'ব্যয় অডিট ও রিকনসিলিয়েশন ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async analyzeExpenseBudgetGuardAi(payload?: { budgetId?: string }) {
+    const res = await this.request<{
+      hasFormalBudget: boolean;
+      budgetName: string;
+      nextMonthLabelBn: string;
+      totalPlanned: number;
+      totalActual: number;
+      overallUtilizationPercent: number;
+      redRiskCount: number;
+      yellowRiskCount: number;
+      overallStatus: 'RED' | 'YELLOW' | 'GREEN';
+      executiveSummaryBn: string;
+      nextMonthExpenseForecastAmount: number;
+      forecastReasoningBn: string;
+      atRiskHeads: Array<{
+        mainHeadId: string;
+        mainHeadNameBn: string;
+        plannedAmount: number;
+        actualAmount: number;
+        remainingAmount: number;
+        utilizationPercent: number;
+        riskBadge: 'RED' | 'YELLOW' | 'GREEN';
+        riskLabelBn: string;
+        warningNoteBn: string;
+      }>;
+      costSavingTipsBn: string[];
+      generatedAt: string;
+    }>('/ai/expense/budget-guard', {
+      method: 'POST',
+      body: JSON.stringify(payload || {}),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'বাজেট গার্ড ও ব্যয় পরামর্শ লোড করতে ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  // ==========================================
+  // ACCOUNTS & TRANSACTIONS AI AUTOMATIONS
+  // ==========================================
+  async diagnoseNegativeCashBalanceAi(payload?: { accountId?: string }) {
+    const res = await this.request<{
+      hasNegativeIssue: boolean;
+      severity: 'CRITICAL' | 'WARNING' | 'HEALTHY';
+      firstNegativeDate: string | null;
+      lowestBalance: number;
+      lowestDate: string | null;
+      currentCashBalance: number;
+      openingCashBalance: number;
+      negativeAccounts: Array<{
+        id: string;
+        nameBn: string;
+        accountType: string;
+        openingBalance: number;
+        currentBalance: number;
+      }>;
+      primaryCauseType:
+        | 'OPENING_BALANCE_MISSING'
+        | 'UNRECORDED_INCOME'
+        | 'WRONG_ACCOUNT_POSTING'
+        | 'OVER_EXPENSE_ENTRY'
+        | 'NONE';
+      headlineBn: string;
+      rootCauseAnalysisBn: string;
+      recommendedActionBn: string;
+      stepByStepFixBn: string[];
+      triggerTransactions: Array<{
+        date: string;
+        voucherNumber: string;
+        type: 'INCOME' | 'EXPENSE' | 'TRANSFER_IN' | 'TRANSFER_OUT';
+        amount: number;
+        runningBalanceAfter: number;
+        description: string;
+        accountName: string;
+      }>;
+      generatedAt: string;
+    }>('/ai/ledger/balance-guardian', {
+      method: 'POST',
+      body: JSON.stringify(payload || {}),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'নেগেটিভ ক্যাশ ও প্রারম্ভিক স্থিতি বিশ্লেষণ ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async reconcileBankStatementAi(payload: {
+    accountId?: string;
+    fileBase64?: string;
+    mimeType?: string;
+    statementText?: string;
+  }) {
+    const res = await this.request<{
+      statementAccountLabelBn: string;
+      statementPeriodBn: string;
+      statementClosingBalance: number | null;
+      bookBalance: number;
+      balanceDifference: number | null;
+      totalStatementRows: number;
+      matchedCount: number;
+      unrecordedInSoftware: Array<{
+        date: string;
+        description: string;
+        reference: string;
+        direction: 'DEPOSIT' | 'WITHDRAWAL';
+        amount: number;
+        noteBn: string;
+      }>;
+      amountMismatches: Array<{
+        date: string;
+        statementDescription: string;
+        statementAmount: number;
+        softwareVoucherNumber: string;
+        softwareAmount: number;
+        difference: number;
+        direction: 'DEPOSIT' | 'WITHDRAWAL';
+        noteBn: string;
+      }>;
+      onlyInSoftware: Array<{
+        id: string;
+        date: string;
+        voucherNumber: string;
+        description: string;
+        direction: 'DEPOSIT' | 'WITHDRAWAL';
+        amount: number;
+        noteBn: string;
+      }>;
+      summaryBn: string;
+      actionStepsBn: string[];
+      generatedAt: string;
+    }>('/ai/ledger/bank-reconcile', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'ব্যাংক ও এমএফএস স্টেটমেন্ট মিলিয়ে দেখা ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async smartSearchTransactionsAi(payload: {
+    query: string;
+    scope?: 'ALL' | 'CASH' | 'BANK';
+    accountId?: string;
+  }) {
+    const res = await this.request<{
+      query: string;
+      interpretedQueryBn: string;
+      appliedFilters: {
+        startDate: string | null;
+        endDate: string | null;
+        transactionType: 'ALL' | 'INCOME' | 'EXPENSE' | 'TRANSFER';
+        minAmount: number | null;
+        maxAmount: number | null;
+        accountTypeFilter: 'ALL' | 'CASH' | 'BANK' | 'MFS';
+        keywords: string[];
+      };
+      totalCount: number;
+      totalDebit: number;
+      totalCredit: number;
+      totalTransfer: number;
+      results: Array<{
+        id: string;
+        date: string;
+        voucherNumber: string;
+        txType: 'INCOME' | 'EXPENSE' | 'TRANSFER';
+        txTypeLabelBn: string;
+        headNameBn: string;
+        accountName: string;
+        accountType: string;
+        partyName: string;
+        description: string;
+        debit: number;
+        credit: number;
+        amount: number;
+      }>;
+      generatedAt: string;
+    }>('/ai/ledger/smart-search', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'প্রাকৃতিক বাংলায় লেনদেন অনুসন্ধান ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async generateLedgerExecutiveSummaryAi(payload: {
+    ledgerType: 'DAILY_STATEMENT' | 'CASHBOOK' | 'BANK_LEDGER' | 'SUMMARY';
+    periodLabel: string;
+    startDate?: string;
+    endDate?: string;
+    openingBalance: number;
+    totalInflow: number;
+    totalOutflow: number;
+    closingBalance: number;
+    transactionCount: number;
+    accountScopeLabel?: string;
+    topInflowHeads?: Array<{ name: string; amount: number }>;
+    topOutflowHeads?: Array<{ name: string; amount: number }>;
+  }) {
+    const res = await this.request<{
+      summaryParagraphBn: string;
+      statusTagBn: string;
+      keyHighlightsBn: string[];
+      netChange: number;
+      generatedAt: string;
+    }>('/ai/ledger/executive-summary', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'AI লেনদেন সারসংক্ষেপ তৈরি করতে ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  // ==========================================
+  // CHART OF ACCOUNTS (COA) AI AUTOMATIONS
+  // ==========================================
+  async optimizeChartOfAccountsAi() {
+    const res = await this.request<{
+      totalHeads: number;
+      incomeHeadCount: number;
+      expenseHeadCount: number;
+      unusedHeadCount: number;
+      healthScore: number;
+      healthLabelBn: string;
+      overallAssessmentBn: string;
+      duplicateOrFragmentedSuggestions: Array<{
+        headId: string;
+        headCode: string;
+        headNameBn: string;
+        headType: 'INCOME' | 'EXPENSE';
+        usageCount: number;
+        issueType: 'DUPLICATE' | 'OVER_GRANULAR' | 'MISCLASSIFIED';
+        issueBadgeBn: string;
+        recommendedTargetHeadId: string;
+        recommendedTargetHeadNameBn: string;
+        recommendedTargetHeadCode: string;
+        reasonBn: string;
+        actionAdviceBn: string;
+      }>;
+      keyRecommendationsBn: string[];
+      generatedAt: string;
+    }>('/ai/coa/optimize', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'AI হিসাব খাত বিশ্লেষণ করতে ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async generateStandardCoaTemplateAi(payload: {
+    mosqueType: 'GENERAL' | 'WAQF_LARGE' | 'MADRASA_ATTACHED' | 'URBAN_COMPLEX';
+  }) {
+    const res = await this.request<{
+      mosqueType: 'GENERAL' | 'WAQF_LARGE' | 'MADRASA_ATTACHED' | 'URBAN_COMPLEX';
+      mosqueTypeLabelBn: string;
+      templateTitleBn: string;
+      summaryBn: string;
+      incomeGroups: Array<{
+        mainHeadNameBn: string;
+        mainHeadNameEn: string;
+        codeHint: string;
+        descriptionBn: string;
+        alreadyExists: boolean;
+        subHeads: Array<{
+          nameBn: string;
+          nameEn: string;
+          descriptionBn: string;
+          alreadyExists: boolean;
+        }>;
+      }>;
+      expenseGroups: Array<{
+        mainHeadNameBn: string;
+        mainHeadNameEn: string;
+        codeHint: string;
+        descriptionBn: string;
+        alreadyExists: boolean;
+        subHeads: Array<{
+          nameBn: string;
+          nameEn: string;
+          descriptionBn: string;
+          alreadyExists: boolean;
+        }>;
+      }>;
+      generatedAt: string;
+    }>('/ai/coa/standard-template', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'AI স্ট্যান্ডার্ড COA টেমপ্লেট তৈরি করতে ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async suggestNewAccountHeadAi(payload: { nameBn: string }) {
+    const res = await this.request<{
+      inputName: string;
+      suggestedType: 'INCOME' | 'EXPENSE';
+      suggestedParentId: string | null;
+      suggestedParentNameBn: string | null;
+      suggestedCode: string;
+      suggestedNameEn: string;
+      suggestedDescriptionBn: string;
+      duplicateRisk: 'NONE' | 'SIMILAR' | 'EXACT';
+      warningMessageBn: string;
+      reasoningBn: string;
+      similarExistingHeads: Array<{
+        id: string;
+        code: string;
+        nameBn: string;
+        nameEn: string;
+        type: 'INCOME' | 'EXPENSE';
+        parentNameBn: string;
+        matchReasonBn: string;
+      }>;
+      generatedAt: string;
+    }>('/ai/coa/suggest-head', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'AI স্মার্ট সাজেশন তৈরি করতে ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async findInactiveAccountHeadsAi(payload: { type: 'INCOME' | 'EXPENSE' | 'ALL' }) {
+    const res = await this.request<{
+      type: 'INCOME' | 'EXPENSE' | 'ALL';
+      totalScopedHeads: number;
+      unusedCount: number;
+      recommendedArchiveCount: number;
+      summaryBn: string;
+      items: Array<{
+        id: string;
+        code: string;
+        nameBn: string;
+        type: 'INCOME' | 'EXPENSE';
+        isSubHead: boolean;
+        parentNameBn: string;
+        usageCount: number;
+        recommendation: 'ARCHIVE' | 'KEEP_SEASONAL' | 'REVIEW';
+        recommendationLabelBn: string;
+        reasonBn: string;
+      }>;
+      generatedAt: string;
+    }>('/ai/coa/inactive-heads', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'AI নিষ্ক্রিয় খাত খুঁজতে ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async generateCoaStructureNoteAi() {
+    const res = await this.request<{
+      structureNoteBn: string;
+      structureGradeBn: string;
+      stats: {
+        totalHeads: number;
+        incomeTotal: number;
+        incomeMain: number;
+        incomeSub: number;
+        expenseTotal: number;
+        expenseMain: number;
+        expenseSub: number;
+        activeCount: number;
+        archivedCount: number;
+        usedCount: number;
+        unusedCount: number;
+      };
+      generatedAt: string;
+    }>('/ai/coa/structure-note', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'AI অ্যাকাউন্টিং স্ট্রাকচার নোট তৈরি করতে ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  // ==========================================
+  // IMAM, STAFF & PAYROLL AI AUTOMATIONS
+  // ==========================================
+  async scanStaffDocumentAi(payload: {
+    fileBase64?: string;
+    mimeType?: string;
+    extraText?: string;
+  }) {
+    const res = await this.request<{
+      fullNameBn: string;
+      nameEn: string;
+      fatherName: string;
+      motherName: string;
+      nid: string;
+      dateOfBirth: string;
+      phone: string;
+      presentAddress: string;
+      permanentAddress: string;
+      bloodGroup: string;
+      generalEducation: string;
+      religiousEducation: string;
+      previousExperience: string;
+      confidenceNoteBn: string;
+      generatedAt: string;
+    }>('/ai/staff/scan-document', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'NID বা ডকুমেন্ট স্ক্যান ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async generateStaffOfficialDocumentAi(payload: {
+    staffId: string;
+    documentType: 'APPOINTMENT_LETTER' | 'EXPERIENCE_CERTIFICATE' | 'CLEARANCE_LETTER';
+    customNote?: string;
+  }) {
+    const res = await this.request<{
+      staffId: string;
+      staffNameBn: string;
+      designationBn: string;
+      documentType: 'APPOINTMENT_LETTER' | 'EXPERIENCE_CERTIFICATE' | 'CLEARANCE_LETTER';
+      memoNumber: string;
+      issueDate: string;
+      titleBn: string;
+      recipientBlockBn: string;
+      subjectBn: string;
+      salutationBn: string;
+      bodyParagraphsBn: string[];
+      termsOrPointsBn: string[];
+      closingNoteBn: string;
+      generatedAt: string;
+    }>('/ai/staff/generate-document', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'আনুষ্ঠানিক ডকুমেন্ট তৈরি করতে ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async summarizeMonthlyAttendanceAi(payload: { month?: string }) {
+    const res = await this.request<{
+      month: string;
+      activeStaffCount: number;
+      totalRecordedEntries: number;
+      perfectCount: number;
+      irregularCount: number;
+      overallStatusBn: string;
+      summaryBn: string;
+      perfectAttendanceNoteBn: string;
+      irregularityAlertBn: string;
+      actionSuggestionsBn: string[];
+      staffBreakdown: Array<{
+        staffId: string;
+        staffCode: string;
+        nameBn: string;
+        designationBn: string;
+        recordedDays: number;
+        presentDays: number;
+        lateDays: number;
+        leaveDays: number;
+        absentDays: number;
+        attendanceRate: number;
+        isPerfect: boolean;
+        isIrregular: boolean;
+      }>;
+      generatedAt: string;
+    }>('/ai/staff/attendance-summary', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'AI মাসিক হাজিরা সারসংক্ষেপ তৈরি করতে ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async verifyStaffLeaveRequestAi(payload: {
+    staffId: string;
+    leaveId?: string;
+    leaveType?: string;
+    leaveTypeBn?: string;
+    startDate: string;
+    endDate: string;
+    daysCount: number;
+    reason?: string;
+  }) {
+    const res = await this.request<{
+      staffId: string;
+      staffNameBn: string;
+      designationBn: string;
+      startDate: string;
+      endDate: string;
+      daysCount: number;
+      applicantIsPrayerRole: boolean;
+      overlappingLeaves: Array<{
+        staffId: string;
+        staffNameBn: string;
+        designationBn: string;
+        designation: string;
+        startDate: string;
+        endDate: string;
+        status: string;
+        isPrayerRole: boolean;
+      }>;
+      hasConflict: boolean;
+      annualQuotaDays: number;
+      usedDaysThisYear: number;
+      remainingBeforeRequest: number;
+      remainingAfterRequest: number;
+      recommendation: 'APPROVE' | 'APPROVE_WITH_BACKUP' | 'REVIEW_CAREFULLY' | 'REJECT_SUGGESTED';
+      recommendationLabelBn: string;
+      conflictAnalysisBn: string;
+      quotaAnalysisBn: string;
+      approvalLetterMemoNo: string;
+      approvalLetterTitleBn: string;
+      approvalLetterBodyBn: string;
+      generatedAt: string;
+    }>('/ai/staff/verify-leave', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'AI ছুটি যাচাই ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async generateStaffPayrollDraftAi(payload: {
+    month?: string;
+    festivalBonusPercent?: number;
+    festivalName?: string;
+  }) {
+    const res = await this.request<{
+      month: string;
+      festivalName: string;
+      festivalBonusPercent: number;
+      payrollAuditNoteBn: string;
+      payslipBlessingNoteBn: string;
+      totals: {
+        staffCount: number;
+        totalBasic: number;
+        totalAllowance: number;
+        totalFestivalBonus: number;
+        totalAttendanceDeduction: number;
+        totalAdvanceDeduction: number;
+        totalGross: number;
+        totalNetPayable: number;
+        alreadyPaidCount: number;
+      };
+      rows: Array<{
+        staffId: string;
+        staffCode: string;
+        nameBn: string;
+        designationBn: string;
+        phone: string;
+        paymentPreference: string;
+        bankInfo: string;
+        basicSalary: number;
+        fixedAllowance: number;
+        festivalBonus: number;
+        presentDays: number;
+        lateDays: number;
+        leaveDays: number;
+        absentDays: number;
+        attendanceDeduction: number;
+        advanceOutstanding: number;
+        suggestedAdvanceDeduction: number;
+        grossPayable: number;
+        totalDeduction: number;
+        netPayable: number;
+        alreadyPaid: boolean;
+        paidVoucherNumber: string;
+        aiNoteBn: string;
+      }>;
+      generatedAt: string;
+    }>('/ai/staff/payroll-draft', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'AI মাসিক বেতন শিট ড্রাফট তৈরি করতে ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async generateStaffSalarySmsAi(payload: {
+    staffId: string;
+    paymentId?: string;
+    month?: string;
+    netPaid?: number;
+    paymentMethod?: string;
+    voucherNumber?: string;
+  }) {
+    const res = await this.request<{
+      staffId: string;
+      staffNameBn: string;
+      designationBn: string;
+      phone: string;
+      month: string;
+      netPaid: number;
+      voucherNumber: string;
+      whatsappMessageBn: string;
+      shortSmsBn: string;
+      generatedAt: string;
+    }>('/ai/staff/salary-sms', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'AI বেতন SMS তৈরি করতে ব্যর্থ হয়েছে।');
+    }
+    return res.data;
   }
 
   // Global Search
@@ -4688,6 +6137,34 @@ class ApiService {
     });
     if (!res.success || !res.data) throw new Error(res.error?.message || 'পাসওয়ার্ড রিসেট করতে ব্যর্থ হয়েছে');
     return { ...res.data, message: res.message || 'পাসওয়ার্ড সফলভাবে রিসেট করা হয়েছে' };
+  }
+
+  async syncClientVault(payload: {
+    incomeEntries?: IncomeEntry[];
+    expenseEntries?: ExpenseEntry[];
+    donations?: Donation[];
+    donationBoxCollections?: DonationBoxCollection[];
+  }): Promise<{
+    restoredCount: number;
+    restoredIncomes: number;
+    restoredExpenses: number;
+    restoredDonations: number;
+    restoredBoxCollections: number;
+  }> {
+    const res = await this.request<{
+      restoredCount: number;
+      restoredIncomes: number;
+      restoredExpenses: number;
+      restoredDonations: number;
+      restoredBoxCollections: number;
+    }>('/sync/client-vault', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      return { restoredCount: 0, restoredIncomes: 0, restoredExpenses: 0, restoredDonations: 0, restoredBoxCollections: 0 };
+    }
+    return res.data;
   }
 }
 

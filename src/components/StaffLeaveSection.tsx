@@ -11,13 +11,16 @@ import {
   Users,
   Check,
   X,
-  AlertTriangle
+  AlertTriangle,
+  Sparkles
 } from 'lucide-react';
-import { Staff, StaffLeaveRecord, StaffLeaveStatus } from '../types';
+import { Staff, StaffLeaveRecord, StaffLeaveStatus, Mosque } from '../types';
 import { Language, formatDate } from '../lib/i18n';
+import { AiLeaveVerificationModal } from './staff/AiLeaveVerificationModal';
 
 interface StaffLeaveSectionProps {
   staffList: Staff[];
+  currentMosque?: Mosque | null;
   onOpenNewLeaveModal: () => void;
   onUpdateLeaveStatus: (leaveId: string, status: StaffLeaveStatus) => Promise<void>;
   language: Language;
@@ -25,6 +28,7 @@ interface StaffLeaveSectionProps {
 
 export const StaffLeaveSection: React.FC<StaffLeaveSectionProps> = ({
   staffList = [],
+  currentMosque,
   onOpenNewLeaveModal,
   onUpdateLeaveStatus,
   language = 'bn',
@@ -34,6 +38,7 @@ export const StaffLeaveSection: React.FC<StaffLeaveSectionProps> = ({
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [verifyingLeave, setVerifyingLeave] = useState<(StaffLeaveRecord & { staff?: Staff }) | null>(null);
 
   // Flatten all leave records
   const allLeaves: (StaffLeaveRecord & { staff?: Staff })[] = [];
@@ -92,14 +97,30 @@ export const StaffLeaveSection: React.FC<StaffLeaveSectionProps> = ({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={onOpenNewLeaveModal}
-          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs transition-colors shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          <span>নতুন ছুটি আবেদন</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {allLeaves.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                const target = allLeaves.find((l) => l.status === 'PENDING') || allLeaves[0];
+                if (target) setVerifyingLeave(target);
+              }}
+              className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs transition-colors"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>AI ছুটি যাচাই</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={onOpenNewLeaveModal}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs transition-colors shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            <span>নতুন ছুটি আবেদন</span>
+          </button>
+        </div>
       </div>
 
       {/* KPI stats */}
@@ -207,33 +228,55 @@ export const StaffLeaveSection: React.FC<StaffLeaveSectionProps> = ({
                 </div>
 
                 {/* Actions */}
-                {lv.status === 'PENDING' && (
-                  <div className="flex items-center space-x-2 shrink-0">
-                    <button
-                      type="button"
-                      disabled={loadingId === lv.id}
-                      onClick={() => handleAction(lv.id, 'APPROVED')}
-                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1 transition-colors"
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                      <span>অনুমোদন</span>
-                    </button>
-                    <button
-                      type="button"
-                      disabled={loadingId === lv.id}
-                      onClick={() => handleAction(lv.id, 'REJECTED')}
-                      className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1 transition-colors"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                      <span>বাতিল</span>
-                    </button>
-                  </div>
-                )}
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setVerifyingLeave(lv)}
+                    className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold flex items-center space-x-1 transition-colors"
+                    title="একই সময়ে অন্য কর্মীর ছুটি, বার্ষিক কোটা যাচাই ও মঞ্জুরিপত্র তৈরি করুন"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>AI ছুটি যাচাই</span>
+                  </button>
+
+                  {lv.status === 'PENDING' && (
+                    <>
+                      <button
+                        type="button"
+                        disabled={loadingId === lv.id}
+                        onClick={() => handleAction(lv.id, 'APPROVED')}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1 transition-colors"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>অনুমোদন</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={loadingId === lv.id}
+                        onClick={() => handleAction(lv.id, 'REJECTED')}
+                        className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1 transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span>বাতিল</span>
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* AI Leave Verification & Approval Letter Modal */}
+      <AiLeaveVerificationModal
+        isOpen={Boolean(verifyingLeave)}
+        onClose={() => setVerifyingLeave(null)}
+        leave={verifyingLeave}
+        currentMosque={currentMosque}
+        onApproveLeave={(leaveId) => handleAction(leaveId, 'APPROVED')}
+        onRejectLeave={(leaveId) => handleAction(leaveId, 'REJECTED')}
+      />
     </div>
   );
 };

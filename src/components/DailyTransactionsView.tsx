@@ -39,6 +39,10 @@ import {
   UnifiedLedgerEntry,
 } from '../lib/accountingLedgerService';
 import { A4ReportPreviewModal } from './A4ReportPreviewModal';
+import { AiBalanceGuardianAlert } from './financial/AiBalanceGuardianAlert';
+import { AiBankReconciliationPanel } from './financial/AiBankReconciliationPanel';
+import { AiSmartTransactionSearchBar } from './financial/AiSmartTransactionSearchBar';
+import { AiExecutiveSummaryPanel } from './financial/AiExecutiveSummaryPanel';
 
 interface DailyTransactionsViewProps {
   incomes: IncomeEntry[];
@@ -97,8 +101,9 @@ export const DailyTransactionsView: React.FC<DailyTransactionsViewProps> = ({
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'INCOME' | 'EXPENSE'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Print Dialog
+  // Print Dialog & AI Print-Ready Executive Summary
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [aiExecutiveSummary, setAiExecutiveSummary] = useState('');
 
   // Total mosque fund
   const totalCombinedFund = useMemo(() => {
@@ -300,6 +305,34 @@ export const DailyTransactionsView: React.FC<DailyTransactionsViewProps> = ({
                   </span>
                 </div>
               </div>
+
+              {/* Automatic Negative Cash / Opening Balance AI Alert */}
+              <AiBalanceGuardianAlert
+                accounts={accounts}
+                periodOpeningBalance={ledgerResult.openingBalance}
+                onNavigateOpeningBalance={() => handleSelectSubTab('OPENING_BALANCE')}
+              />
+
+              {/* AI Print-Ready Executive Summary for Daily Statement */}
+              <AiExecutiveSummaryPanel
+                ledgerType="DAILY_STATEMENT"
+                periodLabel={`${formatDate(startDate)} হতে ${formatDate(endDate)}`}
+                startDate={startDate}
+                endDate={endDate}
+                openingBalance={ledgerResult.openingBalance}
+                totalInflow={ledgerResult.totalDebit}
+                totalOutflow={ledgerResult.totalCredit}
+                closingBalance={ledgerResult.closingBalance}
+                transactionCount={ledgerResult.displayEntries.length}
+                accountScopeLabel={
+                  selectedAccountId === 'ALL'
+                    ? 'সকল সমন্বিত তহবিল'
+                    : accounts.find((a) => a.id === selectedAccountId)?.nameBn || 'নির্বাচিত হিসাব'
+                }
+                summaryText={aiExecutiveSummary}
+                onSummaryChange={setAiExecutiveSummary}
+                onOpenPrintModal={() => setIsPrintModalOpen(true)}
+              />
 
               {/* Filters & Account Selector */}
               <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs space-y-3">
@@ -609,6 +642,9 @@ export const DailyTransactionsView: React.FC<DailyTransactionsViewProps> = ({
                 <span>সার্বজনীন কেন্দ্রীয় লেনদেন অনুসন্ধান</span>
               </h2>
 
+              {/* Natural Bengali AI Smart Search Bar */}
+              <AiSmartTransactionSearchBar scope="ALL" />
+
               <div className="relative">
                 <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
                 <input
@@ -683,6 +719,23 @@ export const DailyTransactionsView: React.FC<DailyTransactionsViewProps> = ({
                   </span>
                 </div>
               </div>
+
+              {/* AI Executive Summary for Daily/Monthly Summary */}
+              <AiExecutiveSummaryPanel
+                ledgerType="SUMMARY"
+                periodLabel={`${formatDate(startDate)} হতে ${formatDate(endDate)}`}
+                startDate={startDate}
+                endDate={endDate}
+                openingBalance={ledgerResult.openingBalance}
+                totalInflow={ledgerResult.totalDebit}
+                totalOutflow={ledgerResult.totalCredit}
+                closingBalance={ledgerResult.closingBalance}
+                transactionCount={ledgerResult.displayEntries.length}
+                accountScopeLabel="সকল সমন্বিত তহবিল"
+                summaryText={aiExecutiveSummary}
+                onSummaryChange={setAiExecutiveSummary}
+                onOpenPrintModal={() => setIsPrintModalOpen(true)}
+              />
             </div>
           )}
 
@@ -714,6 +767,9 @@ export const DailyTransactionsView: React.FC<DailyTransactionsViewProps> = ({
                   </span>
                 </div>
               </div>
+
+              {/* AI Bank & MFS Statement Reconciliation Panel */}
+              <AiBankReconciliationPanel accounts={accounts} />
             </div>
           )}
 
@@ -799,6 +855,7 @@ export const DailyTransactionsView: React.FC<DailyTransactionsViewProps> = ({
             { label: 'মোট খরচ (Total Outflow)', value: `৳ ${ledgerResult.totalCredit.toLocaleString('en-IN')}` },
             { label: 'সমাপনী জের (Closing Balance)', value: `৳ ${ledgerResult.closingBalance.toLocaleString('en-IN')}` },
           ]}
+          executiveSummaryNote={aiExecutiveSummary || undefined}
         />
       )}
     </div>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Mosque } from '../../types';
+import { getGlobalMosque } from '../../lib/mosqueStore';
 
 export interface OfficialReportSignaturesProps {
   currentMosque?: Mosque | null;
@@ -62,9 +63,11 @@ export const OfficialReportSignatures: React.FC<OfficialReportSignaturesProps> =
   auditFooterText,
   className = '',
 }) => {
-  const finalSecSig = secretarySignatureUrl ?? currentMosque?.secretarySignatureUrl;
-  const finalPresSig = presidentSignatureUrl ?? currentMosque?.presidentSignatureUrl;
-  const finalTreasSig = treasurerSignatureUrl ?? currentMosque?.treasurerSignatureUrl;
+  const globalMosque = getGlobalMosque();
+  const effectiveMosque = currentMosque || globalMosque;
+  const finalSecSig = secretarySignatureUrl || effectiveMosque?.secretarySignatureUrl || globalMosque?.secretarySignatureUrl;
+  const finalPresSig = presidentSignatureUrl || effectiveMosque?.presidentSignatureUrl || globalMosque?.presidentSignatureUrl;
+  const finalTreasSig = treasurerSignatureUrl || (effectiveMosque as any)?.treasurerSignatureUrl || (globalMosque as any)?.treasurerSignatureUrl;
 
   const colsClass = showTreasurer ? 'grid-cols-4 gap-4' : 'grid-cols-3 gap-6';
 

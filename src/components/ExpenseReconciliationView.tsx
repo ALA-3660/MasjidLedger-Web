@@ -41,6 +41,7 @@ import {
 import { FinancialAccount, Mosque } from '../types';
 import { formatDate } from '../lib/i18n';
 import { ExpenseReconciliationPrintModal } from './ExpenseReconciliationPrintModal';
+import { AiExpenseReconciliationPanel } from './expense/AiExpenseReconciliationPanel';
 
 export type ReconSecondaryTab =
   | 'recon_dashboard'
@@ -181,6 +182,9 @@ export const ExpenseReconciliationView: React.FC<ExpenseReconciliationViewProps>
           </button>
         </div>
       </div>
+
+      {/* 1B. AI Duplicate Expense & Cash/Bank Reconciliation Panel */}
+      <AiExpenseReconciliationPanel />
 
       {/* 2. Secondary Navigation Tabs (9 Sub-views) */}
       <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-xs overflow-x-auto">

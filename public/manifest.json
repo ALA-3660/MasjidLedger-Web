@@ -1,19 +1,65 @@
 {
-  "name": "MasjidLedger — মসজিদ ব্যবস্থাপনা ও হিসাবরক্ষণ",
-  "short_name": "MasjidLedger",
-  "description": "Comprehensive Mosque Management, Public Portal and Accounting System",
+  "id": "/",
+  "name": "মসজিদ লেজার - মসজিদ ব্যবস্থাপনা সফটওয়্যার",
+  "short_name": "মসজিদ লেজার",
+  "description": "আধুনিক, নিরাপদ ও সমন্বিত মসজিদ পরিচালনা এবং আর্থিক হিসাবরক্ষণ প্ল্যাটফর্ম",
+  "lang": "bn",
+  "dir": "ltr",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "orientation": "portrait",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
   "theme_color": "#065f46",
-  "background_color": "#f8fafc",
+  "background_color": "#065f46",
+  "categories": ["finance", "productivity", "utilities"],
   "icons": [
     {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
       "src": "/icon.svg",
-      "sizes": "192x192 512x512",
+      "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "ড্যাশবোর্ড",
+      "short_name": "ড্যাশবোর্ড",
+      "description": "মসজিদের মূল হিসাব ও সারসংক্ষেপ দেখুন",
+      "url": "/?tab=dashboard",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "আয় ব্যবস্থাপনা",
+      "short_name": "আয়",
+      "description": "জুমার কালেকশন, দান ও ওয়াকফ আয় এন্ট্রি করুন",
+      "url": "/?tab=income",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "ব্যয় ব্যবস্থাপনা",
+      "short_name": "ব্যয়",
+      "description": "মসজিদের দৈনন্দিন ব্যয় ও ভাউচার এন্ট্রি করুন",
+      "url": "/?tab=expense",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]
 }

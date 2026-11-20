@@ -20,6 +20,7 @@ import { Staff, StaffAttendanceRecord, StaffAttendanceStatus, Mosque } from '../
 import { Language, formatDate } from '../lib/i18n';
 import { printElement } from '../lib/printUtils';
 import { MosqueOfficialLetterhead } from './common/MosqueOfficialLetterhead';
+import { AiAttendanceSummaryPanel } from './staff/AiAttendanceSummaryPanel';
 
 interface StaffAttendanceSectionProps {
   staffList: Staff[];
@@ -178,6 +179,12 @@ export const StaffAttendanceSection: React.FC<StaffAttendanceSectionProps> = ({
           </button>
         </div>
       </div>
+
+      {/* AI Monthly Attendance Summary & Alert Panel */}
+      <AiAttendanceSummaryPanel
+        selectedDate={selectedDate}
+        activeStaffCount={activeStaff.length}
+      />
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

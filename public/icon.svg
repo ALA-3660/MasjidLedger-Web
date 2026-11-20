@@ -1,14 +1,46 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <rect width="512" height="512" rx="112" fill="#065f46"/>
-  <path d="M256 64L128 176v272h256V176L256 64z" fill="#ffffff" opacity="0.1"/>
-  <path d="M256 96l-112 96v256h224V192L256 96z" fill="#047857"/>
-  <path d="M256 120l96 84v220H160V204l96-84z" fill="#065f46"/>
-  <!-- Dome -->
-  <path d="M256 160c-44 0-80 36-80 80v32h160v-32c0-44-36-80-80-80z" fill="#fbbf24"/>
-  <!-- Crescent -->
-  <circle cx="256" cy="115" r="16" fill="#fbbf24"/>
-  <circle cx="262" cy="112" r="13" fill="#065f46"/>
-  <!-- Minaret / Door -->
-  <path d="M232 320h48v152h-48z" fill="#ffffff"/>
-  <path d="M244 320h24v152h-24z" fill="#fde68a"/>
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#065f46"/>
+      <stop offset="55%" stop-color="#0f766e"/>
+      <stop offset="100%" stop-color="#064e3b"/>
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fde68a"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+  </defs>
+  <!-- Emerald-Teal Rounded Square Base -->
+  <rect width="512" height="512" rx="108" fill="url(#bgGrad)"/>
+  <rect x="20" y="20" width="472" height="472" rx="92" fill="none" stroke="#34d399" stroke-opacity="0.3" stroke-width="4"/>
+
+  <!-- Crescent & Spire -->
+  <path d="M256 68c-12 0-22 10-22 22s10 22 22 22c5 0 10-2 14-5-8-1-14-8-14-17s6-16 14-17c-4-3-9-5-14-5z" fill="url(#goldGrad)"/>
+  <rect x="252" y="108" width="8" height="24" rx="4" fill="url(#goldGrad)"/>
+
+  <!-- Central Green-Gold Mosque Dome -->
+  <path d="M256 128c-62 34-102 82-102 134v18h204v-18c0-52-40-100-102-134z" fill="url(#goldGrad)"/>
+  <path d="M256 146c-46 28-76 68-76 112v14h152v-14c0-44-30-84-76-112z" fill="#065f46" opacity="0.22"/>
+
+  <!-- Left & Right Minarets -->
+  <rect x="96" y="218" width="32" height="196" rx="6" fill="#ecfdf5"/>
+  <path d="M112 184l-18 34h36l-18-34z" fill="url(#goldGrad)"/>
+  <rect x="384" y="218" width="32" height="196" rx="6" fill="#ecfdf5"/>
+  <path d="M400 184l-18 34h36l-18-34z" fill="url(#goldGrad)"/>
+
+  <!-- Mosque Main Facade -->
+  <rect x="142" y="280" width="228" height="134" rx="10" fill="#ffffff"/>
+  <!-- Decorative Band -->
+  <rect x="142" y="280" width="228" height="14" rx="4" fill="#d1fae5"/>
+
+  <!-- Center Arch Door -->
+  <path d="M256 312c-26 0-42 20-42 46v56h84v-56c0-26-16-46-42-46z" fill="#065f46"/>
+  <path d="M256 326c-16 0-28 13-28 32v56h56v-56c0-19-12-32-28-32z" fill="#0f766e"/>
+
+  <!-- Side Arch Windows -->
+  <path d="M178 332c-11 0-18 9-18 22v26h36v-26c0-13-7-22-18-22z" fill="#10b981"/>
+  <path d="M334 332c-11 0-18 9-18 22v26h36v-26c0-13-7-22-18-22z" fill="#10b981"/>
+
+  <!-- Base Platform -->
+  <rect x="84" y="410" width="344" height="22" rx="11" fill="url(#goldGrad)"/>
 </svg>

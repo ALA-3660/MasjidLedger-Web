@@ -14,6 +14,9 @@ import { MosqueProperty, MosqueProfile } from '../types';
 import { Language, formatCurrency } from '../lib/i18n';
 import { PROPERTY_CATEGORIES, POSSESSION_STATUSES } from './PropertyFormModal';
 import { printElement } from '../lib/printUtils';
+import { MosqueOfficialLetterhead } from './common/MosqueOfficialLetterhead';
+import { OfficialReportSignatures } from './common/OfficialReportSignatures';
+import { getGlobalMosque } from '../lib/mosqueStore';
 
 interface PropertyCertificatePrintProps {
   property: MosqueProperty | null;
@@ -25,13 +28,18 @@ interface PropertyCertificatePrintProps {
 
 export const PropertyCertificatePrint: React.FC<PropertyCertificatePrintProps> = ({
   property,
-  mosque,
+  mosque: propMosque,
   isOpen,
   onClose,
   language
 }) => {
   const [includeLetterhead, setIncludeLetterhead] = useState(true);
   const printRef = useRef<HTMLDivElement>(null);
+
+  const globalMosque = getGlobalMosque();
+  const mosque = (propMosque && (propMosque.nameBn || propMosque.name || propMosque.address || (propMosque as any).secretarySignatureUrl)
+    ? { ...globalMosque, ...propMosque }
+    : globalMosque || propMosque) as any;
 
   if (!isOpen || !property) return null;
 
@@ -99,19 +107,12 @@ export const PropertyCertificatePrint: React.FC<PropertyCertificatePrintProps> =
           >
             {/* Mosque Header */}
             {includeLetterhead && (
-              <div className="text-center pb-4 border-b-2 border-slate-900 mb-6">
-                <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-                  {mosque?.nameBn || mosque?.name || 'মসজিদ ওয়াকফ এস্টেট'}
-                </h1>
-                <p className="text-xs text-slate-600 mt-1">
-                  {mosque?.address || 'ঠিকানা: মসজিদ চত্বর'} | মোবাইল: {mosque?.phone || '০১৭XXXXXXXX'} | ইমেইল: {mosque?.email || 'info@masjid.org'}
-                </p>
-                {mosque?.registrationNumber && (
-                  <p className="text-xs font-mono font-semibold text-slate-700 mt-0.5">
-                    ওয়াকফ এস্টেট / নিবন্ধন নং: {mosque.registrationNumber}
-                  </p>
-                )}
-              </div>
+              <MosqueOfficialLetterhead
+                mosque={mosque}
+                documentTitle="ওয়াকফ সম্পত্তি রেজিস্টার ও ভূমি বিবরণী পত্র"
+                subTitle="ওয়াকফ এস্টেট ও ভূমি ব্যবস্থাপনা দপ্তর"
+                refNumber={property.propertyCode}
+              />
             )}
 
             {/* Document Title */}
@@ -283,41 +284,16 @@ export const PropertyCertificatePrint: React.FC<PropertyCertificatePrintProps> =
             )}
 
             {/* Official Signatures Box */}
-            <div className="pt-16 mt-10 grid grid-cols-3 gap-4 text-center text-xs text-slate-800 break-inside-avoid">
-              <div className="flex flex-col justify-end space-y-1">
-                <div className="h-10 flex items-end justify-center mb-1"></div>
-                <div className="border-t border-slate-900 pt-1 font-bold">ওয়াকফ ও সম্পত্তি সম্পাদক</div>
-                <div className="text-[10px] text-slate-500">পরিচালনা পরিষদ</div>
-              </div>
-              <div className="flex flex-col justify-end space-y-1">
-                <div className="h-10 flex items-end justify-center mb-1">
-                  {mosque?.secretarySignatureUrl ? (
-                    <img
-                      src={mosque.secretarySignatureUrl}
-                      alt="Secretary Signature"
-                      referrerPolicy="no-referrer"
-                      className="max-h-10 object-contain mx-auto"
-                    />
-                  ) : null}
-                </div>
-                <div className="border-t border-slate-900 pt-1 font-bold">সাধারণ সম্পাদক</div>
-                <div className="text-[10px] text-slate-500">স্বাক্ষর ও সীল</div>
-              </div>
-              <div className="flex flex-col justify-end space-y-1">
-                <div className="h-10 flex items-end justify-center mb-1">
-                  {mosque?.presidentSignatureUrl ? (
-                    <img
-                      src={mosque.presidentSignatureUrl}
-                      alt="President Signature"
-                      referrerPolicy="no-referrer"
-                      className="max-h-10 object-contain mx-auto"
-                    />
-                  ) : null}
-                </div>
-                <div className="border-t border-slate-900 pt-1 font-bold">সভাপতি / মোতাওয়াল্লী</div>
-                <div className="text-[10px] text-slate-500">স্বাক্ষর ও সীল</div>
-              </div>
-            </div>
+            <OfficialReportSignatures
+              currentMosque={mosque}
+              preparerTitle="ওয়াকফ ও সম্পত্তি সম্পাদক"
+              preparerSubtitle="পরিচালনা পরিষদ"
+              secretaryTitle="মোতাওয়াল্লী / সাধারণ সম্পাদক"
+              secretarySubtitle="স্বাক্ষর ও সীল"
+              presidentTitle="সভাপতি"
+              presidentSubtitle="স্বাক্ষর ও সীল"
+              showAuditFooter={false}
+            />
 
             {/* Security Footer */}
             <div className="mt-8 pt-2 border-t border-slate-200 text-center text-[10px] text-slate-400 font-mono">

@@ -64,6 +64,7 @@ import {
 } from '../lib/budgetService';
 import { CreateOrEditBudgetModal, ReviseBudgetModal } from './budget/BudgetModals';
 import { BudgetPrintPreviewModal } from './budget/BudgetPrintPreviewModal';
+import { AiBudgetGuardCard } from './expense/AiBudgetGuardCard';
 
 export type BudgetSubTab =
   | 'dashboard'
@@ -737,6 +738,9 @@ export const BudgetControlView: React.FC<BudgetControlViewProps> = ({
               </span>
             </div>
           </div>
+
+          {/* AI Budget Guard & Cost-Saving Insights Card */}
+          <AiBudgetGuardCard budgetId={selectedBudgetId || undefined} />
 
           {/* Alert Banner if Over Budget */}
           {controlDataset.overBudgetItems.length > 0 && (
@@ -1527,6 +1531,8 @@ export const BudgetControlView: React.FC<BudgetControlViewProps> = ({
               মসজিদের আর্থিক স্বাস্থ্য, পরিচালনা বনাম উন্নয়ন অনুপাত ও ভবিষ্যৎ ব্যয়ের পূর্বাভাস
             </p>
           </div>
+
+          <AiBudgetGuardCard budgetId={selectedBudgetId || undefined} />
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">

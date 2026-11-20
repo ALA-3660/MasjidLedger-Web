@@ -1146,6 +1146,7 @@ export interface SavedReportConfig {
   grouping?: string;
   level?: string;
   headId?: string;
+  subHeadId?: string;
   accountId?: string;
   createdAt: string;
 }

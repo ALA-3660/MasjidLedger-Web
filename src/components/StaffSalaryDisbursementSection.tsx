@@ -15,7 +15,9 @@ import {
   Search,
   Building,
   CreditCard,
-  FileCheck2
+  FileCheck2,
+  Sparkles,
+  MessageSquare
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Staff, StaffPayment, FinancialAccount, Mosque } from '../types';
@@ -23,6 +25,8 @@ import { Language, formatCurrency, formatDate, formatBengaliMonthYear } from '..
 import { printElement } from '../lib/printUtils';
 import { MosqueOfficialLetterhead } from './common/MosqueOfficialLetterhead';
 import { OfficialReportSignatures } from './common/OfficialReportSignatures';
+import { AiPayrollDraftModal } from './staff/AiPayrollDraftModal';
+import { AiSalarySmsModal } from './staff/AiSalarySmsModal';
 
 interface StaffSalaryDisbursementSectionProps {
   staffList: Staff[];
@@ -54,6 +58,8 @@ export const StaffSalaryDisbursementSection: React.FC<StaffSalaryDisbursementSec
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PAID' | 'UNPAID'>('ALL');
   const [includeLetterhead, setIncludeLetterhead] = useState<boolean>(true);
+  const [isAiPayrollOpen, setIsAiPayrollOpen] = useState(false);
+  const [smsTarget, setSmsTarget] = useState<{ staff: Staff; payment: StaffPayment } | null>(null);
 
   const activeStaff = staffList.filter((s) => s.status === 'ACTIVE');
 
@@ -177,6 +183,16 @@ export const StaffSalaryDisbursementSection: React.FC<StaffSalaryDisbursementSec
             />
             <span>{includeLetterhead ? '☑ লেটারহেডসহ প্রিন্ট' : '☐ লেটারহেড ছাড়া প্রিন্ট'}</span>
           </label>
+
+          <button
+            type="button"
+            onClick={() => setIsAiPayrollOpen(true)}
+            className="px-3.5 py-2 bg-gradient-to-r from-emerald-700 to-teal-700 hover:from-emerald-800 hover:to-teal-800 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs transition-all"
+            title="মূল বেতন, ভাতা, হাজিরা, অগ্রিম ও উৎসব ভাতা সমন্বয়ে AI বেতন শিট প্রিভিউ তৈরি করুন"
+          >
+            <Sparkles className="w-4 h-4 text-emerald-200" />
+            <span>AI দিয়ে মাসিক বেতন শিট তৈরি করুন</span>
+          </button>
 
           <button
             type="button"
@@ -329,6 +345,15 @@ export const StaffSalaryDisbursementSection: React.FC<StaffSalaryDisbursementSec
                         <>
                           <button
                             type="button"
+                            onClick={() => setSmsTarget({ staff: row.staff, payment: row.payment! })}
+                            className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-bold inline-flex items-center space-x-1"
+                            title="WhatsApp / SMS বেতন নিশ্চিতকরণ বার্তা তৈরি করুন"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>AI বেতন SMS</span>
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => onPrintSlip(row.payment!, row.staff)}
                             className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold inline-flex items-center space-x-1"
                           >
@@ -422,6 +447,24 @@ export const StaffSalaryDisbursementSection: React.FC<StaffSalaryDisbursementSec
           auditFooterText="মসজিদ লেজার • ইমাম ও স্টাফদের মাসিক বেতন বিতরণ খতিয়ান"
         />
       </div>
+
+      {/* AI Monthly Payroll Draft & Individual Pay-Slip Modal */}
+      <AiPayrollDraftModal
+        isOpen={isAiPayrollOpen}
+        onClose={() => setIsAiPayrollOpen(false)}
+        month={selectedMonth}
+        currentMosque={currentMosque}
+        onOpenPayModal={onOpenPayModal}
+      />
+
+      {/* AI Salary Paid SMS / WhatsApp Message Modal */}
+      <AiSalarySmsModal
+        isOpen={Boolean(smsTarget)}
+        onClose={() => setSmsTarget(null)}
+        staff={smsTarget?.staff || null}
+        payment={smsTarget?.payment || null}
+        month={selectedMonth}
+      />
     </div>
   );
 };

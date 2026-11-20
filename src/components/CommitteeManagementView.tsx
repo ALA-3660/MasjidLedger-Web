@@ -63,6 +63,8 @@ import { MemberProfileModal } from './MemberProfileModal';
 import { MeetingDocumentPrint } from './MeetingDocumentPrint';
 import { MeetingMinutesModal } from './MeetingMinutesModal';
 import { MeetingNoticeModal, MeetingNoticePrintModal } from './MeetingNoticeModal';
+import { AiCommitteeHealthCard } from './committee/AiCommitteeHealthCard';
+import { AiMeetingMinutesModal } from './committee/AiMeetingMinutesModal';
 import { MeetingResolutionModal } from './MeetingResolutionModal';
 import { MeetingResolutionPrint } from './MeetingResolutionPrint';
 import { MeetingResolutionsListView } from './MeetingResolutionsListView';
@@ -209,6 +211,7 @@ export const CommitteeManagementView: React.FC<CommitteeManagementViewProps> = (
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [statusTogglingId, setStatusTogglingId] = useState<string | null>(null);
   const [isMemberPrintModalOpen, setIsMemberPrintModalOpen] = useState(false);
+  const [isAiMinutesModalOpen, setIsAiMinutesModalOpen] = useState(false);
 
   // Sync profile member if members list changes
   useEffect(() => {
@@ -610,6 +613,12 @@ export const CommitteeManagementView: React.FC<CommitteeManagementViewProps> = (
                 </button>
               </div>
             </div>
+
+            {/* AI Committee Health Check Card (Top of Overview Dashboard) */}
+            <AiCommitteeHealthCard
+              termId={activeTerm?.id}
+              onNavigateSection={(sec) => setActiveSection(sec as CommitteeSubSection)}
+            />
 
             {/* Active Term Status Banner */}
             {activeTerm && tenure && (
@@ -1187,7 +1196,15 @@ export const CommitteeManagementView: React.FC<CommitteeManagementViewProps> = (
                   </p>
                 </div>
 
-                <div className="flex items-center space-x-2 shrink-0">
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setIsAiMinutesModalOpen(true)}
+                    className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs transition-all cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>{isBn ? 'AI দিয়ে কার্যবিবরণী তৈরি করুন' : 'Generate Minutes with AI'}</span>
+                  </button>
                   <button
                     onClick={handleOpenNoticeModal}
                     className="px-3 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-colors cursor-pointer"
@@ -1242,13 +1259,23 @@ export const CommitteeManagementView: React.FC<CommitteeManagementViewProps> = (
                     <CalendarCheck className="w-12 h-12 text-slate-300 mx-auto mb-2" />
                     <h4 className="font-bold text-slate-800 text-sm">{isBn ? 'কোন মিটিং রেকর্ড পাওয়া যায়নি' : 'No meeting records'}</h4>
                     <p className="text-xs text-slate-500 mt-1">{isBn ? 'নতুন কার্যবিবরণী যোগ করুন।' : 'Add new meeting minutes.'}</p>
-                    <button
-                      onClick={handleOpenNewMinutes}
-                      className="mt-4 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer inline-flex items-center space-x-1.5"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>{isBn ? 'কার্যবিবরণী লিখুন' : 'Write Minutes'}</span>
-                    </button>
+                    <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsAiMinutesModalOpen(true)}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer inline-flex items-center space-x-1.5"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>{isBn ? 'AI দিয়ে কার্যবিবরণী তৈরি করুন' : 'Generate Minutes with AI'}</span>
+                      </button>
+                      <button
+                        onClick={handleOpenNewMinutes}
+                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer inline-flex items-center space-x-1.5"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>{isBn ? 'কার্যবিবরণী লিখুন' : 'Write Minutes'}</span>
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -1801,6 +1828,18 @@ export const CommitteeManagementView: React.FC<CommitteeManagementViewProps> = (
           language={language}
         />
       )}
+
+      {/* AI Meeting Minutes & Handwritten Resolution Scanner Modal */}
+      <AiMeetingMinutesModal
+        isOpen={isAiMinutesModalOpen}
+        onClose={() => setIsAiMinutesModalOpen(false)}
+        mosque={mosque}
+        activeTerm={activeTerm}
+        members={members}
+        existingMeetingsCount={meetings.length}
+        onSaveMeeting={onAddMeeting}
+        onSaveResolution={onAddResolution}
+      />
     </div>
   );
 };

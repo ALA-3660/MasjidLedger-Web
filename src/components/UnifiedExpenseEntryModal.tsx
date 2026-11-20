@@ -45,12 +45,27 @@ import { Language, translations, formatCurrency, formatDate, toBanglaNumber } fr
 import { numberToBanglaWords } from '../lib/banglaNumberToWords';
 import { ChangeCalculatorModal } from './ChangeCalculatorModal';
 import { PrintFormat } from './PrintModals';
+import { AiSmartEntryToolbar, AiSmartEntryResult } from './common/AiSmartEntryToolbar';
 
 export type ExpenseEntryType =
   | 'GENERAL_EXPENSE'   // 💸 সাধারণ পরিচালন ব্যয়
   | 'STAFF_EXPENSE'     // 👤 ইমাম, স্টাফ ও বেতন
   | 'ASSET_EXPENSE'     // 🏢 সম্পদ / মেরামত ও রক্ষণাবেক্ষণ
   | 'PROPERTY_EXPENSE'; // 🏠 ওয়াক্ফ সম্পত্তি সংক্রান্ত ব্যয়
+
+export interface ExpenseAiPrefill {
+  date?: string;
+  amount?: number;
+  mainHeadId?: string;
+  subHeadId?: string;
+  payeeName?: string;
+  payeePhone?: string;
+  paymentMethod?: PaymentMethod;
+  reference?: string;
+  description?: string;
+  salaryMonth?: string;
+  staffId?: string;
+}
 
 export interface UnifiedExpenseEntryModalProps {
   isOpen: boolean;
@@ -60,6 +75,7 @@ export interface UnifiedExpenseEntryModalProps {
   initialStaffId?: string;
   initialAssetId?: string;
   initialPropertyId?: string;
+  initialAiPrefill?: ExpenseAiPrefill | null;
   accounts: FinancialAccount[];
   accountHeads: AccountHead[];
   staff?: Staff[];
@@ -89,6 +105,7 @@ export const UnifiedExpenseEntryModal: React.FC<UnifiedExpenseEntryModalProps> =
   initialStaffId,
   initialAssetId,
   initialPropertyId,
+  initialAiPrefill,
   accounts: initialAccounts,
   accountHeads: initialAccountHeads,
   staff: initialStaff,
@@ -248,8 +265,41 @@ export const UnifiedExpenseEntryModal: React.FC<UnifiedExpenseEntryModalProps> =
     }
 
     // Configure initial heads and contextual fields
-    applyContextDefaults((initialType as ExpenseEntryType) || 'GENERAL_EXPENSE', initialStaffId, initialAssetId, initialPropertyId, initialMainHeadId);
-  }, [isOpen, initialType, initialStaffId, initialAssetId, initialPropertyId, initialMainHeadId]);
+    applyContextDefaults(
+      (initialType as ExpenseEntryType) || 'GENERAL_EXPENSE',
+      initialAiPrefill?.staffId || initialStaffId,
+      initialAssetId,
+      initialPropertyId,
+      initialAiPrefill?.mainHeadId || initialMainHeadId
+    );
+
+    // Apply AI pre-fill fields cleanly (never auto-saves — cashier verifies & submits)
+    if (initialAiPrefill) {
+      if (initialAiPrefill.date) setEntryDate(initialAiPrefill.date);
+      if (typeof initialAiPrefill.amount === 'number' && initialAiPrefill.amount > 0) {
+        setAmount(String(initialAiPrefill.amount));
+      }
+      if (initialAiPrefill.mainHeadId) setMainHeadId(initialAiPrefill.mainHeadId);
+      if (initialAiPrefill.subHeadId) setSubHeadId(initialAiPrefill.subHeadId);
+      if (initialAiPrefill.payeeName !== undefined) setPayeeName(initialAiPrefill.payeeName);
+      if (initialAiPrefill.payeePhone !== undefined) setPayeePhone(initialAiPrefill.payeePhone);
+      if (initialAiPrefill.paymentMethod) {
+        setPaymentMethod(initialAiPrefill.paymentMethod);
+        const matchingAcc = accounts.find((a) =>
+          initialAiPrefill.paymentMethod === 'CASH'
+            ? a.accountType === 'CASH'
+            : initialAiPrefill.paymentMethod === 'BANK'
+            ? a.accountType === 'BANK'
+            : a.accountType === 'MFS' || a.accountType === 'BANK'
+        );
+        if (matchingAcc) setAccountId(matchingAcc.id);
+      }
+      if (initialAiPrefill.reference !== undefined) setReference(initialAiPrefill.reference);
+      if (initialAiPrefill.description !== undefined) setDescription(initialAiPrefill.description);
+      if (initialAiPrefill.salaryMonth) setSalaryMonth(initialAiPrefill.salaryMonth);
+      if (initialAiPrefill.staffId) setSelectedStaffId(initialAiPrefill.staffId);
+    }
+  }, [isOpen, initialType, initialStaffId, initialAssetId, initialPropertyId, initialMainHeadId, initialAiPrefill]);
 
   const applyContextDefaults = (
     type: ExpenseEntryType | string,
@@ -520,6 +570,47 @@ export const UnifiedExpenseEntryModal: React.FC<UnifiedExpenseEntryModalProps> =
 
         {/* ================= MODAL BODY ================= */}
         <div className="p-5 sm:p-7 overflow-y-auto space-y-6 flex-1 bg-slate-50/50">
+          {/* AI Receipt Scanner & Bangla Smart Entry Toolbar (never auto-saves) */}
+          <AiSmartEntryToolbar
+            entryType="EXPENSE"
+            accentColor="rose"
+            onApplyData={(parsed: AiSmartEntryResult) => {
+              setErrorMessage('');
+              if (parsed.suggestedExpenseType) {
+                setExpenseType(parsed.suggestedExpenseType);
+              }
+              if (parsed.date) setEntryDate(parsed.date);
+              if (parsed.amount && parsed.amount > 0) setAmount(String(parsed.amount));
+              if (parsed.mainHeadId) {
+                setMainHeadId(parsed.mainHeadId);
+                setSubHeadId(parsed.subHeadId || '');
+              }
+              if (parsed.paymentMethod) {
+                setPaymentMethod(parsed.paymentMethod as PaymentMethod);
+              }
+              if (parsed.personName) {
+                setPayeeName(parsed.personName);
+              }
+              if (parsed.personPhone) {
+                setPayeePhone(parsed.personPhone);
+              }
+              if (parsed.reference) {
+                setReference(parsed.reference);
+              }
+              if (parsed.description) {
+                setDescription(parsed.description);
+              }
+              if (parsed.matchedStaffId) {
+                setSelectedStaffId(parsed.matchedStaffId);
+                const matched = staffList.find((s) => s.id === parsed.matchedStaffId);
+                if (matched && !parsed.personName) {
+                  setPayeeName(matched.name);
+                  if (matched.phone) setPayeePhone(matched.phone);
+                }
+              }
+            }}
+          />
+
           {/* Error Banner */}
           {errorMessage && (
             <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-start space-x-3 text-rose-800 text-xs animate-shake">

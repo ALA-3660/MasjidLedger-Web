@@ -15,11 +15,44 @@ import {
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { OfficialDocumentType } from '../../types/officialDocumentTypes';
+import { Mosque } from '../../types';
+
+const QUICK_AI_PRESETS = [
+  {
+    label: 'জরুরি কমিটি সভা',
+    subject: 'মসজিদ পরিচালনা কমিটির জরুরি সভা আহ্বান সংক্রান্ত নোটিশ',
+    keyPoints: 'আগামী শুক্রবার বাদ মাগরিব কমিটির জরুরি সভা অনুষ্ঠিত হবে। মসজিদের উন্নয়ন, মাসিক হিসাব পর্যালোচনা ও গুরুত্বপূর্ণ সিদ্ধান্ত গ্রহণের জন্য সকল সম্মানিত সদস্যকে যথাসময়ে উপস্থিত থাকতে বিনীত অনুরোধ করা যাচ্ছে।',
+    recipient: 'মসজিদ পরিচালনা কমিটির সকল সম্মানিত সদস্যবৃন্দ',
+    tone: 'জরুরি ও নির্দেশনামূলক',
+  },
+  {
+    label: 'দাতাদের কৃতজ্ঞতাপত্র',
+    subject: 'মসজিদের উন্নয়ন তহবিলে উদার অনুদানের জন্য আন্তরিক কৃতজ্ঞতাপত্র',
+    keyPoints: 'মসজিদের উন্নয়ন ও রক্ষণাবেক্ষণ কাজে আন্তরিকভাবে আর্থিক অনুদান প্রদানের জন্য সম্মানিত দাতাকে মসজিদ পরিচালনা পরিষদের পক্ষ থেকে গভীর কৃতজ্ঞতা ও জাজাকাল্লাহু খাইরান জানানো হচ্ছে এবং মহান আল্লাহর দরবারে তাঁর দীর্ঘায়ু ও কল্যাণ কামনা করা হচ্ছে।',
+    recipient: 'সম্মানিত দানশীল ও শুভানুধ্যায়ী মহোদয়',
+    tone: 'বিনীত ও আবেদনমূলক',
+  },
+  {
+    label: 'রমজান ও তারাবীহ বিজ্ঞপ্তি',
+    subject: 'পবিত্র মাহে রমজান, তারাবীহ ও ইফতার ব্যবস্থাপনা সংক্রান্ত বিজ্ঞপ্তি',
+    keyPoints: 'পবিত্র মাহে রমজান উপলক্ষে মসজিদে খতমে তারাবীহ, নিয়মিত ইফতার ও শবে কদরের বিশেষ ব্যবস্থাপনা গ্রহণ করা হয়েছে। সকল মুসল্লিয়ানে কেরামকে শৃঙ্খলা বজায় রেখে অংশগ্রহণের অনুরোধ করা যাচ্ছে।',
+    recipient: 'সকল সম্মানিত মুসল্লিয়ানে কেরাম',
+    tone: 'অফিসিয়াল ও মার্জিত',
+  },
+  {
+    label: 'ওয়াকফ ভাড়া পরিশোধ নোটিশ',
+    subject: 'মসজিদ ওয়াকফ এস্টেটের মাসিক দোকান/বাসা ভাড়া পরিশোধ সংক্রান্ত বিজ্ঞপ্তি',
+    keyPoints: 'সকল সম্মানিত ভাড়াটিয়াগণকে প্রতি মাসের ১০ তারিখের মধ্যে মসজিদ অফিসে নির্ধারিত মাসিক ভাড়া পরিশোধ করে ডিজিটাল রসিদ সংগ্রহ করার জন্য বিনীত অনুরোধ করা হলো।',
+    recipient: 'মসজিদ ওয়াকফ এস্টেটের সকল সম্মানিত ভাড়াটিয়াগণ',
+    tone: 'প্রশাসনিক ও প্রাতিষ্ঠানিক',
+  },
+];
 
 interface OfficialDocumentAiModalProps {
   isOpen: boolean;
   onClose: () => void;
   docType: OfficialDocumentType;
+  mosque?: Mosque | null;
   currentSubject?: string;
   currentContent?: string;
   onInsertContent: (newContent: string, subject?: string) => void;
@@ -29,6 +62,7 @@ export const OfficialDocumentAiModal: React.FC<OfficialDocumentAiModalProps> = (
   isOpen,
   onClose,
   docType,
+  mosque,
   currentSubject = '',
   currentContent = '',
   onInsertContent,
@@ -38,7 +72,7 @@ export const OfficialDocumentAiModal: React.FC<OfficialDocumentAiModalProps> = (
   const [keyPoints, setKeyPoints] = useState('');
   const [inputText, setInputText] = useState(currentContent);
   const [tone, setTone] = useState('অফিসিয়াল ও মার্জিত');
-  const [sender, setSender] = useState('মসজিদ পরিচালনা পরিষদ');
+  const [sender, setSender] = useState(mosque?.nameBn ? `${mosque.nameBn} পরিচালনা পরিষদ` : 'মসজিদ পরিচালনা পরিষদ');
   const [recipient, setRecipient] = useState('সম্মানিত মুসল্লিয়ানে কেরাম / সংশ্লিষ্ট কর্তৃপক্ষ');
   const [generatedResult, setGeneratedResult] = useState('');
   const [loading, setLoading] = useState(false);
@@ -111,20 +145,19 @@ export const OfficialDocumentAiModal: React.FC<OfficialDocumentAiModalProps> = (
       <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full border border-slate-200 overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-200">
         
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-700 via-indigo-700 to-emerald-700 p-5 text-white flex items-center justify-between">
+        <div className="bg-gradient-to-r from-[#064e3b] via-[#065f46] to-[#0f766e] p-5 text-white flex items-center justify-between font-siliguri">
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 rounded-xl bg-white/15 backdrop-blur-md flex items-center justify-center shadow-inner">
-              <Sparkles className="w-5 h-5 text-amber-300 animate-pulse" />
+              <Sparkles className="w-5 h-5 text-amber-300" />
             </div>
             <div>
-              <h2 className="text-lg font-bold flex items-center gap-2">
-                <span>স্মার্ট এআই রাইটিং সহকারী (AI Document Assistant)</span>
-                <span className="text-[10px] bg-amber-400 text-blue-950 font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">
-                  Gemini Powered
-                </span>
+              <h2 className="text-lg font-bold flex flex-wrap items-center gap-2">
+                <span>AI নোটিশ ও দাপ্তরিক চিঠি জেনারেটর</span>
               </h2>
-              <p className="text-xs text-blue-100 font-normal">
-                প্রশাসনিক ও অফিসিয়াল বাংলা চিঠিপত্র, নোটিশ ও সনদের স্বয়ংক্রিয় খসড়া এবং মানোন্নয়ন
+              <p className="text-xs text-emerald-100 font-normal">
+                {mosque?.nameBn
+                  ? `${mosque.nameBn}${mosque.address ? ` (${mosque.address})` : ''} — প্রিন্ট-রেডি বাংলা নোটিশ, বিজ্ঞপ্তি ও কৃতজ্ঞতাপত্র`
+                  : 'প্রশাসনিক ও অফিসিয়াল বাংলা চিঠিপত্র, নোটিশ ও কৃতজ্ঞতাপত্রের স্বয়ংক্রিয় খসড়া'}
               </p>
             </div>
           </div>
@@ -230,15 +263,35 @@ export const OfficialDocumentAiModal: React.FC<OfficialDocumentAiModalProps> = (
               </div>
 
               <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  এক ক্লিকে জনপ্রিয় বিষয় নির্বাচন করুন:
+                </label>
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {QUICK_AI_PRESETS.map((preset, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        setSubject(preset.subject);
+                        setKeyPoints(preset.keyPoints);
+                        setRecipient(preset.recipient);
+                        setTone(preset.tone);
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-[11px] font-bold text-emerald-900 transition cursor-pointer"
+                    >
+                      ✨ {preset.label}
+                    </button>
+                  ))}
+                </div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  মূল পয়েন্ট বা কী কী বিষয় অন্তর্ভুক্ত থাকবে? (Key Points / Instructions)
+                  মূল বিষয় বা কী কী তথ্য অন্তর্ভুক্ত থাকবে? (শুধু মূল কথা লিখলেই পূর্ণাঙ্গ চিঠি তৈরি হবে)
                 </label>
                 <textarea
                   rows={3}
                   value={keyPoints}
                   onChange={(e) => setKeyPoints(e.target.value)}
-                  placeholder="যেমন: আগামী শুক্রবার বাদ মাগরিব সভা, রমজানের প্রস্তুতি ও অজুখনা সংস্কার নিয়ে আলোচনা হবে, সবাইকে উপস্থিত থাকতে অনুরোধ..."
-                  className="w-full bg-white border border-slate-300 rounded-xl p-3 text-xs text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  placeholder="যেমন: আগামী শুক্রবার বাদ মাগরিব কমিটির জরুরি সভা, রমজানের প্রস্তুতি ও অজুখানা সংস্কার নিয়ে আলোচনা হবে..."
+                  className="w-full bg-white border border-slate-300 rounded-xl p-3 text-xs text-slate-800 focus:ring-2 focus:ring-emerald-600 focus:outline-none"
                 />
               </div>
             </div>

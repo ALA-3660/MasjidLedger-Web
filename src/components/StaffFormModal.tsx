@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   UserPlus,
@@ -18,10 +18,14 @@ import {
   Phone,
   Briefcase,
   Layers,
-  Heart
+  Heart,
+  Upload,
+  Loader2,
+  CheckCircle2
 } from 'lucide-react';
 import { Staff, StaffEmploymentType } from '../types';
 import { Language, translations } from '../lib/i18n';
+import { api } from '../lib/api';
 
 interface StaffFormModalProps {
   isOpen: boolean;
@@ -112,6 +116,12 @@ export const StaffFormModal: React.FC<StaffFormModalProps> = ({
   const [activeTab, setActiveTab] = useState<'PERSONAL' | 'APPOINTMENT' | 'EDUCATION' | 'SALARY' | 'BANK' | 'DOCS'>('PERSONAL');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // AI NID/Document Scan States
+  const scanFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [aiScanning, setAiScanning] = useState(false);
+  const [aiScanMessage, setAiScanMessage] = useState<string | null>(null);
+  const [aiScanError, setAiScanError] = useState<string | null>(null);
 
   const designationMap: Record<Staff['designation'], string> = {
     IMAM: 'পেশ ইমাম',
@@ -280,7 +290,62 @@ export const StaffFormModal: React.FC<StaffFormModalProps> = ({
     }
     setActiveTab('PERSONAL');
     setError(null);
+    setAiScanMessage(null);
+    setAiScanError(null);
   }, [staff, isOpen]);
+
+  const handleAiDocumentScanFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+
+    setAiScanning(true);
+    setAiScanError(null);
+    setAiScanMessage(null);
+
+    try {
+      const base64Data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const raw = typeof reader.result === 'string' ? reader.result : '';
+          const idx = raw.indexOf(',');
+          resolve(idx >= 0 ? raw.slice(idx + 1) : raw);
+        };
+        reader.onerror = () => reject(new Error('ফাইল পড়তে ব্যর্থ হয়েছে।'));
+        reader.readAsDataURL(file);
+      });
+
+      const extracted = await api.scanStaffDocumentAi({
+        fileBase64: base64Data,
+        mimeType: file.type || 'image/jpeg',
+      });
+
+      let filledCount = 0;
+      if (extracted.fullNameBn) { setFullNameBn(extracted.fullNameBn); filledCount++; }
+      if (extracted.nameEn) { setName(extracted.nameEn); filledCount++; }
+      else if (extracted.fullNameBn && !name) { setName(extracted.fullNameBn); }
+      if (extracted.fatherName) { setFatherName(extracted.fatherName); filledCount++; }
+      if (extracted.motherName) { setMotherName(extracted.motherName); filledCount++; }
+      if (extracted.nid) { setNid(extracted.nid); filledCount++; }
+      if (extracted.dateOfBirth) { setDateOfBirth(extracted.dateOfBirth); filledCount++; }
+      if (extracted.phone) { setPhone(extracted.phone); filledCount++; }
+      if (extracted.presentAddress) { setPresentAddress(extracted.presentAddress); filledCount++; }
+      if (extracted.permanentAddress) { setPermanentAddress(extracted.permanentAddress); filledCount++; }
+      if (extracted.bloodGroup) { setBloodGroup(extracted.bloodGroup); filledCount++; }
+      if (extracted.generalEducation) { setGeneralEducation(extracted.generalEducation); filledCount++; }
+      if (extracted.religiousEducation) { setReligiousEducation(extracted.religiousEducation); filledCount++; }
+      if (extracted.previousExperience) { setPreviousExperience(extracted.previousExperience); filledCount++; }
+
+      setAiScanMessage(
+        extracted.confidenceNoteBn ||
+          `AI সফলভাবে ${filledCount}টি তথ্য ফর্মে বসিয়েছে। অনুগ্রহ করে তথ্যগুলো যাচাই করে "সংরক্ষণ করুন" বাটনে ক্লিক করুন।`
+      );
+    } catch (err: any) {
+      setAiScanError(err?.message || 'NID বা ডকুমেন্ট স্ক্যান ব্যর্থ হয়েছে।');
+    } finally {
+      setAiScanning(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -507,6 +572,65 @@ export const StaffFormModal: React.FC<StaffFormModalProps> = ({
           {/* ========================================================= */}
           {activeTab === 'PERSONAL' && (
             <div className="space-y-4">
+              {/* AI NID / Biodata Smart Scanner Bar */}
+              <div className="p-3.5 bg-gradient-to-r from-emerald-50 via-white to-indigo-50 border border-emerald-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-700 text-white flex items-center justify-center shrink-0">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-slate-900 font-siliguri">
+                      AI NID / বায়োডাটা স্ক্যান (অটো-ফিল)
+                    </div>
+                    <p className="text-[11px] text-slate-600">
+                      জাতীয় পরিচয়পত্র বা বায়োডাটার ছবি/PDF আপলোড করলে নাম, পিতা-মাতার নাম, NID, জন্মতারিখ, ঠিকানা ও শিক্ষা ফর্মে বসে যাবে।
+                    </p>
+                  </div>
+                </div>
+
+                <div className="shrink-0">
+                  <input
+                    ref={scanFileInputRef}
+                    type="file"
+                    accept="image/*,application/pdf"
+                    onChange={handleAiDocumentScanFile}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    disabled={aiScanning}
+                    onClick={() => scanFileInputRef.current?.click()}
+                    className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-60 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition"
+                  >
+                    {aiScanning ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>স্ক্যান হচ্ছে...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4" />
+                        <span>AI NID/ডকুমেন্ট স্ক্যান</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {aiScanMessage && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center gap-2 font-siliguri">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+                  <span>{aiScanMessage}</span>
+                </div>
+              )}
+
+              {aiScanError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{aiScanError}</span>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                 <div>
                   <label className="block font-semibold mb-1">

@@ -52,6 +52,8 @@ import { QuickIncomeExpenseReportModal } from './QuickIncomeExpenseReportModal';
 import { JumaCollectionModal } from './JumaCollectionModal';
 import { api } from '../lib/api';
 import { QrScanResult } from '../types/qrBarcodeTypes';
+import { DualScrollTableWrapper } from './DualScrollTableWrapper';
+import { SearchableSelect } from './common/SearchableSelect';
 
 export type IncomeExpenseSubTab = 'income' | 'expense' | 'juma' | 'donations' | 'analytics';
 
@@ -117,6 +119,7 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [headFilter, setHeadFilter] = useState<string>('ALL');
+  const [subHeadFilter, setSubHeadFilter] = useState<string>('ALL');
   const [accountFilter, setAccountFilter] = useState<string>('ALL');
 
   // Modals State
@@ -169,6 +172,19 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
   const expenseMainHeads = accountHeads.filter((h) => h.type === 'EXPENSE' && !h.parentId);
   const activeMainHeads = modalType === 'INCOME' ? incomeMainHeads : expenseMainHeads;
   const activeSubHeads = accountHeads.filter((h) => h.parentId === mainHeadId);
+
+  const filterHeadType: 'INCOME' | 'EXPENSE' = activeTab === 'expense' ? 'EXPENSE' : 'INCOME';
+  const filterMainHeadsForTab = filterHeadType === 'EXPENSE' ? expenseMainHeads : incomeMainHeads;
+  const filterSubHeadsForTab = accountHeads.filter((h) => {
+    if (h.type !== filterHeadType || !h.parentId) return false;
+    if (headFilter !== 'ALL') return h.parentId === headFilter;
+    return true;
+  });
+
+  useEffect(() => {
+    setHeadFilter('ALL');
+    setSubHeadFilter('ALL');
+  }, [activeTab]);
 
   // Sync initialTab when prop changes
   useEffect(() => {
@@ -425,8 +441,9 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
     // 2. Status Filter
     const matchesStatus = statusFilter === 'ALL' || item.status === statusFilter;
 
-    // 3. Head Filter
+    // 3. Head & Sub-head Filter
     const matchesHead = headFilter === 'ALL' || item.mainHeadId === headFilter || item.subHeadId === headFilter;
+    const matchesSubHead = subHeadFilter === 'ALL' || item.subHeadId === subHeadFilter;
 
     // 4. Account Filter
     const matchesAccount = accountFilter === 'ALL' || item.accountId === accountFilter;
@@ -451,12 +468,12 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
       if (customEndDate && item.date > customEndDate) matchesPeriod = false;
     }
 
-    return matchesSearch && matchesStatus && matchesHead && matchesAccount && matchesPeriod;
+    return matchesSearch && matchesStatus && matchesHead && matchesSubHead && matchesAccount && matchesPeriod;
   };
 
   // Filtered Lists for Each Sub-Tab
-  const filteredIncomes = useMemo(() => incomes.filter(filterRecord), [incomes, searchQuery, statusFilter, headFilter, accountFilter, periodFilter, customStartDate, customEndDate]);
-  const filteredExpenses = useMemo(() => expenses.filter(filterRecord), [expenses, searchQuery, statusFilter, headFilter, accountFilter, periodFilter, customStartDate, customEndDate]);
+  const filteredIncomes = useMemo(() => incomes.filter(filterRecord), [incomes, searchQuery, statusFilter, headFilter, subHeadFilter, accountFilter, periodFilter, customStartDate, customEndDate]);
+  const filteredExpenses = useMemo(() => expenses.filter(filterRecord), [expenses, searchQuery, statusFilter, headFilter, subHeadFilter, accountFilter, periodFilter, customStartDate, customEndDate]);
 
   const filteredJumaList = useMemo(() => {
     return incomes.filter((i) => {
@@ -467,7 +484,7 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
         (i.donorName && i.donorName.includes('জুমা'));
       return isJuma && filterRecord(i);
     });
-  }, [incomes, searchQuery, statusFilter, headFilter, accountFilter, periodFilter, customStartDate, customEndDate]);
+  }, [incomes, searchQuery, statusFilter, headFilter, subHeadFilter, accountFilter, periodFilter, customStartDate, customEndDate]);
 
   const filteredDonationsList = useMemo(() => {
     return incomes.filter((i) => {
@@ -476,7 +493,7 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
         (i.subHeadNameBn && (i.subHeadNameBn.includes('অনুদান') || i.subHeadNameBn.includes('প্রকল্প') || i.subHeadNameBn.includes('চাঁদা')));
       return isDonation && filterRecord(i);
     });
-  }, [incomes, searchQuery, statusFilter, headFilter, accountFilter, periodFilter, customStartDate, customEndDate]);
+  }, [incomes, searchQuery, statusFilter, headFilter, subHeadFilter, accountFilter, periodFilter, customStartDate, customEndDate]);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-16 font-siliguri">
@@ -703,7 +720,7 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
       {/* 3. Filter Bar (Applicable to Income, Expense, Juma, Donations) */}
       {activeTab !== 'analytics' && (
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
             {/* Search Input */}
             <div className="relative lg:col-span-2">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
@@ -733,20 +750,59 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
               </select>
             </div>
 
-            {/* Head Filter */}
+            {/* Main Head Filter (Searchable) */}
             <div>
-              <select
+              <SearchableSelect
                 value={headFilter}
-                onChange={(e) => setHeadFilter(e.target.value)}
-                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-medium focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-              >
-                <option value="ALL">সকল হিসাবের খাত</option>
-                {(activeTab === 'expense' ? expenseMainHeads : incomeMainHeads).map((h) => (
-                  <option key={h.id} value={h.id}>
-                    {h.nameBn}
-                  </option>
-                ))}
-              </select>
+                clearValue="ALL"
+                searchPlaceholder="প্রধান খাত লিখে খুঁজুন..."
+                emptyText="কোনো প্রধান খাত পাওয়া যায়নি"
+                className="py-2 text-slate-800 focus:ring-emerald-500"
+                onChange={(nextHeadId) => {
+                  setHeadFilter(nextHeadId);
+                  if (subHeadFilter !== 'ALL') {
+                    const sub = accountHeads.find((h) => h.id === subHeadFilter);
+                    if (nextHeadId !== 'ALL' && sub?.parentId !== nextHeadId) {
+                      setSubHeadFilter('ALL');
+                    }
+                  }
+                }}
+                options={[
+                  { value: 'ALL', label: 'সকল প্রধান খাত' },
+                  ...filterMainHeadsForTab.map((h) => ({
+                    value: h.id,
+                    label: h.nameBn,
+                    searchText: `${h.nameEn || ''} ${h.code || ''}`,
+                  })),
+                ]}
+              />
+            </div>
+
+            {/* Sub-head Filter (Searchable) */}
+            <div>
+              <SearchableSelect
+                value={subHeadFilter}
+                clearValue="ALL"
+                searchPlaceholder="উপখাত লিখে খুঁজুন..."
+                emptyText="কোনো উপখাত পাওয়া যায়নি"
+                className="py-2 text-slate-800 focus:ring-emerald-500"
+                onChange={(val) => setSubHeadFilter(val)}
+                options={[
+                  {
+                    value: 'ALL',
+                    label: headFilter === 'ALL' ? 'সকল উপখাত (Sub-heads)' : 'এই খাতের সকল উপখাত',
+                  },
+                  ...filterSubHeadsForTab.map((sub) => {
+                    const parent = sub.parentId ? filterMainHeadsForTab.find((h) => h.id === sub.parentId) : undefined;
+                    return {
+                      value: sub.id,
+                      label: sub.nameBn,
+                      subLabel: headFilter === 'ALL' && parent ? `প্রধান খাত: ${parent.nameBn}` : undefined,
+                      searchText: `${sub.nameEn || ''} ${sub.code || ''} ${parent?.nameBn || ''}`,
+                    };
+                  }),
+                ]}
+              />
             </div>
 
             {/* Status Filter */}
@@ -800,7 +856,7 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <DualScrollTableWrapper>
             <table className="w-full text-left border-collapse">
               <thead className="bg-slate-100/70 text-[11px] uppercase tracking-wider text-slate-600 font-bold border-b border-slate-200">
                 <tr>
@@ -953,7 +1009,7 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
                 )}
               </tbody>
             </table>
-          </div>
+          </DualScrollTableWrapper>
         </div>
       )}
 
@@ -970,7 +1026,7 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <DualScrollTableWrapper>
             <table className="w-full text-left border-collapse">
               <thead className="bg-slate-100/70 text-[11px] uppercase tracking-wider text-slate-600 font-bold border-b border-slate-200">
                 <tr>
@@ -1107,7 +1163,7 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
                 )}
               </tbody>
             </table>
-          </div>
+          </DualScrollTableWrapper>
         </div>
       )}
 
@@ -1133,7 +1189,7 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="overflow-x-auto">
+            <DualScrollTableWrapper>
               <table className="w-full text-left border-collapse">
                 <thead className="bg-teal-50/70 text-[11px] uppercase tracking-wider text-teal-900 font-bold border-b border-teal-100">
                   <tr>
@@ -1213,7 +1269,7 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
                   )}
                 </tbody>
               </table>
-            </div>
+            </DualScrollTableWrapper>
           </div>
         </div>
       )}
@@ -1240,7 +1296,7 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="overflow-x-auto">
+            <DualScrollTableWrapper>
               <table className="w-full text-left border-collapse">
                 <thead className="bg-blue-50/70 text-[11px] uppercase tracking-wider text-blue-900 font-bold border-b border-blue-100">
                   <tr>
@@ -1306,7 +1362,7 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
                   )}
                 </tbody>
               </table>
-            </div>
+            </DualScrollTableWrapper>
           </div>
         </div>
       )}

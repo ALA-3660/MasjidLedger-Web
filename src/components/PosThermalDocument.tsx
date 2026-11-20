@@ -68,8 +68,8 @@ export const PosThermalDocument: React.FC<PosThermalDocumentProps> = ({
 
   const amountInWordsBn = numberToBanglaWords(item.amount);
 
-  const jumaInfo = getJumaDisplayDetails(item, language);
-  const isJuma = jumaInfo.isJuma;
+  const jumaInfo = getJumaDisplayDetails(item, language, type);
+  const isJuma = type !== 'EXPENSE' && jumaInfo.isJuma;
 
   const documentTitle = isJuma
     ? 'জুমার কালেকশন রসিদ'
@@ -261,31 +261,18 @@ export const PosThermalDocument: React.FC<PosThermalDocumentProps> = ({
         </p>
       </div>
 
-      {/* 8. DIGITAL RECEIPT NOTICE / SIGNATURE LINES */}
-      {isIncome ? (
-        <div className="py-1.5 text-center font-siliguri">
-          <p
-            className={`${
-              is58mm ? 'text-[8.5px]' : 'text-[9.5px]'
-            } font-semibold text-slate-900 leading-snug px-1`}
-          >
-            এটি একটি স্বয়ংক্রিয় ডিজিটাল আয় রশিদ; ম্যানুয়াল স্বাক্ষরের প্রয়োজন নেই।
-          </p>
-        </div>
-      ) : (
-        <div className="pt-4 pb-2 grid grid-cols-2 gap-2 text-center text-[9.5px] font-siliguri">
-          <div>
-            <div className="border-t border-black pt-0.5">
-              <span className="font-semibold">প্রস্তুতকারী</span>
-            </div>
-          </div>
-          <div>
-            <div className="border-t border-black pt-0.5">
-              <span className="font-semibold">অনুমোদনকারী</span>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* 8. DIGITAL RECEIPT / VOUCHER NOTICE */}
+      <div className="py-1.5 text-center font-siliguri">
+        <p
+          className={`${
+            is58mm ? 'text-[8.5px]' : 'text-[9.5px]'
+          } font-semibold text-slate-900 leading-snug px-1`}
+        >
+          {isIncome
+            ? 'এটি একটি স্বয়ংক্রিয় ডিজিটাল আয় রশিদ; ম্যানুয়াল স্বাক্ষরের প্রয়োজন নেই।'
+            : 'এটি একটি স্বয়ংক্রিয় ডিজিটাল ব্যয় ভাউচার, ম্যানুয়াল স্বাক্ষরের প্রয়োজন নেই।'}
+        </p>
+      </div>
 
       {/* 9. BARCODE / VERIFICATION */}
       <div className="text-center my-1.5 flex flex-col items-center justify-center">

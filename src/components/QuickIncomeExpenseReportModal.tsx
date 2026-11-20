@@ -10,6 +10,7 @@ import {
 } from '../types';
 import { Language, formatCurrency, formatDate, toBanglaNumber } from '../lib/i18n';
 import { printElement } from '../lib/printUtils';
+import { SearchableSelect } from './common/SearchableSelect';
 import {
   Printer,
   Calendar,
@@ -89,6 +90,7 @@ export const QuickIncomeExpenseReportModal: React.FC<QuickIncomeExpenseReportMod
   const [selectedMonth, setSelectedMonth] = useState<string>(currentMonthStr);
   const [selectedYear, setSelectedYear] = useState<string>(currentYearStr);
   const [selectedHeadId, setSelectedHeadId] = useState<string>('ALL');
+  const [selectedSubHeadId, setSelectedSubHeadId] = useState<string>('ALL');
   const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL');
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<string>(initialStatus || 'ALL');
@@ -144,9 +146,14 @@ export const QuickIncomeExpenseReportModal: React.FC<QuickIncomeExpenseReportMod
       }
       // ALL_TIME passes all dates
 
-      // 2. Head filter
+      // 2. Head & Sub-head filter
       if (selectedHeadId !== 'ALL') {
         if (item.mainHeadId !== selectedHeadId && (item as any).subHeadId !== selectedHeadId) {
+          return false;
+        }
+      }
+      if (selectedSubHeadId !== 'ALL') {
+        if ((item as any).subHeadId !== selectedSubHeadId) {
           return false;
         }
       }
@@ -184,6 +191,7 @@ export const QuickIncomeExpenseReportModal: React.FC<QuickIncomeExpenseReportMod
     selectedMonth,
     selectedYear,
     selectedHeadId,
+    selectedSubHeadId,
     selectedAccountId,
     selectedPaymentMethod,
     statusFilter,
@@ -232,13 +240,18 @@ export const QuickIncomeExpenseReportModal: React.FC<QuickIncomeExpenseReportMod
         other += amt;
       }
 
-      // Head grouping
+      // Head / Sub-head grouping
       const headName = item.mainHeadNameBn || 'সাধারণ খাত';
-      if (!headMap[headName]) {
-        headMap[headName] = { name: headName, amount: 0, count: 0 };
+      const subHeadName = (item as any).subHeadNameBn;
+      const groupLabel =
+        (selectedHeadId !== 'ALL' || selectedSubHeadId !== 'ALL') && subHeadName
+          ? `${headName} › ${subHeadName}`
+          : headName;
+      if (!headMap[groupLabel]) {
+        headMap[groupLabel] = { name: groupLabel, amount: 0, count: 0 };
       }
-      headMap[headName].amount += amt;
-      headMap[headName].count += 1;
+      headMap[groupLabel].amount += amt;
+      headMap[groupLabel].count += 1;
     });
 
     const headList = Object.values(headMap).sort((a, b) => b.amount - a.amount);
@@ -252,7 +265,7 @@ export const QuickIncomeExpenseReportModal: React.FC<QuickIncomeExpenseReportMod
       mobileOtherTotal: other,
       headSummaryList: headList,
     };
-  }, [filteredRecords, statusFilter]);
+  }, [filteredRecords, statusFilter, selectedHeadId, selectedSubHeadId]);
 
   // Dynamic Report Title
   const reportTitle = useMemo(() => {
@@ -288,26 +301,48 @@ export const QuickIncomeExpenseReportModal: React.FC<QuickIncomeExpenseReportMod
     else if (statusFilter === 'CANCELLED') statusNote = ' • অবস্থা: বাতিলকৃত';
     else statusNote = ' • অবস্থা: সকল অবস্থা';
 
+    const headObj = selectedHeadId !== 'ALL' ? accountHeads.find((h) => h.id === selectedHeadId) : undefined;
+    const subHeadObj = selectedSubHeadId !== 'ALL' ? accountHeads.find((h) => h.id === selectedSubHeadId) : undefined;
+    let headNote = '';
+    if (headObj && subHeadObj) {
+      headNote = ` • খাত: ${headObj.nameBn} › ${subHeadObj.nameBn}`;
+    } else if (headObj) {
+      headNote = ` • প্রধান খাত: ${headObj.nameBn}`;
+    } else if (subHeadObj) {
+      const parentObj = subHeadObj.parentId ? accountHeads.find((h) => h.id === subHeadObj.parentId) : undefined;
+      headNote = parentObj
+        ? ` • উপখাত: ${parentObj.nameBn} › ${subHeadObj.nameBn}`
+        : ` • উপখাত: ${subHeadObj.nameBn}`;
+    }
+
     if (timeFilterType === 'SINGLE_DATE') {
-      return `হিসাবকাল: ${formatDate(singleDate, 'bn')}${statusNote}`;
+      return `হিসাবকাল: ${formatDate(singleDate, 'bn')}${headNote}${statusNote}`;
     }
     if (timeFilterType === 'DATE_RANGE') {
-      return `হিসাবকাল: ${formatDate(fromDate, 'bn')} থেকে ${formatDate(toDate, 'bn')}${statusNote}`;
+      return `হিসাবকাল: ${formatDate(fromDate, 'bn')} থেকে ${formatDate(toDate, 'bn')}${headNote}${statusNote}`;
     }
     if (timeFilterType === 'MONTH_WISE') {
       const monthObj = BANGLA_MONTHS.find((m) => m.value === selectedMonth);
-      return `হিসাবকাল: ${monthObj?.label || selectedMonth} ${toBanglaNumber(selectedYear)}${statusNote}`;
+      return `হিসাবকাল: ${monthObj?.label || selectedMonth} ${toBanglaNumber(selectedYear)}${headNote}${statusNote}`;
     }
     if (timeFilterType === 'YEAR_WISE') {
-      return `হিসাবকাল: ১ জানুয়ারি ${toBanglaNumber(selectedYear)} - ৩১ ডিসেম্বর ${toBanglaNumber(selectedYear)}${statusNote}`;
+      return `হিসাবকাল: ১ জানুয়ারি ${toBanglaNumber(selectedYear)} - ৩১ ডিসেম্বর ${toBanglaNumber(selectedYear)}${headNote}${statusNote}`;
     }
-    return `হিসাবকাল: সর্বমোট সংকলন${statusNote}`;
-  }, [timeFilterType, singleDate, fromDate, toDate, selectedMonth, selectedYear, statusFilter]);
+    return `হিসাবকাল: সর্বমোট সংকলন${headNote}${statusNote}`;
+  }, [timeFilterType, singleDate, fromDate, toDate, selectedMonth, selectedYear, statusFilter, selectedHeadId, selectedSubHeadId, accountHeads]);
 
-  // Relevant Main Heads for selector
+  // Relevant Main Heads & Sub-heads for selector
   const relevantHeads = useMemo(() => {
     return accountHeads.filter((h) => h.type === type && !h.parentId);
   }, [accountHeads, type]);
+
+  const relevantSubHeads = useMemo(() => {
+    return accountHeads.filter((h) => {
+      if (h.type !== type || !h.parentId) return false;
+      if (selectedHeadId !== 'ALL') return h.parentId === selectedHeadId;
+      return true;
+    });
+  }, [accountHeads, type, selectedHeadId]);
 
   useEffect(() => {
     if (isOpen) {
@@ -524,22 +559,63 @@ export const QuickIncomeExpenseReportModal: React.FC<QuickIncomeExpenseReportMod
               </div>
             )}
 
-            {/* 3. Head Filter */}
+            {/* 3. Main Head Filter (Searchable) */}
             <div>
-              <label className="block text-[11px] text-slate-400 font-medium mb-1">হিসাব খাত:</label>
-              <select
+              <label className="block text-[11px] text-slate-400 font-medium mb-1">প্রধান খাত:</label>
+              <SearchableSelect
                 id="select-quick-report-head"
+                variant="dark"
                 value={selectedHeadId}
-                onChange={(e) => setSelectedHeadId(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 text-slate-200 rounded-lg px-2.5 py-1.5 font-semibold focus:ring-1 focus:ring-blue-500 cursor-pointer"
-              >
-                <option value="ALL">সকল প্রধান খাত</option>
-                {relevantHeads.map((h) => (
-                  <option key={h.id} value={h.id}>
-                    {h.nameBn}
-                  </option>
-                ))}
-              </select>
+                clearValue="ALL"
+                searchPlaceholder="প্রধান খাত লিখে খুঁজুন..."
+                emptyText="কোনো প্রধান খাত পাওয়া যায়নি"
+                onChange={(nextHeadId) => {
+                  setSelectedHeadId(nextHeadId);
+                  if (selectedSubHeadId !== 'ALL') {
+                    const sub = accountHeads.find((h) => h.id === selectedSubHeadId);
+                    if (nextHeadId !== 'ALL' && sub?.parentId !== nextHeadId) {
+                      setSelectedSubHeadId('ALL');
+                    }
+                  }
+                }}
+                options={[
+                  { value: 'ALL', label: 'সকল প্রধান খাত' },
+                  ...relevantHeads.map((h) => ({
+                    value: h.id,
+                    label: h.nameBn,
+                    searchText: `${h.nameEn || ''} ${h.code || ''}`,
+                  })),
+                ]}
+              />
+            </div>
+
+            {/* 3b. Sub-head Filter (Searchable) */}
+            <div>
+              <label className="block text-[11px] text-slate-400 font-medium mb-1">উপখাত (Sub-head):</label>
+              <SearchableSelect
+                id="select-quick-report-subhead"
+                variant="dark"
+                value={selectedSubHeadId}
+                clearValue="ALL"
+                searchPlaceholder="উপখাত লিখে খুঁজুন..."
+                emptyText="কোনো উপখাত পাওয়া যায়নি"
+                onChange={(val) => setSelectedSubHeadId(val)}
+                options={[
+                  {
+                    value: 'ALL',
+                    label: selectedHeadId === 'ALL' ? 'সকল উপখাত (All)' : 'এই খাতের সকল উপখাত',
+                  },
+                  ...relevantSubHeads.map((sub) => {
+                    const parent = sub.parentId ? relevantHeads.find((h) => h.id === sub.parentId) : undefined;
+                    return {
+                      value: sub.id,
+                      label: sub.nameBn,
+                      subLabel: selectedHeadId === 'ALL' && parent ? `প্রধান খাত: ${parent.nameBn}` : undefined,
+                      searchText: `${sub.nameEn || ''} ${sub.code || ''} ${parent?.nameBn || ''}`,
+                    };
+                  }),
+                ]}
+              />
             </div>
 
             {/* 4. Status Filter */}

@@ -28,6 +28,8 @@ import {
   Smartphone,
 } from 'lucide-react';
 import { Language, translations } from '../lib/i18n';
+import { PWAInstallButton } from './common/PWAInstallButton';
+import { useOnlineStatus } from '../hooks/usePWAInstall';
 
 export type NavTab =
   | 'dashboard'
@@ -118,6 +120,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentUser,
 }) => {
   const t = translations[language] || translations.bn;
+  const isOnline = useOnlineStatus();
 
   const [sidebarTheme, setSidebarTheme] = useState<string>(() => {
     if (typeof window !== 'undefined') {
@@ -499,20 +502,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {isOpen && (
         <div
           onClick={onClose}
-          className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-40 lg:hidden"
+          className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 lg:hidden"
         />
       )}
 
       <aside
         id="app-sidebar"
         data-sidebar="true"
-        className={`fixed top-16 bottom-0 left-0 z-40 w-64 ${getThemeBg(
+        className={`fixed top-16 bottom-0 left-0 z-50 lg:z-30 w-64 ${getThemeBg(
           sidebarTheme
         )} text-slate-800 border-r border-slate-200 flex flex-col font-siliguri transition-transform duration-200 ease-in-out lg:translate-x-0 print:hidden ${
-          isOpen ? 'translate-x-0' : '-translate-x-full'
+          isOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
         }`}
       >
-        <div className="flex-1 overflow-y-auto px-3 py-3.5 space-y-4 font-siliguri">
+        <div className="flex-1 overflow-y-auto px-3 py-3.5 pb-8 space-y-4 font-siliguri">
           {/* Sidebar Theme Switcher Settings */}
           <div className="p-3 bg-white/80 backdrop-blur-xs rounded-xl mb-3 border border-slate-200/80 font-siliguri shadow-2xs">
             <div className="flex items-center justify-between mb-2">
@@ -625,21 +628,40 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           ))}
 
+          {/* PWA App Install Card inside Sidebar / Mobile Drawer */}
+          <div className="mt-3">
+            <PWAInstallButton variant="sidebar" language={language} />
+          </div>
+
           {/* Status Footer */}
           <div className="p-3 bg-white/70 backdrop-blur-xs rounded-xl border border-slate-200/80 mt-3 font-siliguri shadow-2xs">
             <p className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1 font-siliguri">
-              {language === 'bn' ? 'মোবাইল পরিকল্পনা' : 'Mobile Plan'}
+              {language === 'bn' ? 'মোবাইল অ্যাপ (PWA)' : 'Mobile App (PWA)'}
             </p>
             <p className="text-xs leading-relaxed text-slate-600 font-siliguri">
               {language === 'bn'
-                ? 'পরবর্তী সংস্করণ: অ্যান্ড্রয়েড নেটিভ অ্যাপ্লিকেশন। আপনার UI এখন প্রতিক্রিয়াশীল।'
-                : 'Next edition: Android Native App. Responsive UI active.'}
+                ? 'অ্যান্ড্রয়েড ও আইফোনে হোম স্ক্রিন অ্যাপ এবং অফলাইন মোড সাপোর্ট সক্রিয় রয়েছে।'
+                : 'Installable PWA with offline support active.'}
             </p>
             <div className="mt-2 flex items-center justify-between text-xs text-slate-700 font-semibold font-siliguri">
               <span>{language === 'bn' ? 'মুদ্রা:' : 'Currency:'} BDT (৳)</span>
-              <span className="flex items-center text-emerald-700 font-bold">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></span>
-                {language === 'bn' ? 'অনলাইন' : 'Online'}
+              <span
+                className={`flex items-center font-bold ${
+                  isOnline ? 'text-emerald-700' : 'text-amber-700'
+                }`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full mr-1.5 ${
+                    isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+                  }`}
+                ></span>
+                {isOnline
+                  ? language === 'bn'
+                    ? 'অনলাইন'
+                    : 'Online'
+                  : language === 'bn'
+                  ? 'অফলাইন মোড'
+                  : 'Offline'}
               </span>
             </div>
           </div>

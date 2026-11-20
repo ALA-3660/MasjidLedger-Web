@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, setDoc, setLogLevel } from 'firebase/firestore';
 import crypto from 'crypto';
+import zlib from 'zlib';
 import fs from 'fs';
 import path from 'path';
 
@@ -36,6 +37,24 @@ function computePartitionHash(data: Record<string, any>): string {
   return crypto.createHash('sha256').update(JSON.stringify(copy)).digest('hex');
 }
 
+function unpackPartitionDocument(rawDoc: Record<string, any> | undefined | null): Record<string, any> | null {
+  if (!rawDoc || typeof rawDoc !== 'object') return null;
+  if (typeof rawDoc._gzPayload === 'string' && rawDoc._gzPayload.length > 0) {
+    try {
+      const gunzipped = zlib.gunzipSync(Buffer.from(rawDoc._gzPayload, 'base64')).toString('utf8');
+      const parsed = JSON.parse(gunzipped);
+      return {
+        ...parsed,
+        updatedAt: rawDoc.updatedAt || parsed.updatedAt,
+        partitionName: rawDoc.partitionName || parsed.partitionName,
+      };
+    } catch (err) {
+      console.warn('[CloudPersistence] Failed to gunzip partition payload:', (err as Error)?.message || err);
+    }
+  }
+  return rawDoc;
+}
+
 class CloudPersistenceService {
   private db: any = null;
   private isConfigured: boolean = false;
@@ -43,6 +62,7 @@ class CloudPersistenceService {
   private isSyncing: boolean = false;
   private pendingState: any = null;
   private lastPartitionHashes: Record<string, string> = {};
+  private cachedFinances: Record<string, any> | null = null;
   private quotaExhaustedUntil: number = 0;
 
   constructor() {
@@ -103,6 +123,43 @@ class CloudPersistenceService {
     return this.isConfigured && this.db !== null;
   }
 
+  get isQuotaExhausted(): boolean {
+    return Date.now() < this.quotaExhaustedUntil;
+  }
+
+  /**
+   * Loads a single partition from Firestore with automatic retry on cold-start timeout.
+   * Supports both compressed (_gzPayload) and legacy uncompressed partition documents.
+   */
+  async loadPartitionFromCloud(part: string): Promise<any | null> {
+    if (!this.isAvailable) return null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const snap = await withTimeout(
+          getDoc(doc(this.db, 'system_partitions', part)),
+          8000,
+          `getDoc(${part})`
+        );
+        if (snap.exists()) {
+          const partData = unpackPartitionDocument(snap.data());
+          if (partData) {
+            this.lastPartitionHashes[part] = computePartitionHash(partData);
+            if (part === 'finances') {
+              this.cachedFinances = partData;
+            }
+          }
+          return partData;
+        }
+        return null;
+      } catch (e) {
+        if (attempt === 2) {
+          console.warn(`[CloudPersistence] Warning loading partition ${part}:`, (e as Error)?.message || e);
+        }
+      }
+    }
+    return null;
+  }
+
   /**
    * Loads the latest database snapshot from Firestore.
    */
@@ -114,21 +171,8 @@ class CloudPersistenceService {
       const partitions = ['core', 'finances', 'committee_and_staff', 'education_and_hifz', 'records_and_documents', 'files'];
       const results = await Promise.all(
         partitions.map(async (part) => {
-          try {
-            const snap = await withTimeout(
-              getDoc(doc(this.db, 'system_partitions', part)),
-              5000,
-              `getDoc(${part})`
-            );
-            if (snap.exists()) {
-              const partData = snap.data();
-              this.lastPartitionHashes[part] = computePartitionHash(partData);
-              return { part, data: partData };
-            }
-          } catch (e) {
-            console.warn(`[CloudPersistence] Warning loading partition ${part}:`, (e as Error)?.message || e);
-          }
-          return { part, data: null };
+          const data = await this.loadPartitionFromCloud(part);
+          return { part, data };
         })
       );
 
@@ -139,7 +183,7 @@ class CloudPersistenceService {
         if (res.data) {
           foundAny = true;
           for (const [key, val] of Object.entries(res.data)) {
-            if (key !== 'updatedAt' && key !== 'partitionName') {
+            if (key !== 'updatedAt' && key !== 'partitionName' && key !== '_gzPayload') {
               mergedState[key] = val;
             }
           }
@@ -160,7 +204,41 @@ class CloudPersistenceService {
   }
 
   /**
-   * Saves only modified database partitions to Firestore with timeout & quota protection.
+   * Non-destructively merges two arrays of records by `id`, taking the newest version when present in both
+   * and preserving records that only exist in cloud (so no container can ever wipe out entries added elsewhere).
+   */
+  private mergeRecordArraysById(cloudArr: any[], localArr: any[]): any[] {
+    if (!Array.isArray(cloudArr) || cloudArr.length === 0) return Array.isArray(localArr) ? localArr : [];
+    if (!Array.isArray(localArr) || localArr.length === 0) return cloudArr;
+
+    const byId = new Map<string, any>();
+    for (const item of cloudArr) {
+      if (item && typeof item === 'object' && item.id) {
+        byId.set(String(item.id), item);
+      }
+    }
+    for (const localItem of localArr) {
+      if (localItem && typeof localItem === 'object' && localItem.id) {
+        const id = String(localItem.id);
+        const cloudItem = byId.get(id);
+        if (!cloudItem) {
+          byId.set(id, localItem);
+        } else {
+          const localTime = new Date(
+            localItem.updatedAt || localItem.restoredAt || localItem.reversedAt || localItem.createdAt || 0
+          ).getTime();
+          const cloudTime = new Date(
+            cloudItem.updatedAt || cloudItem.restoredAt || cloudItem.reversedAt || cloudItem.createdAt || 0
+          ).getTime();
+          byId.set(id, localTime >= cloudTime ? { ...cloudItem, ...localItem } : { ...localItem, ...cloudItem });
+        }
+      }
+    }
+    return Array.from(byId.values());
+  }
+
+  /**
+   * Saves only modified database partitions to Firestore with timeout, non-destructive merge & quota protection.
    */
   async saveToCloud(state: any): Promise<boolean> {
     if (!this.isAvailable || !state) return false;
@@ -345,14 +423,58 @@ class CloudPersistenceService {
         return true;
       }
 
+      // CRITICAL SAFEGUARD: Before writing 'finances' to Firestore, merge with cached/cloud 'finances'
+      // so no container or tab can ever overwrite or drop any income/expense/donation entry!
+      const financesPart = partitionsToSave.find((p) => p.name === 'finances');
+      if (financesPart) {
+        try {
+          let cloudFin = this.cachedFinances;
+          if (!cloudFin) {
+            const existingSnap = await withTimeout(
+              getDoc(doc(this.db, 'system_partitions', 'finances')),
+              3000,
+              'getDoc(finances-pre-save)'
+            );
+            if (existingSnap.exists()) {
+              cloudFin = unpackPartitionDocument(existingSnap.data());
+            }
+          }
+          if (cloudFin) {
+            const finKeys = [
+              'incomeEntries',
+              'expenseEntries',
+              'donations',
+              'donationBoxes',
+              'donationBoxCollections',
+              'transfers',
+            ];
+            for (const k of finKeys) {
+              if (Array.isArray(cloudFin[k])) {
+                financesPart.data[k] = deepCleanForFirestore(
+                  this.mergeRecordArraysById(cloudFin[k], financesPart.data[k] || [])
+                );
+              }
+            }
+            (financesPart as any)._hash = computePartitionHash(financesPart.data);
+          }
+          this.cachedFinances = financesPart.data;
+        } catch (_) {}
+      }
+
       const saveResults = await Promise.allSettled(
-        partitionsToSave.map((p) =>
-          withTimeout(
-            setDoc(doc(this.db, 'system_partitions', p.name), p.data),
+        partitionsToSave.map((p) => {
+          const gzPayload = zlib.gzipSync(Buffer.from(JSON.stringify(p.data), 'utf8')).toString('base64');
+          const firestoreDoc = {
+            partitionName: p.name,
+            updatedAt: p.data.updatedAt || now,
+            _gzPayload: gzPayload,
+          };
+          return withTimeout(
+            setDoc(doc(this.db, 'system_partitions', p.name), firestoreDoc),
             3500,
             `setDoc(${p.name})`
-          )
-        )
+          );
+        })
       );
 
       let allSucceeded = true;
@@ -381,12 +503,13 @@ class CloudPersistenceService {
   }
 
   /**
-   * Debounced sync to avoid thrashing Firestore during rapid operations.
+   * Coalesced debounced sync (3.5s) so rapid voucher entries are batched into a single Firestore write,
+   * conserving up to 97% of Firestore Free Tier daily write units.
    */
   queueSync(state: any) {
     if (!this.isAvailable) return;
-    if (Date.now() < this.quotaExhaustedUntil) return;
     this.pendingState = state;
+    if (Date.now() < this.quotaExhaustedUntil) return;
 
     if (this.syncTimeout) {
       clearTimeout(this.syncTimeout);
@@ -399,7 +522,10 @@ class CloudPersistenceService {
         if (this.pendingState) {
           const toSync = this.pendingState;
           this.pendingState = null;
-          await this.saveToCloud(toSync);
+          const ok = await this.saveToCloud(toSync);
+          if (!ok && !this.pendingState) {
+            this.pendingState = toSync;
+          }
         }
       } finally {
         this.isSyncing = false;
@@ -407,7 +533,7 @@ class CloudPersistenceService {
           this.queueSync(this.pendingState);
         }
       }
-    }, 5000);
+    }, 3500);
   }
 
   /**

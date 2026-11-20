@@ -22,11 +22,18 @@ import {
   ChevronRight,
   Check,
   Building,
+  Sparkles,
+  Loader2,
+  Hash,
 } from 'lucide-react';
 import { AccountHead, Mosque, IncomeEntry, ExpenseEntry } from '../types';
 import { Language, translations } from '../lib/i18n';
+import { api } from '../lib/api';
 import { FinancialSecondarySidebar, SecondarySidebarItem } from './FinancialSecondarySidebar';
 import { OfficialReportSignatures } from './common/OfficialReportSignatures';
+import { AiCoaOptimizerModal } from './coa/AiCoaOptimizerModal';
+import { AiInactiveHeadsPanel } from './coa/AiInactiveHeadsPanel';
+import { AiCoaStructureNoteBox } from './coa/AiCoaStructureNoteBox';
 
 interface AccountHeadsViewProps {
   accountHeads: AccountHead[];
@@ -87,6 +94,43 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  // COA AI Automations states
+  const [isAiOptimizerOpen, setIsAiOptimizerOpen] = useState(false);
+  const [highlightedInactiveIds, setHighlightedInactiveIds] = useState<string[]>([]);
+  const [aiSuggestLoading, setAiSuggestLoading] = useState(false);
+  const [aiSuggestError, setAiSuggestError] = useState('');
+  const [aiSuggestion, setAiSuggestion] = useState<Awaited<ReturnType<typeof api.suggestNewAccountHeadAi>> | null>(null);
+  const [confirmDuplicateOverride, setConfirmDuplicateOverride] = useState(false);
+
+  const resetAddHeadAiState = () => {
+    setAiSuggestion(null);
+    setAiSuggestError('');
+    setConfirmDuplicateOverride(false);
+  };
+
+  const handleAiSuggestNewHead = async () => {
+    const trimmed = headNameBn.trim();
+    if (trimmed.length < 2) {
+      setAiSuggestError('AI সাজেশন পেতে প্রথমে হিসাব খাতের নাম লিখুন।');
+      return;
+    }
+    setAiSuggestLoading(true);
+    setAiSuggestError('');
+    setConfirmDuplicateOverride(false);
+    try {
+      const suggestion = await api.suggestNewAccountHeadAi({ nameBn: trimmed });
+      setAiSuggestion(suggestion);
+      setHeadType(suggestion.suggestedType);
+      setHeadParentId(suggestion.suggestedParentId || '');
+      if (suggestion.suggestedNameEn) setHeadNameEn(suggestion.suggestedNameEn);
+      if (suggestion.suggestedDescriptionBn) setHeadDescription(suggestion.suggestedDescriptionBn);
+    } catch (err: any) {
+      setAiSuggestError(err?.message || 'AI সাজেশন তৈরি করতে ব্যর্থ হয়েছে।');
+    } finally {
+      setAiSuggestLoading(false);
+    }
+  };
 
   // Helper to compute usage count
   const getUsageCount = (head: AccountHead) => {
@@ -201,6 +245,7 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
     setHeadNameEn('');
     setHeadDescription('');
     setErrorMsg('');
+    resetAddHeadAiState();
     setIsAddHeadModalOpen(true);
   };
 
@@ -226,6 +271,10 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
       setErrorMsg('হিসাব খাতের বাংলা নাম পূরণ করুন');
       return;
     }
+    if (aiSuggestion && aiSuggestion.duplicateRisk !== 'NONE' && !confirmDuplicateOverride) {
+      setErrorMsg('সম্ভাব্য ডুপ্লিকেট খাত সনাক্ত হয়েছে। অনুগ্রহ করে বিদ্যমান খাতটি ব্যবহার করুন অথবা নিশ্চিতকরণ চেকবক্সে টিক দিন।');
+      return;
+    }
     setIsSubmitting(true);
     setErrorMsg('');
     try {
@@ -241,6 +290,7 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
       setHeadNameEn('');
       setHeadDescription('');
       setHeadParentId('');
+      resetAddHeadAiState();
       setSuccessMsg('নতুন হিসাব খাত সফলভাবে যুক্ত হয়েছে।');
       setTimeout(() => setSuccessMsg(''), 4000);
     } catch (err: any) {
@@ -362,7 +412,15 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsAiOptimizerOpen(true)}
+            className="px-3.5 py-2 bg-gradient-to-r from-indigo-700 to-blue-700 hover:from-indigo-800 hover:to-blue-800 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-sm transition-all cursor-pointer"
+          >
+            <Sparkles className="w-4 h-4 text-amber-300" />
+            <span>AI খাত বিশ্লেষণ ও অপটিমাইজ</span>
+          </button>
           <button
             onClick={() => setIsPrintModalOpen(true)}
             className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer border border-slate-200"
@@ -378,6 +436,7 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
               setHeadNameBn('');
               setHeadNameEn('');
               setHeadDescription('');
+              resetAddHeadAiState();
               setIsAddHeadModalOpen(true);
             }}
             className="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-sm transition-all cursor-pointer"
@@ -416,6 +475,7 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
               setHeadNameBn('');
               setHeadNameEn('');
               setHeadDescription('');
+              resetAddHeadAiState();
               setIsAddHeadModalOpen(true);
             } else if (id === 'REPORTS') {
               setIsPrintModalOpen(true);
@@ -553,6 +613,16 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
             </div>
           </div>
 
+          {/* AI Inactive / Unused Head Detector Panel for Income & Expense Tabs */}
+          {(selectedTypeFilter === 'INCOME' || selectedTypeFilter === 'EXPENSE') && (
+            <AiInactiveHeadsPanel
+              scopeType={selectedTypeFilter}
+              accountHeads={accountHeads}
+              onHighlightInactiveIds={setHighlightedInactiveIds}
+              onArchiveHead={onUpdateAccountHead ? (head) => handleToggleStatus(head, 'ARCHIVED') : undefined}
+            />
+          )}
+
           {/* Main Two-Column Structure: Income & Expense */}
           <div className={`grid gap-6 ${selectedTypeFilter === 'ALL' ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'}`}>
             {/* Income Heads Section */}
@@ -581,15 +651,20 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
                       const filteredSubs = subs.filter(isHeadMatchingStatus);
                       const mainUsage = getUsageCount(main);
                       const isMainActive = main.status === 'ACTIVE' || (main.isActive !== false && !main.status);
+                      const isMainHighlightedUnused = highlightedInactiveIds.includes(main.id);
 
                       return (
                         <div key={main.id} className="pt-3.5 first:pt-0 space-y-2">
                           {/* Main Head Row */}
                           <div className={`flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-xl border transition-all gap-2 ${
-                            isMainActive ? 'bg-slate-50 border-slate-200 hover:border-emerald-300' : 'bg-slate-100/70 border-slate-200/80 opacity-75'
+                            isMainHighlightedUnused
+                              ? 'bg-amber-50/80 border-amber-400 ring-2 ring-amber-300/70'
+                              : isMainActive
+                                ? 'bg-slate-50 border-slate-200 hover:border-emerald-300'
+                                : 'bg-slate-100/70 border-slate-200/80 opacity-75'
                           }`}>
                             <div className="flex items-center space-x-2.5 min-w-0">
-                              <div className={`w-3 h-3 rounded-full shrink-0 ${isMainActive ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                              <div className={`w-3 h-3 rounded-full shrink-0 ${isMainHighlightedUnused ? 'bg-amber-500' : isMainActive ? 'bg-emerald-500' : 'bg-slate-400'}`} />
                               <div className="truncate">
                                 <div className="flex items-center space-x-2">
                                   <span className={`font-bold text-xs sm:text-sm ${isMainActive ? 'text-slate-900' : 'text-slate-600 line-through'}`}>
@@ -598,6 +673,11 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
                                   {main.code && (
                                     <span className="font-mono text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md font-bold">
                                       {main.code}
+                                    </span>
+                                  )}
+                                  {isMainHighlightedUnused && (
+                                    <span className="text-[10px] bg-amber-200 text-amber-950 px-1.5 py-0.5 rounded font-bold">
+                                      ০ লেনদেন (AI)
                                     </span>
                                   )}
                                   {main.status === 'INACTIVE' && (
@@ -656,12 +736,17 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
                               {filteredSubs.map((sub) => {
                                 const subUsage = getUsageCount(sub);
                                 const isSubActive = sub.status === 'ACTIVE' || (sub.isActive !== false && !sub.status);
+                                const isSubHighlightedUnused = highlightedInactiveIds.includes(sub.id);
 
                                 return (
                                   <div
                                     key={sub.id}
                                     className={`text-xs flex items-center justify-between p-2 rounded-lg transition-colors ${
-                                      isSubActive ? 'bg-slate-50/60 hover:bg-emerald-50/40 text-slate-800' : 'bg-slate-100/60 text-slate-500 opacity-80'
+                                      isSubHighlightedUnused
+                                        ? 'bg-amber-50 border border-amber-300 text-amber-950'
+                                        : isSubActive
+                                          ? 'bg-slate-50/60 hover:bg-emerald-50/40 text-slate-800'
+                                          : 'bg-slate-100/60 text-slate-500 opacity-80'
                                     }`}
                                   >
                                     <div className="flex items-center space-x-2 truncate">
@@ -669,6 +754,11 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
                                       {sub.code && (
                                         <span className="font-mono text-[10px] text-slate-500 bg-white border border-slate-200 px-1.5 py-0.5 rounded">
                                           {sub.code}
+                                        </span>
+                                      )}
+                                      {isSubHighlightedUnused && (
+                                        <span className="text-[9px] bg-amber-200 text-amber-950 px-1.5 py-0.5 rounded font-bold">
+                                          ০ লেনদেন (AI)
                                         </span>
                                       )}
                                       {sub.status === 'INACTIVE' && (
@@ -743,15 +833,20 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
                       const filteredSubs = subs.filter(isHeadMatchingStatus);
                       const mainUsage = getUsageCount(main);
                       const isMainActive = main.status === 'ACTIVE' || (main.isActive !== false && !main.status);
+                      const isMainHighlightedUnused = highlightedInactiveIds.includes(main.id);
 
                       return (
                         <div key={main.id} className="pt-3.5 first:pt-0 space-y-2">
                           {/* Main Head Row */}
                           <div className={`flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-xl border transition-all gap-2 ${
-                            isMainActive ? 'bg-slate-50 border-slate-200 hover:border-rose-300' : 'bg-slate-100/70 border-slate-200/80 opacity-75'
+                            isMainHighlightedUnused
+                              ? 'bg-amber-50/80 border-amber-400 ring-2 ring-amber-300/70'
+                              : isMainActive
+                                ? 'bg-slate-50 border-slate-200 hover:border-rose-300'
+                                : 'bg-slate-100/70 border-slate-200/80 opacity-75'
                           }`}>
                             <div className="flex items-center space-x-2.5 min-w-0">
-                              <div className={`w-3 h-3 rounded-full shrink-0 ${isMainActive ? 'bg-rose-500' : 'bg-slate-400'}`} />
+                              <div className={`w-3 h-3 rounded-full shrink-0 ${isMainHighlightedUnused ? 'bg-amber-500' : isMainActive ? 'bg-rose-500' : 'bg-slate-400'}`} />
                               <div className="truncate">
                                 <div className="flex items-center space-x-2">
                                   <span className={`font-bold text-xs sm:text-sm ${isMainActive ? 'text-slate-900' : 'text-slate-600 line-through'}`}>
@@ -760,6 +855,11 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
                                   {main.code && (
                                     <span className="font-mono text-[10px] bg-rose-100 text-rose-800 px-2 py-0.5 rounded-md font-bold">
                                       {main.code}
+                                    </span>
+                                  )}
+                                  {isMainHighlightedUnused && (
+                                    <span className="text-[10px] bg-amber-200 text-amber-950 px-1.5 py-0.5 rounded font-bold">
+                                      ০ লেনদেন (AI)
                                     </span>
                                   )}
                                   {main.status === 'INACTIVE' && (
@@ -818,12 +918,17 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
                               {filteredSubs.map((sub) => {
                                 const subUsage = getUsageCount(sub);
                                 const isSubActive = sub.status === 'ACTIVE' || (sub.isActive !== false && !sub.status);
+                                const isSubHighlightedUnused = highlightedInactiveIds.includes(sub.id);
 
                                 return (
                                   <div
                                     key={sub.id}
                                     className={`text-xs flex items-center justify-between p-2 rounded-lg transition-colors ${
-                                      isSubActive ? 'bg-slate-50/60 hover:bg-rose-50/40 text-slate-800' : 'bg-slate-100/60 text-slate-500 opacity-80'
+                                      isSubHighlightedUnused
+                                        ? 'bg-amber-50 border border-amber-300 text-amber-950'
+                                        : isSubActive
+                                          ? 'bg-slate-50/60 hover:bg-rose-50/40 text-slate-800'
+                                          : 'bg-slate-100/60 text-slate-500 opacity-80'
                                     }`}
                                   >
                                     <div className="flex items-center space-x-2 truncate">
@@ -831,6 +936,11 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
                                       {sub.code && (
                                         <span className="font-mono text-[10px] text-slate-500 bg-white border border-slate-200 px-1.5 py-0.5 rounded">
                                           {sub.code}
+                                        </span>
+                                      )}
+                                      {isSubHighlightedUnused && (
+                                        <span className="text-[9px] bg-amber-200 text-amber-950 px-1.5 py-0.5 rounded font-bold">
+                                          ০ লেনদেন (AI)
                                         </span>
                                       )}
                                       {sub.status === 'INACTIVE' && (
@@ -885,8 +995,8 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
       {/* Add New Head Modal */}
       {isAddHeadModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="p-4 bg-slate-900 text-white flex items-center justify-between shrink-0">
               <div className="flex items-center space-x-2">
                 <Layers className="w-5 h-5 text-blue-400" />
                 <h3 className="font-bold text-sm">
@@ -901,10 +1011,137 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSubmitNewHead} className="p-5 space-y-4">
+            <form onSubmit={handleSubmitNewHead} className="p-5 space-y-4 overflow-y-auto">
               {errorMsg && (
                 <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-bold">
                   {errorMsg}
+                </div>
+              )}
+
+              {/* Bengali Name + AI Smart Suggest Button */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  হিসাব খাতের নাম (বাংলায়) *
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    required
+                    placeholder="যেমন: দানবাক্স সংগ্রহ, ইলেকট্রিক বিল, খতিব সম্মানী..."
+                    value={headNameBn}
+                    onChange={(e) => {
+                      setHeadNameBn(e.target.value);
+                      if (aiSuggestion) {
+                        setAiSuggestion(null);
+                        setConfirmDuplicateOverride(false);
+                      }
+                      if (aiSuggestError) setAiSuggestError('');
+                    }}
+                    className="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAiSuggestNewHead}
+                    disabled={aiSuggestLoading || headNameBn.trim().length < 2}
+                    className="px-3 py-2 bg-indigo-700 hover:bg-indigo-800 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shrink-0 transition-all cursor-pointer disabled:opacity-50 shadow-2xs"
+                    title="খাতের নাম পড়ে AI ধরন, প্রধান খাত, পরবর্তী কোড ও ডুপ্লিকেট যাচাই করবে"
+                  >
+                    {aiSuggestLoading ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                    )}
+                    <span>{aiSuggestLoading ? 'যাচাই হচ্ছে...' : 'AI সাজেস্ট'}</span>
+                  </button>
+                </div>
+                <span className="text-[11px] text-slate-500 mt-1 block font-tiro">
+                  খাতের নাম লিখে <strong>AI সাজেস্ট</strong> ক্লিক করলে ধরন, প্যারেন্ট খাত, পরবর্তী কোড ও ডুপ্লিকেট স্বয়ংক্রিয়ভাবে যাচাই হবে।
+                </span>
+              </div>
+
+              {aiSuggestError && (
+                <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-bold">
+                  {aiSuggestError}
+                </div>
+              )}
+
+              {/* AI Suggestion Feedback & Duplicate Prevention Banner */}
+              {aiSuggestion && (
+                <div className="space-y-2.5">
+                  {/* Duplicate Risk Red / Amber Warning */}
+                  {aiSuggestion.duplicateRisk !== 'NONE' && (
+                    <div
+                      className={`p-3.5 rounded-xl border space-y-2 ${
+                        aiSuggestion.duplicateRisk === 'EXACT'
+                          ? 'bg-rose-50 border-rose-300 text-rose-950'
+                          : 'bg-amber-50 border-amber-300 text-amber-950'
+                      }`}
+                    >
+                      <div className="flex items-start space-x-2">
+                        <AlertTriangle
+                          className={`w-4 h-4 shrink-0 mt-0.5 ${
+                            aiSuggestion.duplicateRisk === 'EXACT' ? 'text-rose-600' : 'text-amber-600'
+                          }`}
+                        />
+                        <div className="space-y-1 flex-1">
+                          <div className="text-xs font-extrabold">
+                            {aiSuggestion.duplicateRisk === 'EXACT'
+                              ? 'ডুপ্লিকেট খাত সতর্কতা (একই অর্থের খাত বিদ্যমান!)'
+                              : 'সম্ভাব্য কাছাকাছি খাত বিদ্যমান (যাচাই করুন)'}
+                          </div>
+                          <p className="text-[11px] leading-relaxed font-tiro">
+                            {aiSuggestion.warningMessageBn}
+                          </p>
+                        </div>
+                      </div>
+
+                      {aiSuggestion.similarExistingHeads.length > 0 && (
+                        <div className="space-y-1 pl-6">
+                          {aiSuggestion.similarExistingHeads.map((sim) => (
+                            <div
+                              key={sim.id}
+                              className="text-[11px] bg-white/80 border border-slate-200 rounded-lg px-2.5 py-1.5 flex flex-wrap items-center justify-between gap-1"
+                            >
+                              <span className="font-bold text-slate-900">
+                                {sim.nameBn}{' '}
+                                <span className="font-mono text-[10px] text-slate-500">({sim.code})</span>
+                              </span>
+                              <span className="text-[10px] text-slate-600">{sim.matchReasonBn}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <label className="flex items-center space-x-2 pt-1 pl-6 text-[11px] font-bold cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={confirmDuplicateOverride}
+                          onChange={(e) => setConfirmDuplicateOverride(e.target.checked)}
+                          className="rounded border-slate-400 text-rose-600"
+                        />
+                        <span>আমি বিদ্যমান খাতগুলো দেখেছি — তবুও আলাদা নতুন খাত তৈরি করতে চাই</span>
+                      </label>
+                    </div>
+                  )}
+
+                  {/* AI Auto-filled Metadata & Suggested Next Serial Code */}
+                  <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-200 text-xs space-y-1.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-extrabold text-blue-950 flex items-center space-x-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-blue-700" />
+                        <span>AI প্রস্তাবিত শ্রেণিবিন্যাস ও কোড</span>
+                      </span>
+                      <span className="font-mono text-[11px] font-extrabold bg-blue-700 text-white px-2.5 py-0.5 rounded-md inline-flex items-center space-x-1">
+                        <Hash className="w-3 h-3" />
+                        <span>পরবর্তী কোড: {aiSuggestion.suggestedCode}</span>
+                      </span>
+                    </div>
+                    {aiSuggestion.reasoningBn && (
+                      <p className="text-[11px] text-blue-900/90 font-tiro leading-snug">
+                        {aiSuggestion.reasoningBn}
+                      </p>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -967,20 +1204,6 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  হিসাব খাতের নাম (বাংলায়) *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="যেমন: দানবাক্স সংগ্রহ, বিদ্যুৎ বিল, খতিব সম্মানী..."
-                  value={headNameBn}
-                  onChange={(e) => setHeadNameBn(e.target.value)}
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
                   ইংরেজি নাম (ঐচ্ছিক)
                 </label>
                 <input
@@ -1015,7 +1238,10 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={
+                    isSubmitting ||
+                    (Boolean(aiSuggestion && aiSuggestion.duplicateRisk !== 'NONE') && !confirmDuplicateOverride)
+                  }
                   className="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer disabled:opacity-50"
                 >
                   {isSubmitting ? 'সংরক্ষণ হচ্ছে...' : 'সংরক্ষণ করুন'}
@@ -1272,6 +1498,9 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
                 </h3>
               </div>
 
+              {/* AI Accounting Structure Note (Print-Ready 2-3 Line Commentary) */}
+              <AiCoaStructureNoteBox />
+
               {/* Income Table */}
               <div className="space-y-2">
                 <h4 className="font-bold text-sm text-emerald-900 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
@@ -1371,6 +1600,19 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* AI COA Optimizer & Standard Template Modal */}
+      <AiCoaOptimizerModal
+        isOpen={isAiOptimizerOpen}
+        onClose={() => setIsAiOptimizerOpen(false)}
+        accountHeads={accountHeads}
+        onOpenEditHead={handleOpenEditModal}
+        onAddAccountHead={onAddAccountHead}
+        onSuccessMessage={(msg) => {
+          setSuccessMsg(msg);
+          setTimeout(() => setSuccessMsg(''), 5000);
+        }}
+      />
     </div>
   );
 };

@@ -53,6 +53,7 @@ import {
   buildExpenseReconciliationDataset,
   ExpenseReconciliationDataset,
 } from '../lib/expenseReconciliationService';
+import { AiSmartEntryToolbar, AiSmartEntryResult } from './common/AiSmartEntryToolbar';
 import { ExpenseReconciliationView } from './ExpenseReconciliationView';
 import { BudgetControlView } from './BudgetControlView';
 import { Language, translations, formatCurrency, formatDate } from '../lib/i18n';
@@ -60,8 +61,13 @@ import { api } from '../lib/api';
 import { ChangeCalculatorModal } from './ChangeCalculatorModal';
 import { EditTransactionModal } from './EditModals';
 import { SmsPreviewModal } from './SmsPreviewModal';
-import { UnifiedExpenseEntryModal, ExpenseEntryType } from './UnifiedExpenseEntryModal';
+import { UnifiedExpenseEntryModal, ExpenseEntryType, ExpenseAiPrefill } from './UnifiedExpenseEntryModal';
+import { AiUtilityBillScannerPanel, UtilityPrefillPayload } from './expense/AiUtilityBillScannerPanel';
+import { AiPayrollAssistantModal, PayrollVoucherPrefill } from './expense/AiPayrollAssistantModal';
+import { AiExpenseReconciliationPanel, ExpenseReconAuditResult } from './expense/AiExpenseReconciliationPanel';
+import { AiBudgetGuardCard } from './expense/AiBudgetGuardCard';
 import { QrScanResult } from '../types/qrBarcodeTypes';
+import { DualScrollTableWrapper } from './DualScrollTableWrapper';
 import {
   DateFilterState,
   getDefaultDateFilterState,
@@ -180,6 +186,12 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
   const [unifiedStaffId, setUnifiedStaffId] = useState<string | undefined>();
   const [unifiedAssetId, setUnifiedAssetId] = useState<string | undefined>();
   const [unifiedPropertyId, setUnifiedPropertyId] = useState<string | undefined>();
+  const [unifiedAiPrefill, setUnifiedAiPrefill] = useState<ExpenseAiPrefill | null>(null);
+
+  // Expense AI Feature States (Payroll Assistant & Register Duplicate Flagging)
+  const [isPayrollAiModalOpen, setIsPayrollAiModalOpen] = useState(false);
+  const [expenseAiDuplicateIds, setExpenseAiDuplicateIds] = useState<Set<string>>(new Set());
+  const [showOnlyDuplicateExpenses, setShowOnlyDuplicateExpenses] = useState(false);
 
   const handleOpenUnifiedExpense = (
     type: ExpenseEntryType = 'GENERAL_EXPENSE',
@@ -188,6 +200,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
       staffId?: string;
       assetId?: string;
       propertyId?: string;
+      aiPrefill?: ExpenseAiPrefill | null;
     }
   ) => {
     setUnifiedExpenseType(type);
@@ -195,6 +208,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
     setUnifiedStaffId(options?.staffId);
     setUnifiedAssetId(options?.assetId);
     setUnifiedPropertyId(options?.propertyId);
+    setUnifiedAiPrefill(options?.aiPrefill || null);
     setIsUnifiedExpenseModalOpen(true);
   };
 
@@ -436,12 +450,42 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
   const [registerSearch, setRegisterSearch] = useState('');
   const [registerStatus, setRegisterStatus] = useState<'ALL' | 'APPROVED' | 'CANCELLED'>('ALL');
   const [registerHeadId, setRegisterHeadId] = useState('ALL');
+  const [registerSubHeadId, setRegisterSubHeadId] = useState('ALL');
   const [registerAccountId, setRegisterAccountId] = useState('ALL');
   const [registerExpenseType, setRegisterExpenseType] = useState<string>('ALL');
   const [registerPaymentMethod, setRegisterPaymentMethod] = useState<string>('ALL');
   const [registerSortBy, setRegisterSortBy] = useState<
     'DATE_DESC' | 'DATE_ASC' | 'AMOUNT_DESC' | 'AMOUNT_ASC' | 'VOUCHER_DESC' | 'HEAD_ASC' | 'PAYEE_ASC'
   >('DATE_DESC');
+
+  const expenseSubHeads = useMemo(() => {
+    const parentNameMap = new Map(expenseMainHeads.map((h) => [h.id, h.nameBn]));
+    return accountHeads
+      .filter((h) => h.type === 'EXPENSE' && !!h.parentId)
+      .map((sh) => ({
+        id: sh.id,
+        nameBn: sh.nameBn,
+        parentId: sh.parentId,
+        parentNameBn: sh.parentId ? parentNameMap.get(sh.parentId) || '' : '',
+      }));
+  }, [accountHeads, expenseMainHeads]);
+
+  const activeExpenseFilterNote = useMemo(() => {
+    const parts: string[] = [];
+    if (registerHeadId !== 'ALL') {
+      const h = accountHeads.find((x) => x.id === registerHeadId);
+      if (h) parts.push(`প্রধান খাত: ${h.nameBn}`);
+    }
+    if (registerSubHeadId !== 'ALL') {
+      const sh = accountHeads.find((x) => x.id === registerSubHeadId);
+      if (sh) parts.push(`উপখাত: ${sh.nameBn}`);
+    }
+    if (registerAccountId !== 'ALL') {
+      const a = accounts.find((x) => x.id === registerAccountId);
+      if (a) parts.push(`হিসাব: ${a.nameBn}`);
+    }
+    return parts.length > 0 ? ` (${parts.join(' • ')})` : '';
+  }, [registerHeadId, registerSubHeadId, registerAccountId, accountHeads, accounts]);
 
   // E5-C Internal Report Sub-navigation Tab (All 12 Reports + E5-D Reconciliation)
   const [reportSubTab, setReportSubTab] = useState<
@@ -482,6 +526,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
       filters: {
         dateFilter: reportFilterState,
         headFilter: registerHeadId,
+        subHeadFilter: registerSubHeadId,
         accountFilter: registerAccountId,
         expenseTypeFilter: registerExpenseType,
         paymentMethodFilter: registerPaymentMethod,
@@ -499,6 +544,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
     properties,
     reportFilterState,
     registerHeadId,
+    registerSubHeadId,
     registerAccountId,
     registerExpenseType,
     registerPaymentMethod,
@@ -1306,6 +1352,9 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                 </div>
               </div>
 
+              {/* AI Budget Guard & Expense Insights Card */}
+              <AiBudgetGuardCard compact />
+
               {/* Quick Actions & Recent Expenses Card */}
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
                 <div className="flex items-center justify-between">
@@ -1322,7 +1371,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                   </button>
                 </div>
 
-                <div className="overflow-x-auto">
+                <DualScrollTableWrapper maxHeightClassName="max-h-[420px]">
                   <table className="w-full text-xs text-left border-collapse">
                     <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
                       <tr>
@@ -1380,7 +1429,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </DualScrollTableWrapper>
               </div>
             </div>
           )}
@@ -1406,6 +1455,27 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                   <span>{formError}</span>
                 </div>
               )}
+
+              <AiSmartEntryToolbar
+                entryType="EXPENSE"
+                accentColor="rose"
+                onApplyData={(parsed: AiSmartEntryResult) => {
+                  setFormError('');
+                  if (parsed.date) setEntryDate(parsed.date);
+                  if (parsed.amount && parsed.amount > 0) setAmount(String(parsed.amount));
+                  if (parsed.mainHeadId) {
+                    setMainHeadId(parsed.mainHeadId);
+                    setSubHeadId(parsed.subHeadId || '');
+                  }
+                  if (parsed.paymentMethod) {
+                    setPaymentMethod(parsed.paymentMethod as PaymentMethod);
+                  }
+                  if (parsed.personName) setPayeeName(parsed.personName);
+                  if (parsed.personPhone) setPayeePhone(parsed.personPhone);
+                  if (parsed.reference) setReference(parsed.reference);
+                  if (parsed.description) setDescription(parsed.description);
+                }}
+              />
 
               <form onSubmit={(e) => handleCreateSubmit(e, true)} className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1610,7 +1680,17 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                   </p>
                 </div>
 
-                <div className="flex items-center space-x-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  {activeTab === 'salary' && (
+                    <button
+                      type="button"
+                      onClick={() => setIsPayrollAiModalOpen(true)}
+                      className="px-3.5 py-2 bg-gradient-to-r from-emerald-700 to-teal-700 hover:from-emerald-800 hover:to-teal-800 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs transition-all cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                      <span>AI দিয়ে মাসিক বেতন প্রস্তুত করুন</span>
+                    </button>
+                  )}
                   {activeTab === 'salary' && onNavigateTab && (
                     <button
                       onClick={() => onNavigateTab('salaryBankTransfer')}
@@ -1645,6 +1725,59 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                 </div>
               </div>
 
+              {/* AI Utility Bill Analyzer (Utilities Sub-Menu) */}
+              {activeTab === 'utilities' && (
+                <AiUtilityBillScannerPanel
+                  onApplyToExpenseForm={(prefill: UtilityPrefillPayload) => {
+                    const fallbackHead = expenseMainHeads.find(
+                      (h) => h.nameBn.includes('বিদ্যুৎ') || h.nameBn.includes('ইউটিলিটি') || h.nameBn.includes('বিল')
+                    );
+                    handleOpenUnifiedExpense('GENERAL_EXPENSE', {
+                      headId: prefill.mainHeadId || fallbackHead?.id,
+                      aiPrefill: {
+                        date: prefill.date,
+                        amount: prefill.amount,
+                        mainHeadId: prefill.mainHeadId || fallbackHead?.id,
+                        subHeadId: prefill.subHeadId,
+                        payeeName: prefill.payeeName,
+                        reference: prefill.reference,
+                        description: prefill.description,
+                      },
+                    });
+                  }}
+                />
+              )}
+
+              {/* AI Cash Memo / Hardware / Construction Bill Scanner (Cleaning, Maintenance, Construction, Purchases) */}
+              {['cleaning', 'maintenance', 'construction', 'purchases'].includes(activeTab) && (
+                <AiSmartEntryToolbar
+                  entryType="EXPENSE"
+                  accentColor="rose"
+                  onApplyData={(parsed: AiSmartEntryResult) => {
+                    const targetType: ExpenseEntryType =
+                      activeTab === 'maintenance'
+                        ? 'ASSET_EXPENSE'
+                        : activeTab === 'construction'
+                        ? 'PROPERTY_EXPENSE'
+                        : 'GENERAL_EXPENSE';
+                    handleOpenUnifiedExpense(targetType, {
+                      headId: parsed.mainHeadId || undefined,
+                      aiPrefill: {
+                        date: parsed.date,
+                        amount: parsed.amount,
+                        mainHeadId: parsed.mainHeadId || undefined,
+                        subHeadId: parsed.subHeadId || undefined,
+                        payeeName: parsed.personName || '',
+                        payeePhone: parsed.personPhone || '',
+                        paymentMethod: parsed.paymentMethod as PaymentMethod,
+                        reference: parsed.reference || '',
+                        description: parsed.description || '',
+                      },
+                    });
+                  }}
+                />
+              )}
+
               {/* Records Table for this Category */}
               {(() => {
                 const list =
@@ -1676,7 +1809,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                       </span>
                     </div>
 
-                    <div className="overflow-x-auto">
+                    <DualScrollTableWrapper>
                       <table className="w-full text-xs text-left border-collapse">
                         <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
                           <tr>
@@ -1751,7 +1884,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                           )}
                         </tbody>
                       </table>
-                    </div>
+                    </DualScrollTableWrapper>
                   </div>
                 );
               })()}
@@ -1958,9 +2091,12 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                 onStatusFilterChange={(st) => setRegisterStatus(st as any)}
                 headFilter={registerHeadId}
                 onHeadFilterChange={setRegisterHeadId}
+                subHeadFilter={registerSubHeadId}
+                onSubHeadFilterChange={setRegisterSubHeadId}
                 accountFilter={registerAccountId}
                 onAccountFilterChange={setRegisterAccountId}
                 headsList={expenseMainHeads.map((h) => ({ id: h.id, nameBn: h.nameBn }))}
+                subHeadsList={expenseSubHeads}
                 accountsList={accounts.map((a) => ({ id: a.id, nameBn: a.nameBn }))}
                 onPrint={() => setIsReportPreviewOpen(true)}
                 onPdf={() => setIsReportPreviewOpen(true)}
@@ -2038,6 +2174,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                     registerExpenseType !== 'ALL' ||
                     registerPaymentMethod !== 'ALL' ||
                     registerHeadId !== 'ALL' ||
+                    registerSubHeadId !== 'ALL' ||
                     registerAccountId !== 'ALL' ||
                     registerStatus !== 'ALL') && (
                     <button
@@ -2046,6 +2183,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                         setRegisterExpenseType('ALL');
                         setRegisterPaymentMethod('ALL');
                         setRegisterHeadId('ALL');
+                        setRegisterSubHeadId('ALL');
                         setRegisterAccountId('ALL');
                         setRegisterStatus('ALL');
                       }}
@@ -2060,6 +2198,21 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
               {/* ==================== VIEW 1: 📋 ব্যয়ের রেজিস্টার (REGISTER) ==================== */}
               {reportSubTab === 'register' && (
                 <div className="space-y-4">
+                  {/* AI Duplicate Payment & Cash/Bank Reconciliation Audit */}
+                  <AiExpenseReconciliationPanel
+                    compact
+                    fromDate={effectiveDates.fromDate}
+                    toDate={effectiveDates.toDate}
+                    onAuditComplete={(res: ExpenseReconAuditResult) => {
+                      const flagged = new Set<string>();
+                      (res.duplicateGroups || []).forEach((grp) => {
+                        (grp.entryIds || []).forEach((id) => flagged.add(id));
+                      });
+                      setExpenseAiDuplicateIds(flagged);
+                      if (flagged.size === 0) setShowOnlyDuplicateExpenses(false);
+                    }}
+                  />
+
                   {/* Summary Metric Cards */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
@@ -2100,17 +2253,43 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
 
                   {/* Register Table */}
                   <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-                    <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                    <div className="p-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
                       <div>
                         <h3 className="text-sm font-bold text-slate-900">ব্যয় রেজিস্টার খতিয়ান</h3>
                         <p className="text-xs text-slate-500">সময়সীমা: {effectiveDates.labelBn}</p>
                       </div>
-                      <div className="text-xs font-mono font-bold text-slate-700">
-                        মোট প্রদর্শিত: <strong>{filteredReportItems.length}</strong> টি
+                      <div className="flex flex-wrap items-center gap-2">
+                        {expenseAiDuplicateIds.size > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setShowOnlyDuplicateExpenses((prev) => !prev)}
+                            className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition cursor-pointer flex items-center gap-1.5 ${
+                              showOnlyDuplicateExpenses
+                                ? 'bg-amber-600 text-white border-amber-700'
+                                : 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
+                            }`}
+                          >
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                            <span>
+                              {showOnlyDuplicateExpenses
+                                ? 'সব ভাউচার দেখান'
+                                : `শুধু সন্দেহজনক ডুপ্লিকেট দেখুন (${expenseAiDuplicateIds.size})`}
+                            </span>
+                          </button>
+                        )}
+                        <div className="text-xs font-mono font-bold text-slate-700">
+                          মোট প্রদর্শিত:{' '}
+                          <strong>
+                            {showOnlyDuplicateExpenses
+                              ? filteredReportItems.filter((it) => expenseAiDuplicateIds.has(it.id)).length
+                              : filteredReportItems.length}
+                          </strong>{' '}
+                          টি
+                        </div>
                       </div>
                     </div>
 
-                    <div className="overflow-x-auto">
+                    <DualScrollTableWrapper>
                       <table className="w-full text-xs text-left border-collapse">
                         <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
                           <tr>
@@ -2127,21 +2306,42 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {filteredReportItems.length === 0 ? (
-                            <tr>
-                              <td colSpan={10} className="px-4 py-12 text-center text-slate-400">
-                                নির্বাচিত সময়কাল বা ফিল্টারে কোনো ব্যয়ের তথ্য পাওয়া যায়নি।
-                              </td>
-                            </tr>
-                          ) : (
-                            filteredReportItems.map((item, idx) => (
-                              <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                                <td className="px-3.5 py-3 text-center text-slate-400 font-mono">
-                                  {idx + 1}
-                                </td>
-                                <td className="px-3.5 py-3 font-mono font-bold text-slate-900">
-                                  {item.voucherNumber}
-                                </td>
+                          {(() => {
+                            const visibleRegisterItems = showOnlyDuplicateExpenses
+                              ? filteredReportItems.filter((it) => expenseAiDuplicateIds.has(it.id))
+                              : filteredReportItems;
+                            if (visibleRegisterItems.length === 0) {
+                              return (
+                                <tr>
+                                  <td colSpan={10} className="px-4 py-12 text-center text-slate-400">
+                                    নির্বাচিত সময়কাল বা ফিল্টারে কোনো ব্যয়ের তথ্য পাওয়া যায়নি।
+                                  </td>
+                                </tr>
+                              );
+                            }
+                            return visibleRegisterItems.map((item, idx) => {
+                              const isFlaggedDup = expenseAiDuplicateIds.has(item.id);
+                              return (
+                                <tr
+                                  key={item.id}
+                                  className={`transition-colors ${
+                                    isFlaggedDup
+                                      ? 'bg-amber-50/80 hover:bg-amber-100/70'
+                                      : 'hover:bg-slate-50/80'
+                                  }`}
+                                >
+                                  <td className="px-3.5 py-3 text-center text-slate-400 font-mono">
+                                    {idx + 1}
+                                  </td>
+                                  <td className="px-3.5 py-3 font-mono font-bold text-slate-900">
+                                    <div>{item.voucherNumber}</div>
+                                    {isFlaggedDup && (
+                                      <span className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded bg-amber-200/90 text-amber-950 text-[10px] font-siliguri font-bold">
+                                        <AlertTriangle className="w-2.5 h-2.5" />
+                                        সন্দেহজনক ডুপ্লিকেট
+                                      </span>
+                                    )}
+                                  </td>
                                 <td className="px-3.5 py-3 font-mono text-slate-600">
                                   {formatDate(item.date)}
                                 </td>
@@ -2221,8 +2421,9 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                                   </div>
                                 </td>
                               </tr>
-                            ))
-                          )}
+                            );
+                          });
+                          })()}
                         </tbody>
                         {filteredReportItems.length > 0 && (
                           <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-200">
@@ -2238,7 +2439,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                           </tfoot>
                         )}
                       </table>
-                    </div>
+                    </DualScrollTableWrapper>
                   </div>
                 </div>
               )}
@@ -2326,7 +2527,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                       </span>
                     </div>
 
-                    <div className="overflow-x-auto">
+                    <DualScrollTableWrapper minTableWidthClassName="[&_table]:min-w-[850px]">
                       <table className="w-full text-xs text-left border-collapse">
                         <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
                           <tr>
@@ -2389,7 +2590,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                           </tfoot>
                         )}
                       </table>
-                    </div>
+                    </DualScrollTableWrapper>
                   </div>
                 </div>
               )}
@@ -2448,7 +2649,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                       </span>
                     </div>
 
-                    <div className="overflow-x-auto">
+                    <DualScrollTableWrapper minTableWidthClassName="[&_table]:min-w-[850px]">
                       <table className="w-full text-xs text-left border-collapse">
                         <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
                           <tr>
@@ -2503,7 +2704,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                           </tfoot>
                         )}
                       </table>
-                    </div>
+                    </DualScrollTableWrapper>
                   </div>
                 </div>
               )}
@@ -2593,7 +2794,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                       </span>
                     </div>
 
-                    <div className="overflow-x-auto">
+                    <DualScrollTableWrapper minTableWidthClassName="[&_table]:min-w-[850px]">
                       <table className="w-full text-xs text-left border-collapse">
                         <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
                           <tr>
@@ -2648,7 +2849,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                           </tfoot>
                         )}
                       </table>
-                    </div>
+                    </DualScrollTableWrapper>
                   </div>
                 </div>
               )}
@@ -2709,7 +2910,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                       </span>
                     </div>
 
-                    <div className="overflow-x-auto">
+                    <DualScrollTableWrapper minTableWidthClassName="[&_table]:min-w-[850px]">
                       <table className="w-full text-xs text-left border-collapse">
                         <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
                           <tr>
@@ -2762,7 +2963,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                           </tfoot>
                         )}
                       </table>
-                    </div>
+                    </DualScrollTableWrapper>
                   </div>
                 </div>
               )}
@@ -2788,7 +2989,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                       </div>
                     </div>
 
-                    <div className="overflow-x-auto rounded-xl border border-slate-200">
+                    <DualScrollTableWrapper className="rounded-xl border border-slate-200 overflow-hidden" minTableWidthClassName="[&_table]:min-w-[850px]">
                       <table className="w-full text-xs text-left">
                         <thead className="bg-slate-50 text-slate-700 uppercase font-bold border-b border-slate-200 text-[11px]">
                           <tr>
@@ -2876,7 +3077,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                           </tfoot>
                         )}
                       </table>
-                    </div>
+                    </DualScrollTableWrapper>
                   </div>
                 </div>
               )}
@@ -2902,7 +3103,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                       </div>
                     </div>
 
-                    <div className="overflow-x-auto rounded-xl border border-slate-200">
+                    <DualScrollTableWrapper className="rounded-xl border border-slate-200 overflow-hidden" minTableWidthClassName="[&_table]:min-w-[850px]">
                       <table className="w-full text-xs text-left">
                         <thead className="bg-slate-50 text-slate-700 uppercase font-bold border-b border-slate-200 text-[11px]">
                           <tr>
@@ -2982,7 +3183,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                           </tfoot>
                         )}
                       </table>
-                    </div>
+                    </DualScrollTableWrapper>
                   </div>
                 </div>
               )}
@@ -3008,7 +3209,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                       </div>
                     </div>
 
-                    <div className="overflow-x-auto rounded-xl border border-slate-200">
+                    <DualScrollTableWrapper className="rounded-xl border border-slate-200 overflow-hidden" minTableWidthClassName="[&_table]:min-w-[900px]">
                       <table className="w-full text-xs text-left">
                         <thead className="bg-slate-50 text-slate-700 uppercase font-bold border-b border-slate-200 text-[11px]">
                           <tr>
@@ -3086,7 +3287,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                           </tfoot>
                         )}
                       </table>
-                    </div>
+                    </DualScrollTableWrapper>
                   </div>
                 </div>
               )}
@@ -3112,7 +3313,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                       </div>
                     </div>
 
-                    <div className="overflow-x-auto rounded-xl border border-slate-200">
+                    <DualScrollTableWrapper className="rounded-xl border border-slate-200 overflow-hidden" minTableWidthClassName="[&_table]:min-w-[900px]">
                       <table className="w-full text-xs text-left">
                         <thead className="bg-slate-50 text-slate-700 uppercase font-bold border-b border-slate-200 text-[11px]">
                           <tr>
@@ -3192,7 +3393,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                           </tfoot>
                         )}
                       </table>
-                    </div>
+                    </DualScrollTableWrapper>
                   </div>
                 </div>
               )}
@@ -3218,7 +3419,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                       </div>
                     </div>
 
-                    <div className="overflow-x-auto rounded-xl border border-slate-200">
+                    <DualScrollTableWrapper className="rounded-xl border border-slate-200 overflow-hidden" minTableWidthClassName="[&_table]:min-w-[900px]">
                       <table className="w-full text-xs text-left">
                         <thead className="bg-slate-50 text-slate-700 uppercase font-bold border-b border-slate-200 text-[11px]">
                           <tr>
@@ -3298,7 +3499,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                           </tfoot>
                         )}
                       </table>
-                    </div>
+                    </DualScrollTableWrapper>
                   </div>
                 </div>
               )}
@@ -3324,7 +3525,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                       </div>
                     </div>
 
-                    <div className="overflow-x-auto rounded-xl border border-slate-200">
+                    <DualScrollTableWrapper className="rounded-xl border border-slate-200 overflow-hidden" minTableWidthClassName="[&_table]:min-w-[850px]">
                       <table className="w-full text-xs text-left">
                         <thead className="bg-slate-50 text-slate-700 uppercase font-bold border-b border-slate-200 text-[11px]">
                           <tr>
@@ -3402,7 +3603,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                           </tfoot>
                         )}
                       </table>
-                    </div>
+                    </DualScrollTableWrapper>
                   </div>
                 </div>
               )}
@@ -3410,6 +3611,9 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
               {/* ==================== VIEW 12: 🔎 সমন্বিত বিস্তারিত বিশ্লেষণ (CROSS-DIMENSION ANALYSIS) ==================== */}
               {reportSubTab === 'analysis' && (
                 <div className="space-y-4">
+                  {/* AI Budget Guard, Forecast & Cost-Saving Advisor */}
+                  <AiBudgetGuardCard />
+
                   {/* Detailed Analysis High-level Metrics */}
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                     <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
@@ -4087,7 +4291,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
         isOpen={isReportPreviewOpen}
         onClose={() => setIsReportPreviewOpen(false)}
         reportTitle={activeReportModalConfig.title}
-        reportSubtitle={activeReportModalConfig.subtitle}
+        reportSubtitle={`${activeReportModalConfig.subtitle}${activeExpenseFilterNote}`}
         periodLabel={effectiveDates.labelBn}
         currentMosque={currentMosque}
         columns={activeReportModalConfig.columns}
@@ -4100,12 +4304,16 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
       {/* ==================== UNIFIED EXPENSE ENTRY MODAL (Phase E2) ==================== */}
       <UnifiedExpenseEntryModal
         isOpen={isUnifiedExpenseModalOpen}
-        onClose={() => setIsUnifiedExpenseModalOpen(false)}
+        onClose={() => {
+          setIsUnifiedExpenseModalOpen(false);
+          setUnifiedAiPrefill(null);
+        }}
         initialType={unifiedExpenseType}
         initialMainHeadId={unifiedMainHeadId}
         initialStaffId={unifiedStaffId}
         initialAssetId={unifiedAssetId}
         initialPropertyId={unifiedPropertyId}
+        initialAiPrefill={unifiedAiPrefill}
         accounts={accounts}
         accountHeads={accountHeads}
         staff={staff}
@@ -4118,6 +4326,29 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
           return await onAddExpense(data, options);
         }}
         onPrintVoucher={onPrintVoucher}
+      />
+
+      {/* ==================== AI MONTHLY PAYROLL ASSISTANT MODAL ==================== */}
+      <AiPayrollAssistantModal
+        isOpen={isPayrollAiModalOpen}
+        onClose={() => setIsPayrollAiModalOpen(false)}
+        onOpenStaffVoucherDraft={(prefill: PayrollVoucherPrefill) => {
+          setIsPayrollAiModalOpen(false);
+          handleOpenUnifiedExpense('STAFF_EXPENSE', {
+            headId: prefill.mainHeadId,
+            staffId: prefill.staffId,
+            aiPrefill: {
+              amount: prefill.amount,
+              mainHeadId: prefill.mainHeadId,
+              staffId: prefill.staffId,
+              salaryMonth: prefill.salaryMonth,
+              payeeName: prefill.payeeName,
+              payeePhone: prefill.payeePhone,
+              reference: prefill.reference,
+              description: prefill.description,
+            },
+          });
+        }}
       />
     </div>
   );

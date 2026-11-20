@@ -31,6 +31,7 @@ export interface ReportPrintDocumentProps {
   grouping?: string;
   level?: string;
   selectedHeadId?: string;
+  selectedSubHeadId?: string;
   selectedAccountId?: string;
   currentMosque: Mosque | null;
   currentUser?: User | null;
@@ -172,6 +173,7 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
   toDate,
   level = 'DETAILED',
   selectedHeadId = 'ALL',
+  selectedSubHeadId = 'ALL',
   selectedAccountId = 'ALL',
   currentMosque,
   currentUser,
@@ -192,13 +194,47 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
   auditLogs = [],
   transfers = [],
 }) => {
-  // Canonical Ledger Calculation (SAME DATASET RULE)
+  const isHeadOrSubHeadFiltered = selectedHeadId !== 'ALL' || selectedSubHeadId !== 'ALL';
+
+  // Head & Sub-head pre-filtered sets (preserving date history for canonical ledger & monthly summary)
+  const headFilteredIncomes = useMemo(() => {
+    if (!isHeadOrSubHeadFiltered) return incomes;
+    return incomes.filter((i) => {
+      const matchesHead = selectedHeadId === 'ALL' || i.mainHeadId === selectedHeadId;
+      const matchesSubHead = selectedSubHeadId === 'ALL' || i.subHeadId === selectedSubHeadId;
+      return matchesHead && matchesSubHead;
+    });
+  }, [incomes, isHeadOrSubHeadFiltered, selectedHeadId, selectedSubHeadId]);
+
+  const headFilteredExpenses = useMemo(() => {
+    if (!isHeadOrSubHeadFiltered) return expenses;
+    return expenses.filter((e) => {
+      const matchesHead = selectedHeadId === 'ALL' || e.mainHeadId === selectedHeadId;
+      const matchesSubHead = selectedSubHeadId === 'ALL' || e.subHeadId === selectedSubHeadId;
+      return matchesHead && matchesSubHead;
+    });
+  }, [expenses, isHeadOrSubHeadFiltered, selectedHeadId, selectedSubHeadId]);
+
+  // Human-readable active Head / Sub-head filter label for report header
+  const filterHeadLabel = useMemo(() => {
+    const mainHead = selectedHeadId !== 'ALL' ? accountHeads.find((h) => h.id === selectedHeadId) : undefined;
+    const subHead = selectedSubHeadId !== 'ALL' ? accountHeads.find((h) => h.id === selectedSubHeadId) : undefined;
+    if (mainHead && subHead) return `${mainHead.nameBn} › ${subHead.nameBn}`;
+    if (mainHead) return mainHead.nameBn;
+    if (subHead) {
+      const parentHead = subHead.parentId ? accountHeads.find((h) => h.id === subHead.parentId) : undefined;
+      return parentHead ? `${parentHead.nameBn} › ${subHead.nameBn}` : `উপখাত: ${subHead.nameBn}`;
+    }
+    return 'সকল খাত ও উপখাত';
+  }, [selectedHeadId, selectedSubHeadId, accountHeads]);
+
+  // Canonical Ledger Calculation (SAME DATASET RULE, respecting active head/sub-head filter)
   const canonicalLedger = useMemo(() => {
     return calculateAccountingLedger({
       accounts,
-      incomes,
-      expenses,
-      transfers: transfers || [],
+      incomes: headFilteredIncomes,
+      expenses: headFilteredExpenses,
+      transfers: isHeadOrSubHeadFiltered ? [] : transfers || [],
       accountFilter:
         selectedAccountId !== 'ALL'
           ? selectedAccountId
@@ -210,7 +246,7 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
       startDate: fromDate,
       endDate: toDate,
     });
-  }, [accounts, incomes, expenses, transfers, selectedAccountId, reportType, fromDate, toDate]);
+  }, [accounts, headFilteredIncomes, headFilteredExpenses, isHeadOrSubHeadFiltered, transfers, selectedAccountId, reportType, fromDate, toDate]);
 
   // Determine report meta & orientation
   const reportMeta = REPORT_TITLES[reportType] || {
@@ -223,36 +259,34 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
 
   // Filtered dataset calculations for head breakdowns (sorted chronologically ascending by date)
   const filteredIncomes = useMemo(() => {
-    return incomes
+    return headFilteredIncomes
       .filter((i) => {
         if (i.status !== 'APPROVED') return false;
         const matchesDate = i.date >= fromDate && i.date <= toDate;
-        const matchesHead = selectedHeadId === 'ALL' || i.mainHeadId === selectedHeadId;
         const matchesAccount = selectedAccountId === 'ALL' || i.accountId === selectedAccountId;
-        return matchesDate && matchesHead && matchesAccount;
+        return matchesDate && matchesAccount;
       })
       .sort((a, b) => {
         const diff = new Date(a.date).getTime() - new Date(b.date).getTime();
         if (diff !== 0) return diff;
         return (a.createdAt || a.voucherNumber || '').localeCompare(b.createdAt || b.voucherNumber || '');
       });
-  }, [incomes, fromDate, toDate, selectedHeadId, selectedAccountId]);
+  }, [headFilteredIncomes, fromDate, toDate, selectedAccountId]);
 
   const filteredExpenses = useMemo(() => {
-    return expenses
+    return headFilteredExpenses
       .filter((e) => {
         if (e.status !== 'APPROVED') return false;
         const matchesDate = e.date >= fromDate && e.date <= toDate;
-        const matchesHead = selectedHeadId === 'ALL' || e.mainHeadId === selectedHeadId;
         const matchesAccount = selectedAccountId === 'ALL' || e.accountId === selectedAccountId;
-        return matchesDate && matchesHead && matchesAccount;
+        return matchesDate && matchesAccount;
       })
       .sort((a, b) => {
         const diff = new Date(a.date).getTime() - new Date(b.date).getTime();
         if (diff !== 0) return diff;
         return (a.createdAt || a.voucherNumber || '').localeCompare(b.createdAt || b.voucherNumber || '');
       });
-  }, [expenses, fromDate, toDate, selectedHeadId, selectedAccountId]);
+  }, [headFilteredExpenses, fromDate, toDate, selectedAccountId]);
 
   const totalIncome = filteredIncomes.reduce((s, i) => s + (Number(i.amount) || 0), 0);
   const totalExpense = filteredExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
@@ -310,11 +344,21 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
     ];
     return months.map((m) => {
       const prefix = `${year}-${m.num}`;
-      const inc = incomes
-        .filter((i) => i.status === 'APPROVED' && (i.date || '').startsWith(prefix))
+      const inc = headFilteredIncomes
+        .filter(
+          (i) =>
+            i.status === 'APPROVED' &&
+            (i.date || '').startsWith(prefix) &&
+            (selectedAccountId === 'ALL' || i.accountId === selectedAccountId)
+        )
         .reduce((sum, i) => sum + (Number(i.amount) || 0), 0);
-      const exp = expenses
-        .filter((e) => e.status === 'APPROVED' && (e.date || '').startsWith(prefix))
+      const exp = headFilteredExpenses
+        .filter(
+          (e) =>
+            e.status === 'APPROVED' &&
+            (e.date || '').startsWith(prefix) &&
+            (selectedAccountId === 'ALL' || e.accountId === selectedAccountId)
+        )
         .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
       return {
         name: m.name,
@@ -323,7 +367,7 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
         surplus: inc - exp,
       };
     });
-  }, [incomes, expenses, fromDate]);
+  }, [headFilteredIncomes, headFilteredExpenses, selectedAccountId, fromDate]);
 
   // Report Document ID for audit tracking
   const reportRefNumber = `RPT-${(currentMosque?.code || 'ML').toUpperCase()}-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(Math.floor(1000 + Math.random() * 9000))}`;
@@ -373,7 +417,7 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
             <div>
               <span className="text-slate-600 font-medium">ফিল্টার অবস্থা: </span>
               <span className="font-bold text-slate-900">
-                {selectedHeadId === 'ALL' ? 'সকল খাত' : accountHeads.find((h) => h.id === selectedHeadId)?.nameBn || 'নির্দিষ্ট খাত'} |{' '}
+                {filterHeadLabel} |{' '}
                 {selectedAccountId === 'ALL' ? 'সকল ফান্ড ও অ্যাকাউন্ট' : accounts.find((a) => a.id === selectedAccountId)?.nameBn || 'নির্দিষ্ট ফান্ড'}
               </span>
             </div>
@@ -409,7 +453,8 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
             <div>
               <span className="text-slate-600 font-medium">ফিল্টার: </span>
               <span className="font-bold text-slate-900">
-                {selectedHeadId === 'ALL' ? 'সকল খাত' : accountHeads.find((h) => h.id === selectedHeadId)?.nameBn || 'নির্দিষ্ট খাত'}
+                {filterHeadLabel}
+                {selectedAccountId !== 'ALL' ? ` | ${accounts.find((a) => a.id === selectedAccountId)?.nameBn || 'নির্দিষ্ট ফান্ড'}` : ''}
               </span>
             </div>
           </div>
@@ -506,15 +551,32 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
                         <td colSpan={3} className="py-3 px-2 text-center text-slate-500 italic">কোনো আয়ের রেকর্ড নেই</td>
                       </tr>
                     ) : (
-                      Object.values(headWiseIncome).map((h: { id: string; name: string; amount: number; count: number; subHeads: Record<string, number> }) => (
-                        <tr key={h.id}>
-                          <td className="py-1.5 px-2 text-left font-medium text-slate-900 break-words">{h.name}</td>
-                          <td className="py-1.5 px-2 text-center text-slate-600">{h.count} টি</td>
-                          <td className="py-1.5 px-2 text-right font-bold text-slate-950 font-siliguri">
-                            ৳ {h.amount.toLocaleString('en-IN')}
-                          </td>
-                        </tr>
-                      ))
+                      Object.values(headWiseIncome).map((h: { id: string; name: string; amount: number; count: number; subHeads: Record<string, number> }) => {
+                        const subEntries = Object.entries(h.subHeads);
+                        return (
+                          <tr key={h.id}>
+                            <td className="py-1.5 px-2 text-left font-medium text-slate-900 break-words">
+                              <div>{h.name}</div>
+                              {subEntries.length > 0 && (
+                                <div className="mt-0.5 pl-2 border-l-2 border-emerald-200 space-y-0.5">
+                                  {subEntries.map(([subName, subAmt]) => (
+                                    <div key={subName} className="flex items-center justify-between gap-2 text-[10px] text-slate-600">
+                                      <span className="truncate">• {subName}</span>
+                                      <span className="font-mono font-semibold text-slate-700 whitespace-nowrap">
+                                        ৳ {subAmt.toLocaleString('en-IN')}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-1.5 px-2 text-center text-slate-600 align-top">{h.count} টি</td>
+                            <td className="py-1.5 px-2 text-right font-bold text-slate-950 font-siliguri align-top">
+                              ৳ {h.amount.toLocaleString('en-IN')}
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -540,15 +602,32 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
                         <td colSpan={3} className="py-3 px-2 text-center text-slate-500 italic">কোনো ব্যয়ের রেকর্ড নেই</td>
                       </tr>
                     ) : (
-                      Object.values(headWiseExpense).map((h: { id: string; name: string; amount: number; count: number; subHeads: Record<string, number> }) => (
-                        <tr key={h.id}>
-                          <td className="py-1.5 px-2 text-left font-medium text-slate-900 break-words">{h.name}</td>
-                          <td className="py-1.5 px-2 text-center text-slate-600">{h.count} টি</td>
-                          <td className="py-1.5 px-2 text-right font-bold text-slate-950 font-siliguri">
-                            ৳ {h.amount.toLocaleString('en-IN')}
-                          </td>
-                        </tr>
-                      ))
+                      Object.values(headWiseExpense).map((h: { id: string; name: string; amount: number; count: number; subHeads: Record<string, number> }) => {
+                        const subEntries = Object.entries(h.subHeads);
+                        return (
+                          <tr key={h.id}>
+                            <td className="py-1.5 px-2 text-left font-medium text-slate-900 break-words">
+                              <div>{h.name}</div>
+                              {subEntries.length > 0 && (
+                                <div className="mt-0.5 pl-2 border-l-2 border-rose-200 space-y-0.5">
+                                  {subEntries.map(([subName, subAmt]) => (
+                                    <div key={subName} className="flex items-center justify-between gap-2 text-[10px] text-slate-600">
+                                      <span className="truncate">• {subName}</span>
+                                      <span className="font-mono font-semibold text-slate-700 whitespace-nowrap">
+                                        ৳ {subAmt.toLocaleString('en-IN')}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-1.5 px-2 text-center text-slate-600 align-top">{h.count} টি</td>
+                            <td className="py-1.5 px-2 text-right font-bold text-slate-950 font-siliguri align-top">
+                              ৳ {h.amount.toLocaleString('en-IN')}
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -664,87 +743,117 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
       )}
 
       {/* --- B. DETAILED VOUCHERS / TRANSACTION LINE ITEMS --- */}
-      {(level === 'DETAILED' || reportType === 'INCOME_STATEMENT' || reportType === 'EXPENSE_STATEMENT' || reportType === 'INCOME_EXPENSE_COMBINED') && (
-        <div className="border border-slate-900 mb-4 overflow-hidden">
-          <div className="bg-slate-900 text-white px-3 py-1.5 font-siliguri font-bold text-xs flex justify-between">
-            <span>অনুমোদিত লেনদেন রেজিস্টার (Approved Vouchers Register)</span>
-            <span>মোট এন্ট্রি: {filteredIncomes.length + filteredExpenses.length} টি</span>
-          </div>
-          <table className="w-full text-xs font-baloo border-collapse" style={{ tableLayout: 'fixed', width: '100%' }}>
-            <thead className="bg-slate-100 border-b border-slate-900 text-slate-900 font-bold">
-              <tr>
-                <th className="py-2 px-2 text-center border-r border-slate-300" style={{ width: '6%' }}>ক্রমিক</th>
-                <th className="py-2 px-2 text-center border-r border-slate-300" style={{ width: '11%' }}>তারিখ</th>
-                <th className="py-2 px-2 text-center border-r border-slate-300" style={{ width: '12%' }}>ভাউচার নং</th>
-                <th className="py-2 px-2 text-center border-r border-slate-300" style={{ width: '8%' }}>ধরন</th>
-                <th className="py-2 px-2 text-left border-r border-slate-300" style={{ width: '22%' }}>খাত ও উপ-খাত</th>
-                <th className="py-2 px-2 text-left border-r border-slate-300" style={{ width: '15%' }}>দাতা / গ্রহীতা ও বিবরণ</th>
-                <th className="py-2 px-2 text-left border-r border-slate-300" style={{ width: '11%' }}>অ্যাকাউন্ট</th>
-                <th className="py-2 px-2 text-right whitespace-nowrap" style={{ width: '15%' }}>টাকা (৳)</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-300">
-              {filteredIncomes.map((i, idx) => (
-                <tr key={`inc-${i.id}`} className="hover:bg-slate-50">
-                  <td className="py-1.5 px-2 text-center border-r border-slate-200 text-slate-600 font-mono">{idx + 1}</td>
-                  <td className="py-1.5 px-2 text-center border-r border-slate-200 font-medium whitespace-nowrap">{formatDate(i.date)}</td>
-                  <td className="py-1.5 px-2 text-center border-r border-slate-200 font-bold text-slate-900">{i.voucherNumber}</td>
-                  <td className="py-1.5 px-2 text-center border-r border-slate-200 font-bold text-emerald-800">আয়</td>
-                  <td className="py-1.5 px-2 text-left border-r border-slate-200">
-                    <span className="font-bold text-slate-900 block">{i.mainHeadNameBn}</span>
-                    {i.subHeadNameBn && <span className="text-[10px] text-slate-600">({i.subHeadNameBn})</span>}
-                  </td>
-                  <td className="py-1.5 px-2 text-left border-r border-slate-200 break-words">
-                    <span className="font-semibold text-slate-900">{i.donorName || 'সাধারণ দানশীল'}</span>
-                    {i.description && <p className="text-[10px] text-slate-600">{i.description}</p>}
-                  </td>
-                  <td className="py-1.5 px-2 text-left border-r border-slate-200 text-slate-700">{i.accountName}</td>
-                  <td className="py-1.5 px-2 text-right font-siliguri font-bold text-slate-950 whitespace-nowrap">
-                    {i.amount.toLocaleString('en-IN')}
-                  </td>
-                </tr>
-              ))}
+      {(level === 'DETAILED' || reportType === 'INCOME_STATEMENT' || reportType === 'EXPENSE_STATEMENT' || reportType === 'INCOME_EXPENSE_COMBINED') && (() => {
+        const showIncomeRows = reportType !== 'EXPENSE_STATEMENT';
+        const showExpenseRows = reportType !== 'INCOME_STATEMENT';
+        const visibleIncomeCount = showIncomeRows ? filteredIncomes.length : 0;
+        const visibleExpenseCount = showExpenseRows ? filteredExpenses.length : 0;
+        const totalVisibleRows = visibleIncomeCount + visibleExpenseCount;
 
-              {filteredExpenses.map((e, idx) => (
-                <tr key={`exp-${e.id}`} className="hover:bg-slate-50">
-                  <td className="py-1.5 px-2 text-center border-r border-slate-200 text-slate-600 font-mono">
-                    {filteredIncomes.length + idx + 1}
-                  </td>
-                  <td className="py-1.5 px-2 text-center border-r border-slate-200 font-medium whitespace-nowrap">{formatDate(e.date)}</td>
-                  <td className="py-1.5 px-2 text-center border-r border-slate-200 font-bold text-slate-900">{e.voucherNumber}</td>
-                  <td className="py-1.5 px-2 text-center border-r border-slate-200 font-bold text-rose-800">ব্যয়</td>
-                  <td className="py-1.5 px-2 text-left border-r border-slate-200">
-                    <span className="font-bold text-slate-900 block">{e.mainHeadNameBn}</span>
-                    {e.subHeadNameBn && <span className="text-[10px] text-slate-600">({e.subHeadNameBn})</span>}
-                  </td>
-                  <td className="py-1.5 px-2 text-left border-r border-slate-200 break-words">
-                    <span className="font-semibold text-slate-900">{e.payeeName || 'ভেন্ডর/গ্রহীতা'}</span>
-                    {e.description && <p className="text-[10px] text-slate-600">{e.description}</p>}
-                  </td>
-                  <td className="py-1.5 px-2 text-left border-r border-slate-200 text-slate-700">{e.accountName}</td>
-                  <td className="py-1.5 px-2 text-right font-siliguri font-bold text-slate-950 whitespace-nowrap">
-                    {e.amount.toLocaleString('en-IN')}
-                  </td>
-                </tr>
-              ))}
-
-              {filteredIncomes.length === 0 && filteredExpenses.length === 0 && (
+        return (
+          <div className="border border-slate-900 mb-4 overflow-hidden">
+            <div className="bg-slate-900 text-white px-3 py-1.5 font-siliguri font-bold text-xs flex justify-between">
+              <span>
+                {reportType === 'INCOME_STATEMENT'
+                  ? 'অনুমোদিত আয় ভাউচার রেজিস্টার (Approved Income Register)'
+                  : reportType === 'EXPENSE_STATEMENT'
+                  ? 'অনুমোদিত ব্যয় ভাউচার রেজিস্টার (Approved Expense Register)'
+                  : 'অনুমোদিত লেনদেন রেজিস্টার (Approved Vouchers Register)'}
+              </span>
+              <span>মোট এন্ট্রি: {totalVisibleRows} টি</span>
+            </div>
+            <table className="w-full text-xs font-baloo border-collapse" style={{ tableLayout: 'fixed', width: '100%' }}>
+              <thead className="bg-slate-100 border-b border-slate-900 text-slate-900 font-bold">
                 <tr>
-                  <td colSpan={8} className="py-6 text-center text-slate-500 italic">
-                    নির্বাচিত সময়সীমায় কোনো অনুমোদিত লেনদেন পাওয়া যায়নি।
+                  <th className="py-2 px-2 text-center border-r border-slate-300" style={{ width: '6%' }}>ক্রমিক</th>
+                  <th className="py-2 px-2 text-center border-r border-slate-300" style={{ width: '11%' }}>তারিখ</th>
+                  <th className="py-2 px-2 text-center border-r border-slate-300" style={{ width: '12%' }}>ভাউচার নং</th>
+                  <th className="py-2 px-2 text-center border-r border-slate-300" style={{ width: '8%' }}>ধরন</th>
+                  <th className="py-2 px-2 text-left border-r border-slate-300" style={{ width: '22%' }}>খাত ও উপ-খাত</th>
+                  <th className="py-2 px-2 text-left border-r border-slate-300" style={{ width: '15%' }}>দাতা / গ্রহীতা ও বিবরণ</th>
+                  <th className="py-2 px-2 text-left border-r border-slate-300" style={{ width: '11%' }}>অ্যাকাউন্ট</th>
+                  <th className="py-2 px-2 text-right whitespace-nowrap" style={{ width: '15%' }}>টাকা (৳)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-300">
+                {showIncomeRows &&
+                  filteredIncomes.map((i, idx) => (
+                    <tr key={`inc-${i.id}`} className="hover:bg-slate-50">
+                      <td className="py-1.5 px-2 text-center border-r border-slate-200 text-slate-600 font-mono">{idx + 1}</td>
+                      <td className="py-1.5 px-2 text-center border-r border-slate-200 font-medium whitespace-nowrap">{formatDate(i.date)}</td>
+                      <td className="py-1.5 px-2 text-center border-r border-slate-200 font-bold text-slate-900">{i.voucherNumber}</td>
+                      <td className="py-1.5 px-2 text-center border-r border-slate-200 font-bold text-emerald-800">আয়</td>
+                      <td className="py-1.5 px-2 text-left border-r border-slate-200">
+                        <span className="font-bold text-slate-900 block">{i.mainHeadNameBn}</span>
+                        {i.subHeadNameBn && <span className="text-[10px] text-slate-600">({i.subHeadNameBn})</span>}
+                      </td>
+                      <td className="py-1.5 px-2 text-left border-r border-slate-200 break-words">
+                        <span className="font-semibold text-slate-900">{i.donorName || 'সাধারণ দানশীল'}</span>
+                        {i.description && <p className="text-[10px] text-slate-600">{i.description}</p>}
+                      </td>
+                      <td className="py-1.5 px-2 text-left border-r border-slate-200 text-slate-700">{i.accountName}</td>
+                      <td className="py-1.5 px-2 text-right font-siliguri font-bold text-slate-950 whitespace-nowrap">
+                        {i.amount.toLocaleString('en-IN')}
+                      </td>
+                    </tr>
+                  ))}
+
+                {showExpenseRows &&
+                  filteredExpenses.map((e, idx) => (
+                    <tr key={`exp-${e.id}`} className="hover:bg-slate-50">
+                      <td className="py-1.5 px-2 text-center border-r border-slate-200 text-slate-600 font-mono">
+                        {visibleIncomeCount + idx + 1}
+                      </td>
+                      <td className="py-1.5 px-2 text-center border-r border-slate-200 font-medium whitespace-nowrap">{formatDate(e.date)}</td>
+                      <td className="py-1.5 px-2 text-center border-r border-slate-200 font-bold text-slate-900">{e.voucherNumber}</td>
+                      <td className="py-1.5 px-2 text-center border-r border-slate-200 font-bold text-rose-800">ব্যয়</td>
+                      <td className="py-1.5 px-2 text-left border-r border-slate-200">
+                        <span className="font-bold text-slate-900 block">{e.mainHeadNameBn}</span>
+                        {e.subHeadNameBn && <span className="text-[10px] text-slate-600">({e.subHeadNameBn})</span>}
+                      </td>
+                      <td className="py-1.5 px-2 text-left border-r border-slate-200 break-words">
+                        <span className="font-semibold text-slate-900">{e.payeeName || 'ভেন্ডর/গ্রহীতা'}</span>
+                        {e.description && <p className="text-[10px] text-slate-600">{e.description}</p>}
+                      </td>
+                      <td className="py-1.5 px-2 text-left border-r border-slate-200 text-slate-700">{e.accountName}</td>
+                      <td className="py-1.5 px-2 text-right font-siliguri font-bold text-slate-950 whitespace-nowrap">
+                        {e.amount.toLocaleString('en-IN')}
+                      </td>
+                    </tr>
+                  ))}
+
+                {totalVisibleRows === 0 && (
+                  <tr>
+                    <td colSpan={8} className="py-6 text-center text-slate-500 italic">
+                      নির্বাচিত সময়সীমা ও খাত/উপখাত ফিল্টারে কোনো অনুমোদিত লেনদেন পাওয়া যায়নি।
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+              <tfoot className="bg-slate-100 border-t-2 border-slate-900 font-siliguri font-bold text-xs text-slate-950">
+                <tr>
+                  <td colSpan={7} className="py-2 px-3 text-right">
+                    {reportType === 'INCOME_STATEMENT'
+                      ? 'সর্বমোট অনুমোদিত আয়:'
+                      : reportType === 'EXPENSE_STATEMENT'
+                      ? 'সর্বমোট অনুমোদিত ব্যয়:'
+                      : 'সর্বমোট আয় ও ব্যয়ের নিট ব্যালেন্স:'}
+                  </td>
+                  <td className="py-2 px-2 text-right font-bold">
+                    ৳{' '}
+                    {(reportType === 'INCOME_STATEMENT'
+                      ? totalIncome
+                      : reportType === 'EXPENSE_STATEMENT'
+                      ? totalExpense
+                      : netSurplus
+                    ).toLocaleString('en-IN')}
                   </td>
                 </tr>
-              )}
-            </tbody>
-            <tfoot className="bg-slate-100 border-t-2 border-slate-900 font-siliguri font-bold text-xs text-slate-950">
-              <tr>
-                <td colSpan={7} className="py-2 px-3 text-right">সর্বমোট আয় ও ব্যয়ের নিট ব্যালেন্স:</td>
-                <td className="py-2 px-2 text-right font-bold">৳ {netSurplus.toLocaleString('en-IN')}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      )}
+              </tfoot>
+            </table>
+          </div>
+        );
+      })()}
 
       {/* --- C. CASHBOOK & BANKBOOK (LANDSCAPE WITH CANONICAL CHAIN) --- */}
       {(reportType === 'CASHBOOK' || reportType === 'BANKBOOK' || reportType === 'CASH_BANK_COMBINED') && (
@@ -1068,7 +1177,10 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
                   <td className="py-2 px-2 text-center border-r border-slate-200 font-medium whitespace-nowrap">{formatDate(i.date)}</td>
                   <td className="py-2 px-2 text-center border-r border-slate-200 font-bold text-slate-900">{i.voucherNumber}</td>
                   <td className="py-2 px-2 text-left border-r border-slate-200 font-bold text-slate-900">{i.donorName || 'সাধারণ শুভাকাঙ্ক্ষী'}</td>
-                  <td className="py-2 px-2 text-left border-r border-slate-200">{i.mainHeadNameBn}</td>
+                  <td className="py-2 px-2 text-left border-r border-slate-200">
+                    <span className="font-semibold text-slate-900 block">{i.mainHeadNameBn}</span>
+                    {i.subHeadNameBn && <span className="text-[10px] text-slate-600">({i.subHeadNameBn})</span>}
+                  </td>
                   <td className="py-2 px-2 text-left border-r border-slate-200 text-slate-700">{i.accountName}</td>
                   <td className="py-2 px-2 text-right font-siliguri font-bold text-slate-950">
                     ৳ {i.amount.toLocaleString('en-IN')}

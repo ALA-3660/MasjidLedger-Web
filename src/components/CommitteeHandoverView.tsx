@@ -21,11 +21,13 @@ import {
   Layers,
   Plus,
   Trash2,
+  Sparkles,
 } from 'lucide-react';
 import { CommitteeTerm, CommitteeMember, Mosque, FinancialAccount } from '../types';
 import { Language, translations, formatDate } from '../lib/i18n';
 import { toBanglaNumber } from './CommitteeView';
 import { printElement } from '../lib/printUtils';
+import { AiHandoverProtocolPanel } from './committee/AiHandoverProtocolPanel';
 
 interface CommitteeHandoverViewProps {
   terms: CommitteeTerm[];
@@ -62,7 +64,7 @@ export const CommitteeHandoverView: React.FC<CommitteeHandoverViewProps> = ({
   const [outgoingTermId, setOutgoingTermId] = useState<string>(previousTerms[0]?.id || '');
   const [incomingTermId, setIncomingTermId] = useState<string>(activeTerm?.id || '');
   const [handoverDate, setHandoverDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [activeTab, setActiveTab] = useState<'checklist' | 'certificate' | 'history'>('checklist');
+  const [activeTab, setActiveTab] = useState<'checklist' | 'certificate' | 'ai-report' | 'history'>('checklist');
 
   // Handover items checklist
   const [checkItems, setCheckItems] = useState<HandoverCheckItem[]>([
@@ -161,7 +163,18 @@ export const CommitteeHandoverView: React.FC<CommitteeHandoverViewProps> = ({
             </p>
           </div>
 
-          <div className="flex items-center space-x-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              onClick={() => setActiveTab('ai-report')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'ai-report'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 inline mr-1" />
+              <span>{isBn ? 'AI হস্তান্তর প্রতিবেদন' : 'AI Handover Report'}</span>
+            </button>
             <button
               onClick={() => setActiveTab('checklist')}
               className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
@@ -236,6 +249,15 @@ export const CommitteeHandoverView: React.FC<CommitteeHandoverViewProps> = ({
           </div>
         </div>
       </div>
+
+      {activeTab === 'ai-report' && (
+        <AiHandoverProtocolPanel
+          mosque={mosque}
+          outgoingTermId={outgoingTermId}
+          incomingTermId={incomingTermId}
+          handoverDate={handoverDate}
+        />
+      )}
 
       {activeTab === 'checklist' && (
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">

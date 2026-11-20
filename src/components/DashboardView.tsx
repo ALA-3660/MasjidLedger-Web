@@ -48,6 +48,7 @@ import { Language, translations, formatCurrency, formatDate } from '../lib/i18n'
 import { NavTab } from './Sidebar';
 import { hasPermission } from '../lib/permissions';
 import { FloatingFinancialActions } from './FloatingFinancialActions';
+import { AiIncomeInsightsCard } from './income/AiIncomeInsightsCard';
 
 export interface DashboardViewProps {
   stats?: DashboardStats | null;
@@ -1195,6 +1196,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* ========================================================================= */}
+      {/* 5B. AI FINANCIAL INSIGHTS & NEXT MONTH INCOME FORECAST                    */}
+      {/* ========================================================================= */}
+      <AiIncomeInsightsCard compact />
 
       {/* ========================================================================= */}
       {/* 6. MONTHLY INCOME VS EXPENSE & AI AUDITOR INSIGHT */}

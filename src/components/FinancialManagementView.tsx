@@ -38,6 +38,7 @@ import { OpeningBalanceView } from './OpeningBalanceView';
 import { CashBookView } from './CashBookView';
 import { BankBookView } from './BankBookView';
 import { NavTab } from './Sidebar';
+import { AiBalanceGuardianAlert } from './financial/AiBalanceGuardianAlert';
 
 export type FinancialSubModule = 'dailyLedger' | 'openingBalance' | 'cashbook' | 'bank';
 
@@ -333,11 +334,19 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           </div>
           <div className="pt-1.5 border-t border-slate-200 flex items-center justify-between font-bold text-slate-900">
             <span>সর্বমোট তহবিল:</span>
-            <span className="font-mono text-blue-700">
+            <span className={`font-mono ${grandTotalFunds < 0 ? 'text-rose-700' : 'text-blue-700'}`}>
               ৳ {grandTotalFunds.toLocaleString('en-IN')}
             </span>
           </div>
         </div>
+
+        {/* Automatic AI Negative Cash / Opening Balance Guardian Alert */}
+        <AiBalanceGuardianAlert
+          compact
+          accounts={accounts}
+          onNavigateOpeningBalance={() => handleSelectModule('openingBalance')}
+          onNavigateIncome={onNavigateTab ? () => onNavigateTab('income') : undefined}
+        />
       </div>
     </div>
   );

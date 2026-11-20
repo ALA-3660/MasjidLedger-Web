@@ -32,11 +32,15 @@ export class ErrorBoundary extends (React.Component as any) {
     window.location.reload();
   };
 
-  handleResetCache = () => {
+  handleResetCache = async () => {
     try {
       localStorage.removeItem('ml_token');
       localStorage.removeItem('ml_user_id');
       localStorage.removeItem('ml_mosque_id');
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
     } catch {
       // ignore
     }

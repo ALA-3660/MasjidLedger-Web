@@ -1,6 +1,7 @@
 import React from 'react';
 import { Calendar, Filter, RotateCcw, Printer, FileText, Download, Clock } from 'lucide-react';
 import { DateFilterState, ReportDateFilterMode, QuickDateFilter } from '../lib/reportingEngine';
+import { SearchableSelect } from './common/SearchableSelect';
 
 interface ReportFilterBarProps {
   filterState: DateFilterState;
@@ -9,9 +10,12 @@ interface ReportFilterBarProps {
   onStatusFilterChange?: (status: string) => void;
   headFilter?: string;
   onHeadFilterChange?: (headId: string) => void;
+  subHeadFilter?: string;
+  onSubHeadFilterChange?: (subHeadId: string) => void;
   accountFilter?: string;
   onAccountFilterChange?: (accId: string) => void;
   headsList?: { id: string; nameBn: string }[];
+  subHeadsList?: { id: string; nameBn: string; parentId?: string | null; parentNameBn?: string }[];
   accountsList?: { id: string; nameBn: string }[];
   onPrint?: () => void;
   onPdf?: () => void;
@@ -28,9 +32,12 @@ export const ReportFilterBar: React.FC<ReportFilterBarProps> = ({
   onStatusFilterChange,
   headFilter,
   onHeadFilterChange,
+  subHeadFilter,
+  onSubHeadFilterChange,
   accountFilter,
   onAccountFilterChange,
   headsList = [],
+  subHeadsList = [],
   accountsList = [],
   onPrint,
   onPdf,
@@ -65,6 +72,7 @@ export const ReportFilterBar: React.FC<ReportFilterBarProps> = ({
     });
     if (onStatusFilterChange) onStatusFilterChange('ALL');
     if (onHeadFilterChange) onHeadFilterChange('ALL');
+    if (onSubHeadFilterChange) onSubHeadFilterChange('ALL');
     if (onAccountFilterChange) onAccountFilterChange('ALL');
   };
 
@@ -263,19 +271,73 @@ export const ReportFilterBar: React.FC<ReportFilterBarProps> = ({
           </div>
         )}
 
-        {/* Optional Account Head Filter */}
+        {/* Optional Account Head Filter (Searchable) */}
         {onHeadFilterChange && headsList.length > 0 && (
-          <select
-            value={headFilter || 'ALL'}
-            onChange={(e) => onHeadFilterChange(e.target.value)}
-            className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-hidden cursor-pointer"
-          >
-            <option value="ALL">সকল খাত (All Heads)</option>
-            {headsList.map((h) => (
-              <option key={h.id} value={h.id}>{h.nameBn}</option>
-            ))}
-          </select>
+          <div className="min-w-[185px] max-w-[230px]">
+            <SearchableSelect
+              value={headFilter || 'ALL'}
+              clearValue="ALL"
+              searchPlaceholder="প্রধান খাত লিখে খুঁজুন..."
+              emptyText="কোনো প্রধান খাত পাওয়া যায়নি"
+              className="font-bold"
+              onChange={(nextHead) => {
+                onHeadFilterChange(nextHead);
+                if (onSubHeadFilterChange && subHeadFilter && subHeadFilter !== 'ALL') {
+                  const currentSub = subHeadsList.find((sh) => sh.id === subHeadFilter);
+                  if (nextHead !== 'ALL' && currentSub && currentSub.parentId !== nextHead) {
+                    onSubHeadFilterChange('ALL');
+                  }
+                }
+              }}
+              options={[
+                { value: 'ALL', label: 'সকল প্রধান খাত (All Heads)' },
+                ...headsList.map((h) => ({
+                  value: h.id,
+                  label: h.nameBn,
+                })),
+              ]}
+            />
+          </div>
         )}
+
+        {/* Optional Sub-Head Filter (Searchable) */}
+        {onSubHeadFilterChange && subHeadsList.length > 0 && (() => {
+          const visibleSubHeads =
+            headFilter && headFilter !== 'ALL'
+              ? subHeadsList.filter((sh) => sh.parentId === headFilter)
+              : subHeadsList;
+          return (
+            <div className="min-w-[195px] max-w-[245px]">
+              <SearchableSelect
+                value={subHeadFilter || 'ALL'}
+                clearValue="ALL"
+                searchPlaceholder="উপখাত লিখে খুঁজুন..."
+                emptyText="কোনো উপখাত পাওয়া যায়নি"
+                title="উপখাত অনুযায়ী ফিল্টার করুন"
+                className="font-bold"
+                onChange={(val) => onSubHeadFilterChange(val)}
+                options={[
+                  {
+                    value: 'ALL',
+                    label:
+                      headFilter && headFilter !== 'ALL'
+                        ? 'এই খাতের সকল উপখাত'
+                        : 'সকল উপখাত (All Sub-heads)',
+                  },
+                  ...visibleSubHeads.map((sh) => ({
+                    value: sh.id,
+                    label: sh.nameBn,
+                    subLabel:
+                      (!headFilter || headFilter === 'ALL') && sh.parentNameBn
+                        ? `প্রধান খাত: ${sh.parentNameBn}`
+                        : undefined,
+                    searchText: sh.parentNameBn || '',
+                  })),
+                ]}
+              />
+            </div>
+          );
+        })()}
 
         {/* Optional Account Filter */}
         {onAccountFilterChange && accountsList.length > 0 && (

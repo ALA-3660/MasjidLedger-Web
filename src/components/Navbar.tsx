@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Mosque, User } from '../types';
 import { Language, translations } from '../lib/i18n';
+import { PWAInstallButton } from './common/PWAInstallButton';
 
 interface NavbarProps {
   currentMosque?: Mosque | null;
@@ -154,15 +155,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           </div>
 
-          {/* Center: Mosque Selector & Android Sync Status */}
+          {/* Center: Mosque Selector */}
           <div className="hidden md:flex items-center space-x-3">
-            <div className="flex bg-white/10 backdrop-blur-xs rounded-full px-3.5 py-1.5 items-center space-x-2 border border-white/20 font-baloo shadow-2xs">
-              <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
-              <span className="text-xs font-semibold text-emerald-50 font-baloo">
-                {language === 'bn' ? 'অ্যান্ড্রয়েড সিঙ্ক সক্রিয়' : 'Android Sync Active'}
-              </span>
-            </div>
-
             {currentUser?.role === 'SUPER_ADMIN' && mosquesList.length > 1 && (
               <div className="flex items-center space-x-2 bg-white/10 border border-white/20 px-3 py-1.5 rounded-lg text-xs font-baloo">
                 <ShieldCheck className="w-4 h-4 text-amber-300" />
@@ -225,6 +219,9 @@ export const Navbar: React.FC<NavbarProps> = ({
               <RefreshCw className={`w-3.5 h-3.5 text-slate-900 ${isRefreshing ? 'animate-spin' : ''}`} />
               <span className="font-siliguri">{language === 'bn' ? 'রিফ্রেশ' : 'Refresh'}</span>
             </button>
+
+            {/* PWA In-App Install Button (auto-hides in standalone mode) */}
+            <PWAInstallButton variant="navbar" language={language} />
 
             {/* AI Advisor Button */}
             <button

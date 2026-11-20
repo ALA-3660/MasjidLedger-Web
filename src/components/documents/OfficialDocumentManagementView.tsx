@@ -76,6 +76,7 @@ export const OfficialDocumentManagementView: React.FC<OfficialDocumentManagement
 
   // Modals state
   const [showFormModal, setShowFormModal] = useState(false);
+  const [openAiOnLaunch, setOpenAiOnLaunch] = useState(false);
   const [documentToEdit, setDocumentToEdit] = useState<OfficialDocument | null>(null);
   const [createDocType, setCreateDocType] = useState<OfficialDocumentType>('NOTICE');
   const [previewDoc, setPreviewDoc] = useState<OfficialDocument | null>(null);
@@ -100,15 +101,17 @@ export const OfficialDocumentManagementView: React.FC<OfficialDocumentManagement
     loadData();
   }, []);
 
-  const handleOpenCreateModal = (type: OfficialDocumentType = 'NOTICE') => {
+  const handleOpenCreateModal = (type: OfficialDocumentType = 'NOTICE', withAi = false) => {
     setDocumentToEdit(null);
     setCreateDocType(type);
+    setOpenAiOnLaunch(withAi);
     setShowFormModal(true);
   };
 
   const handleOpenEditModal = (doc: OfficialDocument) => {
     setDocumentToEdit(doc);
     setCreateDocType(doc.docType);
+    setOpenAiOnLaunch(false);
     setShowFormModal(true);
   };
 
@@ -222,18 +225,29 @@ export const OfficialDocumentManagementView: React.FC<OfficialDocumentManagement
               </button>
             </div>
 
-            {/* Quick Action Button */}
-            <div className="p-2.5 bg-gradient-to-br from-blue-50 to-indigo-50/50 rounded-2xl border border-blue-200/60">
+            {/* Quick Action Buttons */}
+            <div className="p-2.5 bg-gradient-to-br from-emerald-50 to-teal-50/60 rounded-2xl border border-emerald-200/70 space-y-2">
               <button
                 type="button"
                 onClick={() => {
-                  handleOpenCreateModal('NOTICE');
+                  handleOpenCreateModal('NOTICE', true);
                   setIsMobileOpen(false);
                 }}
-                className="w-full px-3 py-2 bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white rounded-xl text-xs font-bold shadow-xs flex items-center justify-center space-x-1.5 transition-all cursor-pointer active:scale-95"
+                className="w-full px-3 py-2.5 bg-gradient-to-r from-[#064e3b] to-[#0f766e] hover:from-[#065f46] hover:to-[#0d9488] text-white rounded-xl text-xs font-bold shadow-xs flex items-center justify-center space-x-1.5 transition-all cursor-pointer active:scale-95"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span>AI দিয়ে লিখুন</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  handleOpenCreateModal('NOTICE', false);
+                  setIsMobileOpen(false);
+                }}
+                className="w-full px-3 py-2 bg-white hover:bg-slate-50 text-emerald-900 border border-emerald-200 rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 transition-all cursor-pointer active:scale-95"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>+ নতুন দাপ্তরিক নথি</span>
+                <span>নতুন দাপ্তরিক নথি</span>
               </button>
             </div>
 
@@ -495,10 +509,14 @@ export const OfficialDocumentManagementView: React.FC<OfficialDocumentManagement
       {/* Form Modal (Create / Edit) */}
       <OfficialDocumentFormModal
         isOpen={showFormModal}
-        onClose={() => setShowFormModal(false)}
+        onClose={() => {
+          setShowFormModal(false);
+          setOpenAiOnLaunch(false);
+        }}
         onSave={handleSaveDocument}
         documentToEdit={documentToEdit}
         initialDocType={createDocType}
+        initialOpenAi={openAiOnLaunch}
         mosque={mosque}
         committeeTerms={committeeTerms}
         committeeMeetings={committeeMeetings}

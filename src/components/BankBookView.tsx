@@ -52,6 +52,9 @@ import {
 } from '../lib/accountingLedgerService';
 import { A4ReportPreviewModal } from './A4ReportPreviewModal';
 import { FinancialAccountModal } from './FinancialAccountModal';
+import { AiBankReconciliationPanel } from './financial/AiBankReconciliationPanel';
+import { AiSmartTransactionSearchBar } from './financial/AiSmartTransactionSearchBar';
+import { AiExecutiveSummaryPanel } from './financial/AiExecutiveSummaryPanel';
 
 interface BankBookViewProps {
   accounts: FinancialAccount[];
@@ -93,6 +96,7 @@ export const BankBookView: React.FC<BankBookViewProps> = ({
   onSubTabChange,
 }) => {
   const [activeSubItem, setActiveSubItem] = useState<string>(forcedSubTab || 'BANK_LEDGER');
+  const [aiExecutiveSummary, setAiExecutiveSummary] = useState('');
 
   useEffect(() => {
     if (forcedSubTab) {
@@ -650,6 +654,12 @@ export const BankBookView: React.FC<BankBookViewProps> = ({
           ========================================================================== */}
           {activeSubItem === 'BANK_LEDGER' && (
             <>
+              {/* AI Bank & MFS Statement Reconciliation Quick Bar */}
+              <AiBankReconciliationPanel
+                accounts={accounts}
+                defaultAccountId={selectedAccountId !== 'BANK' ? selectedAccountId : undefined}
+              />
+
               {/* Filter Bar */}
               <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3.5">
                 <div className="flex flex-wrap items-center justify-between gap-2.5">
@@ -1743,6 +1753,12 @@ export const BankBookView: React.FC<BankBookViewProps> = ({
                 <span>ব্যাংক লেনদেন অনুসন্ধান</span>
               </h2>
 
+              {/* Natural Bengali AI Smart Search Bar */}
+              <AiSmartTransactionSearchBar
+                scope="BANK"
+                accountId={selectedAccountId !== 'BANK' ? selectedAccountId : undefined}
+              />
+
               <div className="relative">
                 <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
                 <input
@@ -1809,6 +1825,9 @@ export const BankBookView: React.FC<BankBookViewProps> = ({
                   সিস্টেমের লেজার ব্যালেন্সের সাথে ব্যাংকের মূল স্টেটমেন্টের ব্যালেন্স সমন্বয় ও অমিল যাচাই
                 </p>
               </div>
+
+              {/* AI Bank & MFS Statement Reconciliation Panel */}
+              <AiBankReconciliationPanel accounts={accounts} defaultAccountId={reconAccountId} />
 
               {/* Form Card */}
               <div className="border border-slate-200 rounded-xl p-5 bg-slate-50/50 space-y-4">
@@ -2036,6 +2055,23 @@ export const BankBookView: React.FC<BankBookViewProps> = ({
                 </div>
               </div>
 
+              {/* AI Print-Ready Executive Summary */}
+              <AiExecutiveSummaryPanel
+                ledgerType="BANK_LEDGER"
+                periodLabel={`${formatDate(startDate)} হতে ${formatDate(endDate)}`}
+                startDate={startDate}
+                endDate={endDate}
+                openingBalance={ledgerResult.openingBalance}
+                totalInflow={ledgerResult.totalDebit}
+                totalOutflow={ledgerResult.totalCredit}
+                closingBalance={ledgerResult.closingBalance}
+                transactionCount={ledgerResult.displayEntries.length}
+                accountScopeLabel={activeAccountObj?.nameBn || 'সকল ব্যাংক ও এমএফএস হিসাব'}
+                summaryText={aiExecutiveSummary}
+                onSummaryChange={setAiExecutiveSummary}
+                onOpenPrintModal={() => setIsPrintModalOpen(true)}
+              />
+
               {/* 1. Daily Table */}
               {summaryTab === 'DAILY' && (
                 <div className="border border-slate-200 rounded-xl overflow-hidden">
@@ -2176,6 +2212,9 @@ export const BankBookView: React.FC<BankBookViewProps> = ({
               <p className="text-xs text-slate-500">
                 ব্যাংক থেকে ডাউনলোডকৃত ই-স্টেটমেন্ট (.CSV বা .XLSX) আপলোড করে স্বয়ংক্রিয় খসড়া মিলানোর সুবিধা
               </p>
+
+              {/* AI Bank & MFS Statement Image / PDF / Text Reconciliation */}
+              <AiBankReconciliationPanel accounts={accounts} defaultAccountId={reconAccountId} />
 
               <div className="border-2 border-dashed border-slate-300 rounded-2xl p-8 text-center space-y-3 bg-slate-50/50 hover:bg-slate-50 transition-colors">
                 <div className="w-12 h-12 rounded-full bg-indigo-50 text-indigo-600 mx-auto flex items-center justify-center">
@@ -2396,6 +2435,7 @@ export const BankBookView: React.FC<BankBookViewProps> = ({
               balance: e.runningBalance.toLocaleString('en-IN'),
             })),
           ]}
+          executiveSummaryNote={aiExecutiveSummary || undefined}
         />
       )}
     </div>

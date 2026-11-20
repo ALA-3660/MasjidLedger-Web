@@ -10,18 +10,36 @@ export interface JumaDisplayInfo {
   description: string;
 }
 
-export function getJumaDisplayDetails(item: any, language?: Language | string): JumaDisplayInfo {
+export function getJumaDisplayDetails(
+  item: any,
+  language?: Language | string,
+  type?: 'INCOME' | 'EXPENSE' | 'DONATION'
+): JumaDisplayInfo {
   const reference = String(item?.reference || '');
   const description = String(item?.description || '');
   const donorName = String(item?.donorName || '');
+  const mainHeadName = String(item?.mainHeadNameBn || '');
+  const subHeadName = String(item?.subHeadNameBn || '');
+  const voucherNo = String(item?.voucherNumber || '').toUpperCase();
   const date = String(item?.date || '');
   const lang: Language = language === 'en' ? 'en' : 'bn';
 
+  const isExpense =
+    type === 'EXPENSE' ||
+    voucherNo.startsWith('EXP-') ||
+    (Boolean(item && typeof item === 'object' && 'payeeName' in item) && !('donorName' in item));
+
   const isJuma =
-    reference.includes('জুমা') ||
-    description.includes('জুমা') ||
-    donorName.includes('জুমা') ||
-    item?.category === 'JUMA';
+    !isExpense &&
+    (item?.category === 'JUMA' ||
+      reference.toUpperCase().startsWith('JUMA') ||
+      reference.toUpperCase().startsWith('JUM-') ||
+      mainHeadName.includes('জুমা') ||
+      subHeadName.includes('জুমা') ||
+      donorName.includes('জুমা') ||
+      reference.includes('জুমা') ||
+      (description.includes('জুমা') &&
+        (!mainHeadName || mainHeadName.includes('জুমা') || mainHeadName.includes('দান'))));
 
   const dateFormatted = date ? formatDate(date, lang) : '';
   const title = `জুমার কালেকশন — ${dateFormatted}`;

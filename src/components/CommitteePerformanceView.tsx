@@ -46,6 +46,7 @@ import {
 import { Language, translations, formatDate } from '../lib/i18n';
 import { toBanglaNumber } from './CommitteeView';
 import { PerformanceReportPrint } from './PerformanceReportPrint';
+import { AiMemberPerformancePanel } from './committee/AiMemberPerformancePanel';
 
 interface CommitteePerformanceViewProps {
   terms: CommitteeTerm[];
@@ -514,6 +515,9 @@ export const CommitteePerformanceView: React.FC<CommitteePerformanceViewProps> =
       {/* SUBTAB 1: PERFORMANCE MATRIX & SUMMARY */}
       {subTab === 'matrix' && (
         <div className="space-y-6">
+          {/* AI Member Performance Insights Panel */}
+          <AiMemberPerformancePanel termId={selectedTermId} mosque={mosque} />
+
           {/* Executive Stats Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Card 1: Average Score */}

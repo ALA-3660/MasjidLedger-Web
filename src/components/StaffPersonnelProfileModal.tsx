@@ -43,6 +43,7 @@ import {
   Staff,
   StaffPayment,
   FinancialAccount,
+  Mosque,
   StaffLeaveRecord,
   StaffAdvanceRecord,
   StaffAttendanceRecord,
@@ -54,14 +55,18 @@ import {
 } from '../types';
 import { Language, translations, formatCurrency, formatDate } from '../lib/i18n';
 import { printElement } from '../lib/printUtils';
+import { AiStaffDocumentModal } from './staff/AiStaffDocumentModal';
 
 interface StaffPersonnelProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
   staff: Staff | null;
-  payments: StaffPayment[];
+  payments?: StaffPayment[];
+  staffPayments?: StaffPayment[];
   accounts?: FinancialAccount[];
+  currentMosque?: Mosque | null;
   onOpenPayModal?: (staffId: string) => void;
+  onPaySalary?: (staffId: string) => void;
   onEditStaff?: (staff: Staff) => void;
   onUpdateStaff?: (staffId: string, updatedData: Partial<Staff>) => Promise<void>;
   onReviseSalary?: (staffId: string, data: { newSalary: number; effectiveDate: string; reason?: string }) => Promise<void>;
@@ -92,8 +97,11 @@ export const StaffPersonnelProfileModal: React.FC<StaffPersonnelProfileModalProp
   onClose,
   staff,
   payments = [],
+  staffPayments,
   accounts = [],
+  currentMosque,
   onOpenPayModal,
+  onPaySalary,
   onEditStaff,
   onUpdateStaff,
   onReviseSalary,
@@ -107,8 +115,10 @@ export const StaffPersonnelProfileModal: React.FC<StaffPersonnelProfileModalProp
 }) => {
   const t = translations[language];
   const isBn = language === 'bn';
+  const resolvedPayments = staffPayments || payments || [];
 
   const [activeTab, setActiveTab] = useState<ProfileTab>('PERSONAL');
+  const [isAiDocModalOpen, setIsAiDocModalOpen] = useState(false);
 
   // Photo modal state
   const [isAddPhotoOpen, setIsAddPhotoOpen] = useState(false);
@@ -143,7 +153,7 @@ export const StaffPersonnelProfileModal: React.FC<StaffPersonnelProfileModalProp
   if (!isOpen || !staff) return null;
 
   // Filter payments for this staff
-  const staffPaymentsList = payments.filter((p) => p.staffId === staff.id);
+  const staffPaymentsList = resolvedPayments.filter((p) => p.staffId === staff.id);
   const totalPaid = staffPaymentsList.reduce((sum, p) => sum + (p.netPayable || p.basicSalary || 0), 0);
 
   // Print Profile Handlers
@@ -328,6 +338,16 @@ export const StaffPersonnelProfileModal: React.FC<StaffPersonnelProfileModalProp
 
             {/* Header Actions */}
             <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsAiDocModalOpen(true)}
+                className="px-3.5 py-1.5 bg-emerald-500/25 hover:bg-emerald-500/35 text-emerald-100 rounded-xl text-xs font-bold flex items-center space-x-1.5 border border-emerald-400/40 transition-colors shadow-xs"
+                title="নিয়োগপত্র, অভিজ্ঞতা সনদ বা ছাড়পত্র তৈরি করুন"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-emerald-300" />
+                <span>AI ডকুমেন্ট তৈরি করুন</span>
+              </button>
+
               {onEditStaff && (
                 <button
                   type="button"
@@ -1342,6 +1362,14 @@ export const StaffPersonnelProfileModal: React.FC<StaffPersonnelProfileModalProp
           </div>
         </div>
       )}
+
+      {/* AI Official Document Generator Modal */}
+      <AiStaffDocumentModal
+        isOpen={isAiDocModalOpen}
+        onClose={() => setIsAiDocModalOpen(false)}
+        staff={staff}
+        currentMosque={currentMosque}
+      />
     </div>
   );
 };

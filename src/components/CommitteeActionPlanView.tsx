@@ -36,7 +36,9 @@ import {
   FileText,
   Upload,
   RefreshCw,
-  FolderOpen
+  FolderOpen,
+  Bell,
+  Loader2
 } from 'lucide-react';
 import {
   CommitteeActionPlan,
@@ -50,7 +52,9 @@ import {
   Mosque
 } from '../types';
 import { Language, formatDate } from '../lib/i18n';
+import { api } from '../lib/api';
 import { CommitteeActionPlanPrint } from './CommitteeActionPlanPrint';
+import { AiActionPlanAssistant } from './committee/AiActionPlanAssistant';
 
 interface CommitteeActionPlanViewProps {
   terms: CommitteeTerm[];
@@ -123,6 +127,27 @@ export const CommitteeActionPlanView: React.FC<CommitteeActionPlanViewProps> = (
   // Print Modal State
   const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
   const [activePrintPlan, setActivePrintPlan] = useState<CommitteeActionPlan | null>(null);
+
+  // AI Action Plan Assistant State
+  const [isAiExtractModalOpen, setIsAiExtractModalOpen] = useState<boolean>(false);
+  const [isAnalyzingAiStatus, setIsAnalyzingAiStatus] = useState<boolean>(false);
+  const [aiStatusError, setAiStatusError] = useState<string>('');
+  const [aiStatusReport, setAiStatusReport] = useState<Awaited<
+    ReturnType<typeof api.analyzeCommitteeActionPlansAi>
+  > | null>(null);
+
+  const handleRunAiStatusAnalysis = async () => {
+    setAiStatusError('');
+    setIsAnalyzingAiStatus(true);
+    try {
+      const result = await api.analyzeCommitteeActionPlansAi(selectedTermId || undefined);
+      setAiStatusReport(result);
+    } catch (err: any) {
+      setAiStatusError(err?.message || 'AI কর্মপরিকল্পনা বিশ্লেষণে সমস্যা হয়েছে।');
+    } finally {
+      setIsAnalyzingAiStatus(false);
+    }
+  };
 
   // Form Fields State for Create / Edit Modal
   const [formTermId, setFormTermId] = useState<string>('');
@@ -695,6 +720,29 @@ export const CommitteeActionPlanView: React.FC<CommitteeActionPlanViewProps> = (
             </div>
 
             <button
+              type="button"
+              onClick={() => setIsAiExtractModalOpen(true)}
+              className="bg-amber-400/20 hover:bg-amber-400/30 text-amber-200 border border-amber-400/40 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer"
+            >
+              <Sparkles className="w-4 h-4 text-amber-300" />
+              <span>কার্যবিবরণী থেকে AI টাস্ক</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={isAnalyzingAiStatus}
+              onClick={handleRunAiStatusAnalysis}
+              className="bg-teal-500/20 hover:bg-teal-500/30 text-teal-100 border border-teal-400/40 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-all disabled:opacity-60 cursor-pointer"
+            >
+              {isAnalyzingAiStatus ? (
+                <Loader2 className="w-4 h-4 animate-spin text-teal-300" />
+              ) : (
+                <Bell className="w-4 h-4 text-teal-300" />
+              )}
+              <span>{isAnalyzingAiStatus ? 'বিশ্লেষণ চলছে...' : 'AI স্ট্যাটাস ও রিমাইন্ডার'}</span>
+            </button>
+
+            <button
               id="btn-print-action-plans-report"
               onClick={() => {
                 setActivePrintPlan(null);
@@ -786,6 +834,26 @@ export const CommitteeActionPlanView: React.FC<CommitteeActionPlanViewProps> = (
           </div>
         </div>
       </div>
+
+      {aiStatusError && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-800 px-4 py-3 rounded-xl text-xs font-medium flex items-center space-x-2">
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          <span>{aiStatusError}</span>
+        </div>
+      )}
+
+      {/* AI Action Plan Extractor Modal & Status/Auto-Reminder Panel */}
+      <AiActionPlanAssistant
+        selectedTermId={selectedTermId}
+        members={members}
+        meetings={meetings}
+        resolutions={resolutions}
+        onPlansCreated={fetchActionPlans}
+        isExtractModalOpen={isAiExtractModalOpen}
+        onCloseExtractModal={() => setIsAiExtractModalOpen(false)}
+        statusReport={aiStatusReport}
+        onCloseStatusReport={() => setAiStatusReport(null)}
+      />
 
       {/* 2. FILTER CONTROLS & VIEW TOGGLE BAR */}
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">

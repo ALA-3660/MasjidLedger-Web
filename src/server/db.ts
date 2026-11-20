@@ -118,6 +118,7 @@ import {
 } from '../types/officialDocumentTypes';
 import { DEFAULT_DOCUMENT_TEMPLATES } from '../lib/officialDocumentTemplates';
 import { getStarterOfficialDocuments } from '../lib/starterOfficialDocuments';
+import type { AiModelSettings } from '../config/aiConfig';
 
 export class StoragePersistenceError extends Error {
   constructor(public code: string, message: string, public cause?: any) {
@@ -543,6 +544,7 @@ export class DatabaseStore {
   backupRecords: BackupRecord[] = [];
   restoreRecords: RestoreRecord[] = [];
   backupSettings: Record<string, BackupSettings> = {};
+  aiModelSettings: AiModelSettings = { modelName: '' };
   officialDocuments: OfficialDocument[] = [];
   officialDocumentTemplates: OfficialDocumentTemplate[] = [];
   officialDocumentNumbering: Record<string, Record<string, DocumentNumberingConfig>> = {};
@@ -822,6 +824,7 @@ export class DatabaseStore {
         this.backupRecords = parsed.backupRecords || [];
         this.restoreRecords = parsed.restoreRecords || [];
         this.backupSettings = parsed.backupSettings || {};
+        this.aiModelSettings = parsed.aiModelSettings || { modelName: '' };
         this.officialDocuments = parsed.officialDocuments || [];
         if (this.officialDocuments.length === 0 && this.mosques.length > 0) {
           const m = this.mosques[0];
@@ -1246,6 +1249,7 @@ export class DatabaseStore {
       backupRecords: this.backupRecords,
       restoreRecords: this.restoreRecords,
       backupSettings: this.backupSettings,
+      aiModelSettings: this.aiModelSettings,
       officialDocuments: this.officialDocuments,
       officialDocumentTemplates: this.officialDocumentTemplates,
       officialDocumentNumbering: this.officialDocumentNumbering,
@@ -1315,7 +1319,7 @@ export class DatabaseStore {
   /**
    * Flushes and synchronizes state to disk with atomic rename.
    */
-  persistStateAtomically(): void {
+  persistStateAtomically(skipCloudSync: boolean = false): void {
     const dbPath = this.getDbFilePath();
     const dataDir = path.dirname(dbPath);
     if (!fs.existsSync(dataDir)) {
@@ -1351,7 +1355,7 @@ export class DatabaseStore {
 
       // 5. Asynchronously synchronize with Cloud Firestore for permanent container survivability
       // Only queue cloud sync AFTER initial cloud restoration has completed so boot-time local seed never overwrites cloud!
-      if (this._cloudSyncReady) {
+      if (this._cloudSyncReady && !skipCloudSync) {
         try {
           cloudPersistence.queueSync(data);
         } catch (cloudErr) {
@@ -1370,10 +1374,105 @@ export class DatabaseStore {
     }
   }
 
+  private _cloudInitPromise: Promise<void> | null = null;
+  private _lastFinancesCloudPullAt: number = 0;
+
+  async ensureCloudReady(): Promise<void> {
+    if (this._cloudSyncReady) return;
+    if (this._cloudInitPromise) {
+      await this._cloudInitPromise;
+      return;
+    }
+    await this.syncFromCloudOnInit();
+  }
+
+  /**
+   * Pulls and non-destructively merges the latest 'finances' partition from Firestore
+   * into memory so entries added in another instance or tab are immediately visible.
+   */
+  async pullLatestFinancesFromCloud(force: boolean = false): Promise<void> {
+    if (!cloudPersistence.isAvailable || cloudPersistence.isQuotaExhausted) return;
+    await this.ensureCloudReady();
+    const now = Date.now();
+    if (!force && now - this._lastFinancesCloudPullAt < 45000) {
+      return;
+    }
+    this._lastFinancesCloudPullAt = now;
+
+    try {
+      const cloudFin = await cloudPersistence.loadPartitionFromCloud('finances');
+      if (!cloudFin || typeof cloudFin !== 'object') return;
+
+      const finKeys = [
+        'incomeEntries',
+        'expenseEntries',
+        'donations',
+        'donationBoxes',
+        'donationBoxCollections',
+        'transfers',
+      ] as const;
+
+      let changed = false;
+      for (const key of finKeys) {
+        const cloudArr = cloudFin[key];
+        const localArr = (this as any)[key];
+        if (Array.isArray(cloudArr) && Array.isArray(localArr)) {
+          const byId = new Map<string, any>();
+          for (const item of cloudArr) {
+            if (item && typeof item === 'object' && item.id) {
+              byId.set(String(item.id), item);
+            }
+          }
+          let addedFromCloud = 0;
+          for (const localItem of localArr) {
+            if (localItem && typeof localItem === 'object' && localItem.id) {
+              const id = String(localItem.id);
+              const cloudItem = byId.get(id);
+              if (!cloudItem) {
+                byId.set(id, localItem);
+              } else {
+                const localTime = new Date(
+                  localItem.updatedAt || localItem.restoredAt || localItem.reversedAt || localItem.createdAt || 0
+                ).getTime();
+                const cloudTime = new Date(
+                  cloudItem.updatedAt || cloudItem.restoredAt || cloudItem.reversedAt || cloudItem.createdAt || 0
+                ).getTime();
+                byId.set(id, localTime >= cloudTime ? { ...cloudItem, ...localItem } : { ...localItem, ...cloudItem });
+              }
+            }
+          }
+          const merged = Array.from(byId.values());
+          if (merged.length !== localArr.length) {
+            addedFromCloud = merged.length - localArr.length;
+            changed = true;
+          }
+          (this as any)[key] = merged;
+          if (addedFromCloud > 0) {
+            console.log(`[DB] Merged ${addedFromCloud} missing record(s) into ${key} from Firestore.`);
+          }
+        }
+      }
+
+      if (changed) {
+        try {
+          this.persistStateAtomically(true);
+        } catch (_) {}
+      }
+    } catch (_) {}
+  }
+
   /**
    * Synchronizes state with Firestore upon application boot using non-destructive merge.
    */
   async syncFromCloudOnInit(): Promise<void> {
+    if (this._cloudInitPromise) {
+      return this._cloudInitPromise;
+    }
+    this._cloudInitPromise = this._doSyncFromCloudOnInit();
+    return this._cloudInitPromise;
+  }
+
+  private async _doSyncFromCloudOnInit(): Promise<void> {
     try {
       const localState = this.serializeDatabaseState();
       const knownMosqueIds = Array.from(
@@ -1766,14 +1865,14 @@ export class DatabaseStore {
     }
   }
 
-  save() {
+  save(skipCloudSync: boolean = false) {
     // If inside runTransaction, the transaction boundary handles the single commit
     if (this._transactionActive) {
       return;
     }
 
     try {
-      this.persistStateAtomically();
+      this.persistStateAtomically(skipCloudSync);
     } catch (e: any) {
       console.error('[DB] Failed to save DB to disk:', e);
       // In non-transactional contexts, rethrow so caller is aware of save failure
@@ -1817,7 +1916,7 @@ export class DatabaseStore {
     if (!scopedKey) return;
     this.idempotencyMap[scopedKey] = { result, createdAt: Date.now() };
     if (!this._transactionActive) {
-      this.save();
+      this.save(true);
     }
   }
 
@@ -2346,7 +2445,7 @@ export class DatabaseStore {
       status: extra?.status || 'SUCCESS'
     };
     this.auditLogs.unshift(log);
-    this.save();
+    this.save(true);
     return log;
   }
 

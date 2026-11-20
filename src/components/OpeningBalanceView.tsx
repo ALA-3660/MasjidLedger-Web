@@ -23,6 +23,8 @@ import { Language, translations, formatDate, formatCurrency } from '../lib/i18n'
 import { OpeningBalanceModal } from './OpeningBalanceModal';
 import { FinancialSecondarySidebar, SecondarySidebarItem } from './FinancialSecondarySidebar';
 import { A4ReportPreviewModal } from './A4ReportPreviewModal';
+import { AiBalanceGuardianAlert } from './financial/AiBalanceGuardianAlert';
+import { AiSmartTransactionSearchBar } from './financial/AiSmartTransactionSearchBar';
 
 interface OpeningBalanceViewProps {
   accounts: FinancialAccount[];
@@ -194,6 +196,13 @@ export const OpeningBalanceView: React.FC<OpeningBalanceViewProps> = ({
               <strong>প্রারম্ভিক স্থিতি কোনো আয় বা ব্যয় নয়, এটি হিসাব শুরুর স্থিতি।</strong> এটি কোনো সাধারণ দান বা ভাউচার লিস্টে ডুপ্লিকেট হিসেবে গণ্য হয় না। এটি দৈনিক লেনদেন বিবরণী, ক্যাশ বুক ও ব্যাংক বইয়ের মূল সূচনাবিন্দু হিসেবে কাজ করে।
             </p>
           </div>
+
+          {/* Automatic AI Negative Cash / Opening Balance Guardian Alert */}
+          <AiBalanceGuardianAlert
+            accounts={accounts}
+            periodOpeningBalance={netOpeningBalance}
+            onNavigateOpeningBalance={() => handleOpenModal()}
+          />
 
           {/* 1. Main Overview View */}
           {(activeSubItem === 'OPENING_OVERVIEW' || activeSubItem === 'ACCOUNTS_LIST') && (
@@ -448,6 +457,8 @@ export const OpeningBalanceView: React.FC<OpeningBalanceViewProps> = ({
                 <Search className="w-5 h-5 text-blue-600" />
                 <span>প্রারম্ভিক অ্যাকাউন্ট অনুসন্ধান</span>
               </h2>
+
+              <AiSmartTransactionSearchBar scope="ALL" />
 
               <input
                 type="text"

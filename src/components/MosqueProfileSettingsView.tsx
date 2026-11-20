@@ -63,6 +63,7 @@ import { GoogleDriveBackupView } from './GoogleDriveBackupView';
 import { MosqueLocationPrayerSettings } from './MosqueLocationPrayerSettings';
 import { DocumentSection } from './DocumentSection';
 import { ConfirmDialog } from './common/ConfirmDialog';
+import { SmartDataMigrationView } from './SmartDataMigrationView';
 
 export type MosqueSettingsSubTab =
   | 'identity'
@@ -76,7 +77,8 @@ export type MosqueSettingsSubTab =
   | 'prayer_location'
   | 'cloud_backup'
   | 'system_policy'
-  | 'documents';
+  | 'documents'
+  | 'smart_migration';
 
 interface MosqueProfileSettingsViewProps {
   currentMosque: Mosque | null;
@@ -85,6 +87,7 @@ interface MosqueProfileSettingsViewProps {
   onSaveMosque: (updated: Partial<Mosque>) => Promise<void>;
   onNavigateTab?: (tab: any) => void;
   onOpenLivePortal?: () => void;
+  onDataMigrated?: () => Promise<void> | void;
   initialSubTab?: MosqueSettingsSubTab;
 }
 
@@ -95,6 +98,7 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
   onSaveMosque,
   onNavigateTab,
   onOpenLivePortal,
+  onDataMigrated,
   initialSubTab = 'identity',
 }) => {
   const t = translations[language] || translations.bn;
@@ -760,6 +764,7 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
     { id: 'cloud_backup', label: '১০. ☁️ Google Drive ও Cloud Backup', icon: Cloud },
     { id: 'system_policy', label: '১১. ⚙️ সিস্টেম ও পলিসি', icon: Settings },
     { id: 'documents', label: '১২. 📁 কেন্দ্রীয় নথিপত্র', icon: FolderOpen, badge: 'সেন্ট্রাল' },
+    { id: 'smart_migration', label: '১৩. ✨ AI ১-ক্লিক ডাটা মাইগ্রেশন', icon: Sparkles, badge: 'AI স্মার্ট' },
   ];
 
   return (
@@ -2610,11 +2615,20 @@ export const MosqueProfileSettingsView: React.FC<MosqueProfileSettingsViewProps>
               />
             </div>
           )}
+
+          {/* TAB 13: ✨ AI ১-ক্লিক ডাটা মাইগ্রেশন (Smart Data Migration) */}
+          {activeSubTab === 'smart_migration' && (
+            <SmartDataMigrationView
+              currentMosque={currentMosque}
+              onNavigateTab={onNavigateTab}
+              onDataMigrated={onDataMigrated}
+            />
+          )}
         </div>
       </div>
 
       {/* Sticky Bottom Action Bar */}
-      {canEdit && (
+      {canEdit && activeSubTab !== 'smart_migration' && (
         <div className="sticky bottom-4 z-30 bg-slate-900/95 backdrop-blur-md text-white px-5 py-3.5 rounded-2xl shadow-2xl border border-slate-700/80 flex flex-col sm:flex-row items-center justify-between gap-3 animate-in slide-in-from-bottom duration-300">
           <div className="flex items-center space-x-2.5 text-xs text-slate-300">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />

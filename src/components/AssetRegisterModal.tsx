@@ -5,12 +5,16 @@ import { MosqueAsset, MosqueProfile } from '../types';
 import { Language, translations } from '../lib/i18n';
 import { ASSET_CATEGORIES, ASSET_CONDITIONS } from './AssetFormModal';
 import { printElement } from '../lib/printUtils';
+import { MosqueOfficialLetterhead } from './common/MosqueOfficialLetterhead';
+import { OfficialReportSignatures } from './common/OfficialReportSignatures';
+import { getGlobalMosque } from '../lib/mosqueStore';
 
 interface AssetRegisterModalProps {
   isOpen: boolean;
   onClose: () => void;
   assets: MosqueAsset[];
   currentMosque?: MosqueProfile | null;
+  mosqueName?: string;
   language: Language;
 }
 
@@ -18,10 +22,14 @@ export const AssetRegisterModal: React.FC<AssetRegisterModalProps> = ({
   isOpen,
   onClose,
   assets,
-  currentMosque,
+  currentMosque: propMosque,
   language
 }) => {
   const t = translations[language];
+  const globalMosque = getGlobalMosque();
+  const currentMosque = (propMosque && (propMosque.nameBn || propMosque.name || propMosque.address || (propMosque as any).secretarySignatureUrl)
+    ? { ...globalMosque, ...propMosque }
+    : globalMosque || propMosque) as any;
 
   useEffect(() => {
     if (isOpen) {
@@ -98,23 +106,12 @@ export const AssetRegisterModal: React.FC<AssetRegisterModalProps> = ({
         {/* Printable Document Content */}
         <div id="printable-asset-register-doc" className="p-8 overflow-y-auto space-y-6 text-xs text-slate-800 font-sans print-modal-paper print:p-0 print:overflow-visible printable-content">
           {/* Header */}
-          <div className="text-center border-b-2 border-slate-900 pb-4 space-y-1">
-            <h1 className="text-xl font-bold text-slate-900 font-siliguri">
-              {currentMosque?.nameBn || currentMosque?.name || 'মসজিদুল ফেরদৌস কমপ্লেক্স'}
-            </h1>
-            {displayAddress ? (
-              <p className="text-xs text-slate-600">
-                {displayAddress}
-              </p>
-            ) : null}
-            <div className="inline-block px-3 py-1 bg-slate-100 rounded-full font-bold text-slate-800 text-xs mt-1">
-              সম্পদ ও সরঞ্জাম রেজিস্ট্রি বই (Official Asset Register)
-            </div>
-            <div className="flex justify-between text-[11px] text-slate-500 pt-2">
-              <span>প্রিন্টের তারিখ: {new Date().toLocaleDateString('bn-BD')}</span>
-              <span>মোট রেকর্ড: {safeAssets.length} টি</span>
-            </div>
-          </div>
+          <MosqueOfficialLetterhead
+            mosque={currentMosque}
+            documentTitle="সম্পদ ও সরঞ্জাম রেজিস্ট্রি বই (Official Asset Register)"
+            subTitle={`মোট রেকর্ড: ${safeAssets.length} টি`}
+            dateStr={new Date().toLocaleDateString('bn-BD')}
+          />
 
           {/* Table */}
           <div className="overflow-x-auto border border-slate-300 rounded-lg">
@@ -186,46 +183,18 @@ export const AssetRegisterModal: React.FC<AssetRegisterModalProps> = ({
           </div>
 
           {/* Signatures Section */}
-          <div className="pt-12 grid grid-cols-4 gap-4 text-center text-xs font-semibold text-slate-700 border-t border-slate-200 mt-8 break-inside-avoid">
-            <div className="flex flex-col justify-end space-y-1">
-              <div className="h-10 flex items-end justify-center mb-1"></div>
-              <div className="border-t border-dashed border-slate-400 pt-1 font-bold text-slate-900">দায়িত্বপ্রাপ্ত কর্মকর্তা</div>
-              <div className="text-[10px] text-slate-500 font-normal">স্বাক্ষর ও তারিখ</div>
-            </div>
-            <div className="flex flex-col justify-end space-y-1">
-              <div className="h-10 flex items-end justify-center mb-1"></div>
-              <div className="border-t border-dashed border-slate-400 pt-1 font-bold text-slate-900">কোষাধ্যক্ষ</div>
-              <div className="text-[10px] text-slate-500 font-normal">অর্থ উপকমিটি</div>
-            </div>
-            <div className="flex flex-col justify-end space-y-1">
-              <div className="h-10 flex items-end justify-center mb-1">
-                {currentMosque?.secretarySignatureUrl ? (
-                  <img
-                    src={currentMosque.secretarySignatureUrl}
-                    alt="Secretary Signature"
-                    referrerPolicy="no-referrer"
-                    className="max-h-10 object-contain mx-auto"
-                  />
-                ) : null}
-              </div>
-              <div className="border-t border-dashed border-slate-400 pt-1 font-bold text-slate-900">সাধারণ সম্পাদক / মোতাওয়াল্লী</div>
-              <div className="text-[10px] text-slate-500 font-normal">স্বাক্ষর ও সীল</div>
-            </div>
-            <div className="flex flex-col justify-end space-y-1">
-              <div className="h-10 flex items-end justify-center mb-1">
-                {currentMosque?.presidentSignatureUrl ? (
-                  <img
-                    src={currentMosque.presidentSignatureUrl}
-                    alt="President Signature"
-                    referrerPolicy="no-referrer"
-                    className="max-h-10 object-contain mx-auto"
-                  />
-                ) : null}
-              </div>
-              <div className="border-t border-dashed border-slate-400 pt-1 font-bold text-slate-900">সভাপতি</div>
-              <div className="text-[10px] text-slate-500 font-normal">স্বাক্ষর ও সীল</div>
-            </div>
-          </div>
+          <OfficialReportSignatures
+            currentMosque={currentMosque}
+            preparerTitle="দায়িত্বপ্রাপ্ত কর্মকর্তা"
+            preparerSubtitle="স্বাক্ষর ও তারিখ"
+            showTreasurer={true}
+            treasurerTitle="কোষাধ্যক্ষ"
+            treasurerSubtitle="অর্থ উপকমিটি"
+            secretaryTitle="সাধারণ সম্পাদক / মোতাওয়াল্লী"
+            secretarySubtitle="স্বাক্ষর ও সীল"
+            presidentTitle="সভাপতি"
+            presidentSubtitle="স্বাক্ষর ও সীল"
+          />
         </div>
       </div>
     </div>

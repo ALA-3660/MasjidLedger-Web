@@ -55,6 +55,7 @@ import {
 import { ReportPrintDocument, REPORT_TITLES } from './ReportPrintDocument';
 import { printElement } from '../lib/printUtils';
 import { PrintSettingsBar } from './common/PrintSettingsBar';
+import { SearchableSelect } from './common/SearchableSelect';
 import { HifzSubReportCenterView } from './HifzSubReportCenterView';
 
 interface ReportCenterViewProps {
@@ -145,6 +146,7 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
   const [grouping, setGrouping] = useState<string>('HEAD');
   const [level, setLevel] = useState<string>('DETAILED');
   const [selectedHeadId, setSelectedHeadId] = useState<string>('ALL');
+  const [selectedSubHeadId, setSelectedSubHeadId] = useState<string>('ALL');
   const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL');
   const [showCharts, setShowCharts] = useState<boolean>(false);
   const [includeLetterhead, setIncludeLetterhead] = useState<boolean>(true);
@@ -186,37 +188,56 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
     if (i.status !== 'APPROVED') return false;
     const matchesDate = i.date >= fromDate && i.date <= toDate;
     const matchesHead = selectedHeadId === 'ALL' || i.mainHeadId === selectedHeadId;
+    const matchesSubHead = selectedSubHeadId === 'ALL' || i.subHeadId === selectedSubHeadId;
     const matchesAccount = selectedAccountId === 'ALL' || i.accountId === selectedAccountId;
-    return matchesDate && matchesHead && matchesAccount;
+    return matchesDate && matchesHead && matchesSubHead && matchesAccount;
   });
 
   const filteredExpenses = expenses.filter((e) => {
     if (e.status !== 'APPROVED') return false;
     const matchesDate = e.date >= fromDate && e.date <= toDate;
     const matchesHead = selectedHeadId === 'ALL' || e.mainHeadId === selectedHeadId;
+    const matchesSubHead = selectedSubHeadId === 'ALL' || e.subHeadId === selectedSubHeadId;
     const matchesAccount = selectedAccountId === 'ALL' || e.accountId === selectedAccountId;
-    return matchesDate && matchesHead && matchesAccount;
+    return matchesDate && matchesHead && matchesSubHead && matchesAccount;
   });
 
   const totalIncome = filteredIncomes.reduce((s, i) => s + i.amount, 0);
   const totalExpense = filteredExpenses.reduce((s, e) => s + e.amount, 0);
   const netSurplus = totalIncome - totalExpense;
 
-  // Head-wise grouping for charts & breakdown
+  // Sub-heads available for filter dropdown (filtered by selectedHeadId if chosen)
+  const mainHeadMap = new Map<string, AccountHead>();
+  accountHeads.filter((h) => !h.parentId).forEach((h) => mainHeadMap.set(h.id, h));
+  const availableSubHeads = accountHeads.filter((h) => {
+    if (!h.parentId) return false;
+    if (selectedHeadId !== 'ALL') return h.parentId === selectedHeadId;
+    return true;
+  });
+
+  // Head-wise grouping for charts & breakdown (breaks down by sub-head when a main head is selected)
   const headWiseIncome: Record<string, { name: string; amount: number }> = {};
   filteredIncomes.forEach((i) => {
-    const key = i.mainHeadId || 'other';
+    const groupBySub = selectedHeadId !== 'ALL';
+    const key = groupBySub ? (i.subHeadId || `${i.mainHeadId}_general`) : (i.mainHeadId || 'other');
+    const label = groupBySub
+      ? (i.subHeadNameBn || `${i.mainHeadNameBn || 'অন্যান্য'} (সাধারণ)`)
+      : (i.mainHeadNameBn || 'অন্যান্য');
     if (!headWiseIncome[key]) {
-      headWiseIncome[key] = { name: i.mainHeadNameBn || 'অন্যান্য', amount: 0 };
+      headWiseIncome[key] = { name: label, amount: 0 };
     }
     headWiseIncome[key].amount += i.amount;
   });
 
   const headWiseExpense: Record<string, { name: string; amount: number }> = {};
   filteredExpenses.forEach((e) => {
-    const key = e.mainHeadId || 'other';
+    const groupBySub = selectedHeadId !== 'ALL';
+    const key = groupBySub ? (e.subHeadId || `${e.mainHeadId}_general`) : (e.mainHeadId || 'other');
+    const label = groupBySub
+      ? (e.subHeadNameBn || `${e.mainHeadNameBn || 'অন্যান্য'} (সাধারণ)`)
+      : (e.mainHeadNameBn || 'অন্যান্য');
     if (!headWiseExpense[key]) {
-      headWiseExpense[key] = { name: e.mainHeadNameBn || 'অন্যান্য', amount: 0 };
+      headWiseExpense[key] = { name: label, amount: 0 };
     }
     headWiseExpense[key].amount += e.amount;
   });
@@ -251,6 +272,7 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
       grouping,
       level,
       headId: selectedHeadId,
+      subHeadId: selectedSubHeadId,
       accountId: selectedAccountId,
     });
     setIsSaveModalOpen(false);
@@ -265,6 +287,7 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
     if (cfg.grouping) setGrouping(cfg.grouping);
     if (cfg.level) setLevel(cfg.level);
     if (cfg.headId) setSelectedHeadId(cfg.headId);
+    setSelectedSubHeadId(cfg.subHeadId || 'ALL');
     if (cfg.accountId) setSelectedAccountId(cfg.accountId);
   };
 
@@ -630,8 +653,8 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
           </div>
         </div>
 
-        {/* Secondary Filter Row: Grouping, Level, Head, Account */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5 pt-3 border-t border-slate-100">
+        {/* Secondary Filter Row: Grouping, Level, Main Head, Sub-head, Account */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3.5 pt-3 border-t border-slate-100">
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1">গ্রুপিং (Grouping)</label>
             <select
@@ -660,21 +683,65 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">নির্দিষ্ট হিসাব খাত</label>
-            <select
+            <label className="block text-xs font-semibold text-slate-600 mb-1">নির্দিষ্ট প্রধান খাত</label>
+            <SearchableSelect
+              id="select-report-center-main-head"
               value={selectedHeadId}
-              onChange={(e) => setSelectedHeadId(e.target.value)}
-              className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 outline-hidden"
-            >
-              <option value="ALL">সকল প্রধান খাত</option>
-              {accountHeads
-                .filter((h) => !h.parentId)
-                .map((h) => (
-                  <option key={h.id} value={h.id}>
-                    [{h.type === 'INCOME' ? 'আয়' : 'ব্যয়'}] {h.nameBn}
-                  </option>
-                ))}
-            </select>
+              clearValue="ALL"
+              searchPlaceholder="প্রধান খাত লিখে খুঁজুন..."
+              emptyText="কোনো প্রধান খাত পাওয়া যায়নি"
+              onChange={(nextHeadId) => {
+                setSelectedHeadId(nextHeadId);
+                if (selectedSubHeadId !== 'ALL') {
+                  const sub = accountHeads.find((h) => h.id === selectedSubHeadId);
+                  if (nextHeadId !== 'ALL' && sub?.parentId !== nextHeadId) {
+                    setSelectedSubHeadId('ALL');
+                  }
+                }
+              }}
+              options={[
+                { value: 'ALL', label: 'সকল প্রধান খাত' },
+                ...accountHeads
+                  .filter((h) => !h.parentId)
+                  .map((h) => ({
+                    value: h.id,
+                    label: h.nameBn,
+                    badge: h.type === 'INCOME' ? 'আয়' : 'ব্যয়',
+                    badgeTone: (h.type === 'INCOME' ? 'income' : 'expense') as 'income' | 'expense',
+                    searchText: `${h.nameEn || ''} ${h.code || ''} ${h.type === 'INCOME' ? 'income আয় আয়' : 'expense ব্যয় ব্যয়'}`,
+                  })),
+              ]}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">নির্দিষ্ট উপখাত (Sub-head)</label>
+            <SearchableSelect
+              id="select-report-center-sub-head"
+              value={selectedSubHeadId}
+              clearValue="ALL"
+              searchPlaceholder="উপখাত লিখে খুঁজুন..."
+              emptyText="কোনো উপখাত পাওয়া যায়নি"
+              onChange={(val) => setSelectedSubHeadId(val)}
+              options={[
+                {
+                  value: 'ALL',
+                  label: selectedHeadId === 'ALL' ? 'সকল উপখাত (All Sub-heads)' : 'এই খাতের সকল উপখাত',
+                },
+                ...availableSubHeads.map((sub) => {
+                  const parent = sub.parentId ? mainHeadMap.get(sub.parentId) : undefined;
+                  const typePrefix = sub.type === 'INCOME' ? 'আয়' : 'ব্যয়';
+                  return {
+                    value: sub.id,
+                    label: sub.nameBn,
+                    subLabel: selectedHeadId === 'ALL' && parent ? `প্রধান খাত: ${parent.nameBn}` : undefined,
+                    badge: selectedHeadId === 'ALL' ? typePrefix : undefined,
+                    badgeTone: (sub.type === 'INCOME' ? 'income' : 'expense') as 'income' | 'expense',
+                    searchText: `${sub.nameEn || ''} ${sub.code || ''} ${parent?.nameBn || ''} ${parent?.nameEn || ''}`,
+                  };
+                }),
+              ]}
+            />
           </div>
 
           <div>
@@ -791,6 +858,7 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
               grouping={grouping}
               level={level}
               selectedHeadId={selectedHeadId}
+              selectedSubHeadId={selectedSubHeadId}
               selectedAccountId={selectedAccountId}
               currentMosque={currentMosque}
               currentUser={currentUser}

@@ -85,6 +85,10 @@ import { SaasAdminHubView } from './components/SaasAdminHubView';
 import { BackupRestoreView } from './components/BackupRestoreView';
 import { SmsGatewayView } from './components/SmsGatewayView';
 import { PublicReceiptStandaloneView } from './components/PublicReceiptStandaloneView';
+import { AiSmartAuditorModal } from './components/AiSmartAuditorModal';
+import { FloatingAiChatWidget } from './components/FloatingAiChatWidget';
+import { MobileBottomNav } from './components/common/MobileBottomNav';
+import { OfflineIndicator } from './components/common/OfflineIndicator';
 import { resolveRecordFromSystem } from './services/qrBarcodeService';
 import { QrScanResult, ResolvedRecordItem, RecordSpecificAction, QRDestinationType } from './types/qrBarcodeTypes';
 import {
@@ -122,7 +126,15 @@ export default function App() {
 
   // App Global State
   const [language, setLanguage] = useState<Language>('bn');
-  const [currentTab, setCurrentTab] = useState<string>('dashboard');
+  const [currentTab, setCurrentTab] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const urlTab = new URLSearchParams(window.location.search).get('tab');
+      if (urlTab && ['dashboard', 'income', 'expense', 'reports', 'donations'].includes(urlTab)) {
+        return urlTab;
+      }
+    }
+    return 'dashboard';
+  });
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [mosque, setMosque] = useState<Mosque | null>(null);
@@ -140,11 +152,8 @@ export default function App() {
   const [viewMode, setViewMode] = useState<'desktop' | 'mobile'>('desktop');
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
 
-  // AI Advisor State
+  // AI Smart Auditor Modal State
   const [isAiOpen, setIsAiOpen] = useState<boolean>(false);
-  const [aiQuestion, setAiQuestion] = useState<string>('');
-  const [aiAnswer, setAiAnswer] = useState<string>('');
-  const [isAiLoading, setIsAiLoading] = useState<boolean>(false);
 
   // Universal Calculator & Scanner Global State
   const [isGlobalCalculatorOpen, setIsGlobalCalculatorOpen] = useState<boolean>(false);
@@ -336,11 +345,105 @@ export default function App() {
       if (usersListRes) setAllUsers(usersListRes);
       if (accountsRes) setAccounts(accountsRes);
       if (headsRes) setAccountHeads(headsRes);
-      if (incomesRes) setIncomes(incomesRes);
-      if (expensesRes) setExpenses(expensesRes);
-      if (donationsRes) setDonations(donationsRes);
+
+      // Browser Local Vault Auto-Protection & Auto-Recovery:
+      // Ensures no voucher or receipt entered in the user's browser is ever lost if a cloud container restarts during quota cooldown
+      let finalIncomes = Array.isArray(incomesRes) ? incomesRes : [];
+      let finalExpenses = Array.isArray(expensesRes) ? expensesRes : [];
+      let finalDonations = Array.isArray(donationsRes) ? donationsRes : [];
+      let finalBoxCols = Array.isArray(boxColsRes) ? boxColsRes : [];
+
+      if (mosqueRes?.id && typeof window !== 'undefined') {
+        const vaultKey = `ml_vault_v1_${mosqueRes.id}`;
+        try {
+          const rawVault = localStorage.getItem(vaultKey);
+          if (rawVault) {
+            const parsedVault = JSON.parse(rawVault);
+            const mergeAndFindMissing = <T extends { id: string; mosqueId?: string; updatedAt?: string; createdAt?: string }>(
+              serverArr: T[],
+              vaultArr: T[]
+            ): { merged: T[]; missingFromServer: T[] } => {
+              if (!Array.isArray(vaultArr) || vaultArr.length === 0) {
+                return { merged: serverArr, missingFromServer: [] };
+              }
+              const byId = new Map<string, T>();
+              for (const item of serverArr) {
+                if (item && item.id) byId.set(item.id, item);
+              }
+              const missingFromServer: T[] = [];
+              for (const vItem of vaultArr) {
+                if (!vItem || !vItem.id) continue;
+                if (vItem.mosqueId && vItem.mosqueId !== mosqueRes.id) continue;
+                const existing = byId.get(vItem.id);
+                if (!existing) {
+                  byId.set(vItem.id, vItem);
+                  missingFromServer.push(vItem);
+                } else {
+                  const sTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+                  const vTime = new Date(vItem.updatedAt || vItem.createdAt || 0).getTime();
+                  if (vTime > sTime) {
+                    byId.set(vItem.id, { ...existing, ...vItem });
+                  }
+                }
+              }
+              return { merged: Array.from(byId.values()), missingFromServer };
+            };
+
+            const incCheck = mergeAndFindMissing(finalIncomes, parsedVault.incomeEntries || []);
+            const expCheck = mergeAndFindMissing(finalExpenses, parsedVault.expenseEntries || []);
+            const donCheck = mergeAndFindMissing(finalDonations, parsedVault.donations || []);
+            const boxCheck = mergeAndFindMissing(finalBoxCols, parsedVault.donationBoxCollections || []);
+
+            finalIncomes = incCheck.merged;
+            finalExpenses = expCheck.merged;
+            finalDonations = donCheck.merged;
+            finalBoxCols = boxCheck.merged;
+
+            if (
+              incCheck.missingFromServer.length > 0 ||
+              expCheck.missingFromServer.length > 0 ||
+              donCheck.missingFromServer.length > 0 ||
+              boxCheck.missingFromServer.length > 0
+            ) {
+              api
+                .syncClientVault({
+                  incomeEntries: incCheck.missingFromServer,
+                  expenseEntries: expCheck.missingFromServer,
+                  donations: donCheck.missingFromServer,
+                  donationBoxCollections: boxCheck.missingFromServer,
+                })
+                .then(async (syncRes) => {
+                  if (syncRes.restoredCount > 0) {
+                    const [updatedAccounts, updatedStats] = await Promise.all([
+                      api.getAccounts().catch(() => null),
+                      api.getDashboardStats().catch(() => null),
+                    ]);
+                    if (updatedAccounts) setAccounts(updatedAccounts);
+                    if (updatedStats) setDashboardStats(updatedStats);
+                  }
+                })
+                .catch(() => {});
+            }
+          }
+
+          localStorage.setItem(
+            vaultKey,
+            JSON.stringify({
+              updatedAt: new Date().toISOString(),
+              incomeEntries: finalIncomes,
+              expenseEntries: finalExpenses,
+              donations: finalDonations,
+              donationBoxCollections: finalBoxCols,
+            })
+          );
+        } catch (_) {}
+      }
+
+      setIncomes(finalIncomes);
+      setExpenses(finalExpenses);
+      setDonations(finalDonations);
       if (boxesRes) setDonationBoxes(boxesRes);
-      if (boxColsRes) setBoxCollections(boxColsRes);
+      setBoxCollections(finalBoxCols);
       if (termsRes) setTerms(termsRes);
       if (membersRes) setMembers(membersRes);
       if (meetingsRes) setMeetings(meetingsRes);
@@ -820,8 +923,31 @@ export default function App() {
     };
   }, [isAuthenticated]);
 
+  const appendToBrowserVault = (
+    mosqueId: string | undefined,
+    collectionKey: 'incomeEntries' | 'expenseEntries' | 'donations' | 'donationBoxCollections',
+    record: any
+  ) => {
+    const targetMosqueId = mosqueId || mosque?.id;
+    if (!targetMosqueId || !record?.id || typeof window === 'undefined') return;
+    const vaultKey = `ml_vault_v1_${targetMosqueId}`;
+    try {
+      const existingRaw = localStorage.getItem(vaultKey);
+      const parsed = existingRaw
+        ? JSON.parse(existingRaw)
+        : { incomeEntries: [], expenseEntries: [], donations: [], donationBoxCollections: [] };
+      const list = Array.isArray(parsed[collectionKey]) ? parsed[collectionKey] : [];
+      const filtered = list.filter((it: any) => it?.id !== record.id);
+      filtered.unshift(record);
+      parsed[collectionKey] = filtered;
+      parsed.updatedAt = new Date().toISOString();
+      localStorage.setItem(vaultKey, JSON.stringify(parsed));
+    } catch (_) {}
+  };
+
   const handleAddIncome = async (data: any, options?: { print?: boolean; format?: PrintFormat }) => {
     const created = await api.createIncome(data);
+    appendToBrowserVault(created?.mosqueId, 'incomeEntries', created);
     await loadData(false);
     if (options?.print !== false) {
       setActiveVoucher({
@@ -841,6 +967,7 @@ export default function App() {
 
   const handleAddExpense = async (data: any, options?: { print?: boolean; format?: PrintFormat }) => {
     const created = await api.createExpense(data);
+    appendToBrowserVault(created?.mosqueId, 'expenseEntries', created);
     await loadData(false);
     if (options?.print !== false) {
       setActiveVoucher({
@@ -880,6 +1007,7 @@ export default function App() {
 
   const handleAddDonation = async (data: any) => {
     const created = await api.createDonation(data);
+    appendToBrowserVault(created?.mosqueId, 'donations', created);
     await loadData(false);
     return created;
   };
@@ -1246,26 +1374,6 @@ export default function App() {
     setMosque(updated);
     setGlobalMosque(updated);
     await loadData(false);
-  };
-
-  // AI Advisor query execution
-  const handleAskAi = async (customPrompt?: string) => {
-    const query = customPrompt || aiQuestion;
-    if (!query.trim()) return;
-
-    setIsAiLoading(true);
-    try {
-      const res = await api.askAi(query, language);
-      if (res.success && res.data) {
-        setAiAnswer(res.data.answer);
-      } else {
-        setAiAnswer(res.error?.message || 'বিশ্লেষণ সম্পন্ন করতে ব্যর্থ হয়েছে।');
-      }
-    } catch (err: any) {
-      setAiAnswer(err.message || 'সার্ভার যোগাযোগে ত্রুটি হয়েছে।');
-    } finally {
-      setIsAiLoading(false);
-    }
   };
 
   if (isLoading) {
@@ -1786,6 +1894,7 @@ export default function App() {
           onSaveMosque={handleSaveMosqueSettings}
           onNavigateTab={(tab) => setCurrentTab(tab as NavTab)}
           onOpenLivePortal={() => setCurrentTab('publicPortal')}
+          onDataMigrated={() => loadData(false)}
         />
       )}
 
@@ -2034,150 +2143,40 @@ export default function App() {
             />
 
             {/* Content Display Area */}
-            <main className="flex-1 min-w-0">{renderMainContent()}</main>
+            <main className="flex-1 min-w-0 pb-24 md:pb-6">{renderMainContent()}</main>
           </div>
         )}
       </div>
 
-      {/* AI Financial Auditor & Advisor Modal */}
-      {isAiOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 animate-fade-in print:hidden">
-          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
-            {/* Modal Header */}
-            <div className="bg-gradient-to-r from-blue-700 to-indigo-800 text-white px-6 py-4 flex items-center justify-between">
-              <div className="flex items-center space-x-2.5">
-                <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">
-                  <Sparkles className="w-4.5 h-4.5 text-blue-200" />
-                </div>
-                <div>
-                  <h3 className="font-heading font-bold text-base">
-                    {language === 'bn' ? 'মসজিদলেজার এআই আর্থিক অডিটর' : 'MasjidLedger AI Financial Auditor'}
-                  </h3>
-                  <p className="text-[11px] text-blue-100">
-                    {language === 'bn'
-                      ? 'বাস্তব সময়ে আয়-ব্যয় বিশ্লেষণ, বাজেট মূল্যায়ন ও আর্থিক সারসংক্ষেপ'
-                      : 'Real-time ledger audit, budget evaluation and executive financial summaries'}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsAiOpen(false)}
-                className="p-1 rounded-lg hover:bg-white/10 text-white/80 hover:text-white transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {/* Mobile App Fixed Bottom Navigation Bar (<768px) */}
+      {!isSingleInvoicePrintActive && viewMode !== 'mobile' && currentTab !== 'publicPortal' && (
+        <MobileBottomNav
+          activeTab={currentTab}
+          onSelectTab={(tab) => {
+            setIsSidebarOpen(false);
+            setCurrentTab(tab);
+          }}
+          onOpenMenu={() => setIsSidebarOpen((prev) => !prev)}
+          isMenuOpen={isSidebarOpen}
+          language={language}
+        />
+      )}
 
-            {/* Modal Body */}
-            <div className="p-6 overflow-y-auto space-y-4 flex-1">
-              {/* Preset Quick Prompts */}
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-2">
-                  {language === 'bn' ? 'দ্রুত অডিট প্রশ্নাবলী:' : 'Quick Audit Questions:'}
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {[
-                    language === 'bn'
-                      ? 'বর্তমান চলতি মাসের আয়-ব্যয় এবং নিট উদ্বৃত্ত কত?'
-                      : 'What is the current month income, expense and net surplus?',
-                    language === 'bn'
-                      ? 'কোন খাতে সবচেয়ে বেশি ব্যয় হয়েছে এবং স্টাফ বেতন আপডেট দিন'
-                      : 'Which category has highest expenses and staff salary status?',
-                    language === 'bn'
-                      ? 'গত মাসের তুলনায় দানের প্রবৃদ্ধি এবং দানবাক্স কালেকশন বিশ্লেষণ'
-                      : 'Compare donation growth and donation box collection trends',
-                    language === 'bn'
-                      ? 'কমিটির জন্য পূর্ণাঙ্গ নিরীক্ষা ও আর্থিক সারসংক্ষেপ প্রতিবেদন'
-                      : 'Generate complete executive audit summary for committee',
-                  ].map((preset, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => {
-                        setAiQuestion(preset);
-                        handleAskAi(preset);
-                      }}
-                      className="text-left p-2.5 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/50 text-xs text-slate-700 transition-colors flex items-start space-x-2 cursor-pointer"
-                    >
-                      <Sparkles className="w-3.5 h-3.5 text-blue-600 mt-0.5 shrink-0" />
-                      <span className="line-clamp-2">{preset}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
+      {/* PWA Offline Mode / Reconnected Indicator */}
+      <OfflineIndicator />
 
-              {/* Input field */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700">
-                  {language === 'bn' ? 'আপনার নির্দিষ্ট প্রশ্ন লিখুন:' : 'Ask custom question:'}
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={aiQuestion}
-                    onChange={(e) => setAiQuestion(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleAskAi();
-                    }}
-                    placeholder={
-                      language === 'bn'
-                        ? 'যেমন: গত ৬ মাসের সাধারণ অনুদান ও নির্মাণ খাতের হিসাব দিন...'
-                        : 'e.g. Give analysis of general donations vs construction expenses...'
-                    }
-                    className="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleAskAi()}
-                    disabled={isAiLoading || !aiQuestion.trim()}
-                    className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-colors shadow-xs cursor-pointer"
-                  >
-                    {isAiLoading ? (
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <Send className="w-4 h-4" />
-                    )}
-                    <span>{language === 'bn' ? 'বিশ্লেষণ করুন' : 'Ask'}</span>
-                  </button>
-                </div>
-              </div>
+      {/* New Real-Data AI Smart Auditor & Analysis Modal */}
+      <AiSmartAuditorModal
+        isOpen={isAiOpen}
+        onClose={() => setIsAiOpen(false)}
+        currentMosque={mosque}
+        currentUser={currentUser}
+        language={language}
+      />
 
-              {/* AI Response output */}
-              {isAiLoading && (
-                <div className="p-6 bg-blue-50/60 border border-blue-100 rounded-2xl flex flex-col items-center justify-center space-y-2">
-                  <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                  <p className="text-xs font-semibold text-blue-800">
-                    {language === 'bn'
-                      ? 'এআই লেজার ডাটা বিশ্লেষণ করছে...'
-                      : 'AI is analyzing financial ledger records...'}
-                  </p>
-                </div>
-              )}
-
-              {aiAnswer && !isAiLoading && (
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 text-xs text-slate-800 leading-relaxed font-body whitespace-pre-wrap">
-                  <div className="flex items-center space-x-1.5 text-blue-700 font-bold font-heading text-sm pb-1 border-b border-slate-200">
-                    <Bot className="w-4 h-4" />
-                    <span>{language === 'bn' ? 'এআই নিরীক্ষা প্রতিবেদন:' : 'AI Audit Summary:'}</span>
-                  </div>
-                  <div className="pt-1">{aiAnswer}</div>
-                </div>
-              )}
-            </div>
-
-            {/* Modal Footer */}
-            <div className="bg-slate-50 px-6 py-3 border-t border-slate-200 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setIsAiOpen(false)}
-                className="px-4 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 cursor-pointer"
-              >
-                {language === 'bn' ? 'বন্ধ করুন' : 'Close'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Floating Masjid AI Chatbot (Natural Language Q&A) */}
+      {isAuthenticated && currentUser && currentTab !== 'publicPortal' && (
+        <FloatingAiChatWidget currentMosque={mosque} language={language} />
       )}
 
       {/* Official Money Receipt Modal (A4 & POS Thermal) */}

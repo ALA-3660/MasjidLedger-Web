@@ -38,6 +38,7 @@ interface StaffDirectorySectionProps {
   onOpenAdvance: (staffId: string) => void;
   onOpenLeave: (staffId: string) => void;
   onOpenAttendance: (staffId: string) => void;
+  onOpenAiDocument?: (staff: Staff) => void;
   language: Language;
 }
 
@@ -51,6 +52,7 @@ export const StaffDirectorySection: React.FC<StaffDirectorySectionProps> = ({
   onOpenAdvance,
   onOpenLeave,
   onOpenAttendance,
+  onOpenAiDocument,
   language = 'bn',
 }) => {
   const isBn = language === 'bn';
@@ -370,6 +372,17 @@ export const StaffDirectorySection: React.FC<StaffDirectorySectionProps> = ({
                     <span>বেতন</span>
                   </button>
 
+                  {onOpenAiDocument && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenAiDocument(staff)}
+                      className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl transition-colors"
+                      title="AI ডকুমেন্ট তৈরি করুন (নিয়োগপত্র / সনদ / ছাড়পত্র)"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => onEditStaff(staff)}
@@ -454,6 +467,17 @@ export const StaffDirectorySection: React.FC<StaffDirectorySectionProps> = ({
                           >
                             বেতন
                           </button>
+                          {onOpenAiDocument && (
+                            <button
+                              type="button"
+                              onClick={() => onOpenAiDocument(staff)}
+                              className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-bold inline-flex items-center space-x-1"
+                              title="AI ডকুমেন্ট তৈরি করুন"
+                            >
+                              <Sparkles className="w-3 h-3" />
+                              <span>AI ডকুমেন্ট</span>
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => onEditStaff(staff)}

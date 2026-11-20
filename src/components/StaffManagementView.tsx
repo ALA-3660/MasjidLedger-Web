@@ -18,6 +18,7 @@ import { StaffAdvanceModal } from './StaffAdvanceModal';
 import { StaffLeaveModal } from './StaffLeaveModal';
 import { StaffSalarySlipModal } from './StaffSalarySlipModal';
 import { CashSalaryResolutionModal } from './CashSalaryResolutionModal';
+import { AiStaffDocumentModal } from './staff/AiStaffDocumentModal';
 
 import { Staff, StaffPayment, FinancialAccount, Mosque, StaffAttendanceStatus, StaffLeaveStatus } from '../types';
 import { Language } from '../lib/i18n';
@@ -86,6 +87,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
   const [isResolutionModalOpen, setIsResolutionModalOpen] = useState(false);
   const [resolutionPaymentId, setResolutionPaymentId] = useState<string | undefined>(undefined);
   const [resolutionMonth, setResolutionMonth] = useState<string | undefined>(undefined);
+  const [aiDocStaff, setAiDocStaff] = useState<Staff | null>(null);
 
   const handleOpenResolution = (paymentId?: string, month?: string) => {
     setResolutionPaymentId(paymentId);
@@ -276,6 +278,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
             onOpenAdvance={handleOpenAdvance}
             onOpenLeave={handleOpenLeave}
             onOpenAttendance={(id) => setActiveSection('attendance')}
+            onOpenAiDocument={(s) => setAiDocStaff(s)}
             language={language}
           />
         )}
@@ -285,6 +288,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
             staffList={staffList}
             currentMosque={currentMosque}
             onViewStaffProfile={handleViewProfile}
+            onOpenAiDocument={(s) => setAiDocStaff(s)}
             language={language}
           />
         )}
@@ -301,6 +305,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
         {activeSection === 'leaves' && (
           <StaffLeaveSection
             staffList={staffList}
+            currentMosque={currentMosque}
             onOpenNewLeaveModal={() => handleOpenLeave()}
             onUpdateLeaveStatus={handleLeaveStatusUpdate}
             language={language}
@@ -380,6 +385,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
         }}
         staff={selectedProfileStaff}
         staffPayments={staffPayments}
+        currentMosque={currentMosque}
         onEditStaff={(s) => {
           setIsProfileModalOpen(false);
           handleEditStaff(s);
@@ -491,6 +497,14 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
         currentMosque={currentMosque}
         onPayStaff={onPayStaff}
         language={language}
+      />
+
+      {/* AI Official Staff Document Generator Modal */}
+      <AiStaffDocumentModal
+        isOpen={Boolean(aiDocStaff)}
+        onClose={() => setAiDocStaff(null)}
+        staff={aiDocStaff}
+        currentMosque={currentMosque}
       />
     </div>
   );

@@ -26,6 +26,8 @@ import { Language, formatCurrency, formatDate } from '../lib/i18n';
 import { PROPERTY_CATEGORIES, POSSESSION_STATUSES, PROPERTY_STATUSES } from './PropertyFormModal';
 import { printElement } from '../lib/printUtils';
 import { OfficialReportSignatures } from './common/OfficialReportSignatures';
+import { MosqueOfficialLetterhead } from './common/MosqueOfficialLetterhead';
+import { getGlobalMosque } from '../lib/mosqueStore';
 
 export type PropertyReportType =
   | 'PROPERTY_REGISTER'
@@ -48,7 +50,8 @@ export type PropertyReportType =
 
 interface PropertyReportsModalProps {
   properties: MosqueProperty[];
-  mosque: MosqueProfile | Mosque | null;
+  mosque?: MosqueProfile | Mosque | null;
+  mosqueName?: string;
   isOpen: boolean;
   onClose: () => void;
   language: Language;
@@ -56,7 +59,7 @@ interface PropertyReportsModalProps {
 
 export const PropertyReportsModal: React.FC<PropertyReportsModalProps> = ({
   properties,
-  mosque,
+  mosque: propMosque,
   isOpen,
   onClose,
   language
@@ -67,6 +70,11 @@ export const PropertyReportsModal: React.FC<PropertyReportsModalProps> = ({
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [includeLetterhead, setIncludeLetterhead] = useState<boolean>(true);
   const printRef = useRef<HTMLDivElement>(null);
+
+  const globalMosque = getGlobalMosque();
+  const mosque = (propMosque && (propMosque.nameBn || propMosque.name || propMosque.address || (propMosque as any).secretarySignatureUrl)
+    ? { ...globalMosque, ...propMosque }
+    : globalMosque || propMosque) as Mosque | null;
 
   if (!isOpen) return null;
 
@@ -307,17 +315,13 @@ export const PropertyReportsModal: React.FC<PropertyReportsModalProps> = ({
               
               {/* Software Letterhead Header */}
               {includeLetterhead && (
-                <div className="text-center pb-4 border-b-2 border-slate-900 mb-6">
-                  <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-                    {mosque?.nameBn || mosque?.name || 'মসজিদ ওয়াকফ এস্টেট'}
-                  </h1>
-                  <p className="text-xs text-slate-600 mt-1">
-                    {mosque?.address || 'ঠিকানা: মসজিদ চত্বর'} | মোবাইল: {mosque?.phone || '০১৭XXXXXXXX'} | ইমেইল: {mosque?.email || 'info@masjid.org'}
-                  </p>
-                  <div className="inline-block mt-2 px-3 py-0.5 bg-slate-100 rounded-full border border-slate-300 text-[11px] font-bold text-slate-800">
-                    ওয়াকফ সম্পত্তি ও জমি ব্যবস্থাপনা শাখা (Waqf Estate Directorate)
-                  </div>
-                </div>
+                <MosqueOfficialLetterhead
+                  mosque={mosque}
+                  documentTitle={reportList.find(r => r.id === selectedReport)?.titleBn}
+                  subTitle="ওয়াকফ সম্পত্তি ও জমি ব্যবস্থাপনা শাখা (Waqf Estate Directorate)"
+                  dateStr={formatDate(new Date().toISOString(), language)}
+                  periodLabel={`পরিসংখ্যান বছর: ${selectedYear}`}
+                />
               )}
 
               {/* Report Title & Metadata Header */}
@@ -560,6 +564,58 @@ export const PropertyReportsModal: React.FC<PropertyReportsModalProps> = ({
               )}
 
               {/* ========================================================================= */}
+              {/* REPORT 5: LEASE_MONITORING (ইজারা চুক্তি ও মেয়াদ মনিটরিং) */}
+              {/* ========================================================================= */}
+              {selectedReport === 'LEASE_MONITORING' && (
+                <div className="space-y-4">
+                  <table className="w-full text-xs text-left border-collapse border border-slate-300">
+                    <thead className="bg-slate-800 text-white font-bold">
+                      <tr>
+                        <th className="border border-slate-300 p-2 text-center w-10">নং</th>
+                        <th className="border border-slate-300 p-2">ভাড়াটিয়া ও কোড</th>
+                        <th className="border border-slate-300 p-2">সম্পত্তি ও দোকান/ইউনিট</th>
+                        <th className="border border-slate-300 p-2">চুক্তি শুরুর তারিখ</th>
+                        <th className="border border-slate-300 p-2">চুক্তি মেয়াদোত্তীর্ণের তারিখ</th>
+                        <th className="border border-slate-300 p-2 text-right">মাসিক ভাড়া</th>
+                        <th className="border border-slate-300 p-2 text-right">জামানত</th>
+                        <th className="border border-slate-300 p-2 text-center">চুক্তির অবস্থা</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredProperties.flatMap((p) =>
+                        (p.tenants || []).map((t, tIdx) => (
+                          <tr key={`${p.id}-${t.id}`} className={tIdx % 2 === 1 ? 'bg-slate-50' : 'bg-white'}>
+                            <td className="border border-slate-300 p-2 text-center font-bold">{tIdx + 1}</td>
+                            <td className="border border-slate-300 p-2">
+                              <div className="font-bold text-slate-900">{t.name}</div>
+                              <div className="font-mono text-[10px] text-blue-700">{t.tenantCode}</div>
+                            </td>
+                            <td className="border border-slate-300 p-2">
+                              <div className="font-semibold text-slate-800">{p.name || p.nameBn}</div>
+                              <div className="text-[10px] text-slate-500">{t.unitOrShopNo || 'মূল ইউনিট'}</div>
+                            </td>
+                            <td className="border border-slate-300 p-2 font-mono">{t.startDate || '-'}</td>
+                            <td className="border border-slate-300 p-2 font-mono font-bold text-slate-900">{t.endDate || 'চলমান'}</td>
+                            <td className="border border-slate-300 p-2 text-right font-bold text-emerald-700">
+                              {formatCurrency(t.monthlyRent || 0, language)}
+                            </td>
+                            <td className="border border-slate-300 p-2 text-right font-semibold text-slate-800">
+                              {formatCurrency(t.securityDeposit || 0, language)}
+                            </td>
+                            <td className="border border-slate-300 p-2 text-center">
+                              <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px]">
+                                {t.status === 'ACTIVE' ? 'সক্রিয় চুক্তি' : t.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* ========================================================================= */}
               {/* REPORT 6: RENT_COLLECTION_LEDGER (মাসিক ভাড়া ও কিস্তি আদায় লেজার) */}
               {/* ========================================================================= */}
               {selectedReport === 'RENT_COLLECTION_LEDGER' && (
@@ -628,6 +684,95 @@ export const PropertyReportsModal: React.FC<PropertyReportsModalProps> = ({
                         <td className="border border-slate-300 p-2"></td>
                       </tr>
                     </tfoot>
+                  </table>
+                </div>
+              )}
+
+              {/* ========================================================================= */}
+              {/* REPORT 7: DUE_OUTSTANDING_REPORT (বকেয়া ভাড়া ও রিকভারি স্টেটমেন্ট) */}
+              {/* ========================================================================= */}
+              {selectedReport === 'DUE_OUTSTANDING_REPORT' && (
+                <div className="space-y-4">
+                  <table className="w-full text-xs text-left border-collapse border border-slate-300">
+                    <thead className="bg-slate-800 text-white font-bold">
+                      <tr>
+                        <th className="border border-slate-300 p-2 text-center w-10">নং</th>
+                        <th className="border border-slate-300 p-2">ভাড়াটিয়া ও মোবাইল</th>
+                        <th className="border border-slate-300 p-2">সম্পত্তি ও ইউনিট</th>
+                        <th className="border border-slate-300 p-2">বকেয়া মাস / বিবরণ</th>
+                        <th className="border border-slate-300 p-2 text-right">নির্ধারিত মাসিক ভাড়া</th>
+                        <th className="border border-slate-300 p-2 text-right">বকেয়া টাকার পরিমাণ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredProperties.flatMap((p) =>
+                        (p.tenants || []).map((t, idx) => (
+                          <tr key={`${p.id}-${t.id}`} className={idx % 2 === 1 ? 'bg-slate-50' : 'bg-white'}>
+                            <td className="border border-slate-300 p-2 text-center font-bold">{idx + 1}</td>
+                            <td className="border border-slate-300 p-2">
+                              <div className="font-bold text-slate-900">{t.name}</div>
+                              <div className="font-mono text-[10px] text-slate-500">{t.mobile}</div>
+                            </td>
+                            <td className="border border-slate-300 p-2">
+                              <div className="font-semibold text-slate-800">{p.name || p.nameBn}</div>
+                              <div className="text-[10px] text-blue-700">{t.unitOrShopNo || '-'}</div>
+                            </td>
+                            <td className="border border-slate-300 p-2 text-slate-600">চলমান হিসাব বছর ({selectedYear})</td>
+                            <td className="border border-slate-300 p-2 text-right font-semibold text-slate-800">
+                              {formatCurrency(t.monthlyRent || 0, language)}
+                            </td>
+                            <td className="border border-slate-300 p-2 text-right font-bold text-rose-700">
+                              {formatCurrency((t as any).currentDue || (t as any).arrearsAmount || 0, language)}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* ========================================================================= */}
+              {/* REPORT 8: PROPERTY_INCOME_STATEMENT (সম্পত্তিভিত্তিক ভাড়া আয় বিবরণী) */}
+              {/* ========================================================================= */}
+              {selectedReport === 'PROPERTY_INCOME_STATEMENT' && (
+                <div className="space-y-4">
+                  <table className="w-full text-xs text-left border-collapse border border-slate-300">
+                    <thead className="bg-slate-800 text-white font-bold">
+                      <tr>
+                        <th className="border border-slate-300 p-2 text-center w-10">নং</th>
+                        <th className="border border-slate-300 p-2">সম্পত্তি কোড ও নাম</th>
+                        <th className="border border-slate-300 p-2">শ্রেণি ও ব্যবহার</th>
+                        <th className="border border-slate-300 p-2 text-right">মাসিক নির্ধারিত আয়</th>
+                        <th className="border border-slate-300 p-2 text-right">মোট আদায়কৃত ভাড়া</th>
+                        <th className="border border-slate-300 p-2 text-right">বার্ষিক প্রাক্কলিত আয়</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredProperties.map((p, idx) => {
+                        const collected = (p.rentCollections || []).reduce((s, c) => s + (c.paidAmount || 0), 0);
+                        const monthly = p.monthlyIncome || p.monthlyRent || 0;
+                        return (
+                          <tr key={p.id} className={idx % 2 === 1 ? 'bg-slate-50' : 'bg-white'}>
+                            <td className="border border-slate-300 p-2 text-center font-bold">{idx + 1}</td>
+                            <td className="border border-slate-300 p-2">
+                              <div className="font-bold text-slate-900">{p.name || p.nameBn}</div>
+                              <div className="font-mono text-[10px] text-blue-700">{p.propertyCode}</div>
+                            </td>
+                            <td className="border border-slate-300 p-2">{p.category} ({p.currentUse || '-'})</td>
+                            <td className="border border-slate-300 p-2 text-right font-semibold text-slate-800">
+                              {formatCurrency(monthly, language)}
+                            </td>
+                            <td className="border border-slate-300 p-2 text-right font-bold text-emerald-700">
+                              {formatCurrency(collected, language)}
+                            </td>
+                            <td className="border border-slate-300 p-2 text-right font-bold text-blue-900">
+                              {formatCurrency(monthly * 12, language)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
                   </table>
                 </div>
               )}
@@ -874,6 +1019,43 @@ export const PropertyReportsModal: React.FC<PropertyReportsModalProps> = ({
                           <td className="border border-slate-300 p-2 text-[11px] text-slate-600">{d.description || d.fileName}</td>
                         </tr>
                       ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* ========================================================================= */}
+              {/* REPORT 14: INSPECTION_HISTORY (সম্পত্তি পরিদর্শন ও পর্যবেক্ষণ লগ) */}
+              {/* ========================================================================= */}
+              {selectedReport === 'INSPECTION_HISTORY' && (
+                <div className="space-y-4">
+                  <table className="w-full text-xs text-left border-collapse border border-slate-300">
+                    <thead className="bg-slate-800 text-white font-bold">
+                      <tr>
+                        <th className="border border-slate-300 p-2 text-center w-10">নং</th>
+                        <th className="border border-slate-300 p-2">সম্পত্তি কোড ও নাম</th>
+                        <th className="border border-slate-300 p-2">পরিদর্শনের তারিখ</th>
+                        <th className="border border-slate-300 p-2">পরিদর্শক / কমিটি প্রতিনিধি</th>
+                        <th className="border border-slate-300 p-2">বর্তমান অবস্থা ও পর্যবেক্ষণ</th>
+                        <th className="border border-slate-300 p-2">সুপারিশ / করণীয়</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredProperties.flatMap((p) =>
+                        (p.inspections || []).map((ins, idx) => (
+                          <tr key={ins.id || idx} className={idx % 2 === 1 ? 'bg-slate-50' : 'bg-white'}>
+                            <td className="border border-slate-300 p-2 text-center font-bold">{idx + 1}</td>
+                            <td className="border border-slate-300 p-2">
+                              <div className="font-bold text-slate-900">{p.name || p.nameBn}</div>
+                              <div className="font-mono text-[10px] text-blue-700">{p.propertyCode}</div>
+                            </td>
+                            <td className="border border-slate-300 p-2 font-mono">{ins.inspectionDate}</td>
+                            <td className="border border-slate-300 p-2 font-semibold">{ins.inspectorName}</td>
+                            <td className="border border-slate-300 p-2">{ins.findings || ins.condition}</td>
+                            <td className="border border-slate-300 p-2 text-slate-600">{ins.recommendations || '-'}</td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>

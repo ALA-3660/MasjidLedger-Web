@@ -32,17 +32,17 @@ export const getDefaultDateFilterState = (): DateFilterState => {
   const currentMonthStr = todayStr.slice(0, 7);
   const currentYearStr = todayStr.slice(0, 4);
 
-  // Default to first day of current month to today
+  // Default to ALL TIME ('সকল সময়') so no entries from previous months/years are hidden by default
   const firstDayOfMonth = `${currentMonthStr}-01`;
 
   return {
-    mode: 'DATE_RANGE',
-    quickFilter: 'THIS_MONTH',
+    mode: 'QUICK',
+    quickFilter: 'ALL',
     startDate: firstDayOfMonth,
     endDate: todayStr,
-    startMonth: currentMonthStr,
+    startMonth: '2026-01',
     endMonth: currentMonthStr,
-    startYear: currentYearStr,
+    startYear: '2026',
     endYear: currentYearStr,
   };
 };

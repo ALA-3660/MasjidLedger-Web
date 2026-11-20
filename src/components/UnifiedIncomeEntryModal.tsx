@@ -53,6 +53,8 @@ import { numberToBanglaWords } from '../lib/banglaNumberToWords';
 import { ChangeCalculatorModal } from './ChangeCalculatorModal';
 import { MoneyReceiptModal, VoucherModal, PrintFormat } from './PrintModals';
 import { getDurationSinceLastOpened } from './DonationView';
+import { AiSmartEntryToolbar, AiSmartEntryResult } from './common/AiSmartEntryToolbar';
+import { AiNoteCounterModal } from './income/AiNoteCounterModal';
 
 export type IncomeEntryType = 'JUMMA' | 'DONATION' | 'DONATION_BOX' | 'WAQF_RENT' | 'OTHER_INCOME';
 
@@ -66,6 +68,8 @@ export interface UnifiedIncomeEntryModalProps {
   initialBoxId?: string;
   initialPropertyId?: string;
   initialTenantId?: string;
+  initialDenomination?: CashDenominationData | null;
+  initialAiPrefill?: AiSmartEntryResult | null;
   accounts: FinancialAccount[];
   accountHeads?: AccountHead[];
   donationBoxes?: DonationBox[];
@@ -108,6 +112,8 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
   initialBoxId,
   initialPropertyId,
   initialTenantId,
+  initialDenomination = null,
+  initialAiPrefill = null,
   accounts: initialAccounts,
   accountHeads = [],
   donationBoxes: initialDonationBoxes,
@@ -200,6 +206,7 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [isCalculatorOpen, setIsCalculatorOpen] = useState<boolean>(false);
+  const [isAiNoteCounterOpen, setIsAiNoteCounterOpen] = useState<boolean>(false);
 
   // Post-save Receipt / Voucher State
   const [savedDonationForReceipt, setSavedDonationForReceipt] = useState<Donation | null>(null);
@@ -383,7 +390,43 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
       setDescription('');
       setReference('');
     }
-  }, [isOpen, initialType, initialPersonId, initialPlanId, initialCollection, initialBoxId, initialPropertyId, initialTenantId]);
+
+    // Apply optional AI Note Counter denomination pre-fill (never auto-saves)
+    if (initialDenomination && initialDenomination.grandTotal > 0) {
+      setDenominationData(initialDenomination);
+      setAmount(String(initialDenomination.grandTotal));
+      setPaymentMethod('CASH');
+    }
+
+    // Apply optional AI Smart Entry pre-fill (never auto-saves)
+    if (initialAiPrefill) {
+      if (initialAiPrefill.suggestedIncomeType) {
+        setIncomeType(initialAiPrefill.suggestedIncomeType);
+      }
+      if (initialAiPrefill.date) setDate(initialAiPrefill.date);
+      if (initialAiPrefill.amount && initialAiPrefill.amount > 0) {
+        setAmount(String(initialAiPrefill.amount));
+      }
+      if (initialAiPrefill.paymentMethod) {
+        setPaymentMethod(initialAiPrefill.paymentMethod as PaymentMethod);
+      }
+      if (initialAiPrefill.reference) setReference(initialAiPrefill.reference);
+      if (initialAiPrefill.description) setDescription(initialAiPrefill.description);
+      if (initialAiPrefill.mainHeadId) {
+        setSelectedMainHeadId(initialAiPrefill.mainHeadId);
+        setSelectedSubHeadId(initialAiPrefill.subHeadId || '');
+      }
+      if (initialAiPrefill.personName) {
+        setIsAnonymous(false);
+        setDonorMode('MANUAL');
+        setManualDonorName(initialAiPrefill.personName);
+        setOtherIncomeSource(initialAiPrefill.personName);
+      }
+      if (initialAiPrefill.personPhone) {
+        setDonorPhone(initialAiPrefill.personPhone);
+      }
+    }
+  }, [isOpen, initialType, initialPersonId, initialPlanId, initialCollection, initialBoxId, initialPropertyId, initialTenantId, initialDenomination, initialAiPrefill]);
 
   // Selected Property details & Active Tenants
   const selectedProperty = useMemo(() => {
@@ -991,6 +1034,38 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
             onSubmit={(e) => handleSubmit(e, 'SAVE_AND_PRINT')}
             className="p-5 sm:p-6 overflow-y-auto space-y-6 flex-1 bg-slate-50/50"
           >
+            {/* AI Receipt Scanner & Bangla Smart Entry Toolbar (never auto-saves) */}
+            <AiSmartEntryToolbar
+              entryType="INCOME"
+              accentColor="emerald"
+              onApplyData={(parsed: AiSmartEntryResult) => {
+                setErrorMessage('');
+                if (parsed.suggestedIncomeType) {
+                  setIncomeType(parsed.suggestedIncomeType);
+                }
+                if (parsed.date) setDate(parsed.date);
+                if (parsed.amount && parsed.amount > 0) setAmount(String(parsed.amount));
+                if (parsed.paymentMethod) {
+                  setPaymentMethod(parsed.paymentMethod as PaymentMethod);
+                }
+                if (parsed.reference) setReference(parsed.reference);
+                if (parsed.description) setDescription(parsed.description);
+                if (parsed.mainHeadId) {
+                  setSelectedMainHeadId(parsed.mainHeadId);
+                  setSelectedSubHeadId(parsed.subHeadId || '');
+                }
+                if (parsed.personName) {
+                  setIsAnonymous(false);
+                  setDonorMode('MANUAL');
+                  setManualDonorName(parsed.personName);
+                  setOtherIncomeSource(parsed.personName);
+                }
+                if (parsed.personPhone) {
+                  setDonorPhone(parsed.personPhone);
+                }
+              }}
+            />
+
             {/* Error Banner */}
             {errorMessage && (
               <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-center space-x-2.5 text-rose-700 text-sm animate-shake">
@@ -1927,18 +2002,30 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
 
                 {/* Amount with Denomination Calculator Trigger */}
                 <div>
-                  <div className="flex items-center justify-between mb-1">
+                  <div className="flex flex-wrap items-center justify-between gap-1 mb-1">
                     <label className="text-xs font-semibold text-slate-700 font-siliguri">
                       টাকার পরিমাণ (৳) *
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => setIsCalculatorOpen(true)}
-                      className="text-[11px] text-emerald-700 hover:text-emerald-800 font-bold flex items-center space-x-1 hover:underline cursor-pointer"
-                    >
-                      <Calculator className="w-3.5 h-3.5" />
-                      <span>ভাংতি ও ক্যাশ নোট গণনা</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {(incomeType === 'JUMMA' || incomeType === 'DONATION_BOX') && (
+                        <button
+                          type="button"
+                          onClick={() => setIsAiNoteCounterOpen(true)}
+                          className="text-[11px] bg-emerald-700 hover:bg-emerald-800 text-white px-2 py-0.5 rounded-md font-bold flex items-center space-x-1 cursor-pointer shadow-2xs"
+                        >
+                          <Sparkles className="w-3 h-3 text-amber-300" />
+                          <span>AI নোট হিসাব</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setIsCalculatorOpen(true)}
+                        className="text-[11px] text-emerald-700 hover:text-emerald-800 font-bold flex items-center space-x-1 hover:underline cursor-pointer"
+                      >
+                        <Calculator className="w-3.5 h-3.5" />
+                        <span>ভাংতি ও ক্যাশ নোট গণনা</span>
+                      </button>
+                    </div>
                   </div>
 
                   <div className="relative">
@@ -2176,6 +2263,18 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
           autoPrint={true}
         />
       )}
+      {/* AI Note Counter Modal for Juma & Donation Box */}
+      <AiNoteCounterModal
+        isOpen={isAiNoteCounterOpen}
+        onClose={() => setIsAiNoteCounterOpen(false)}
+        context={incomeType === 'DONATION_BOX' ? 'BOX' : 'JUMA'}
+        onApplyToForm={(grandTotal, denom) => {
+          setDenominationData(denom);
+          setAmount(String(grandTotal));
+          setPaymentMethod('CASH');
+          setErrorMessage('');
+        }}
+      />
     </>
   );
 };

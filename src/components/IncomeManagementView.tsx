@@ -32,6 +32,8 @@ import {
   FileSpreadsheet,
   ShieldCheck,
   Sparkles,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import {
   IncomeEntry,
@@ -53,8 +55,14 @@ import { DenominationDetailModal } from './DenominationDetailModal';
 import { EditTransactionModal } from './EditModals';
 import { SmsPreviewModal } from './SmsPreviewModal';
 import { JumaCollectionModal } from './JumaCollectionModal';
+import { AiSmartEntryToolbar, AiSmartEntryResult } from './common/AiSmartEntryToolbar';
 import { DonationView } from './DonationView';
 import { UnifiedIncomeEntryModal, IncomeEntryType } from './UnifiedIncomeEntryModal';
+import { AiNoteCounterModal } from './income/AiNoteCounterModal';
+import { AiJumaComparisonBanner } from './income/AiJumaComparisonBanner';
+import { AiAppreciationModal, AppreciationTarget } from './income/AiAppreciationModal';
+import { AiWaqfDuesPanel } from './income/AiWaqfDuesPanel';
+import { AiIncomeInsightsCard } from './income/AiIncomeInsightsCard';
 import { QrScanResult } from '../types/qrBarcodeTypes';
 import {
   DateFilterState,
@@ -65,6 +73,7 @@ import {
 } from '../lib/reportingEngine';
 import { ReportFilterBar } from './ReportFilterBar';
 import { A4ReportPreviewModal, ReportColumn } from './A4ReportPreviewModal';
+import { DualScrollTableWrapper } from './DualScrollTableWrapper';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 export type IncomeSecondaryTab =
@@ -151,10 +160,6 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
       setActiveTab(initialTab);
       if (initialTab === 'new_income_entry') {
         handleOpenUnifiedIncome('DONATION');
-      } else if (initialTab === 'income_waqf') {
-        handleOpenUnifiedIncome('WAQF_RENT');
-      } else if (initialTab === 'income_other') {
-        handleOpenUnifiedIncome('OTHER_INCOME');
       }
     }
   }, [initialTab]);
@@ -166,32 +171,62 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
   const [unifiedPersonId, setUnifiedPersonId] = useState<string | undefined>(undefined);
   const [unifiedPlanId, setUnifiedPlanId] = useState<string | undefined>(undefined);
   const [unifiedCollection, setUnifiedCollection] = useState<any>(null);
+  const [unifiedPropertyId, setUnifiedPropertyId] = useState<string | undefined>(undefined);
+  const [unifiedTenantId, setUnifiedTenantId] = useState<string | undefined>(undefined);
+  const [unifiedDenomination, setUnifiedDenomination] = useState<CashDenominationData | null>(null);
+  const [unifiedAiPrefill, setUnifiedAiPrefill] = useState<AiSmartEntryResult | null>(null);
+
+  // AI Modals & Duplicate Checker State
+  const [isAiNoteCounterOpen, setIsAiNoteCounterOpen] = useState(false);
+  const [aiNoteCounterContext, setAiNoteCounterContext] = useState<'JUMA' | 'BOX'>('JUMA');
+  const [appreciationTarget, setAppreciationTarget] = useState<AppreciationTarget | null>(null);
+  const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
+  const [duplicateError, setDuplicateError] = useState<string | null>(null);
+  const [showOnlyDuplicates, setShowOnlyDuplicates] = useState(false);
+  const [duplicateScanResult, setDuplicateScanResult] = useState<{
+    scannedCount: number;
+    duplicateIds: string[];
+    groups: Array<{
+      groupKey: string;
+      date: string;
+      amount: number;
+      riskLevel: 'HIGH' | 'MEDIUM';
+      entryIds: string[];
+      voucherNumbers: string[];
+      donorOrHeadBn: string;
+      reasonBn: string;
+    }>;
+    summaryBn: string;
+  } | null>(null);
 
   const handleOpenUnifiedIncome = (
     type: IncomeEntryType = 'DONATION',
     boxId?: string,
     personId?: string,
     planId?: string,
-    collection?: any
+    collection?: any,
+    extra?: {
+      propertyId?: string;
+      tenantId?: string;
+      denomination?: CashDenominationData | null;
+      aiPrefill?: AiSmartEntryResult | null;
+    }
   ) => {
     setUnifiedIncomeType(type);
     setUnifiedBoxId(boxId);
     setUnifiedPersonId(personId);
     setUnifiedPlanId(planId);
     setUnifiedCollection(collection || null);
+    setUnifiedPropertyId(extra?.propertyId);
+    setUnifiedTenantId(extra?.tenantId);
+    setUnifiedDenomination(extra?.denomination || null);
+    setUnifiedAiPrefill(extra?.aiPrefill || null);
     setIsUnifiedIncomeModalOpen(true);
   };
 
   const handleSubTabChange = (tabId: IncomeSecondaryTab) => {
     setActiveTab(tabId);
     setIsMobileDrawerOpen(false);
-    if (tabId === 'new_income_entry') {
-      handleOpenUnifiedIncome('DONATION');
-    } else if (tabId === 'income_waqf') {
-      handleOpenUnifiedIncome('WAQF_RENT');
-    } else if (tabId === 'income_other') {
-      handleOpenUnifiedIncome('OTHER_INCOME');
-    }
     const tabMap: Record<IncomeSecondaryTab, string> = {
       income_overview: 'income',
       new_income_entry: 'new_income_entry',
@@ -428,12 +463,92 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
     });
   }, [incomes]);
 
+  // Waqf rent records derived from incomes
+  const waqfIncomeRecords = useMemo(() => {
+    return incomes.filter((inc) => {
+      const hay = `${inc.mainHeadNameBn || ''} ${inc.subHeadNameBn || ''} ${inc.description || ''} ${inc.reference || ''}`.toLowerCase();
+      return (
+        hay.includes('ভাড়া') ||
+        hay.includes('ভাড়া') ||
+        hay.includes('ওয়াকফ') ||
+        hay.includes('ওয়াকফ') ||
+        hay.includes('দোকান') ||
+        hay.includes('waqf') ||
+        hay.includes('rent')
+      );
+    });
+  }, [incomes]);
+
+  // Duplicate ID -> Reason lookup map for Register highlighting
+  const duplicateReasonMap = useMemo(() => {
+    const map = new Map<string, { riskLevel: 'HIGH' | 'MEDIUM'; reasonBn: string }>();
+    if (!duplicateScanResult?.groups) return map;
+    duplicateScanResult.groups.forEach((g) => {
+      g.entryIds.forEach((id) => {
+        map.set(id, { riskLevel: g.riskLevel, reasonBn: g.reasonBn });
+      });
+    });
+    return map;
+  }, [duplicateScanResult]);
+
+  const handleRunDuplicateCheck = async () => {
+    setIsCheckingDuplicates(true);
+    setDuplicateError(null);
+    try {
+      const res = await api.checkIncomeRegisterDuplicatesAi({
+        fromDate: effectiveDates.startDate,
+        toDate: effectiveDates.endDate,
+      });
+      setDuplicateScanResult(res);
+      if (res.duplicateIds.length === 0) {
+        setShowOnlyDuplicates(false);
+      }
+    } catch (err: any) {
+      setDuplicateError(err?.message || 'ডাবল এন্ট্রি যাচাই করতে ব্যর্থ হয়েছে।');
+    } finally {
+      setIsCheckingDuplicates(false);
+    }
+  };
+
   // ===================== REGISTER & REPORTING ENGINE =====================
   const [reportFilterState, setReportFilterState] = useState<DateFilterState>(getDefaultDateFilterState());
   const [registerSearch, setRegisterSearch] = useState('');
   const [registerStatus, setRegisterStatus] = useState('ALL');
   const [registerHeadId, setRegisterHeadId] = useState('ALL');
+  const [registerSubHeadId, setRegisterSubHeadId] = useState('ALL');
   const [registerAccountId, setRegisterAccountId] = useState('ALL');
+  const [registerSortBy, setRegisterSortBy] = useState<'VOUCHER_DESC' | 'DATE_DESC' | 'VOUCHER_ASC' | 'DATE_ASC'>('VOUCHER_DESC');
+
+  const incomeSubHeads = useMemo(() => {
+    const parentNameMap = new Map(incomeMainHeads.map((h) => [h.id, h.nameBn]));
+    return accountHeads
+      .filter((h) => h.type === 'INCOME' && !!h.parentId)
+      .map((sh) => ({
+        id: sh.id,
+        nameBn: sh.nameBn,
+        parentId: sh.parentId,
+        parentNameBn: sh.parentId ? parentNameMap.get(sh.parentId) || '' : '',
+      }));
+  }, [accountHeads, incomeMainHeads]);
+
+  const activeIncomeFilterSubtitle = useMemo(() => {
+    const parts: string[] = [];
+    if (registerHeadId !== 'ALL') {
+      const h = accountHeads.find((x) => x.id === registerHeadId);
+      if (h) parts.push(`প্রধান খাত: ${h.nameBn}`);
+    }
+    if (registerSubHeadId !== 'ALL') {
+      const sh = accountHeads.find((x) => x.id === registerSubHeadId);
+      if (sh) parts.push(`উপখাত: ${sh.nameBn}`);
+    }
+    if (registerAccountId !== 'ALL') {
+      const a = accounts.find((x) => x.id === registerAccountId);
+      if (a) parts.push(`হিসাব: ${a.nameBn}`);
+    }
+    return parts.length > 0
+      ? `মসজিদের অনুমোদিত আয়ের রেজিস্টার খতিয়ান (${parts.join(' • ')})`
+      : 'মসজিদের সকল আনুষ্ঠানিক ও অনুমোদিত আয়ের রেজিস্টার খতিয়ান';
+  }, [registerHeadId, registerSubHeadId, registerAccountId, accountHeads, accounts]);
 
   const effectiveDates = useMemo(() => resolveEffectiveDates(reportFilterState), [reportFilterState]);
 
@@ -462,12 +577,41 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
       list = list.filter((i) => i.mainHeadId === registerHeadId || i.subHeadId === registerHeadId);
     }
 
+    if (registerSubHeadId !== 'ALL') {
+      list = list.filter((i) => i.subHeadId === registerSubHeadId);
+    }
+
     if (registerAccountId !== 'ALL') {
       list = list.filter((i) => i.accountId === registerAccountId);
     }
 
-    return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [incomes, effectiveDates, registerSearch, registerStatus, registerHeadId, registerAccountId]);
+    if (showOnlyDuplicates && duplicateScanResult?.duplicateIds?.length) {
+      const dupSet = new Set(duplicateScanResult.duplicateIds);
+      list = list.filter((i) => dupSet.has(i.id));
+    }
+
+    return [...list].sort((a, b) => {
+      if (registerSortBy === 'VOUCHER_DESC') {
+        const vDiff = (b.voucherNumber || '').localeCompare(a.voucherNumber || '', undefined, { numeric: true });
+        if (vDiff !== 0) return vDiff;
+        return new Date(b.date).getTime() - new Date(a.date).getTime();
+      }
+      if (registerSortBy === 'VOUCHER_ASC') {
+        const vDiff = (a.voucherNumber || '').localeCompare(b.voucherNumber || '', undefined, { numeric: true });
+        if (vDiff !== 0) return vDiff;
+        return new Date(a.date).getTime() - new Date(b.date).getTime();
+      }
+      if (registerSortBy === 'DATE_ASC') {
+        const dDiff = new Date(a.date).getTime() - new Date(b.date).getTime();
+        if (dDiff !== 0) return dDiff;
+        return (a.voucherNumber || '').localeCompare(b.voucherNumber || '', undefined, { numeric: true });
+      }
+      // DATE_DESC
+      const dDiff = new Date(b.date).getTime() - new Date(a.date).getTime();
+      if (dDiff !== 0) return dDiff;
+      return (b.voucherNumber || '').localeCompare(a.voucherNumber || '', undefined, { numeric: true });
+    });
+  }, [incomes, effectiveDates, registerSearch, registerStatus, registerHeadId, registerSubHeadId, registerAccountId, registerSortBy, showOnlyDuplicates, duplicateScanResult]);
 
   // Chronological (ascending date) order for Report Preview, Print, and Excel Export
   const printOrderedIncomes = useMemo(() => {
@@ -716,6 +860,18 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
                 </div>
               </div>
 
+              {/* AI Smart Entry Portal Bar (Receipt / bKash-Nagad SMS / Bangla Text & Voice — never auto-saves) */}
+              <AiSmartEntryToolbar
+                entryType="INCOME"
+                accentColor="emerald"
+                onApplyData={(parsed: AiSmartEntryResult) => {
+                  const targetType: IncomeEntryType = parsed.suggestedIncomeType || 'DONATION';
+                  handleOpenUnifiedIncome(targetType, undefined, undefined, undefined, null, {
+                    aiPrefill: parsed,
+                  });
+                }}
+              />
+
               {/* 3 Interactive Income Type Action Cards */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                 {/* 1. Juma Collection Card */}
@@ -880,6 +1036,9 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
                 </div>
               </div>
 
+              {/* AI Financial Insights & Next Month Forecast Card */}
+              <AiIncomeInsightsCard compact />
+
               {/* Quick Actions & Recent Receipts Card */}
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
                 <div className="flex items-center justify-between">
@@ -896,7 +1055,7 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
                   </button>
                 </div>
 
-                <div className="overflow-x-auto">
+                <DualScrollTableWrapper maxHeightClassName="max-h-[420px]">
                   <table className="w-full text-xs text-left border-collapse">
                     <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
                       <tr>
@@ -954,7 +1113,7 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </DualScrollTableWrapper>
               </div>
             </div>
           )}
@@ -972,7 +1131,19 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
                     প্রতি শুক্রবারের জুমার দিনের বক্স কালেকশন, দানশীলদের নগদ প্রাপ্তি ও হিসাব
                   </p>
                 </div>
-                <div className="flex items-center space-x-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAiNoteCounterContext('JUMA');
+                      setIsAiNoteCounterOpen(true);
+                    }}
+                    className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs transition-all cursor-pointer"
+                    title="বাংলায় নোটের সংখ্যা লিখে বা বলে AI দিয়ে জুমার কালেকশন হিসাব করুন"
+                  >
+                    <Sparkles className="w-4 h-4 text-amber-300" />
+                    <span>AI নোট হিসাব ও এন্ট্রি</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => setIsReportPreviewOpen(true)}
@@ -1021,6 +1192,9 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
                 </div>
               </div>
 
+              {/* AI 4-Week Average vs Current Week Juma Comparison Banner */}
+              <AiJumaComparisonBanner jumaCount={jumaIncomeRecords.length} />
+
               {/* Double-counting Prevention Accounting Notice */}
               <div className="bg-teal-50/70 border border-teal-200/80 rounded-2xl p-3.5 flex items-start space-x-3 text-xs text-teal-950 shadow-2xs">
                 <ShieldCheck className="w-5 h-5 text-teal-700 shrink-0 mt-0.5" />
@@ -1038,7 +1212,7 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
                   <span className="text-xs font-bold text-slate-800">জুমার দিনের রেকর্ডসমূহ</span>
                   <span className="text-xs font-mono text-slate-500">মোট {jumaIncomeRecords.length} টি</span>
                 </div>
-                <div className="overflow-x-auto">
+                <DualScrollTableWrapper>
                   <table className="w-full text-xs text-left border-collapse">
                     <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
                       <tr>
@@ -1100,7 +1274,7 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
                       )}
                     </tbody>
                   </table>
-                </div>
+                </DualScrollTableWrapper>
               </div>
             </div>
           )}
@@ -1145,12 +1319,149 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
                 currentUser={currentUser}
                 language={language}
                 onOpenUnifiedIncome={handleOpenUnifiedIncome}
+                onOpenUnifiedIncomeWithDenomination={(type, denom, boxId) =>
+                  handleOpenUnifiedIncome(type, boxId, undefined, undefined, null, {
+                    denomination: denom,
+                  })
+                }
                 onAddDonation={onAddDonation || (async () => ({} as any))}
                 onCollectBox={onCollectBox || (async () => {})}
                 onAddDonationBox={onAddDonationBox}
                 onUpdateDonationBox={onUpdateDonationBox}
                 onPrintReceipt={onPrintReceipt || (() => {})}
                 onSendSms={onSendSms}
+              />
+            </div>
+          )}
+
+          {/* ==================== SUBTAB 4B: WAQF PROPERTY RENT (ওয়াক্ফ সম্পত্তির ভাড়া) ==================== */}
+          {activeTab === 'income_waqf' && (
+            <div className="space-y-5">
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                    <Building className="w-5 h-5 text-emerald-700" />
+                    <span>🏠 ওয়াক্ফ সম্পত্তির ভাড়া ও বকেয়া ব্যবস্থাপনা</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5 font-tiro">
+                    মসজিদের ওয়াক্ফ দোকান, মার্কেট ও সম্পত্তির মাসিক ভাড়া আদায়, বকেয়া যাচাই ও ভদ্র বাংলা রিমাইন্ডার
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleOpenUnifiedIncome('WAQF_RENT')}
+                  className="px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs transition-all cursor-pointer shrink-0"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ নতুন ওয়াক্ফ ভাড়া আদায়</span>
+                </button>
+              </div>
+
+              {/* AI Waqf Rent Due Checker & Personalized Reminder Drafter */}
+              <AiWaqfDuesPanel
+                onCollectRentForTenant={(propertyId, tenantId) =>
+                  handleOpenUnifiedIncome('WAQF_RENT', undefined, undefined, undefined, null, {
+                    propertyId,
+                    tenantId,
+                  })
+                }
+              />
+
+              {/* Waqf Rent Income History Table */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800">আদায়কৃত ওয়াক্ফ ভাড়া রেজিস্টার</span>
+                  <span className="text-xs font-mono font-bold text-emerald-700">
+                    মোট: {waqfIncomeRecords.length} টি | ৳ {stats.totalWaqfRent.toLocaleString('en-IN')}
+                  </span>
+                </div>
+                <DualScrollTableWrapper>
+                  <table className="w-full text-xs text-left border-collapse">
+                    <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                      <tr>
+                        <th className="px-4 py-3">তারিখ</th>
+                        <th className="px-4 py-3">ভাউচার নং</th>
+                        <th className="px-4 py-3">ভাড়াটিয়া / বিবরণ</th>
+                        <th className="px-4 py-3">হিসাব</th>
+                        <th className="px-4 py-3 text-right">পরিমাণ (৳)</th>
+                        <th className="px-4 py-3 text-center">কার্যক্রম</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {waqfIncomeRecords.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                            এখনো কোনো ওয়াক্ফ ভাড়া আদায়ের রেকর্ড পাওয়া যায়নি।
+                          </td>
+                        </tr>
+                      ) : (
+                        waqfIncomeRecords.map((item) => (
+                          <tr key={item.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-4 py-3 font-mono text-slate-600">{formatDate(item.date)}</td>
+                            <td className="px-4 py-3 font-mono font-bold text-slate-900">{item.voucherNumber}</td>
+                            <td className="px-4 py-3 text-slate-800 font-medium">
+                              {item.donorName || item.description || 'ওয়াক্ফ ভাড়া'}
+                            </td>
+                            <td className="px-4 py-3 text-slate-600">{item.accountName}</td>
+                            <td className="px-4 py-3 text-right font-mono font-bold text-emerald-700">
+                              ৳ {Number(item.amount).toLocaleString('en-IN')}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <button
+                                type="button"
+                                onClick={() => onPrintVoucher(item, 'INCOME', 'POS_80', true)}
+                                className="p-1.5 text-slate-600 hover:text-emerald-700 hover:bg-slate-100 rounded-lg cursor-pointer"
+                                title="ভাউচার প্রিন্ট"
+                              >
+                                <Printer className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </DualScrollTableWrapper>
+              </div>
+            </div>
+          )}
+
+          {/* ==================== SUBTAB 4C: OTHER INCOME (অন্যান্য আয়) ==================== */}
+          {activeTab === 'income_other' && (
+            <div className="space-y-5">
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                    <Wallet className="w-5 h-5 text-amber-600" />
+                    <span>💰 অন্যান্য সাধারণ ও বিবিধ আয়</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5 font-tiro">
+                    গাছ/পুকুর ইজারা, সরকারি/বেসরকারি অনুদান, ব্যাংক মুনাফা বা অন্যান্য যেকোনো বৈধ আয় এন্ট্রি করুন
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleOpenUnifiedIncome('OTHER_INCOME')}
+                  className="px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs transition-all cursor-pointer shrink-0"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ অন্যান্য আয় এন্ট্রি</span>
+                </button>
+              </div>
+
+              <AiSmartEntryToolbar
+                entryType="INCOME"
+                accentColor="emerald"
+                onApplyData={(parsed: AiSmartEntryResult) => {
+                  handleOpenUnifiedIncome(
+                    parsed.suggestedIncomeType || 'OTHER_INCOME',
+                    undefined,
+                    undefined,
+                    undefined,
+                    null,
+                    { aiPrefill: parsed }
+                  );
+                }}
               />
             </div>
           )}
@@ -1166,9 +1477,12 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
                 onStatusFilterChange={setRegisterStatus}
                 headFilter={registerHeadId}
                 onHeadFilterChange={setRegisterHeadId}
+                subHeadFilter={registerSubHeadId}
+                onSubHeadFilterChange={setRegisterSubHeadId}
                 accountFilter={registerAccountId}
                 onAccountFilterChange={setRegisterAccountId}
                 headsList={incomeMainHeads.map((h) => ({ id: h.id, nameBn: h.nameBn }))}
+                subHeadsList={incomeSubHeads}
                 accountsList={accounts.map((a) => ({ id: a.id, nameBn: a.nameBn }))}
                 onPrint={() => setIsReportPreviewOpen(true)}
                 onPdf={() => setIsReportPreviewOpen(true)}
@@ -1178,39 +1492,173 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
                 labelPrefix="মোট আয়"
               />
 
-              {/* Search Bar */}
-              <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-xs flex items-center space-x-2">
-                <Search className="w-4 h-4 text-slate-400 shrink-0 ml-1" />
-                <input
-                  type="text"
-                  value={registerSearch}
-                  onChange={(e) => setRegisterSearch(e.target.value)}
-                  placeholder="ভাউচার নম্বর, দাতার নাম, বিবরণ বা রেফারেন্স দিয়ে খুঁজুন..."
-                  className="w-full text-xs text-slate-800 placeholder-slate-400 bg-transparent outline-hidden"
-                />
-                {registerSearch && (
-                  <button
-                    onClick={() => setRegisterSearch('')}
-                    className="text-xs text-slate-400 hover:text-slate-600 p-1"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
+              {/* Search Bar + AI Double Entry Check Button */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                <div className="flex-1 bg-white p-3 rounded-2xl border border-slate-200 shadow-xs flex items-center space-x-2">
+                  <Search className="w-4 h-4 text-slate-400 shrink-0 ml-1" />
+                  <input
+                    type="text"
+                    value={registerSearch}
+                    onChange={(e) => setRegisterSearch(e.target.value)}
+                    placeholder="ভাউচার নম্বর, দাতার নাম, বিবরণ বা রেফারেন্স দিয়ে খুঁজুন..."
+                    className="w-full text-xs text-slate-800 placeholder-slate-400 bg-transparent outline-hidden"
+                  />
+                  {registerSearch && (
+                    <button
+                      onClick={() => setRegisterSearch('')}
+                      className="text-xs text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isCheckingDuplicates}
+                  onClick={handleRunDuplicateCheck}
+                  className="px-4 py-3 rounded-2xl bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition cursor-pointer shrink-0 disabled:opacity-60"
+                  title="একই তারিখ, দাতা ও টাকার সন্দেহজনক ডাবল এন্ট্রি খুঁজে বের করুন"
+                >
+                  {isCheckingDuplicates ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-amber-300" />
+                      <span>ডাবল এন্ট্রি যাচাই হচ্ছে...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 text-amber-300" />
+                      <span>AI ডাবল এন্ট্রি চেক</span>
+                    </>
+                  )}
+                </button>
               </div>
+
+              {/* Duplicate Check Error Banner */}
+              {duplicateError && (
+                <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span className="font-semibold">{duplicateError}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDuplicateError(null)}
+                    className="text-rose-700 hover:text-rose-900 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              {/* Duplicate Check Interactive Result Banner */}
+              {duplicateScanResult && (
+                <div
+                  className={`p-4 rounded-2xl border shadow-2xs space-y-2.5 ${
+                    duplicateScanResult.duplicateIds.length > 0
+                      ? 'bg-amber-50/90 border-amber-300 text-amber-950'
+                      : 'bg-emerald-50/90 border-emerald-300 text-emerald-950'
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      {duplicateScanResult.duplicateIds.length > 0 ? (
+                        <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+                      )}
+                      <span className="text-xs sm:text-sm font-bold">
+                        {duplicateScanResult.summaryBn}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {duplicateScanResult.duplicateIds.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setShowOnlyDuplicates((prev) => !prev)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                            showOnlyDuplicates
+                              ? 'bg-rose-600 text-white'
+                              : 'bg-white hover:bg-amber-100 text-amber-900 border border-amber-300'
+                          }`}
+                        >
+                          {showOnlyDuplicates
+                            ? 'সকল এন্ট্রি দেখান'
+                            : `শুধু সন্দেহজনক ডুপ্লিকেট দেখুন (${duplicateScanResult.duplicateIds.length} টি)`}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDuplicateScanResult(null);
+                          setShowOnlyDuplicates(false);
+                        }}
+                        className="p-1 text-slate-600 hover:text-slate-900 cursor-pointer"
+                        title="বন্ধ করুন"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {duplicateScanResult.groups.length > 0 && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1">
+                      {duplicateScanResult.groups.map((grp) => (
+                        <div
+                          key={grp.groupKey}
+                          className="bg-white/90 border border-amber-200 rounded-xl p-2.5 text-[11px] space-y-1"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-bold text-slate-900">
+                              {grp.donorOrHeadBn} — ৳ {grp.amount.toLocaleString('en-IN')}
+                            </span>
+                            <span
+                              className={`px-1.5 py-0.5 rounded font-bold text-[10px] ${
+                                grp.riskLevel === 'HIGH'
+                                  ? 'bg-rose-100 text-rose-800'
+                                  : 'bg-amber-100 text-amber-800'
+                              }`}
+                            >
+                              {grp.riskLevel === 'HIGH' ? 'উচ্চ ঝুঁকি' : 'মাঝারি ঝুঁকি'}
+                            </span>
+                          </div>
+                          <div className="text-slate-600 font-tiro">{grp.reasonBn}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Register Table */}
               <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-                <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                <div className="p-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-bold text-slate-900">আয় রেজিস্টার খতিয়ান</h3>
                     <p className="text-xs text-slate-500">সময়সীমা: {effectiveDates.labelBn}</p>
                   </div>
-                  <div className="text-xs font-mono font-bold text-slate-700">
-                    মোট প্রদর্শিত: <strong>{filteredIncomes.length}</strong> টি
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center space-x-1.5">
+                      <span className="text-[11px] font-bold text-slate-500">সাজানোর ক্রম:</span>
+                      <select
+                        value={registerSortBy}
+                        onChange={(e) => setRegisterSortBy(e.target.value as any)}
+                        className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-hidden focus:border-emerald-500 cursor-pointer"
+                      >
+                        <option value="VOUCHER_DESC">ভাউচার নং (নতুন ➔ পুরাতন)</option>
+                        <option value="VOUCHER_ASC">ভাউচার নং (পুরাতন ➔ নতুন)</option>
+                        <option value="DATE_DESC">তারিখ (নতুন ➔ পুরাতন)</option>
+                        <option value="DATE_ASC">তারিখ (পুরাতন ➔ নতুন)</option>
+                      </select>
+                    </div>
+                    <div className="text-xs font-mono font-bold text-slate-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl">
+                      মোট প্রদর্শিত: <strong>{filteredIncomes.length}</strong> টি (সর্বমোট এন্ট্রি: <strong>{incomes.length}</strong> টি)
+                    </div>
                   </div>
                 </div>
 
-                <div className="overflow-x-auto">
+                <DualScrollTableWrapper>
                   <table className="w-full text-xs text-left border-collapse">
                     <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
                       <tr>
@@ -1234,13 +1682,31 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
                           </td>
                         </tr>
                       ) : (
-                        filteredIncomes.map((item, idx) => (
-                          <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                        filteredIncomes.map((item, idx) => {
+                          const dupInfo = duplicateReasonMap.get(item.id);
+                          return (
+                          <tr
+                            key={item.id}
+                            className={`transition-colors ${
+                              dupInfo
+                                ? 'bg-amber-50/90 hover:bg-amber-100/80 border-l-4 border-l-rose-500'
+                                : 'hover:bg-slate-50/80'
+                            }`}
+                          >
                             <td className="px-3.5 py-3 text-center text-slate-400 font-mono">
                               {idx + 1}
                             </td>
                             <td className="px-3.5 py-3 font-mono font-bold text-slate-900">
-                              {item.voucherNumber}
+                              <div>{item.voucherNumber}</div>
+                              {dupInfo && (
+                                <span
+                                  title={dupInfo.reasonBn}
+                                  className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-300 text-[9px] font-sans font-bold"
+                                >
+                                  <AlertTriangle className="w-2.5 h-2.5" />
+                                  <span>সন্দেহজনক ডুপ্লিকেট</span>
+                                </span>
+                              )}
                             </td>
                             <td className="px-3.5 py-3 font-mono text-slate-600">
                               {formatDate(item.date)}
@@ -1328,10 +1794,30 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
                                     <span>অনুমোদন / পুনরুদ্ধার</span>
                                   </button>
                                 )}
+                                {item.status !== 'CANCELLED' && item.donorName && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setAppreciationTarget({
+                                        donorName: item.donorName || 'সম্মানিত দাতা',
+                                        donorPhone: item.donorPhone,
+                                        amount: Number(item.amount) || 0,
+                                        date: item.date,
+                                        categoryBn: item.mainHeadNameBn,
+                                        receiptNo: item.voucherNumber,
+                                      })
+                                    }
+                                    className="p-1 text-emerald-700 hover:bg-emerald-50 rounded-md cursor-pointer"
+                                    title="AI কৃতজ্ঞতা বার্তা তৈরি করুন"
+                                  >
+                                    <Sparkles className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>
-                        ))
+                          );
+                        })
                       )}
                     </tbody>
                     {filteredIncomes.length > 0 && (
@@ -1348,7 +1834,7 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
                       </tfoot>
                     )}
                   </table>
-                </div>
+                </DualScrollTableWrapper>
               </div>
             </div>
           )}
@@ -1356,6 +1842,9 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
           {/* ==================== SUBTAB 6: INCOME ANALYTICS ==================== */}
           {activeTab === 'analytics' && (
             <div className="space-y-5">
+              {/* AI Financial Insights & Next Month Income Forecast Card */}
+              <AiIncomeInsightsCard />
+
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
                 <h3 className="text-sm font-bold text-slate-900 mb-1">আয় খাতওয়ারি বন্টন ও বিশ্লেষণ</h3>
                 <p className="text-xs text-slate-500 mb-4">প্রধান প্রধান খাত অনুসারে মোট আয়ের পরিসংখ্যান</p>
@@ -1445,9 +1934,12 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
                     onStatusFilterChange={setRegisterStatus}
                     headFilter={registerHeadId}
                     onHeadFilterChange={setRegisterHeadId}
+                    subHeadFilter={registerSubHeadId}
+                    onSubHeadFilterChange={setRegisterSubHeadId}
                     accountFilter={registerAccountId}
                     onAccountFilterChange={setRegisterAccountId}
                     headsList={incomeMainHeads.map((h) => ({ id: h.id, nameBn: h.nameBn }))}
+                    subHeadsList={incomeSubHeads}
                     accountsList={accounts.map((a) => ({ id: a.id, nameBn: a.nameBn }))}
                     onPrint={() => setIsReportPreviewOpen(true)}
                     onPdf={() => setIsReportPreviewOpen(true)}
@@ -1471,7 +1963,7 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
                   </div>
                 </div>
 
-                <div className="overflow-x-auto">
+                <DualScrollTableWrapper>
                   <table className="w-full text-xs text-left border-collapse">
                     <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
                       <tr>
@@ -1502,7 +1994,7 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </DualScrollTableWrapper>
               </div>
             </div>
           )}
@@ -1527,6 +2019,27 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
             </div>
 
             <form onSubmit={(e) => handleCreateSubmit(e, true)} className="p-5 space-y-4 overflow-y-auto flex-1">
+              <AiSmartEntryToolbar
+                entryType="INCOME"
+                accentColor="emerald"
+                onApplyData={(parsed: AiSmartEntryResult) => {
+                  setFormError('');
+                  if (parsed.date) setEntryDate(parsed.date);
+                  if (parsed.amount && parsed.amount > 0) setAmount(String(parsed.amount));
+                  if (parsed.mainHeadId) {
+                    setMainHeadId(parsed.mainHeadId);
+                    setSubHeadId(parsed.subHeadId || '');
+                  }
+                  if (parsed.paymentMethod) {
+                    setPaymentMethod(parsed.paymentMethod as PaymentMethod);
+                  }
+                  if (parsed.personName) setDonorName(parsed.personName);
+                  if (parsed.personPhone) setDonorPhone(parsed.personPhone);
+                  if (parsed.reference) setReference(parsed.reference);
+                  if (parsed.description) setDescription(parsed.description);
+                }}
+              />
+
               {formError && (
                 <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-semibold flex items-center space-x-2">
                   <AlertTriangle className="w-4 h-4 shrink-0" />
@@ -1843,7 +2356,7 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
         isOpen={isReportPreviewOpen}
         onClose={() => setIsReportPreviewOpen(false)}
         reportTitle="আয় ও প্রাপ্তি বিবরণী প্রতিবেদন (Income Register Report)"
-        reportSubtitle="মসজিদের সকল আনুষ্ঠানিক ও অনুমোদিত আয়ের রেজিস্টার খতিয়ান"
+        reportSubtitle={activeIncomeFilterSubtitle}
         periodLabel={effectiveDates.labelBn}
         currentMosque={currentMosque}
         columns={reportColumns}
@@ -1868,12 +2381,22 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
       {/* Centralized Unified Income Entry Modal */}
       <UnifiedIncomeEntryModal
         isOpen={isUnifiedIncomeModalOpen}
-        onClose={() => setIsUnifiedIncomeModalOpen(false)}
+        onClose={() => {
+          setIsUnifiedIncomeModalOpen(false);
+          setUnifiedDenomination(null);
+          setUnifiedAiPrefill(null);
+          setUnifiedPropertyId(undefined);
+          setUnifiedTenantId(undefined);
+        }}
         initialType={unifiedIncomeType}
         initialBoxId={unifiedBoxId}
         initialPersonId={unifiedPersonId}
         initialPlanId={unifiedPlanId}
         initialCollection={unifiedCollection}
+        initialPropertyId={unifiedPropertyId}
+        initialTenantId={unifiedTenantId}
+        initialDenomination={unifiedDenomination}
+        initialAiPrefill={unifiedAiPrefill}
         accounts={accounts}
         accountHeads={accountHeads}
         donationBoxes={donationBoxes}
@@ -1916,6 +2439,30 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
         }}
         onPrintReceipt={onPrintReceipt}
         onPrintVoucher={onPrintVoucher}
+      />
+
+      {/* AI Note Counter Modal (Juma & Donation Box — pre-fills Unified Income Entry, never auto-saves) */}
+      <AiNoteCounterModal
+        isOpen={isAiNoteCounterOpen}
+        onClose={() => setIsAiNoteCounterOpen(false)}
+        context={aiNoteCounterContext}
+        onApplyToForm={(_grandTotal, denom) => {
+          handleOpenUnifiedIncome(
+            aiNoteCounterContext === 'BOX' ? 'DONATION_BOX' : 'JUMMA',
+            aiNoteCounterContext === 'BOX' ? donationBoxes[0]?.id : undefined,
+            undefined,
+            undefined,
+            null,
+            { denomination: denom }
+          );
+        }}
+      />
+
+      {/* AI Donation Appreciation Message Modal */}
+      <AiAppreciationModal
+        target={appreciationTarget}
+        onClose={() => setAppreciationTarget(null)}
+        onSendSms={onSendSms ? (phone, msg) => onSendSms(phone, msg) : undefined}
       />
     </div>
   );

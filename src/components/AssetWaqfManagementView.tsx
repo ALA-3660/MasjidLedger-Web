@@ -1442,7 +1442,7 @@ export const AssetWaqfManagementView: React.FC<AssetWaqfManagementViewProps> = (
           isOpen={isAssetRegisterOpen}
           onClose={() => setIsAssetRegisterOpen(false)}
           assets={assets}
-          mosqueName={currentMosque?.nameBn || currentMosque?.name}
+          currentMosque={currentMosque}
           language={language}
         />
       )}
@@ -1501,7 +1501,7 @@ export const AssetWaqfManagementView: React.FC<AssetWaqfManagementViewProps> = (
           isOpen={isPropertyReportsOpen}
           onClose={() => setIsPropertyReportsOpen(false)}
           properties={properties}
-          mosqueName={currentMosque?.nameBn || currentMosque?.name}
+          mosque={currentMosque}
           language={language}
         />
       )}

@@ -46,6 +46,7 @@ interface OfficialDocumentFormModalProps {
   onSave: (data: Partial<OfficialDocument>) => Promise<void>;
   documentToEdit?: OfficialDocument | null;
   initialDocType?: OfficialDocumentType;
+  initialOpenAi?: boolean;
   mosque?: Mosque | null;
   committeeTerms?: CommitteeTerm[];
   committeeMeetings?: CommitteeMeeting[];
@@ -60,6 +61,7 @@ export const OfficialDocumentFormModal: React.FC<OfficialDocumentFormModalProps>
   onSave,
   documentToEdit,
   initialDocType = 'NOTICE',
+  initialOpenAi = false,
   mosque,
   committeeTerms = [],
   committeeMeetings = [],
@@ -133,6 +135,7 @@ export const OfficialDocumentFormModal: React.FC<OfficialDocumentFormModalProps>
   // Sync state on open / edit
   useEffect(() => {
     if (isOpen) {
+      setShowAiModal(Boolean(initialOpenAi && !documentToEdit));
       if (documentToEdit) {
         setDocType(documentToEdit.docType);
         setSubType(documentToEdit.subType || '');
@@ -377,10 +380,10 @@ export const OfficialDocumentFormModal: React.FC<OfficialDocumentFormModalProps>
               <button
                 type="button"
                 onClick={() => setShowAiModal(true)}
-                className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold rounded-xl text-xs flex items-center space-x-1.5 shadow-sm transition-all cursor-pointer"
+                className="px-3.5 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-emerald-950 font-bold rounded-xl text-xs flex items-center space-x-1.5 shadow-sm transition-all cursor-pointer"
               >
-                <Sparkles className="w-3.5 h-3.5 text-slate-950" />
-                <span>AI ড্রাফটিং সহকারী</span>
+                <Sparkles className="w-3.5 h-3.5 text-emerald-950" />
+                <span>AI দিয়ে লিখুন</span>
               </button>
               <button
                 onClick={onClose}
@@ -810,6 +813,7 @@ export const OfficialDocumentFormModal: React.FC<OfficialDocumentFormModalProps>
         isOpen={showAiModal}
         onClose={() => setShowAiModal(false)}
         docType={docType}
+        mosque={mosque}
         currentSubject={title}
         currentContent={body}
         onInsertContent={(newContent, newSubject) => {

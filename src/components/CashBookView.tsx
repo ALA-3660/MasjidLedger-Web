@@ -29,6 +29,9 @@ import {
   UnifiedLedgerEntry,
 } from '../lib/accountingLedgerService';
 import { A4ReportPreviewModal } from './A4ReportPreviewModal';
+import { AiBalanceGuardianAlert } from './financial/AiBalanceGuardianAlert';
+import { AiSmartTransactionSearchBar } from './financial/AiSmartTransactionSearchBar';
+import { AiExecutiveSummaryPanel } from './financial/AiExecutiveSummaryPanel';
 
 interface CashBookViewProps {
   accounts: FinancialAccount[];
@@ -87,8 +90,9 @@ export const CashBookView: React.FC<CashBookViewProps> = ({
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'INCOME' | 'EXPENSE'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Print Dialog State
+  // Print Dialog & AI Executive Summary
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [aiExecutiveSummary, setAiExecutiveSummary] = useState('');
 
   // Cash Reconciliation Denomination State
   const [denominations, setDenominations] = useState<{ [denom: number]: number }>({
@@ -270,13 +274,24 @@ export const CashBookView: React.FC<CashBookViewProps> = ({
           {/* 1. Main Cashbook Ledger View */}
           {activeSubItem === 'CASHBOOK' && (
             <>
+              {/* Automatic Negative Cash / Opening Balance AI Guardian Alert */}
+              <AiBalanceGuardianAlert
+                accounts={accounts}
+                periodOpeningBalance={ledgerResult.openingBalance}
+                onNavigateIncome={onNavigateToIncome}
+              />
+
               {/* Summary Cards (Section 12) */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
                     💵 ক্যাশ ইন হ্যান্ড (বর্তমান)
                   </span>
-                  <div className="text-base sm:text-lg font-black font-mono text-emerald-700 mt-1">
+                  <div
+                    className={`text-base sm:text-lg font-black font-mono mt-1 ${
+                      totalCashInHand < 0 ? 'text-rose-700' : 'text-emerald-700'
+                    }`}
+                  >
                     ৳ {totalCashInHand.toLocaleString('en-IN')}
                   </div>
                   <span className="text-[10px] text-slate-400 block mt-0.5">সবগুলো নগদ হিসাবের মোট স্থিতি</span>
@@ -576,6 +591,12 @@ export const CashBookView: React.FC<CashBookViewProps> = ({
                 <span>নগদ তহবিলের পূর্ণাঙ্গ স্থিতি</span>
               </h2>
 
+              <AiBalanceGuardianAlert
+                accounts={accounts}
+                periodOpeningBalance={ledgerResult.openingBalance}
+                onNavigateIncome={onNavigateToIncome}
+              />
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {cashAccounts.map((acc) => (
                   <div key={acc.id} className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-2">
@@ -608,6 +629,9 @@ export const CashBookView: React.FC<CashBookViewProps> = ({
                 <Search className="w-5 h-5 text-blue-600" />
                 <span>নগদ লেনদেন অনুসন্ধান</span>
               </h2>
+
+              {/* Natural Bengali AI Smart Search Bar */}
+              <AiSmartTransactionSearchBar scope="CASH" />
 
               <div className="relative">
                 <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
@@ -681,6 +705,22 @@ export const CashBookView: React.FC<CashBookViewProps> = ({
                   </span>
                 </div>
               </div>
+
+              <AiExecutiveSummaryPanel
+                ledgerType="CASHBOOK"
+                periodLabel={`${formatDate(startDate)} হতে ${formatDate(endDate)}`}
+                startDate={startDate}
+                endDate={endDate}
+                openingBalance={ledgerResult.openingBalance}
+                totalInflow={ledgerResult.totalDebit}
+                totalOutflow={ledgerResult.totalCredit}
+                closingBalance={ledgerResult.closingBalance}
+                transactionCount={ledgerResult.displayEntries.length}
+                accountScopeLabel="সকল নগদ ক্যাশ হিসাব"
+                summaryText={aiExecutiveSummary}
+                onSummaryChange={setAiExecutiveSummary}
+                onOpenPrintModal={() => setIsPrintModalOpen(true)}
+              />
             </div>
           )}
 
@@ -917,6 +957,7 @@ export const CashBookView: React.FC<CashBookViewProps> = ({
             { label: 'মোট নগদ খরচ (Total Outflow)', value: `৳ ${ledgerResult.totalCredit.toLocaleString('en-IN')}` },
             { label: 'সমাপনী নগদ জের (Closing Balance)', value: `৳ ${ledgerResult.closingBalance.toLocaleString('en-IN')}` },
           ]}
+          executiveSummaryNote={aiExecutiveSummary || undefined}
         />
       )}
     </div>

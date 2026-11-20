@@ -4,7 +4,49 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
-import { GoogleGenAI } from '@google/genai';
+import {
+  runSmartFinancialAudit,
+  parseSmartEntry,
+  askMasjidChatbot,
+  generateOfficialDocumentDraft,
+  extractSmartMigrationData,
+  generateCommitteeMeetingMinutes,
+  extractActionPlansFromMinutes,
+  analyzeActionPlansProgress,
+  generateMemberPerformanceInsights,
+  generateCommitteeHandoverProtocol,
+  getCommitteeHealthCheck,
+  parseNoteCountWithAi,
+  getJumaFourWeekComparisonAi,
+  generateDonationAppreciationAi,
+  checkWaqfRentDuesAi,
+  checkIncomeRegisterDuplicatesAi,
+  getIncomeFinancialInsightsAi,
+  getActiveGeminiModel,
+  getAiModelConfigSnapshot,
+  testGeminiModelConnection,
+  analyzeUtilityBillAi,
+  prepareMonthlyPayrollDraftAi,
+  auditExpenseReconciliationAi,
+  analyzeExpenseBudgetGuardAi,
+  diagnoseNegativeCashBalanceAi,
+  reconcileBankStatementAi,
+  smartSearchTransactionsAi,
+  generateLedgerExecutiveSummaryAi,
+  optimizeChartOfAccountsAi,
+  generateStandardCoaTemplateAi,
+  suggestNewAccountHeadAi,
+  findInactiveAccountHeadsAi,
+  generateCoaStructureNoteAi,
+  scanStaffDocumentAi,
+  generateStaffOfficialDocumentAi,
+  summarizeMonthlyAttendanceAi,
+  verifyStaffLeaveRequestAi,
+  generateStaffPayrollDraftAi,
+  generateStaffSalarySmsAi,
+  GeminiServiceError,
+} from './src/server/geminiService.ts';
+import { sanitizeGeminiModelName, isValidGeminiModelName } from './src/config/aiConfig.ts';
 import { db, StoragePersistenceError, getStarterLibraryCategories, getStarterEducationPrograms, getStarterEducationLevels, getStarterMaktabClasses, getStarterMaktabFeeSchedules } from './src/server/db.ts';
 import { cloudPersistence } from './src/server/cloudPersistence.ts';
 import { realtime } from './src/server/ws.ts';
@@ -174,8 +216,8 @@ import {
 export const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
-app.use(express.json({ limit: '15mb' }));
-app.use(express.urlencoded({ extended: true, limit: '15mb' }));
+app.use(express.json({ limit: '35mb' }));
+app.use(express.urlencoded({ extended: true, limit: '35mb' }));
 
 // Health Check Endpoint (Production Readiness & Monitoring)
 app.get('/api/v1/health', (req: Request, res: Response) => {
@@ -187,6 +229,29 @@ app.get('/api/v1/health', (req: Request, res: Response) => {
     environment: process.env.NODE_ENV || 'development',
     storage: 'JSON',
   });
+});
+
+// Guarantee Firestore cloud state is restored before serving any API requests,
+// and keep financial entries synchronized across multiple instances/tabs.
+app.use('/api/v1', async (req: Request, _res: Response, next: NextFunction) => {
+  if (process.env.NODE_ENV !== 'test') {
+    try {
+      await db.ensureCloudReady();
+      if (
+        req.method === 'GET' &&
+        (req.path.startsWith('/accounting/income') ||
+          req.path.startsWith('/accounting/expense') ||
+          req.path.startsWith('/incomes') ||
+          req.path.startsWith('/expenses') ||
+          req.path.startsWith('/donations') ||
+          req.path.startsWith('/donation-boxes') ||
+          req.path.startsWith('/mosques'))
+      ) {
+        await db.pullLatestFinancesFromCloud();
+      }
+    } catch (_) {}
+  }
+  next();
 });
 
 // Multi-tenant Auth Context Middleware Interface
@@ -1090,6 +1155,7 @@ app.get('/api/v1/saas/stats', authenticate, (req: AuthRequest, res: Response) =>
       totalTransactions,
       systemHealth: 'OPTIMAL',
       version: '2.6.0-SaaS-Enterprise',
+      activeAiModel: getActiveGeminiModel(),
     }
   });
 });
@@ -1327,6 +1393,107 @@ app.delete('/api/v1/saas/broadcasts/:id', authenticate, (req: AuthRequest, res: 
     success: true,
     message: 'সেন্ট্রাল ব্রডকাস্ট মোছা হয়েছে।'
   });
+});
+
+// Central SaaS Super Admin AI Model Settings
+app.get('/api/v1/saas/ai-settings', authenticate, (req: AuthRequest, res: Response) => {
+  if (req.user?.role !== 'SUPER_ADMIN') {
+    return res.status(403).json({
+      success: false,
+      error: { code: 'FORBIDDEN', message: 'AI মডেল সেটিংস দেখার জন্য সুপার অ্যাডমিন অনুমতি আবশ্যক।' },
+    });
+  }
+
+  return res.json({
+    success: true,
+    data: getAiModelConfigSnapshot(),
+  });
+});
+
+app.put('/api/v1/saas/ai-settings', authenticate, (req: AuthRequest, res: Response) => {
+  if (req.user?.role !== 'SUPER_ADMIN') {
+    return res.status(403).json({
+      success: false,
+      error: { code: 'FORBIDDEN', message: 'AI মডেল পরিবর্তন করার জন্য সুপার অ্যাডমিন অনুমতি আবশ্যক।' },
+    });
+  }
+
+  const rawModelName = typeof req.body?.modelName === 'string' ? req.body.modelName : '';
+  const cleaned = sanitizeGeminiModelName(rawModelName);
+  const notes = typeof req.body?.notes === 'string' ? req.body.notes.trim().slice(0, 300) : '';
+
+  if (rawModelName.trim() !== '' && !isValidGeminiModelName(cleaned)) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: 'INVALID_MODEL_NAME',
+        message: 'মডেলের নাম সঠিক নয়। শুধুমাত্র ইংরেজি অক্ষর, সংখ্যা, ডট, ড্যাশ বা আন্ডারস্কোর ব্যবহার করুন (যেমন: gemini-4-hydrogen)।',
+      },
+    });
+  }
+
+  const previousModel = getActiveGeminiModel();
+  db.aiModelSettings = {
+    modelName: cleaned,
+    notes,
+    updatedAt: new Date().toISOString(),
+    updatedBy: req.user.id,
+    updatedByName: req.user.name || 'Super Admin',
+  };
+
+  const updatedSnapshot = getAiModelConfigSnapshot();
+  const mosqueId = req.currentMosque?.id || db.mosques[0]?.id || 'GLOBAL_SAAS';
+  db.logAudit(
+    mosqueId,
+    req.user.id,
+    req.user.name || 'Super Admin',
+    req.user.role,
+    'UPDATE',
+    'SAAS_AI_SETTINGS',
+    cleaned
+      ? `কেন্দ্রীয় AI মডেল পরিবর্তন করা হয়েছে: ${previousModel} → ${updatedSnapshot.activeModel}`
+      : `কেন্দ্রীয় AI মডেল ডিফল্টে রিসেট করা হয়েছে (বর্তমান সক্রিয় মডেল: ${updatedSnapshot.activeModel})`,
+    'ai-model-settings',
+    req.ip
+  );
+  db.save();
+
+  return res.json({
+    success: true,
+    data: updatedSnapshot,
+    message: cleaned
+      ? `সেন্ট্রাল AI মডেল "${updatedSnapshot.activeModel}" সফলভাবে সেভ করা হয়েছে।`
+      : `সেন্ট্রাল AI মডেল ডিফল্ট কনফিগারেশনে (${updatedSnapshot.activeModel}) রিসেট করা হয়েছে।`,
+  });
+});
+
+app.post('/api/v1/saas/ai-settings/test', authenticate, async (req: AuthRequest, res: Response) => {
+  if (req.user?.role !== 'SUPER_ADMIN') {
+    return res.status(403).json({
+      success: false,
+      error: { code: 'FORBIDDEN', message: 'AI মডেল পরীক্ষা করার জন্য সুপার অ্যাডমিন অনুমতি আবশ্যক।' },
+    });
+  }
+
+  try {
+    const candidateModel = typeof req.body?.modelName === 'string' ? req.body.modelName : undefined;
+    const result = await testGeminiModelConnection(candidateModel);
+    return res.json({
+      success: true,
+      data: result,
+      message: `মডেল "${result.modelName}" সঠিকভাবে সক্রিয় আছে (${result.latencyMs}ms)।`,
+    });
+  } catch (err: any) {
+    const statusCode = err instanceof GeminiServiceError ? err.statusCode : 500;
+    const code = err instanceof GeminiServiceError ? err.code : 'AI_TEST_FAILED';
+    return res.status(statusCode).json({
+      success: false,
+      error: {
+        code,
+        message: err?.message || 'AI মডেল পরীক্ষা করতে ব্যর্থ হয়েছে।',
+      },
+    });
+  }
 });
 
 // ==========================================
@@ -1945,6 +2112,113 @@ app.get('/api/v1/export/canonical-database', authenticate, (req: AuthRequest, re
   res.setHeader('Content-Disposition', 'attachment; filename="masjidledger_db.json"');
   res.setHeader('Content-Length', fileContent.length);
   return res.send(fileContent);
+});
+
+// ==========================================
+// CLIENT BROWSER VAULT AUTO-RECOVERY SYNC
+// ==========================================
+app.post('/api/v1/sync/client-vault', authenticate, (req: AuthRequest, res: Response) => {
+  const currentMosque = req.currentMosque!;
+  const mosqueId = currentMosque.id;
+  const {
+    incomeEntries = [],
+    expenseEntries = [],
+    donations = [],
+    donationBoxCollections = [],
+  } = req.body || {};
+
+  let restoredIncomes = 0;
+  let restoredExpenses = 0;
+  let restoredDonations = 0;
+  let restoredBoxCollections = 0;
+
+  if (Array.isArray(incomeEntries)) {
+    for (const item of incomeEntries) {
+      if (!item || typeof item !== 'object' || !item.id || item.mosqueId !== mosqueId) continue;
+      const exists = db.incomeEntries.some(
+        (existing) =>
+          existing.id === item.id ||
+          (existing.mosqueId === mosqueId && existing.voucherNumber && existing.voucherNumber === item.voucherNumber)
+      );
+      if (!exists) {
+        db.incomeEntries.push(item);
+        restoredIncomes++;
+        if (item.status === 'APPROVED' && item.accountId) {
+          const acc = db.accounts.find((a) => a.id === item.accountId && a.mosqueId === mosqueId);
+          if (acc) {
+            acc.currentBalance = Number(acc.currentBalance || 0) + Number(item.amount || 0);
+            acc.updatedAt = new Date().toISOString();
+          }
+        }
+      }
+    }
+  }
+
+  if (Array.isArray(expenseEntries)) {
+    for (const item of expenseEntries) {
+      if (!item || typeof item !== 'object' || !item.id || item.mosqueId !== mosqueId) continue;
+      const exists = db.expenseEntries.some(
+        (existing) =>
+          existing.id === item.id ||
+          (existing.mosqueId === mosqueId && existing.voucherNumber && existing.voucherNumber === item.voucherNumber)
+      );
+      if (!exists) {
+        db.expenseEntries.push(item);
+        restoredExpenses++;
+        if (item.status === 'APPROVED' && item.accountId) {
+          const acc = db.accounts.find((a) => a.id === item.accountId && a.mosqueId === mosqueId);
+          if (acc) {
+            acc.currentBalance = Number(acc.currentBalance || 0) - Number(item.amount || 0);
+            acc.updatedAt = new Date().toISOString();
+          }
+        }
+      }
+    }
+  }
+
+  if (Array.isArray(donations)) {
+    for (const item of donations) {
+      if (!item || typeof item !== 'object' || !item.id || item.mosqueId !== mosqueId) continue;
+      const exists = db.donations.some(
+        (existing) =>
+          existing.id === item.id ||
+          (existing.mosqueId === mosqueId && existing.receiptNumber && existing.receiptNumber === item.receiptNumber)
+      );
+      if (!exists) {
+        db.donations.push(item);
+        restoredDonations++;
+      }
+    }
+  }
+
+  if (Array.isArray(donationBoxCollections)) {
+    for (const item of donationBoxCollections) {
+      if (!item || typeof item !== 'object' || !item.id || item.mosqueId !== mosqueId) continue;
+      const exists = db.donationBoxCollections.some((existing) => existing.id === item.id);
+      if (!exists) {
+        db.donationBoxCollections.push(item);
+        restoredBoxCollections++;
+      }
+    }
+  }
+
+  const restoredCount = restoredIncomes + restoredExpenses + restoredDonations + restoredBoxCollections;
+  if (restoredCount > 0) {
+    try {
+      db.save();
+    } catch (_) {}
+  }
+
+  return res.json({
+    success: true,
+    data: {
+      restoredCount,
+      restoredIncomes,
+      restoredExpenses,
+      restoredDonations,
+      restoredBoxCollections,
+    },
+  });
 });
 
 // ==========================================
@@ -4910,8 +5184,106 @@ app.get('/api/v1/accounting/accounts/transfers', authenticate, dalContextMiddlew
 });
 
 // ==========================================
-// 5. INCOME MANAGEMENT (With Idempotency)
+// 5. INCOME MANAGEMENT (With Idempotency & Vault Self-Healing)
 // ==========================================
+app.post('/api/v1/accounting/reconcile-vault', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosqueId = req.currentMosque?.id;
+    if (!mosqueId) {
+      return res.status(401).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'Mosque context required' } });
+    }
+
+    const { incomeEntries, expenseEntries, donations, donationBoxCollections } = req.body || {};
+    let restoredCount = 0;
+
+    const getTs = (item: any): number => {
+      const t = new Date(
+        item?.updatedAt || item?.restoredAt || item?.reversedAt || item?.cancelledAt || item?.createdAt || 0
+      ).getTime();
+      return Number.isFinite(t) ? t : 0;
+    };
+
+    if (Array.isArray(incomeEntries)) {
+      for (const item of incomeEntries) {
+        if (!item || !item.id || item.mosqueId !== mosqueId) continue;
+        const idx = db.incomeEntries.findIndex((x) => x.id === item.id && x.mosqueId === mosqueId);
+        if (idx === -1) {
+          db.incomeEntries.push(item);
+          if (item.status === 'APPROVED' && item.accountId && Number(item.amount) > 0) {
+            const acc = db.accounts.find((a) => a.id === item.accountId && a.mosqueId === mosqueId);
+            if (acc) {
+              acc.currentBalance = Number(acc.currentBalance || 0) + Number(item.amount);
+            }
+          }
+          restoredCount++;
+        } else if (getTs(item) > getTs(db.incomeEntries[idx])) {
+          db.incomeEntries[idx] = { ...db.incomeEntries[idx], ...item };
+          restoredCount++;
+        }
+      }
+    }
+
+    if (Array.isArray(expenseEntries)) {
+      for (const item of expenseEntries) {
+        if (!item || !item.id || item.mosqueId !== mosqueId) continue;
+        const idx = db.expenseEntries.findIndex((x) => x.id === item.id && x.mosqueId === mosqueId);
+        if (idx === -1) {
+          db.expenseEntries.push(item);
+          if (item.status === 'APPROVED' && item.accountId && Number(item.amount) > 0) {
+            const acc = db.accounts.find((a) => a.id === item.accountId && a.mosqueId === mosqueId);
+            if (acc) {
+              acc.currentBalance = Number(acc.currentBalance || 0) - Number(item.amount);
+            }
+          }
+          restoredCount++;
+        } else if (getTs(item) > getTs(db.expenseEntries[idx])) {
+          db.expenseEntries[idx] = { ...db.expenseEntries[idx], ...item };
+          restoredCount++;
+        }
+      }
+    }
+
+    if (Array.isArray(donations)) {
+      for (const item of donations) {
+        if (!item || !item.id || item.mosqueId !== mosqueId) continue;
+        const idx = db.donations.findIndex((x) => x.id === item.id && x.mosqueId === mosqueId);
+        if (idx === -1) {
+          db.donations.push(item);
+          restoredCount++;
+        } else if (getTs(item) > getTs(db.donations[idx])) {
+          db.donations[idx] = { ...db.donations[idx], ...item };
+          restoredCount++;
+        }
+      }
+    }
+
+    if (Array.isArray(donationBoxCollections)) {
+      for (const item of donationBoxCollections) {
+        if (!item || !item.id || item.mosqueId !== mosqueId) continue;
+        const idx = db.donationBoxCollections.findIndex((x) => x.id === item.id && x.mosqueId === mosqueId);
+        if (idx === -1) {
+          db.donationBoxCollections.push(item);
+          restoredCount++;
+        } else if (getTs(item) > getTs(db.donationBoxCollections[idx])) {
+          db.donationBoxCollections[idx] = { ...db.donationBoxCollections[idx], ...item };
+          restoredCount++;
+        }
+      }
+    }
+
+    if (restoredCount > 0) {
+      db.save();
+    }
+
+    return res.json({ success: true, data: { restoredCount } });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: { code: 'RECONCILE_ERROR', message: err?.message || 'Vault reconcile error' },
+    });
+  }
+});
+
 app.get('/api/v1/accounting/income', authenticate, dalContextMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const items = await req.dal!.income!.list(req.dalOptions!);
@@ -12216,112 +12588,25 @@ app.get('/api/v1/official-documents/templates/list', authenticate, (req: AuthReq
   res.json({ success: true, data: templates });
 });
 
-// 9. AI Writing Assistant Endpoint (Gemini Model)
+// 9. AI Writing Assistant Endpoint (Gemini 2.5 Flash)
 app.post('/api/v1/official-documents/ai-assist', authenticate, async (req: AuthRequest, res: Response) => {
-  const mosque = req.currentMosque || db.mosques[0];
-  const {
-    action = 'GENERATE', // 'GENERATE' | 'OFFICIAL' | 'SUMMARIZE' | 'ELABORATE' | 'SPELLCHECK'
-    docType = 'NOTICE',
-    subject = '',
-    keyPoints = '',
-    currentText = '',
-    tone = 'অফিসিয়াল ও মার্জিত', // 'অফিসিয়াল' | 'বিনীত' | 'সংক্ষিপ্ত' | 'জরুরি' | 'প্রশাসনিক'
-    sender = 'মসজিদ পরিচালনা পরিষদ',
-    recipient = 'সকল সম্মানিত মুসল্লিয়ানে কেরাম',
-  } = req.body;
-
-  const apiKey = process.env.GEMINI_API_KEY;
-
-  if (apiKey) {
-    try {
-      const ai = new GoogleGenAI({
-        apiKey,
-        httpOptions: {
-          headers: {
-            'User-Agent': 'aistudio-build',
-          },
-        },
-      });
-
-      let systemPrompt = `You are the Expert Official Bengali Administrative Letter and Document Drafter of "${mosque?.nameBn || 'মসজিদলেজার'}".
-Generate high-register, respectful, flawless Bengali official document drafts, notices, applications, announcements, certificates, or office orders.
-Use correct administrative Bengali prose, standard Islamic greetings (আসসালামু আলাইকুম ওয়া রাহমাতুল্লাহি ওয়া বারাকাতুহ), respectful closing, and clear structural formatting.
-Output clean HTML tags (<p>, <strong>, <ol>, <li>, <ul>, <br>) suitable for a rich text editor. Do NOT wrap output in markdown code blocks like \`\`\`html.`;
-
-      let userPrompt = '';
-      if (action === 'GENERATE') {
-        userPrompt = `Generate a complete official Bengali document draft for:
-Mosque Name: ${mosque?.nameBn || 'বায়তুল আমান জামে মসজিদ'}
-Document Type: ${docType}
-Subject: ${subject || 'সাধারণ দাপ্তরিক নোটিশ'}
-Key Points / Instructions: ${keyPoints || 'বিষয়বস্তু বিস্তারিত উপস্থাপন'}
-Sender: ${sender}
-Recipient: ${recipient}
-Tone: ${tone}
-
-Please produce a comprehensive, beautifully phrased, ready-to-print official document in valid HTML paragraphs (<p>, <strong>, <ol>, etc.).`;
-      } else if (action === 'OFFICIAL') {
-        userPrompt = `Rewrite the following Bengali text into formal, high-register, authoritative yet respectful mosque administrative Bengali prose:
-Current Text:
-${currentText}
-
-Tone: ${tone}
-Output formatted clean HTML paragraphs (<p>, <strong>, etc.).`;
-      } else if (action === 'SUMMARIZE') {
-        userPrompt = `Provide a concise 1-2 sentence administrative summary in professional Bengali for this document:
-${currentText || keyPoints}`;
-      } else if (action === 'ELABORATE') {
-        userPrompt = `Elaborate and expand the following points into a formal multi-paragraph official administrative letter/notice in clean HTML:
-Points:
-${currentText || keyPoints}`;
-      } else if (action === 'SPELLCHECK') {
-        userPrompt = `Proofread, fix all Bengali spelling errors, grammar, punctuation, and refine Islamic honorifics in the following text while retaining the meaning:
-${currentText}`;
-      }
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: `${systemPrompt}\n\n${userPrompt}`,
-      });
-
-      let generated = response.text || '';
-      // Clean up accidental markdown code fence if present
-      generated = generated.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/```$/i, '').trim();
-
-      return res.json({
-        success: true,
-        data: {
-          resultText: generated,
-          action,
-          tone,
-        }
-      });
-    } catch (err: any) {
-      console.warn('[Gemini AI Document Assist] Error:', err);
-      // Graceful fallback to rule-based template
-    }
+  try {
+    const mosque = req.currentMosque || db.mosques[0] || null;
+    const result = await generateOfficialDocumentDraft(mosque, req.body || {});
+    return res.json({
+      success: true,
+      data: result,
+    });
+  } catch (err: any) {
+    const status = err instanceof GeminiServiceError ? err.statusCode : 500;
+    const code = err instanceof GeminiServiceError ? err.code : 'AI_DOCUMENT_ERROR';
+    const message = err?.message || 'AI দিয়ে খসড়া তৈরিতে ত্রুটি ঘটেছে।';
+    console.error('[Gemini AI Document Assist] Error:', err);
+    return res.status(status).json({
+      success: false,
+      error: { code, message },
+    });
   }
-
-  // Graceful rule-based fallback if API key is missing or network failure
-  let fallbackText = '';
-  if (action === 'SUMMARIZE') {
-    fallbackText = `${subject || 'দাপ্তরিক বিজ্ঞপ্তি'}: ${keyPoints ? keyPoints.slice(0, 80) + '...' : 'মসজিদের সার্বিক কার্যক্রম ও শৃঙ্খলা বজায় রাখার জন্য আনুষ্ঠানিকভাবে জারি করা হয়েছে।'}`;
-  } else {
-    fallbackText = `<p><strong>${mosque?.nameBn || 'বায়তুল আমান জামে মসজিদ'} পরিচালনা পরিষদ</strong></p>
-<p>এতদ্বারা সম্মানিত <strong>${recipient || 'সকল সংশ্লিষ্ট ব্যক্তিবর্গের'}</strong> সদয় অবগতির জন্য জানানো যাচ্ছে যে, <strong>${subject || 'দাপ্তরিক বিষয়'}</strong> সংক্রান্ত বিষয়ে নিম্নোক্ত সিদ্ধান্ত গৃহীত হয়েছে:</p>
-<p>${keyPoints ? keyPoints : 'মসজিদের কার্যক্রম সুষ্ঠুভাবে পরিচালনার স্বার্থে সকলের সহযোগিতা একান্তভাবে কাম্য।'}</p>
-<p>অতএব, উক্ত বিষয়ে সংশ্লিষ্ট সকলকে প্রয়োজনীয় সতর্কতা ও দায়িত্বশীলতার সাথে অনুসরণের জন্য বিনীত অনুরোধ জানানো হলো।</p>`;
-  }
-
-  res.json({
-    success: true,
-    data: {
-      resultText: fallbackText,
-      action,
-      tone,
-      isFallback: true,
-    }
-  });
 });
 
 
@@ -13033,11 +13318,11 @@ app.get('/api/v1/search/global', authenticate, (req: AuthRequest, res: Response)
 });
 
 // ==========================================
-// 16. AI FINANCIAL AUDIT / ADVISOR (Gemini API server-side)
+// 16. AI SMART AUDITOR, SMART ENTRY & CHATBOT (Gemini 2.5 Flash Server-Side)
 // ==========================================
 const handleFinancialAuditRequest = async (req: AuthRequest, res: Response) => {
   try {
-    const { question, language = 'bn' } = req.body;
+    const { question } = req.body || {};
     const mosque = req.currentMosque;
     if (!mosque || !mosque.id) {
       return res.status(403).json({
@@ -13059,106 +13344,1126 @@ const handleFinancialAuditRequest = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    const stats = db.getDashboardStats(mosque.id);
-    const recentIncomes = db.incomeEntries.filter(i => i.mosqueId === mosque.id && i.status === 'APPROVED').slice(0, 15);
-    const recentExpenses = db.expenseEntries.filter(e => e.mosqueId === mosque.id && e.status === 'APPROVED').slice(0, 15);
+    const auditReport = await runSmartFinancialAudit(mosque, question);
+    db.logAudit(
+      mosque.id,
+      req.user.id,
+      req.user.name,
+      req.user.role,
+      'SETTINGS_CHANGE',
+      'AI_AUDITOR',
+      `এআই স্মার্ট অডিট ও তুলনামূলক বিশ্লেষণ প্রতিবেদন তৈরি করা হয়েছে`
+    );
 
-    // Prevent double-counting: incomeEntries are canonical source of income.
-    const approvedIncomes = db.incomeEntries.filter(i => i.mosqueId === mosque.id && i.status === 'APPROVED');
-    const approvedExpenses = db.expenseEntries.filter(e => e.mosqueId === mosque.id && e.status === 'APPROVED');
-
-    const totalIncome = approvedIncomes.reduce((s, i) => s + i.amount, 0);
-    const totalExpense = approvedExpenses.reduce((s, e) => s + e.amount, 0);
-    const netSurplus = totalIncome - totalExpense;
-
-    const contextData = {
-      mosqueName: mosque.nameBn,
-      totalIncome,
-      totalExpense,
-      netSurplus,
-      monthlyIncome: stats.monthlyIncome,
-      monthlyExpense: stats.monthlyExpense,
-      cashBalance: stats.cashBalance,
-      bankBalance: stats.bankBalance,
-      currentBalance: stats.currentBalance,
-      recentIncomes: recentIncomes.map(i => ({ date: i.date, head: i.subHeadNameBn || i.mainHeadNameBn, amount: i.amount })),
-      recentExpenses: recentExpenses.map(e => ({ date: e.date, head: e.subHeadNameBn || e.mainHeadNameBn, amount: e.amount, payee: e.payeeName })),
-    };
-
-    let reply = '';
-    const apiKey = process.env.GEMINI_API_KEY;
-
-    if (apiKey) {
-      try {
-        const ai = new GoogleGenAI({
-          apiKey,
-          httpOptions: {
-            headers: {
-              'User-Agent': 'aistudio-build',
-            },
-          },
-        });
-        const prompt = `
-You are the AI Financial Auditor & Mosque Advisor of "MasjidLedger" (মসজিদলেজার).
-Analyze strictly the provided financial dataset for mosque "${mosque.nameBn}".
-Never invent financial figures, never guess missing transactions, and strictly respect backend calculated figures without double counting.
-Answer in Bengali (unless English is specifically requested).
-
-Financial Context:
-${JSON.stringify(contextData, null, 2)}
-
-User Question: "${question || 'এই মাসের আয়-ব্যয়ের একটি সংক্ষিপ্ত আর্থিক নিরীক্ষা সারসংক্ষেপ দিন।'}"
-
-Provide a professional, clear audit breakdown in Bengali highlighting:
-1. মূল সারসংক্ষেপ (Total Income, Total Expense, Net Surplus)
-2. আয় ও ব্যয়ের প্রধান খাতসমূহ
-3. ক্যাশ ও ব্যাংক স্থিতি
-4. মসজিদ কমিটির জন্য সুনির্দিষ্ট পর্যবেক্ষণ ও আর্থিক পরামর্শ
-`;
-        const response = await ai.models.generateContent({
-          model: 'gemini-3.6-flash',
-          contents: prompt,
-        });
-        reply = response.text || '';
-      } catch (genErr) {
-        console.error('Gemini generateContent error, falling back to local audit calculation:', genErr);
-        reply = `**${mosque.nameBn} এর আর্থিক নিরীক্ষা সারসংক্ষেপ:**\n\n` +
-          `• **মোট আয়:** ৳ ${totalIncome.toLocaleString('en-IN')}\n` +
-          `• **মোট ব্যয়:** ৳ ${totalExpense.toLocaleString('en-IN')}\n` +
-          `• **নিট উদ্বৃত্ত (Surplus):** ৳ ${netSurplus.toLocaleString('en-IN')}\n` +
-          `• **চলতি মাসের আয়:** ৳ ${stats.monthlyIncome.toLocaleString('en-IN')}\n` +
-          `• **চলতি মাসের ব্যয়:** ৳ ${stats.monthlyExpense.toLocaleString('en-IN')}\n` +
-          `• **নগদ ক্যাশ স্থিতি:** ৳ ${stats.cashBalance.toLocaleString('en-IN')}\n` +
-          `• **ব্যাংক/এমএফএস স্থিতি:** ৳ ${stats.bankBalance.toLocaleString('en-IN')}\n\n` +
-          `**পর্যবেক্ষণ:**\n` +
-          `১. রক্ষণাবেক্ষণ ও ইউটিলিটি বিল যথারীতি পরিশোধ করা হয়েছে।\n` +
-          `২. ক্যাশ ও ব্যাংক তহবিলের হিসাব সম্পূর্ণ সুসংহত রয়েছে।`;
-      }
-    } else {
-      reply = `**${mosque.nameBn} এর আর্থিক নিরীক্ষা সারসংক্ষেপ:**\n\n` +
-        `• **মোট আয়:** ৳ ${totalIncome.toLocaleString('en-IN')}\n` +
-        `• **মোট ব্যয়:** ৳ ${totalExpense.toLocaleString('en-IN')}\n` +
-        `• **নিট উদ্বৃত্ত (Surplus):** ৳ ${netSurplus.toLocaleString('en-IN')}\n` +
-        `• **চলতি মাসের আয়:** ৳ ${stats.monthlyIncome.toLocaleString('en-IN')}\n` +
-        `• **চলতি মাসের ব্যয়:** ৳ ${stats.monthlyExpense.toLocaleString('en-IN')}\n` +
-        `• **নগদ ক্যাশ স্থিতি:** ৳ ${stats.cashBalance.toLocaleString('en-IN')}\n` +
-        `• **ব্যাংক/এমএফএস স্থিতি:** ৳ ${stats.bankBalance.toLocaleString('en-IN')}\n\n` +
-        `**পর্যবেক্ষণ:**\n` +
-        `১. রক্ষণাবেক্ষণ ও ইউটিলিটি বিল যথারীতি পরিশোধ করা হয়েছে।\n` +
-        `২. ক্যাশ ও ব্যাংক তহবিলের হিসাব সম্পূর্ণ সুসংহত রয়েছে।`;
-    }
-
-    db.logAudit(mosque.id, req.user!.id, req.user!.name, req.user!.role, 'SETTINGS_CHANGE', 'AI_AUDITOR', `এআই আর্থিক অডিট প্রতিবেদন জেনারেট করা হয়েছে`);
-    res.json({ success: true, data: { answer: reply } });
+    return res.json({
+      success: true,
+      data: {
+        ...auditReport,
+        answer: auditReport.aiAnalysis?.customAnswerBn || auditReport.aiAnalysis?.executiveSummaryBn || '',
+      },
+    });
   } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_AUDIT_ERROR';
     console.error('AI Financial Audit error:', error);
-    res.status(500).json({ success: false, error: { code: 'AI_ERROR', message: 'এআই আর্থিক অডিট বিশ্লেষণে ত্রুটি ঘটেছে।' } });
+    return res.status(status).json({
+      success: false,
+      error: {
+        code,
+        message: error?.message || 'এআই আর্থিক অডিট বিশ্লেষণে ত্রুটি ঘটেছে।',
+      },
+    });
   }
 };
 
 app.post('/api/ai/financial-audit', authenticate, handleFinancialAuditRequest);
 app.post('/api/v1/ai/financial-audit', authenticate, handleFinancialAuditRequest);
 app.post('/api/v1/ai/advisor', authenticate, handleFinancialAuditRequest);
+
+// 16B. AI Receipt Scanner (Vision) & Bangla Voice/Text Smart Entry (NEVER auto-saves!)
+app.post('/api/v1/ai/smart-entry', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque || !mosque.id) {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' },
+      });
+    }
+
+    const { mode = 'TEXT_ENTRY', entryType = 'INCOME', text = '', imageBase64 = '', mimeType = 'image/jpeg' } = req.body || {};
+
+    if (mode === 'RECEIPT_SCAN' && !imageBase64) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'IMAGE_REQUIRED', message: 'স্ক্যান করার জন্য রসিদ বা বিলের ছবি আপলোড করুন।' },
+      });
+    }
+    if (mode === 'TEXT_ENTRY' && !String(text || '').trim()) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'TEXT_REQUIRED', message: 'অনুগ্রহ করে বাংলায় লেনদেনের বিবরণ লিখুন বা বলুন।' },
+      });
+    }
+
+    const extracted = await parseSmartEntry(mosque, {
+      mode: mode === 'RECEIPT_SCAN' ? 'RECEIPT_SCAN' : 'TEXT_ENTRY',
+      entryType: entryType === 'EXPENSE' ? 'EXPENSE' : 'INCOME',
+      text,
+      imageBase64,
+      mimeType,
+      mosqueId: mosque.id,
+    });
+
+    return res.json({ success: true, data: extracted });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_SMART_ENTRY_ERROR';
+    console.error('AI Smart Entry error:', error);
+    return res.status(status).json({
+      success: false,
+      error: {
+        code,
+        message: error?.message || 'AI স্মার্ট এন্ট্রি বিশ্লেষণে ত্রুটি ঘটেছে।',
+      },
+    });
+  }
+});
+
+// 16C. Masjid AI Floating Chatbot (Natural Language Q&A on Real Database)
+app.post('/api/v1/ai/chat', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque || !mosque.id) {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' },
+      });
+    }
+
+    const { message = '', history = [] } = req.body || {};
+    if (!String(message || '').trim()) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'MESSAGE_REQUIRED', message: 'অনুগ্রহ করে আপনার প্রশ্ন লিখুন।' },
+      });
+    }
+
+    const reply = await askMasjidChatbot(mosque, String(message).trim(), Array.isArray(history) ? history : []);
+    return res.json({ success: true, data: reply });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_CHAT_ERROR';
+    console.error('AI Chat error:', error);
+    return res.status(status).json({
+      success: false,
+      error: {
+        code,
+        message: error?.message || 'AI চ্যাটবট উত্তর তৈরিতে ত্রুটি ঘটেছে।',
+      },
+    });
+  }
+});
+
+// 16D. AI 1-Click Smart Data Migration — Multi-File Multimodal Extraction
+app.post('/api/v1/ai/smart-migration/extract', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque || !mosque.id) {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' },
+      });
+    }
+
+    const { migrationType, files, extraInstruction } = req.body || {};
+    const validTypes = ['MUSALLI_DONOR', 'WAQF_PROPERTY_TENANT', 'LEDGER_OPENING_BALANCE'];
+    if (!validTypes.includes(migrationType)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_TYPE', message: 'অনুগ্রহ করে সঠিক ডাটা মাইগ্রেশন ধরন নির্বাচন করুন।' },
+      });
+    }
+
+    const result = await extractSmartMigrationData(mosque, {
+      migrationType,
+      files: Array.isArray(files) ? files : [],
+      extraInstruction: typeof extraInstruction === 'string' ? extraInstruction.trim() : undefined,
+    });
+
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_MIGRATION_EXTRACT_ERROR';
+    console.error('AI Smart Migration extract error:', error);
+    return res.status(status).json({
+      success: false,
+      error: {
+        code,
+        message: error?.message || 'ফাইল বিশ্লেষণ করে ডাটা সাজাতে ত্রুটি হয়েছে।',
+      },
+    });
+  }
+});
+
+// 16E. AI 1-Click Smart Data Migration — Bulk Commit into Real Mosque Database
+app.post('/api/v1/ai/smart-migration/commit', authenticate, dalContextMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque || !mosque.id) {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' },
+      });
+    }
+
+    const mosqueId = mosque.id;
+    const dalOptions = req.dalOptions!;
+    const { migrationType, rows } = req.body || {};
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'NO_ROWS', message: 'সংরক্ষণের জন্য কোনো সারি নির্বাচন করা হয়নি।' },
+      });
+    }
+
+    const nowIso = new Date().toISOString();
+    const todayStr = nowIso.split('T')[0];
+
+    const mosqueAccounts = db.accounts.filter((a) => a.mosqueId === mosqueId);
+    const defaultCashAcc =
+      mosqueAccounts.find((a) => a.accountType === 'CASH') || mosqueAccounts[0];
+    const activeHeads = db.accountHeads.filter(
+      (h) => h.mosqueId === mosqueId && h.isActive !== false && !h.parentId
+    );
+    const defaultIncomeHead =
+      activeHeads.find((h) => h.type === 'INCOME') || activeHeads[0];
+    const defaultExpenseHead =
+      activeHeads.find((h) => h.type === 'EXPENSE') || activeHeads[0];
+
+    const summary = {
+      personsCreated: 0,
+      donationPlansCreated: 0,
+      propertiesCreated: 0,
+      tenantsCreated: 0,
+      incomesCreated: 0,
+      expensesCreated: 0,
+      openingBalancesUpdated: 0,
+      skipped: 0,
+      errors: [] as string[],
+    };
+
+    const resolveOrCreateAreaId = (addressText: string): string | undefined => {
+      const clean = addressText.trim();
+      if (!clean) return undefined;
+      const existing = db.areas.find(
+        (a) =>
+          a.mosqueId === mosqueId &&
+          a.name.trim().toLowerCase() === clean.toLowerCase()
+      );
+      if (existing) return existing.id;
+
+      const areaId = `area-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+      const areaCode = `AR-${String(db.areas.filter((a) => a.mosqueId === mosqueId).length + 1).padStart(3, '0')}`;
+      const newArea: AreaMaster = {
+        id: areaId,
+        mosqueId,
+        areaCode,
+        name: clean,
+        status: 'ACTIVE',
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        createdBy: req.user?.id || 'system',
+        updatedBy: req.user?.id || 'system',
+      };
+      db.areas.push(newArea);
+      return areaId;
+    };
+
+    for (let idx = 0; idx < rows.length; idx++) {
+      const row = rows[idx];
+      try {
+        const cleanName = String(row.name || '').trim();
+        const cleanMobile = String(row.mobile || '').trim();
+        const cleanAddress = String(row.address || '').trim();
+        const cleanNotes = String(row.notes || '').trim();
+        const cleanDate = /^\d{4}-\d{2}-\d{2}$/.test(String(row.date || ''))
+          ? String(row.date)
+          : todayStr;
+        const amountNum = Number(row.amount) || 0;
+        const securityNum = Number(row.securityDeposit) || 0;
+        const kind = String(row.recordKind || '').toUpperCase();
+
+        // 1. MUSALLI & DONOR DATABASE
+        if (migrationType === 'MUSALLI_DONOR' || kind === 'DONOR') {
+          if (!cleanName) {
+            summary.skipped++;
+            continue;
+          }
+          const areaId = resolveOrCreateAreaId(cleanAddress);
+          const newPerson: PersonMaster = {
+            id: db.generatePersonId(mosqueId),
+            personCode: db.generatePersonCode(mosqueId),
+            mosqueId,
+            fullName: cleanName,
+            fatherOrHusbandName: String(row.fatherOrSpouseName || '').trim() || undefined,
+            gender: 'MALE',
+            areaId,
+            isFamilyHead: true,
+            mobile: cleanMobile || undefined,
+            address: cleanAddress || undefined,
+            status: 'ACTIVE',
+            notes: [cleanNotes, row.categoryLabelBn ? `খাত: ${row.categoryLabelBn}` : '', 'AI ১-ক্লিক ডাটা মাইগ্রেশন']
+              .filter(Boolean)
+              .join(' | '),
+            createdAt: nowIso,
+            updatedAt: nowIso,
+            createdBy: req.user?.id || 'system',
+            updatedBy: req.user?.id || 'system',
+          };
+          db.persons.push(newPerson);
+          summary.personsCreated++;
+
+          if (amountNum > 0) {
+            const newPlan: DonationPlan = {
+              id: db.generateDonationPlanId(mosqueId),
+              planCode: db.generateDonationPlanCode(mosqueId),
+              mosqueId,
+              personId: newPerson.id,
+              planType: 'MONTHLY' as any,
+              amount: amountNum,
+              plannedAmount: amountNum,
+              startDate: cleanDate,
+              collectionRequired: true,
+              description: row.categoryLabelBn || 'মাসিক দান (AI মাইগ্রেশন)',
+              status: 'ACTIVE',
+              notes: cleanNotes || 'AI ১-ক্লিক ডাটা মাইগ্রেশন হতে যুক্ত',
+              createdAt: nowIso,
+              updatedAt: nowIso,
+              createdBy: req.user?.id || 'system',
+              updatedBy: req.user?.id || 'system',
+            };
+            db.donationPlans.push(newPlan);
+            summary.donationPlansCreated++;
+          }
+          continue;
+        }
+
+        // 2. WAQF PROPERTY & TENANT LIST
+        if (migrationType === 'WAQF_PROPERTY_TENANT' || kind === 'WAQF_TENANT') {
+          if (!cleanName && !String(row.propertyOrUnitName || '').trim()) {
+            summary.skipped++;
+            continue;
+          }
+          const propName =
+            String(row.propertyOrUnitName || '').trim() ||
+            (cleanAddress ? `মসজিদ ওয়াকফ সম্পত্তি (${cleanAddress})` : `মসজিদ ওয়াকফ ইউনিট - ${cleanName}`);
+
+          let property = db.properties.find(
+            (p) =>
+              p.mosqueId === mosqueId &&
+              ((p.nameBn || '').trim().toLowerCase() === propName.toLowerCase() ||
+                (p.name || '').trim().toLowerCase() === propName.toLowerCase())
+          );
+
+          if (!property) {
+            property = await req.dal!.properties!.create(dalOptions, {
+              name: propName,
+              nameBn: propName,
+              type: 'SHOP',
+              propertyType: 'SHOP',
+              category: 'SHOP',
+              ownershipType: 'WAQF',
+              location: cleanAddress || mosque.address || 'মসজিদ এলাকা',
+              fullAddress: cleanAddress || mosque.address || '',
+              area: 'নির্ধারিত ইউনিট',
+              description: cleanNotes || `AI ডাটা মাইগ্রেশনের মাধ্যমে যুক্ত (${row.categoryLabelBn || 'ওয়াকফ সম্পত্তি'})`,
+              monthlyRent: amountNum > 0 ? amountNum : undefined,
+              status: 'ACTIVE',
+            });
+            summary.propertiesCreated++;
+            realtime.broadcastToMosque(mosqueId, 'PROPERTY_CREATED', property, { senderId: req.user!.id });
+          }
+
+          if (cleanName && property) {
+            const endDateObj = new Date(cleanDate);
+            endDateObj.setFullYear(endDateObj.getFullYear() + 1);
+            const endDateStr = endDateObj.toISOString().split('T')[0];
+
+            const { property: updatedProp } = await req.dal!.properties!.saveTenant(dalOptions, property.id, {
+              name: cleanName,
+              fatherOrSpouseName: String(row.fatherOrSpouseName || '').trim() || undefined,
+              mobile: cleanMobile || '০১৭০০-০০০০০০',
+              address: cleanAddress || undefined,
+              unitOrShopNo: String(row.propertyOrUnitName || '').trim() || undefined,
+              startDate: cleanDate,
+              endDate: endDateStr,
+              monthlyRent: amountNum > 0 ? amountNum : 0,
+              securityDeposit: securityNum >= 0 ? securityNum : 0,
+              status: 'ACTIVE',
+              notes: [cleanNotes, 'AI ১-ক্লিক ডাটা মাইগ্রেশন'].filter(Boolean).join(' | '),
+            });
+            summary.tenantsCreated++;
+            realtime.broadcastToMosque(mosqueId, 'PROPERTY_UPDATED', updatedProp, { senderId: req.user!.id });
+          }
+          continue;
+        }
+
+        // 3. LEDGER (INCOME / EXPENSE) & OPENING BALANCE
+        if (kind === 'OPENING_BALANCE') {
+          const targetAcc =
+            mosqueAccounts.find((a) => a.id === row.accountId) || defaultCashAcc;
+          if (!targetAcc) {
+            summary.errors.push(`সারি ${idx + 1}: কোনো ক্যাশ/ব্যাংক অ্যাকাউন্ট পাওয়া যায়নি।`);
+            continue;
+          }
+          const updatedAcc = await req.dal!.financialAccounts!.setOpeningBalance(dalOptions, targetAcc.id, {
+            openingBalance: amountNum,
+            openingBalanceDate: cleanDate,
+            openingBalanceType: 'DEBIT',
+            openingBalanceSource: 'MIGRATION',
+            openingBalanceNote: [cleanName, cleanNotes, 'AI ১-ক্লিক ডাটা মাইগ্রেশন'].filter(Boolean).join(' — '),
+          });
+          summary.openingBalancesUpdated++;
+          realtime.broadcastToMosque(mosqueId, 'ACCOUNT_UPDATED', updatedAcc, { senderId: req.user!.id });
+          continue;
+        }
+
+        if (kind === 'EXPENSE') {
+          if (amountNum <= 0) {
+            summary.skipped++;
+            continue;
+          }
+          const targetAcc =
+            mosqueAccounts.find((a) => a.id === row.accountId) || defaultCashAcc;
+          const mainHead =
+            activeHeads.find((h) => h.id === row.mainHeadId && h.type === 'EXPENSE') ||
+            defaultExpenseHead;
+          if (!targetAcc || !mainHead) {
+            summary.errors.push(`সারি ${idx + 1}: ব্যয়ের খাত বা অ্যাকাউন্ট নির্ধারণ করা যায়নি।`);
+            continue;
+          }
+          const createdExp = await req.dal!.expense!.create(dalOptions, {
+            mosqueId,
+            date: cleanDate,
+            mainHeadId: mainHead.id,
+            mainHeadNameBn: mainHead.nameBn,
+            amount: amountNum,
+            paymentMethod: targetAcc.accountType === 'BANK' ? 'BANK' : 'CASH',
+            accountId: targetAcc.id,
+            accountName: targetAcc.nameBn,
+            payeeName: cleanName || 'সাধারণ প্রাপক',
+            payeePhone: cleanMobile || undefined,
+            description: [row.categoryLabelBn, cleanAddress, cleanNotes, '(AI মাইগ্রেশন)'].filter(Boolean).join(' • '),
+            createdBy: req.user!.id,
+            createdByName: req.user!.name,
+            status: 'APPROVED',
+            approvedBy: req.user!.id,
+            approvedByName: req.user!.name,
+            approvedAt: nowIso,
+            createdAt: nowIso,
+            updatedAt: nowIso,
+          });
+          summary.expensesCreated++;
+          realtime.broadcastToMosque(mosqueId, 'EXPENSE_CREATED', createdExp, { senderId: req.user!.id });
+          continue;
+        }
+
+        // Default: INCOME
+        if (amountNum <= 0) {
+          summary.skipped++;
+          continue;
+        }
+        const targetAcc =
+          mosqueAccounts.find((a) => a.id === row.accountId) || defaultCashAcc;
+        const mainHead =
+          activeHeads.find((h) => h.id === row.mainHeadId && h.type === 'INCOME') ||
+          defaultIncomeHead;
+        if (!targetAcc || !mainHead) {
+          summary.errors.push(`সারি ${idx + 1}: আয়ের খাত বা অ্যাকাউন্ট নির্ধারণ করা যায়নি।`);
+          continue;
+        }
+        const createdInc = await req.dal!.income!.create(dalOptions, {
+          mosqueId,
+          date: cleanDate,
+          mainHeadId: mainHead.id,
+          mainHeadNameBn: mainHead.nameBn,
+          amount: amountNum,
+          paymentMethod: targetAcc.accountType === 'BANK' ? 'BANK' : 'CASH',
+          accountId: targetAcc.id,
+          accountName: targetAcc.nameBn,
+          donorName: cleanName || undefined,
+          donorPhone: cleanMobile || undefined,
+          description: [row.categoryLabelBn, cleanAddress, cleanNotes, '(AI মাইগ্রেশন)'].filter(Boolean).join(' • '),
+          createdBy: req.user!.id,
+          createdByName: req.user!.name,
+          status: 'APPROVED',
+          approvedBy: req.user!.id,
+          approvedByName: req.user!.name,
+          approvedAt: nowIso,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        });
+        summary.incomesCreated++;
+        realtime.broadcastToMosque(mosqueId, 'INCOME_CREATED', createdInc, { senderId: req.user!.id });
+      } catch (rowErr: any) {
+        summary.errors.push(`সারি ${idx + 1}: ${rowErr?.message || 'সংরক্ষণ ব্যর্থ'}`);
+      }
+    }
+
+    db.save();
+    db.logAudit(
+      mosqueId,
+      req.user!.id,
+      req.user!.name,
+      req.user!.role,
+      'SYSTEM_INITIALIZE',
+      'SMART_DATA_MIGRATION',
+      `AI ১-ক্লিক ডাটা মাইগ্রেশন সম্পন্ন: দাতা ${summary.personsCreated}, ওয়াকফ সম্পত্তি ${summary.propertiesCreated}, ভাড়াটিয়া ${summary.tenantsCreated}, আয় ${summary.incomesCreated}, ব্যয় ${summary.expensesCreated}, প্রারম্ভিক স্থিতি ${summary.openingBalancesUpdated}`,
+      mosqueId,
+      req.ip,
+      { status: 'SUCCESS' }
+    );
+    realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
+
+    const totalSaved =
+      summary.personsCreated +
+      summary.propertiesCreated +
+      summary.tenantsCreated +
+      summary.incomesCreated +
+      summary.expensesCreated +
+      summary.openingBalancesUpdated;
+
+    return res.json({
+      success: true,
+      data: {
+        ...summary,
+        totalSaved,
+      },
+      message: `সফলভাবে মোট ${totalSaved}টি রেকর্ড মূল ডাটাবেসে সংরক্ষণ করা হয়েছে।`,
+    });
+  } catch (error: any) {
+    console.error('AI Smart Migration commit error:', error);
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: 'AI_MIGRATION_COMMIT_ERROR',
+        message: error?.message || 'ডাটা সংরক্ষণে সমস্যা হয়েছে।',
+      },
+    });
+  }
+});
+
+// ============================================================
+// 16F. COMMITTEE MANAGEMENT AI AUTOMATIONS (GEMINI 2.5 FLASH)
+// ============================================================
+app.post('/api/v1/ai/committee/meeting-minutes', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await generateCommitteeMeetingMinutes(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_MEETING_MINUTES_ERROR';
+    console.error('AI Committee Meeting Minutes error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'AI কার্যবিবরণী তৈরিতে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/committee/extract-action-plans', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await extractActionPlansFromMinutes(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_ACTION_PLAN_EXTRACT_ERROR';
+    console.error('AI Extract Action Plans error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'কার্যবিবরণী থেকে কর্মপরিকল্পনা বের করতে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/committee/action-plan-insights', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await analyzeActionPlansProgress(mosque, req.body?.termId);
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_ACTION_PLAN_INSIGHTS_ERROR';
+    console.error('AI Action Plan Insights error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'কর্মপরিকল্পনা অগ্রগতি বিশ্লেষণে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/committee/member-performance', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await generateMemberPerformanceInsights(mosque, req.body?.termId);
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_MEMBER_PERFORMANCE_ERROR';
+    console.error('AI Member Performance error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'সদস্য মূল্যায়ন বিশ্লেষণে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/committee/handover-protocol', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await generateCommitteeHandoverProtocol(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_HANDOVER_PROTOCOL_ERROR';
+    console.error('AI Handover Protocol error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'দায়িত্ব হস্তান্তর প্রতিবেদন তৈরিতে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/committee/health-check', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await getCommitteeHealthCheck(mosque, {
+      termId: req.body?.termId,
+      includeAiCommentary: Boolean(req.body?.includeAiCommentary),
+    });
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_HEALTH_CHECK_ERROR';
+    console.error('AI Committee Health Check error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'কমিটি হেলথ চেক বিশ্লেষণে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+// ============================================================
+// 16G. INCOME MANAGEMENT AI AUTOMATIONS (GEMINI 2.5 FLASH)
+// ============================================================
+app.post('/api/v1/ai/income/note-counter', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await parseNoteCountWithAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_NOTE_COUNTER_ERROR';
+    console.error('AI Income Note Counter error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'AI নোট হিসাব বিশ্লেষণে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/income/juma-comparison', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await getJumaFourWeekComparisonAi(mosque);
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_JUMA_COMPARISON_ERROR';
+    console.error('AI Juma 4-Week Comparison error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'জুমার কালেকশন গড় তুলনা বিশ্লেষণে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/income/appreciation-message', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await generateDonationAppreciationAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_APPRECIATION_ERROR';
+    console.error('AI Donation Appreciation error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'কৃতজ্ঞতা বার্তা তৈরিতে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/income/waqf-dues', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await checkWaqfRentDuesAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_WAQF_DUES_ERROR';
+    console.error('AI Waqf Dues Check error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'ওয়াক্ফ ভাড়া বকেয়া যাচাই ও রিমাইন্ডার তৈরিতে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/income/duplicate-check', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await checkIncomeRegisterDuplicatesAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_DUPLICATE_CHECK_ERROR';
+    console.error('AI Income Duplicate Check error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'আয় রেজিস্টার ডাবল এন্ট্রি যাচাইয়ে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/income/financial-insights', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await getIncomeFinancialInsightsAi(mosque);
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_INCOME_INSIGHTS_ERROR';
+    console.error('AI Income Financial Insights error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'আয় আর্থিক বিশ্লেষণ ও পূর্বাভাস তৈরিতে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+// ============================================================
+// 16H. EXPENSE MANAGEMENT AI AUTOMATIONS (CENTRAL AI CONFIG)
+// ============================================================
+app.post('/api/v1/ai/expense/utility-scan', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await analyzeUtilityBillAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_UTILITY_SCAN_ERROR';
+    console.error('AI Utility Bill Scan error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'ইউটিলিটি বিল বিশ্লেষণে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/expense/payroll-draft', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await prepareMonthlyPayrollDraftAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_PAYROLL_DRAFT_ERROR';
+    console.error('AI Monthly Payroll Draft error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'মাসিক বেতন ড্রাফট তৈরিতে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/expense/reconciliation-audit', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await auditExpenseReconciliationAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_EXPENSE_RECON_ERROR';
+    console.error('AI Expense Reconciliation Audit error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'ব্যয় অডিট ও রিকনসিলিয়েশনে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/expense/budget-guard', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await analyzeExpenseBudgetGuardAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_BUDGET_GUARD_ERROR';
+    console.error('AI Expense Budget Guard error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'বাজেট গার্ড ও ব্যয় পরামর্শ তৈরিতে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+// ============================================================
+// 16I. ACCOUNTS & TRANSACTIONS AI AUTOMATIONS (CENTRAL AI CONFIG)
+// ============================================================
+app.post('/api/v1/ai/ledger/balance-guardian', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await diagnoseNegativeCashBalanceAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_BALANCE_GUARDIAN_ERROR';
+    console.error('AI Balance Guardian error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'নেগেটিভ ক্যাশ ও প্রারম্ভিক স্থিতি বিশ্লেষণে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/ledger/bank-reconcile', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await reconcileBankStatementAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_BANK_RECON_ERROR';
+    console.error('AI Bank Reconciliation error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'ব্যাংক ও এমএফএস স্টেটমেন্ট মিলিয়ে দেখায় ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/ledger/smart-search', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await smartSearchTransactionsAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_SMART_SEARCH_ERROR';
+    console.error('AI Smart Transaction Search error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'প্রাকৃতিক বাংলায় লেনদেন অনুসন্ধানে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/ledger/executive-summary', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await generateLedgerExecutiveSummaryAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_EXECUTIVE_SUMMARY_ERROR';
+    console.error('AI Ledger Executive Summary error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'লেনদেন সারসংক্ষেপ তৈরিতে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+// ============================================================
+// 16J. CHART OF ACCOUNTS (COA) AI AUTOMATIONS (CENTRAL AI CONFIG)
+// ============================================================
+app.post('/api/v1/ai/coa/optimize', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await optimizeChartOfAccountsAi(mosque);
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_COA_OPTIMIZE_ERROR';
+    console.error('AI COA Optimize error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'হিসাব খাত অপটিমাইজ ও ডুপ্লিকেট বিশ্লেষণে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/coa/standard-template', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await generateStandardCoaTemplateAi(mosque, req.body || { mosqueType: 'GENERAL' });
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_COA_TEMPLATE_ERROR';
+    console.error('AI COA Standard Template error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'স্ট্যান্ডার্ড COA টেমপ্লেট তৈরিতে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/coa/suggest-head', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await suggestNewAccountHeadAi(mosque, req.body || { nameBn: '' });
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_COA_SUGGEST_ERROR';
+    console.error('AI COA Suggest Head error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'নতুন খাতের স্মার্ট সাজেশন তৈরিতে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/coa/inactive-heads', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await findInactiveAccountHeadsAi(mosque, req.body || { type: 'ALL' });
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_COA_INACTIVE_ERROR';
+    console.error('AI COA Inactive Heads error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'নিষ্ক্রিয় হিসাব খাত বিশ্লেষণে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/coa/structure-note', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await generateCoaStructureNoteAi(mosque);
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_COA_NOTE_ERROR';
+    console.error('AI COA Structure Note error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'অ্যাকাউন্টিং স্ট্রাকচার নোট তৈরিতে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+// ============================================================
+// 16K. IMAM, STAFF & PAYROLL AI AUTOMATIONS (CENTRAL AI CONFIG)
+// ============================================================
+app.post('/api/v1/ai/staff/scan-document', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await scanStaffDocumentAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_STAFF_SCAN_ERROR';
+    console.error('AI Staff Document Scan error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'NID বা ডকুমেন্ট স্ক্যান করতে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/staff/generate-document', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await generateStaffOfficialDocumentAi(mosque, req.body || { staffId: '', documentType: 'APPOINTMENT_LETTER' });
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_STAFF_DOC_GEN_ERROR';
+    console.error('AI Staff Official Document error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'আনুষ্ঠানিক ডকুমেন্ট তৈরিতে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/staff/attendance-summary', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await summarizeMonthlyAttendanceAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_ATTENDANCE_SUMMARY_ERROR';
+    console.error('AI Staff Attendance Summary error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'মাসিক হাজিরা সারসংক্ষেপ তৈরিতে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/staff/verify-leave', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await verifyStaffLeaveRequestAi(mosque, req.body || { staffId: '', startDate: '', endDate: '', daysCount: 1 });
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_LEAVE_VERIFY_ERROR';
+    console.error('AI Staff Leave Verify error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'ছুটি যাচাই ও মঞ্জুরিপত্র তৈরিতে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/staff/payroll-draft', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await generateStaffPayrollDraftAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_PAYROLL_DRAFT_ERROR';
+    console.error('AI Staff Payroll Draft error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'মাসিক বেতন শিট ড্রাফট তৈরিতে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/staff/salary-sms', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await generateStaffSalarySmsAi(mosque, req.body || { staffId: '' });
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_SALARY_SMS_ERROR';
+    console.error('AI Staff Salary SMS error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'বেতন কনফার্মেশন SMS তৈরিতে ত্রুটি হয়েছে।' },
+    });
+  }
+});
 
 // ==========================================
 // SERVER-SIDE BACKUP SCHEDULER (PHASE 3D)
@@ -25590,11 +26895,9 @@ async function startApp() {
 
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`[MasjidLedger] HTTP & WebSocket Server running on http://0.0.0.0:${PORT}`);
-  });
-
-  // Synchronize memory and disk database state with Firestore cloud persistence asynchronously
-  db.syncFromCloudOnInit().catch((err) => {
-    console.warn('[MasjidLedger] Background cloud sync warning:', err);
+    db.syncFromCloudOnInit().catch((err) => {
+      console.warn('[MasjidLedger] Initial cloud sync warning:', err);
+    });
   });
 }
 

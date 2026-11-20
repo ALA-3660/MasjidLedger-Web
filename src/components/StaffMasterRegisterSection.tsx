@@ -11,7 +11,8 @@ import {
   UserCheck,
   CheckCircle2,
   ExternalLink,
-  ShieldCheck
+  ShieldCheck,
+  Sparkles
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Staff, Mosque } from '../types';
@@ -23,6 +24,7 @@ interface StaffMasterRegisterSectionProps {
   staffList: Staff[];
   currentMosque?: Mosque | null;
   onViewStaffProfile: (staff: Staff) => void;
+  onOpenAiDocument?: (staff: Staff) => void;
   language: Language;
 }
 
@@ -30,6 +32,7 @@ export const StaffMasterRegisterSection: React.FC<StaffMasterRegisterSectionProp
   staffList = [],
   currentMosque,
   onViewStaffProfile,
+  onOpenAiDocument,
   language = 'bn',
 }) => {
   const isBn = language === 'bn';
@@ -255,14 +258,27 @@ export const StaffMasterRegisterSection: React.FC<StaffMasterRegisterSectionProp
                         </span>
                       </td>
                       <td className="p-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => onViewStaffProfile(staff)}
-                          className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold inline-flex items-center space-x-1"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>প্রোফাইল</span>
-                        </button>
+                        <div className="inline-flex items-center justify-end gap-1.5">
+                          {onOpenAiDocument && (
+                            <button
+                              type="button"
+                              onClick={() => onOpenAiDocument(staff)}
+                              className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-bold inline-flex items-center space-x-1"
+                              title="নিয়োগপত্র, অভিজ্ঞতা সনদ বা ছাড়পত্র তৈরি করুন"
+                            >
+                              <Sparkles className="w-3.5 h-3.5" />
+                              <span>AI ডকুমেন্ট</span>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => onViewStaffProfile(staff)}
+                            className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold inline-flex items-center space-x-1"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>প্রোফাইল</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
