@@ -135,7 +135,13 @@ export type Permission =
   | 'MANAGE_LAWYERS'
   | 'MANAGE_LEGAL_ORDERS'
   | 'MANAGE_LEGAL_DOCUMENT_REFERENCES'
-  | 'VIEW_LEGAL_REPORTS';
+  | 'VIEW_LEGAL_REPORTS'
+  | 'VIEW_SMART_NOTES'
+  | 'CREATE_SMART_NOTE'
+  | 'EDIT_SMART_NOTE'
+  | 'DELETE_SMART_NOTE'
+  | 'SHARE_SMART_NOTE'
+  | 'USE_NOTES_AI';
 
 export interface User {
   id: string;

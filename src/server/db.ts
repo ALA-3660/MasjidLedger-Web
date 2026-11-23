@@ -116,6 +116,19 @@ import {
   OfficialDocumentTemplate,
   DocumentNumberingConfig,
 } from '../types/officialDocumentTypes';
+import {
+  SmartNote,
+  SmartNoteCategory,
+  SmartNoteVersion,
+  SmartNoteComment,
+  SmartNoteActivity,
+  SmartNoteReminder,
+} from '../types/smartNotesTypes';
+import {
+  AutoBackupSnapshotMeta,
+  NotificationDraftQueueItem,
+  AutomationExecutionLog,
+} from '../types/automationTypes';
 import { DEFAULT_DOCUMENT_TEMPLATES } from '../lib/officialDocumentTemplates';
 import { getStarterOfficialDocuments } from '../lib/starterOfficialDocuments';
 import type { AiModelSettings } from '../config/aiConfig';
@@ -599,6 +612,16 @@ export class DatabaseStore {
   legalHearings: LegalHearing[] = [];
   legalActions: LegalAction[] = [];
   legalOrders: LegalOrder[] = [];
+  smartNotes: SmartNote[] = [];
+  smartNoteCategories: SmartNoteCategory[] = [];
+  smartNoteVersions: SmartNoteVersion[] = [];
+  smartNoteComments: SmartNoteComment[] = [];
+  smartNoteActivities: SmartNoteActivity[] = [];
+  smartNoteReminders: SmartNoteReminder[] = [];
+  autoBackupSnapshots: AutoBackupSnapshotMeta[] = [];
+  notificationDraftQueue: NotificationDraftQueueItem[] = [];
+  automationLogs: AutomationExecutionLog[] = [];
+  dismissedReminderKeys: Record<string, string[]> = {};
 
   private _transactionActive: boolean = false;
   private _currentTxContext: TransactionContext | null = null;
@@ -893,6 +916,16 @@ export class DatabaseStore {
         this.legalHearings = parsed.legalHearings || [];
         this.legalActions = parsed.legalActions || [];
         this.legalOrders = parsed.legalOrders || [];
+        this.smartNotes = parsed.smartNotes || [];
+        this.smartNoteCategories = parsed.smartNoteCategories || [];
+        this.smartNoteVersions = parsed.smartNoteVersions || [];
+        this.smartNoteComments = parsed.smartNoteComments || [];
+        this.smartNoteActivities = parsed.smartNoteActivities || [];
+        this.smartNoteReminders = parsed.smartNoteReminders || [];
+        this.autoBackupSnapshots = parsed.autoBackupSnapshots || [];
+        this.notificationDraftQueue = parsed.notificationDraftQueue || [];
+        this.automationLogs = parsed.automationLogs || [];
+        this.dismissedReminderKeys = parsed.dismissedReminderKeys || {};
 
         // Ensure all registered and core mosques are always preserved
         const coreMosques: Mosque[] = [
@@ -1304,6 +1337,16 @@ export class DatabaseStore {
       legalHearings: this.legalHearings,
       legalActions: this.legalActions,
       legalOrders: this.legalOrders,
+      smartNotes: this.smartNotes,
+      smartNoteCategories: this.smartNoteCategories,
+      smartNoteVersions: this.smartNoteVersions,
+      smartNoteComments: this.smartNoteComments,
+      smartNoteActivities: this.smartNoteActivities,
+      smartNoteReminders: this.smartNoteReminders,
+      autoBackupSnapshots: this.autoBackupSnapshots,
+      notificationDraftQueue: this.notificationDraftQueue,
+      automationLogs: this.automationLogs,
+      dismissedReminderKeys: this.dismissedReminderKeys,
     };
   }
 
@@ -1316,61 +1359,94 @@ export class DatabaseStore {
     }
   }
 
+  private _isWritingToDisk: boolean = false;
+  private _pendingDiskWrite: boolean = false;
+  private _pendingSkipCloudSync: boolean = true;
+
   /**
-   * Flushes and synchronizes state to disk with atomic rename.
+   * Flushes and synchronizes state to disk with a re-entrant concurrency lock
+   * and atomic temp-file + fsync + rename replacement so simultaneous writes
+   * can never corrupt or partially write the JSON database.
    */
   persistStateAtomically(skipCloudSync: boolean = false): void {
-    const dbPath = this.getDbFilePath();
-    const dataDir = path.dirname(dbPath);
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
+    if (this._isWritingToDisk) {
+      this._pendingDiskWrite = true;
+      if (!skipCloudSync) {
+        this._pendingSkipCloudSync = false;
+      }
+      return;
     }
 
-    const data = this.serializeDatabaseState();
-    const tempPath = `${dbPath}.tmp.${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    this._isWritingToDisk = true;
+    let currentSkipCloud = skipCloudSync;
 
     try {
-      // 1. Write complete state to temp file
-      const fd = fs.openSync(tempPath, 'w');
-      try {
-        fs.writeFileSync(fd, JSON.stringify(data, null, 2), 'utf-8');
-        // 2. Fsync to physical storage
-        fs.fsyncSync(fd);
-      } finally {
-        fs.closeSync(fd);
-      }
+      do {
+        this._pendingDiskWrite = false;
+        const dbPath = this.getDbFilePath();
+        const dataDir = path.dirname(dbPath);
+        if (!fs.existsSync(dataDir)) {
+          fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+        }
 
-      // 3. Atomic rename replacement
-      fs.renameSync(tempPath, dbPath);
+        const data = this.serializeDatabaseState();
+        const tempPath = `${dbPath}.tmp.${process.pid}.${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-      // 4. Directory fsync where supported
-      try {
-        const dirFd = fs.openSync(dataDir, 'r');
         try {
-          fs.fsyncSync(dirFd);
-        } finally {
-          fs.closeSync(dirFd);
-        }
-      } catch (_) {}
+          // 1. Write complete serialized JSON to isolated temp file with restrictive 0o600 mode
+          const fd = fs.openSync(tempPath, 'w', 0o600);
+          try {
+            fs.writeFileSync(fd, JSON.stringify(data, null, 2), 'utf-8');
+            // 2. Fsync file descriptor to physical storage
+            fs.fsyncSync(fd);
+          } finally {
+            fs.closeSync(fd);
+          }
 
-      // 5. Asynchronously synchronize with Cloud Firestore for permanent container survivability
-      // Only queue cloud sync AFTER initial cloud restoration has completed so boot-time local seed never overwrites cloud!
-      if (this._cloudSyncReady && !skipCloudSync) {
-        try {
-          cloudPersistence.queueSync(data);
-        } catch (cloudErr) {
-          console.warn('[DB] Cloud persistence queue warning:', cloudErr);
-        }
-      }
-    } catch (err: any) {
-      // Clean up failed temp file without masking original error
-      try {
-        if (fs.existsSync(tempPath)) {
-          fs.unlinkSync(tempPath);
-        }
-      } catch (_) {}
+          // 3. Atomic POSIX rename replacement
+          fs.renameSync(tempPath, dbPath);
 
-      throw new StoragePersistenceError('DISK_WRITE_FAILED', err.message || 'Failed to persist database state to disk', err);
+          // 4. Directory fsync where supported
+          try {
+            const dirFd = fs.openSync(dataDir, 'r');
+            try {
+              fs.fsyncSync(dirFd);
+            } finally {
+              fs.closeSync(dirFd);
+            }
+          } catch (_) {}
+
+          // 5. Asynchronously synchronize with Cloud Firestore when ready
+          if (this._cloudSyncReady && !currentSkipCloud) {
+            try {
+              cloudPersistence.queueSync(data);
+            } catch (cloudErr) {
+              console.warn('[DB] Cloud persistence queue warning:', cloudErr);
+            }
+          }
+        } catch (err: any) {
+          try {
+            if (fs.existsSync(tempPath)) {
+              fs.unlinkSync(tempPath);
+            }
+          } catch (_) {}
+
+          throw new StoragePersistenceError(
+            'DISK_WRITE_FAILED',
+            err.message || 'Failed to persist database state to disk',
+            err
+          );
+        }
+
+        if (this._pendingDiskWrite) {
+          currentSkipCloud = this._pendingSkipCloudSync;
+          this._pendingSkipCloudSync = true;
+        }
+      } while (this._pendingDiskWrite);
+    } finally {
+      this._isWritingToDisk = false;
+      this._pendingDiskWrite = false;
+      this._pendingSkipCloudSync = true;
     }
   }
 

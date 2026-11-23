@@ -58,6 +58,7 @@ import { MosqueDisplayScreen } from './MosqueDisplayScreen';
 import { PublicPrayerSchedulePrint } from './PublicPrayerSchedulePrint';
 import { PublicFinancialPrint } from './PublicFinancialPrint';
 import { PublicNoticePrint } from './PublicNoticePrint';
+import { PublicPortalAiAssistantWidget } from './publicPortal/PublicPortalAiAssistantWidget';
 import {
   calculateLiveWaqt,
   calculateHanafiDailyTimes,
@@ -1435,6 +1436,14 @@ export const PublicPortalView: React.FC<PublicPortalViewProps> = ({
             setActivePrintSheet(null);
             setActiveNoticeForPrint(null);
           }}
+        />
+      )}
+
+      {/* Restricted Public Portal AI Information Assistant (Whitelisted Public Data Only) */}
+      {!isTvMode && (
+        <PublicPortalAiAssistantWidget
+          mosqueIdOrCode={mosqueInfo.id || mosqueInfo.code}
+          mosqueNameBn={mosqueInfo.nameBn || propMosque?.nameBn || 'মসজিদ'}
         />
       )}
     </div>

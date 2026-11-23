@@ -13,10 +13,13 @@ import {
   Plus,
   Trash2,
   CheckCircle2,
-  DollarSign
+  DollarSign,
+  Sparkles,
 } from 'lucide-react';
 import { CemeteryRecord, CemeteryHeir } from '../types';
 import { Language } from '../lib/i18n';
+import { CemeteryAiExtractedFields } from '../lib/api';
+import { CemeteryEntryAiHelperModal } from './cemetery/CemeteryEntryAiHelperModal';
 
 export const GRAVE_TYPES = [
   { id: 'PERMANENT', labelBn: 'স্থায়ী কবর (Permanent)', color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
@@ -99,8 +102,11 @@ export const CemeteryFormModal: React.FC<CemeteryFormModalProps> = ({
 
   const [errorMsg, setErrorMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAiEntryHelperOpen, setIsAiEntryHelperOpen] = useState(false);
+  const [aiDraftAppliedInfo, setAiDraftAppliedInfo] = useState<{ count: number; summaryBn: string } | null>(null);
 
   useEffect(() => {
+    setAiDraftAppliedInfo(null);
     if (editRecord) {
       setRecordNumber(editRecord.recordNumber || '');
       setPlotNumber(editRecord.plotNumber || '');
@@ -292,12 +298,25 @@ export const CemeteryFormModal: React.FC<CemeteryFormModalProps> = ({
               <p className="text-xs text-slate-300">ওয়াকফ কবরস্থান রেজিস্টারের পূর্ণাঙ্গ তথ্য ভুক্তি</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsAiEntryHelperOpen(true)}
+              className="px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/50 text-emerald-100 text-xs font-bold font-siliguri flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="সংক্ষিপ্ত বাংলা নোট বা পুরনো রেজিস্টার ছবি থেকে খসড়া পূরণ করুন"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-emerald-300" />
+              <span className="hidden sm:inline">✨ AI নোট/রেজিস্টার থেকে পূরণ করুন</span>
+              <span className="sm:hidden">✨ AI পূরণ</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Tab Navigation */}
@@ -356,6 +375,29 @@ export const CemeteryFormModal: React.FC<CemeteryFormModalProps> = ({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto flex-1 space-y-5 text-xs">
+          {aiDraftAppliedInfo && (
+            <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs flex items-start justify-between gap-3">
+              <div className="flex items-start gap-2 font-tiro">
+                <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold font-siliguri">
+                    AI খসড়া থেকে {aiDraftAppliedInfo.count}টি ঘর পূরণ করা হয়েছে (এখনো সেভ হয়নি)
+                  </p>
+                  <p className="text-[11px] text-amber-800 mt-0.5">
+                    অনুগ্রহ করে সকল ট্যাবে গিয়ে নাম, বয়স, তারিখ, কবর নম্বর ও অভিভাবকের মোবাইল নম্বর যাচাই করে তারপর "রেকর্ড সংরক্ষণ" বাটনে ক্লিক করুন।
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAiDraftAppliedInfo(null)}
+                className="text-amber-700 hover:text-amber-950 p-1"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {errorMsg && (
             <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs font-bold flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
@@ -912,6 +954,65 @@ export const CemeteryFormModal: React.FC<CemeteryFormModalProps> = ({
           </div>
         </form>
       </div>
+
+      {/* AI Entry & Old Register OCR Helper Modal (Draft-Only, Never Auto-Saves) */}
+      <CemeteryEntryAiHelperModal
+        isOpen={isAiEntryHelperOpen}
+        onClose={() => setIsAiEntryHelperOpen(false)}
+        currentFormValues={{
+          plotNumber,
+          block,
+          row,
+          graveLocation,
+          graveType,
+          deceasedName,
+          fatherOrSpouseName,
+          gender,
+          ageAtDeath,
+          dateOfDeath,
+          causeOfDeath,
+          burialDate,
+          burialTime,
+          janazaPlace,
+          contactPersonName,
+          relationWithDeceased,
+          contactPersonPhone,
+          heirAddress,
+          notes,
+        }}
+        onApplyDraftFields={(fields: Partial<CemeteryAiExtractedFields>, meta) => {
+          let appliedCount = 0;
+          if (fields.plotNumber) { setPlotNumber(fields.plotNumber); appliedCount++; }
+          if (fields.block) { setBlock(fields.block); appliedCount++; }
+          if (fields.row) { setRow(fields.row); appliedCount++; }
+          if (fields.graveLocation) { setGraveLocation(fields.graveLocation); appliedCount++; }
+          if (fields.graveType && ['PERMANENT', 'TEMPORARY', 'FAMILY', 'GENERAL'].includes(fields.graveType)) {
+            setGraveType(fields.graveType as CemeteryRecord['graveType']);
+            appliedCount++;
+          }
+          if (fields.deceasedName) { setDeceasedName(fields.deceasedName); appliedCount++; }
+          if (fields.fatherOrSpouseName) { setFatherOrSpouseName(fields.fatherOrSpouseName); appliedCount++; }
+          if (fields.gender && ['MALE', 'FEMALE', 'OTHER'].includes(fields.gender)) {
+            setGender(fields.gender as 'MALE' | 'FEMALE' | 'OTHER');
+            appliedCount++;
+          }
+          if (fields.ageAtDeath) { setAgeAtDeath(fields.ageAtDeath); appliedCount++; }
+          if (fields.dateOfDeath) { setDateOfDeath(fields.dateOfDeath); appliedCount++; }
+          if (fields.causeOfDeath) { setCauseOfDeath(fields.causeOfDeath); appliedCount++; }
+          if (fields.burialDate) { setBurialDate(fields.burialDate); appliedCount++; }
+          if (fields.burialTime) { setBurialTime(fields.burialTime); appliedCount++; }
+          if (fields.janazaPlace) { setJanazaPlace(fields.janazaPlace); appliedCount++; }
+          if (fields.contactPersonName) { setContactPersonName(fields.contactPersonName); appliedCount++; }
+          if (fields.relationWithDeceased) { setRelationWithDeceased(fields.relationWithDeceased); appliedCount++; }
+          if (fields.contactPersonPhone) { setContactPersonPhone(fields.contactPersonPhone); appliedCount++; }
+          if (fields.heirAddress) { setHeirAddress(fields.heirAddress); appliedCount++; }
+          if (fields.notes) { setNotes(fields.notes); appliedCount++; }
+
+          if (appliedCount > 0) {
+            setAiDraftAppliedInfo({ count: appliedCount, summaryBn: meta.sourceSummaryBn });
+          }
+        }}
+      />
     </div>
   );
 };

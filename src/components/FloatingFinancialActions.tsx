@@ -6,6 +6,7 @@ import {
   ChevronUp,
   ChevronDown,
   Sparkles,
+  FileText,
 } from 'lucide-react';
 import { Language } from '../lib/i18n';
 
@@ -15,6 +16,7 @@ export interface FloatingFinancialActionsProps {
   onOpenJuma: () => void;
   onOpenScanner: () => void;
   onOpenCalculator?: () => void;
+  onOpenQuickNote?: () => void;
   language?: Language;
   className?: string;
 }
@@ -25,6 +27,7 @@ export const FloatingFinancialActions: React.FC<FloatingFinancialActionsProps> =
   onOpenJuma,
   onOpenScanner,
   onOpenCalculator,
+  onOpenQuickNote,
   language = 'bn',
   className = '',
 }) => {
@@ -155,6 +158,25 @@ export const FloatingFinancialActions: React.FC<FloatingFinancialActionsProps> =
                 <Banknote className="w-3.5 h-3.5 text-emerald-700" />
               </div>
               <span>💵 ভাংতি নোট গণনা</span>
+            </button>
+          )}
+
+          {/* 6. Quick Note / Draft Slide-Over Drawer (directly below ভাংতি নোট গণনা) */}
+          {onOpenQuickNote && (
+            <button
+              id="float-btn-quick-note"
+              type="button"
+              onClick={() => {
+                setIsExpanded(false);
+                onOpenQuickNote();
+              }}
+              className="w-full group flex items-center space-x-2.5 bg-teal-50 hover:bg-teal-100 text-teal-900 pl-3 pr-3.5 py-2 rounded-xl shadow-2xs border border-teal-200 transition-all active:scale-95 cursor-pointer text-xs font-bold"
+              title="দ্রুত খসড়া নোট, ভয়েস টাইপিং ও ক্যামেরা OCR"
+            >
+              <div className="w-6 h-6 rounded-lg bg-teal-600/15 flex items-center justify-center shrink-0">
+                <FileText className="w-3.5 h-3.5 text-teal-700" />
+              </div>
+              <span>📝 কুইক নোট / খসড়া</span>
             </button>
           )}
         </div>

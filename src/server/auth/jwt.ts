@@ -17,43 +17,40 @@ export const REFRESH_TOKEN_TTL_SECONDS = 90 * 24 * 60 * 60; // 90 days
 export const JWT_ACCESS_EXPIRES_IN = parseExpiresIn(process.env.JWT_ACCESS_EXPIRES_IN, '30d');
 export const JWT_REFRESH_EXPIRES_IN = parseExpiresIn(process.env.JWT_REFRESH_EXPIRES_IN, '90d');
 
-const PERSISTENT_ACCESS_SECRET = crypto
-  .createHash('sha256')
-  .update('masjidledger-enterprise-access-secret-key-v2-18666ccf-b29d-45dd-a1a0-4c29705846f2')
-  .digest('hex');
-
-const PERSISTENT_REFRESH_SECRET = crypto
-  .createHash('sha256')
-  .update('masjidledger-enterprise-refresh-secret-key-v2-18666ccf-b29d-45dd-a1a0-4c29705846f2')
-  .digest('hex');
-
-function getOrGenerateDevAccessSecret(): string {
-  return PERSISTENT_ACCESS_SECRET;
-}
-
-function getOrGenerateDevRefreshSecret(): string {
-  return PERSISTENT_REFRESH_SECRET;
-}
+// Cryptographic in-memory fallback keys generated once per process if env vars are unset.
+// Production deployments should always configure JWT_ACCESS_SECRET & JWT_REFRESH_SECRET (>= 32 chars).
+const EPHEMERAL_ACCESS_SECRET = crypto.randomBytes(32).toString('hex');
+const EPHEMERAL_REFRESH_SECRET = crypto.randomBytes(32).toString('hex');
 
 /**
- * Persistent JWT Secret Provider & Validation.
- * Uses explicit environment variables if provided (>= 32 chars), or falls back to
- * deterministic 64-char SHA-256 secrets so active user tokens survive server restarts.
+ * JWT Secret Provider & Validation.
+ * Reads strong secrets (>= 32 chars) strictly from process.env with a secure
+ * in-memory crypto.randomBytes(32) fallback (never hardcoded literal secrets).
  */
 export function getJwtAccessSecret(): string {
-  const secret = process.env.JWT_ACCESS_SECRET;
-  if (secret && secret !== 'JWT_ACCESS_SECRET' && secret.trim().length >= 32) {
+  const secret = process.env.JWT_ACCESS_SECRET?.trim();
+  if (
+    secret &&
+    secret !== 'JWT_ACCESS_SECRET' &&
+    secret !== 'CHANGE_ME_TO_STRONG_RANDOM_SECRET_KEY' &&
+    secret.length >= 32
+  ) {
     return secret;
   }
-  return getOrGenerateDevAccessSecret();
+  return EPHEMERAL_ACCESS_SECRET;
 }
 
 export function getJwtRefreshSecret(): string {
-  const secret = process.env.JWT_REFRESH_SECRET;
-  if (secret && secret !== 'JWT_REFRESH_SECRET' && secret.trim().length >= 32) {
+  const secret = process.env.JWT_REFRESH_SECRET?.trim();
+  if (
+    secret &&
+    secret !== 'JWT_REFRESH_SECRET' &&
+    secret !== 'CHANGE_ME_TO_DIFFERENT_STRONG_RANDOM_SECRET_KEY' &&
+    secret.length >= 32
+  ) {
     return secret;
   }
-  return getOrGenerateDevRefreshSecret();
+  return EPHEMERAL_REFRESH_SECRET;
 }
 
 /**

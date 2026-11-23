@@ -22,6 +22,7 @@ import {
 import { AuditLog, Mosque, User } from '../types';
 import { Language, translations } from '../lib/i18n';
 import { printElement } from '../lib/printUtils';
+import { AuditLogAiAssistantPanel } from './audit/AuditLogAiAssistantPanel';
 
 interface AuditLogViewProps {
   logs: AuditLog[];
@@ -363,6 +364,22 @@ export const AuditLogView: React.FC<AuditLogViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* AI Read-Only Audit Observation & Natural Bangla Filter Helper (Hidden on Print) */}
+      <AuditLogAiAssistantPanel
+        filteredLogIds={filteredLogs.map((l) => l.id)}
+        totalFilteredCount={filteredLogs.length}
+        filterSummaryBn={`মডিউল: ${moduleFilter}, অ্যাকশন: ${actionFilter}, স্ট্যাটাস: ${statusFilter}, ইউজার: ${userFilter}${fromDate ? `, শুরু: ${fromDate}` : ''}${toDate ? `, শেষ: ${toDate}` : ''}`}
+        onApplySuggestedFilters={(f) => {
+          setModuleFilter(f.moduleFilter || 'ALL');
+          setActionFilter(f.actionFilter || 'ALL');
+          setStatusFilter(f.statusFilter || 'ALL');
+          setUserFilter(f.userFilter || 'ALL');
+          setFromDate(f.fromDate || '');
+          setToDate(f.toDate || '');
+          setSearchQuery(f.searchQuery || '');
+        }}
+      />
 
       {/* Filter Toolbar (Hidden on Print) */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4 print:hidden">

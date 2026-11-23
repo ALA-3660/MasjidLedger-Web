@@ -76,6 +76,7 @@ export interface DashboardViewProps {
   onOpenIncomeModal?: () => void;
   onOpenExpenseModal?: () => void;
   onOpenCalculator?: () => void;
+  onOpenQuickNote?: () => void;
   onRefresh?: () => void;
 }
 
@@ -105,6 +106,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenIncomeModal,
   onOpenExpenseModal,
   onOpenCalculator,
+  onOpenQuickNote,
   onRefresh,
 }) => {
   const t = translations[language] || translations.bn;
@@ -660,6 +662,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 if (onOpenScanner) onOpenScanner();
               }}
               onOpenCalculator={onOpenCalculator}
+              onOpenQuickNote={onOpenQuickNote}
               language={language}
             />
           </div>

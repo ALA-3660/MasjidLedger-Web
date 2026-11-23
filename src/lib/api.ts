@@ -1,4 +1,14 @@
 import {
+  AutoBackupOverviewResponse,
+  AutoBackupScheduleConfig,
+  AutoBackupSnapshotMeta,
+  AutoBackupSnapshotPreview,
+  DetectedAutomationReminder,
+  NotificationDraftChannel,
+  NotificationDraftQueueItem,
+  AutomationExecutionLog,
+} from '../types/automationTypes';
+import {
   ApiResponse,
   User,
   Mosque,
@@ -134,6 +144,23 @@ import {
   QuranRangeResult,
 } from '../types/quran';
 import {
+  SmartNote,
+  SmartNoteCategory,
+  SmartNoteStats,
+  SmartNoteVersion,
+  SmartNoteComment,
+  SmartNoteActivity,
+  SmartNoteReminder,
+  SmartNoteAttachment,
+  SmartNotePrivacyMode,
+  SmartNoteShareEntry,
+  SmartNoteVoiceFormatResult,
+  SmartNoteOcrResult,
+  SmartNoteAiAssistResult,
+  NoteOcrMode,
+  NoteAiAssistAction,
+} from '../types/smartNotesTypes';
+import {
   saveRecordToClientVault,
   mergeAndInspectClientVault,
   FinanceVaultRecordType,
@@ -189,12 +216,7 @@ class ApiService {
   }
 
   hasToken(): boolean {
-    return !!(
-      this.token ||
-      this.currentUserId ||
-      (typeof window !== 'undefined' &&
-        (localStorage.getItem('ml_token') || localStorage.getItem('ml_user_id')))
-    );
+    return Boolean(this.getToken());
   }
 
   getToken(): string | null {
@@ -225,9 +247,7 @@ class ApiService {
   private async refreshAccessToken(): Promise<boolean> {
     const activeRefreshToken =
       this.refreshToken || (typeof window !== 'undefined' ? localStorage.getItem('ml_refresh_token') : null);
-    const activeUserId =
-      this.currentUserId || (typeof window !== 'undefined' ? localStorage.getItem('ml_user_id') || '' : '');
-    if (!activeRefreshToken && !activeUserId) return false;
+    if (!activeRefreshToken) return false;
     if (this.refreshPromise) return this.refreshPromise;
 
     this.refreshPromise = (async () => {
@@ -236,11 +256,9 @@ class ApiService {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-user-id': activeUserId,
           },
           body: JSON.stringify({
             refreshToken: activeRefreshToken,
-            userId: activeUserId,
           }),
         });
 
@@ -355,6 +373,8 @@ class ApiService {
         if (refreshed) {
           return this.executeRequest<T>(endpoint, options, 1);
         }
+        // Clear invalid/expired local session so UI prompts a clean re-login
+        this.clearAuth();
       }
 
       const contentType = response.headers.get('content-type') || '';
@@ -620,6 +640,218 @@ class ApiService {
     });
     if (!res.success) throw new Error(res.error?.message || 'ডাটা রিস্টোর ব্যর্থ হয়েছে');
     return res.data;
+  }
+
+  // ==========================================
+  // Auto-Backup & Reminder/Notification Automation Suite
+  // ==========================================
+  async getAutoBackupOverview(): Promise<AutoBackupOverviewResponse> {
+    const res = await this.request<AutoBackupOverviewResponse>('/automation/backups/overview');
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'অটো-ব্যাকআপ তথ্য লোড করতে সমস্যা হয়েছে');
+    }
+    return res.data;
+  }
+
+  async updateAutoBackupConfig(
+    config: Partial<AutoBackupScheduleConfig>
+  ): Promise<AutoBackupScheduleConfig> {
+    const res = await this.request<AutoBackupScheduleConfig>('/automation/backups/config', {
+      method: 'PUT',
+      body: JSON.stringify(config),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'অটো-ব্যাকআপ সেটিংস সংরক্ষণ ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async runAutoBackupNow(noteBn?: string): Promise<AutoBackupSnapshotMeta> {
+    const res = await this.request<AutoBackupSnapshotMeta>('/automation/backups/run-now', {
+      method: 'POST',
+      body: JSON.stringify({ noteBn }),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'ব্যাকআপ স্ন্যাপশট তৈরি করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async previewAutoBackupSnapshot(id: string): Promise<AutoBackupSnapshotPreview> {
+    const res = await this.request<AutoBackupSnapshotPreview>(
+      `/automation/backups/${encodeURIComponent(id)}/preview`
+    );
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'স্ন্যাপশট প্রিভিউ লোড করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async restoreAutoBackupSnapshot(id: string): Promise<{
+    restoredSnapshotId: string;
+    safetyBackupId: string;
+    totalRestored: number;
+    restoredModuleCounts: Record<string, number>;
+  }> {
+    const res = await this.request<any>(
+      `/automation/backups/${encodeURIComponent(id)}/restore`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ confirmRestore: true }),
+      }
+    );
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'স্ন্যাপশট রিস্টোর ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async downloadAutoBackupSnapshot(id: string, fileName?: string): Promise<void> {
+    const response = await fetch(`/api/v1/automation/backups/${encodeURIComponent(id)}/download`, {
+      headers: {
+        'x-user-id': this.currentUserId,
+        'x-mosque-id': this.currentMosqueId,
+        ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
+      },
+    });
+    if (!response.ok) {
+      let msg = 'স্ন্যাপশট ডাউনলোড করতে ব্যর্থ হয়েছে';
+      try {
+        const errJson = await response.json();
+        if (errJson?.error?.message) msg = errJson.error.message;
+      } catch {
+        // ignore JSON parse errors
+      }
+      throw new Error(msg);
+    }
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName || `MasjidLedger_Snapshot_${id}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  }
+
+  async scanAutomationReminders(
+    leadDays: number = 7,
+    category: string = 'ALL',
+    manualScan: boolean = false
+  ): Promise<{
+    leadDays: number;
+    scannedAt: string;
+    countsByCategory: Record<string, number>;
+    reminders: DetectedAutomationReminder[];
+  }> {
+    const qs = new URLSearchParams({
+      leadDays: String(leadDays),
+      category,
+      manualScan: manualScan ? 'true' : 'false',
+    });
+    const res = await this.request<any>(`/automation/reminders/scan?${qs.toString()}`);
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'রিমাইন্ডার স্ক্যান করতে সমস্যা হয়েছে');
+    }
+    return res.data;
+  }
+
+  async dismissAutomationReminder(reminderId: string): Promise<void> {
+    const res = await this.request<any>(
+      `/automation/reminders/${encodeURIComponent(reminderId)}/dismiss`,
+      { method: 'POST' }
+    );
+    if (!res.success) {
+      throw new Error(res.error?.message || 'রিমাইন্ডার লুকাতে সমস্যা হয়েছে');
+    }
+  }
+
+  async resetDismissedAutomationReminders(): Promise<void> {
+    const res = await this.request<any>('/automation/reminders/reset-dismissed', {
+      method: 'POST',
+    });
+    if (!res.success) {
+      throw new Error(res.error?.message || 'লুকানো রিমাইন্ডার পুনরুদ্ধারে সমস্যা হয়েছে');
+    }
+  }
+
+  async draftAutomationNotification(payload: {
+    reminderId: string;
+    channel: NotificationDraftChannel;
+    useAi?: boolean;
+    leadDays?: number;
+    toneBn?: string;
+  }): Promise<{ item: NotificationDraftQueueItem; warningBn?: string }> {
+    const res = await this.request<NotificationDraftQueueItem>('/automation/queue/draft', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'খসড়া তৈরি করতে সমস্যা হয়েছে');
+    }
+    return { item: res.data, warningBn: (res as any).warningBn };
+  }
+
+  async getNotificationDraftQueue(status: string = 'ALL'): Promise<NotificationDraftQueueItem[]> {
+    const qs = new URLSearchParams({ status });
+    const res = await this.request<NotificationDraftQueueItem[]>(
+      `/automation/queue?${qs.toString()}`
+    );
+    if (!res.success) {
+      throw new Error(res.error?.message || 'নোটিফিকেশন কিউ লোড করতে সমস্যা হয়েছে');
+    }
+    return res.data || [];
+  }
+
+  async updateNotificationDraftQueueItem(
+    id: string,
+    payload: { titleBn?: string; messageBn?: string; channel?: NotificationDraftChannel }
+  ): Promise<NotificationDraftQueueItem> {
+    const res = await this.request<NotificationDraftQueueItem>(
+      `/automation/queue/${encodeURIComponent(id)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      }
+    );
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'খসড়া হালনাগাদ করতে সমস্যা হয়েছে');
+    }
+    return res.data;
+  }
+
+  async approveNotificationDraftQueueItem(
+    id: string,
+    payload: {
+      action: 'COPY_CONFIRMED' | 'SAVE_NOTICE_DRAFT' | 'LOG_SMS_DRAFT' | 'DISMISS';
+      titleBn?: string;
+      messageBn?: string;
+      publishPublicly?: boolean;
+    }
+  ): Promise<NotificationDraftQueueItem> {
+    const res = await this.request<NotificationDraftQueueItem>(
+      `/automation/queue/${encodeURIComponent(id)}/approve`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }
+    );
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'অনুমোদন প্রক্রিয়ায় সমস্যা হয়েছে');
+    }
+    return res.data;
+  }
+
+  async getAutomationLogs(category: string = 'ALL'): Promise<AutomationExecutionLog[]> {
+    const qs = new URLSearchParams({ category });
+    const res = await this.request<AutomationExecutionLog[]>(
+      `/automation/logs?${qs.toString()}`
+    );
+    if (!res.success) {
+      throw new Error(res.error?.message || 'অটোমেশন লগ লোড করতে সমস্যা হয়েছে');
+    }
+    return res.data || [];
   }
 
   // SMS Gateway Suite Methods
@@ -3806,6 +4038,95 @@ class ApiService {
     return res.data;
   }
 
+  // ==========================================
+  // SMS & NOTIFICATION GATEWAY AI AUTOMATIONS
+  // ==========================================
+  async composeSmsMessageAi(payload: {
+    action: 'COMPOSE' | 'POLISH' | 'SHORTEN' | 'WHATSAPP';
+    currentText?: string;
+    promptBrief?: string;
+    templateType?: string;
+    recipientType?: string;
+    recipientName?: string;
+  }) {
+    const res = await this.request<{
+      action: 'COMPOSE' | 'POLISH' | 'SHORTEN' | 'WHATSAPP';
+      messageText: string;
+      aiNoteBn: string;
+      charCount: number;
+      isUnicode: boolean;
+      encoding: 'UNICODE' | 'ASCII';
+      charsPerCredit: number;
+      creditsPerPerson: number;
+      generatedAt: string;
+    }>('/ai/sms/compose', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'AI দিয়ে মেসেজ তৈরি করতে ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async generateAutoSmsTemplateAi(payload: {
+    triggerType: 'DONATION' | 'SALARY' | 'MAKTAB_FEE';
+    currentTemplate?: string;
+    customInstruction?: string;
+  }) {
+    const res = await this.request<{
+      triggerType: 'DONATION' | 'SALARY' | 'MAKTAB_FEE';
+      templateText: string;
+      samplePreviewBn: string;
+      variablesUsed: string[];
+      charCount: number;
+      isUnicode: boolean;
+      encoding: 'UNICODE' | 'ASCII';
+      charsPerCredit: number;
+      creditsPerPerson: number;
+      generatedAt: string;
+    }>('/ai/sms/auto-template', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'AI ডাইনামিক অটো-এসএমএস টেমপ্লেট তৈরি করতে ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async analyzeSmsDeliveryInsightsAi(payload?: { creditsBalance?: number }) {
+    const res = await this.request<{
+      month: string;
+      creditsBalance: number;
+      totalLogsCount: number;
+      monthlyLogsCount: number;
+      totalCreditsInScope: number;
+      totalAllTimeCredits: number;
+      estimatedDailyBurn: number;
+      estimatedDaysRemaining: number | null;
+      topCategoryLabelBn: string;
+      categoryBreakdown: Array<{
+        key: string;
+        labelBn: string;
+        smsCount: number;
+        creditsUsed: number;
+        sharePercent: number;
+      }>;
+      summaryBn: string;
+      forecastNoteBn: string;
+      savingTipsBn: string[];
+      generatedAt: string;
+    }>('/ai/sms/delivery-insights', {
+      method: 'POST',
+      body: JSON.stringify(payload || {}),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'AI ব্যবহারের সারসংক্ষেপ তৈরি করতে ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
   // Global Search
   async searchGlobal(q: string, category: string = 'ALL') {
     const query = new URLSearchParams({ q, category });
@@ -6166,6 +6487,1140 @@ class ApiService {
     }
     return res.data;
   }
+
+  // ==========================================
+  // SMART NOTES ("খসড়া — Smart Notes") API
+  // ==========================================
+
+  async getSmartNoteCategories(): Promise<SmartNoteCategory[]> {
+    const res = await this.request<SmartNoteCategory[]>('/notes/categories');
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'নোট ক্যাটাগরি লোড করা যায়নি');
+    return res.data;
+  }
+
+  async createSmartNoteCategory(payload: { nameBn: string; nameEn?: string; colorHex?: string; icon?: string }): Promise<SmartNoteCategory> {
+    const res = await this.request<SmartNoteCategory>('/notes/categories', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'ক্যাটাগরি তৈরি করা যায়নি');
+    return res.data;
+  }
+
+  async getSmartNoteStats(): Promise<SmartNoteStats> {
+    const res = await this.request<SmartNoteStats>('/notes/stats');
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'পরিসংখ্যান লোড করা যায়নি');
+    return res.data;
+  }
+
+  async getSmartNoteShareCandidates(): Promise<Array<{ id: string; name: string; role: string; phone: string }>> {
+    const res = await this.request<Array<{ id: string; name: string; role: string; phone: string }>>('/notes/share-candidates');
+    if (!res.success || !res.data) return [];
+    return res.data;
+  }
+
+  async getSmartNotes(params?: {
+    status?: string;
+    categoryId?: string;
+    noteType?: string;
+    privacyMode?: string;
+    tag?: string;
+    search?: string;
+    pinnedOnly?: boolean;
+    favoriteOnly?: boolean;
+    dateFrom?: string;
+    dateTo?: string;
+  }): Promise<SmartNote[]> {
+    const query = new URLSearchParams();
+    if (params?.status) query.append('status', params.status);
+    if (params?.categoryId) query.append('categoryId', params.categoryId);
+    if (params?.noteType) query.append('noteType', params.noteType);
+    if (params?.privacyMode) query.append('privacyMode', params.privacyMode);
+    if (params?.tag) query.append('tag', params.tag);
+    if (params?.search) query.append('search', params.search);
+    if (params?.pinnedOnly) query.append('pinnedOnly', 'true');
+    if (params?.favoriteOnly) query.append('favoriteOnly', 'true');
+    if (params?.dateFrom) query.append('dateFrom', params.dateFrom);
+    if (params?.dateTo) query.append('dateTo', params.dateTo);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    const res = await this.request<SmartNote[]>(`/notes${qs}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'নোট তালিকা লোড করা যায়নি');
+    return res.data;
+  }
+
+  async getSmartNoteById(id: string): Promise<SmartNote> {
+    const res = await this.request<SmartNote>(`/notes/${id}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'নোট লোড করা যায়নি');
+    return res.data;
+  }
+
+  async createSmartNote(payload: Partial<SmartNote>): Promise<SmartNote> {
+    const res = await this.request<SmartNote>('/notes', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'নোট সংরক্ষণ করা যায়নি');
+    return res.data;
+  }
+
+  async updateSmartNote(
+    id: string,
+    payload: Partial<SmartNote> & { expectedVersion?: number; checkVersion?: boolean; createSnapshot?: boolean; changeSummary?: string }
+  ): Promise<SmartNote> {
+    const res = await this.request<SmartNote>(`/notes/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'নোট আপডেট করা যায়নি');
+    return res.data;
+  }
+
+  async updateSmartNoteSharing(
+    id: string,
+    payload: { privacyMode: SmartNotePrivacyMode; sharedWith: SmartNoteShareEntry[] }
+  ): Promise<SmartNote> {
+    const res = await this.request<SmartNote>(`/notes/${id}/sharing`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'শেয়ারিং সেটিংস আপডেট হয়নি');
+    return res.data;
+  }
+
+  async deleteSmartNote(id: string, permanent = false): Promise<SmartNote | null> {
+    const res = await this.request<SmartNote | null>(`/notes/${id}${permanent ? '?permanent=true' : ''}`, {
+      method: 'DELETE',
+    });
+    if (!res.success) throw new Error(res.error?.message || 'নোট মুছে ফেলা যায়নি');
+    return res.data || null;
+  }
+
+  async getSmartNoteVersions(id: string): Promise<SmartNoteVersion[]> {
+    const res = await this.request<SmartNoteVersion[]>(`/notes/${id}/versions`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'সংস্করণ ইতিহাস লোড করা যায়নি');
+    return res.data;
+  }
+
+  async restoreSmartNoteVersion(noteId: string, versionId: string): Promise<SmartNote> {
+    const res = await this.request<SmartNote>(`/notes/${noteId}/versions/${versionId}/restore`, {
+      method: 'POST',
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'সংস্করণ পুনরুদ্ধার করা যায়নি');
+    return res.data;
+  }
+
+  async getSmartNoteCommentsAndActivities(noteId: string): Promise<{ comments: SmartNoteComment[]; activities: SmartNoteActivity[] }> {
+    const res = await this.request<{ comments: SmartNoteComment[]; activities: SmartNoteActivity[] }>(`/notes/${noteId}/comments`);
+    if (!res.success || !res.data) return { comments: [], activities: [] };
+    return res.data;
+  }
+
+  async addSmartNoteComment(noteId: string, text: string): Promise<SmartNoteComment> {
+    const res = await this.request<SmartNoteComment>(`/notes/${noteId}/comments`, {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'মন্তব্য যুক্ত করা যায়নি');
+    return res.data;
+  }
+
+  async getSmartNoteReminders(): Promise<SmartNoteReminder[]> {
+    const res = await this.request<SmartNoteReminder[]>('/notes/reminders/list');
+    if (!res.success || !res.data) return [];
+    return res.data;
+  }
+
+  async createSmartNoteReminder(
+    noteId: string,
+    payload: { title: string; description?: string; dueDate?: string; priority?: 'NORMAL' | 'HIGH' | 'URGENT'; assignedToUserId?: string; assignedToName?: string }
+  ): Promise<SmartNoteReminder> {
+    const res = await this.request<SmartNoteReminder>(`/notes/${noteId}/reminders`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'অনুস্মারক তৈরি করা যায়নি');
+    return res.data;
+  }
+
+  async toggleSmartNoteReminder(reminderId: string, status: 'PENDING' | 'DONE'): Promise<SmartNoteReminder> {
+    const res = await this.request<SmartNoteReminder>(`/notes/reminders/${reminderId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'অনুস্মারক আপডেট করা যায়নি');
+    return res.data;
+  }
+
+  async uploadSmartNoteAttachments(noteId: string, files: File[]): Promise<{ attachments: SmartNoteAttachment[]; note: SmartNote }> {
+    const formData = new FormData();
+    files.forEach((f) => formData.append('files', f));
+    const authHeaders = this.getAuthHeaders();
+    delete authHeaders['Content-Type'];
+
+    const response = await fetch(`/api/v1/notes/${noteId}/attachments`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: formData,
+    });
+    const json = await response.json();
+    if (!response.ok || !json.success) {
+      throw new Error(json?.error?.message || 'ফাইল আপলোড করতে ব্যর্থ হয়েছে');
+    }
+    return { attachments: json.data, note: json.note };
+  }
+
+  async deleteSmartNoteAttachment(noteId: string, attId: string): Promise<SmartNote> {
+    const res = await this.request<SmartNote>(`/notes/${noteId}/attachments/${attId}`, {
+      method: 'DELETE',
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'সংযুক্তি মুছে ফেলা যায়নি');
+    return res.data;
+  }
+
+  async fetchSmartNoteAttachmentBlobUrl(downloadUrl: string): Promise<string> {
+    const authHeaders = this.getAuthHeaders();
+    delete authHeaders['Content-Type'];
+    const response = await fetch(downloadUrl, {
+      method: 'GET',
+      headers: authHeaders,
+    });
+    if (!response.ok) {
+      throw new Error('ফাইল লোড করতে ব্যর্থ হয়েছে');
+    }
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
+  }
+
+  async formatVoiceTranscriptAi(rawText: string): Promise<SmartNoteVoiceFormatResult> {
+    const res = await this.request<SmartNoteVoiceFormatResult>('/ai/notes/voice-format', {
+      method: 'POST',
+      body: JSON.stringify({ rawText }),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'AI ভয়েস বিন্যাস ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async ocrScanDocumentAi(payload: {
+    files: Array<{ mimeType: string; base64Data: string; fileName?: string }>;
+    outputMode: NoteOcrMode;
+    customHint?: string;
+  }): Promise<SmartNoteOcrResult> {
+    const res = await this.request<SmartNoteOcrResult>('/ai/notes/ocr', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'কাগজ OCR স্ক্যান করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async assistSmartNoteAi(payload: {
+    action: NoteAiAssistAction;
+    title?: string;
+    plainText: string;
+  }): Promise<SmartNoteAiAssistResult> {
+    const res = await this.request<SmartNoteAiAssistResult>('/ai/notes/assist', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'AI সহায়তা পাওয়া যায়নি');
+    return res.data;
+  }
+
+  // ==========================================
+  // ASSET & WAQF AI AUTOMATION APIS (PREVIEW/DRAFT ONLY)
+  // ==========================================
+  async analyzeWaqfDocumentAi(payload: {
+    mode: 'PROPERTY' | 'TENANT_LEASE';
+    file: { mimeType: string; base64Data: string; fileName?: string };
+    customHint?: string;
+  }): Promise<WaqfDocumentAnalysisResult> {
+    const res = await this.request<WaqfDocumentAnalysisResult>('/ai/waqf/analyze-document', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'ডকুমেন্ট বিশ্লেষণ ব্যর্থ হয়েছে। অনুগ্রহ করে ম্যানুয়ালি ফর্ম পূরণ করুন।');
+    }
+    return res.data;
+  }
+
+  async getWaqfRentRemindersAi(payload?: {
+    billingMonth?: string;
+    tone?: 'POLITE' | 'FORMAL';
+  }): Promise<WaqfRentRemindersResult> {
+    const res = await this.request<WaqfRentRemindersResult>('/ai/waqf/rent-reminders', {
+      method: 'POST',
+      body: JSON.stringify(payload || {}),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'বকেয়া ভাড়ার রিমাইন্ডার ড্রাফট তৈরি করা যায়নি।');
+    }
+    return res.data;
+  }
+
+  async getWaqfPortfolioSummaryAi(): Promise<WaqfPortfolioSummaryResult> {
+    const res = await this.request<WaqfPortfolioSummaryResult>('/ai/waqf/portfolio-summary', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'ওয়াকফ ও সম্পদ সারসংক্ষেপ লোড করা যায়নি।');
+    }
+    return res.data;
+  }
+
+  // ==========================================
+  // CEMETERY MANAGEMENT AI AUTOMATION APIS (PREVIEW/DRAFT ONLY)
+  // ==========================================
+  async extractCemeteryEntryAi(payload: {
+    rawNoteText?: string;
+    file?: { mimeType: string; base64Data: string; fileName?: string } | null;
+    customHint?: string;
+  }): Promise<CemeteryAiEntryExtractResult> {
+    const res = await this.request<CemeteryAiEntryExtractResult>('/ai/cemetery/extract-entry', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'নোট বা রেজিস্টার বিশ্লেষণ ব্যর্থ হয়েছে। অনুগ্রহ করে ম্যানুয়ালি ফর্ম পূরণ করুন।');
+    }
+    return res.data;
+  }
+
+  async generateCemeteryCertificateAndCondolenceAi(payload: {
+    recordId: string;
+    tone?: 'FORMAL' | 'COMPASSIONATE';
+  }): Promise<CemeteryAiCertificateDraftResult> {
+    const res = await this.request<CemeteryAiCertificateDraftResult>('/ai/cemetery/certificate-condolence', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'দাফন সনদ ও শোক বার্তা ড্রাফট তৈরি করা যায়নি।');
+    }
+    return res.data;
+  }
+
+  async getCemeterySummaryAndReuseAi(payload?: {
+    reuseYears?: number;
+  }): Promise<CemeteryAiSummaryResult> {
+    const res = await this.request<CemeteryAiSummaryResult>('/ai/cemetery/summary-reuse', {
+      method: 'POST',
+      body: JSON.stringify(payload || {}),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'কবরস্থান সারসংক্ষেপ ও মেয়াদ তথ্য লোড করা যায়নি।');
+    }
+    return res.data;
+  }
+
+  // ==========================================
+  // LIBRARY & KNOWLEDGE CENTER AI APIS (PREVIEW/DRAFT ONLY)
+  // ==========================================
+  async draftLibraryBookAi(payload: {
+    titleHint?: string;
+    authorHint?: string;
+    coverImage?: { mimeType: string; base64Data: string; fileName?: string } | null;
+    extraNotes?: string;
+  }): Promise<LibraryBookAiDraftResult> {
+    const res = await this.request<LibraryBookAiDraftResult>('/ai/library/book-draft', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'বইয়ের খসড়া তথ্য তৈরি করা যায়নি। অনুগ্রহ করে ম্যানুয়ালি ফর্ম পূরণ করুন।');
+    }
+    return res.data;
+  }
+
+  async summarizeKnowledgeNoteAi(payload: {
+    rawNotes: string;
+    speakerName?: string;
+    topicHint?: string;
+    sessionDate?: string;
+    format?: 'STUDY_NOTE' | 'KHUTBAH_SUMMARY' | 'BAYAN_OUTLINE';
+  }): Promise<KnowledgeNoteAiSummaryResult> {
+    const res = await this.request<KnowledgeNoteAiSummaryResult>('/ai/library/knowledge-note', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'বয়ান/নোট সারসংক্ষেপ তৈরি করা যায়নি।');
+    }
+    return res.data;
+  }
+
+  async getLibraryOverdueRemindersAi(payload?: {
+    tone?: 'POLITE' | 'FORMAL';
+  }): Promise<LibraryOverdueRemindersAiResult> {
+    const res = await this.request<LibraryOverdueRemindersAiResult>('/ai/library/overdue-reminders', {
+      method: 'POST',
+      body: JSON.stringify(payload || {}),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'বই ফেরতের রিমাইন্ডার ড্রাফট তৈরি করা যায়নি।');
+    }
+    return res.data;
+  }
+
+  // ==========================================
+  // PUBLIC PORTAL AI APIS (WHITELIST SANITIZED & TENANT-ISOLATED)
+  // ==========================================
+  async draftPublicPortalUpdateAi(payload: {
+    updateType?: 'GENERAL_UPDATE' | 'PROJECT_PROGRESS' | 'WAQF_UPDATE' | 'EVENT_NOTICE' | 'PRAYER_ANNOUNCEMENT';
+    adminBrief?: string;
+    tone?: 'FORMAL' | 'WARM';
+  }): Promise<PublicPortalUpdateAiDraftResult> {
+    const res = await this.request<PublicPortalUpdateAiDraftResult>('/ai/public-portal/update-draft', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'পাবলিক আপডেট ড্রাফট তৈরি করা যায়নি।');
+    }
+    return res.data;
+  }
+
+  async askPublicPortalAssistantAi(payload: {
+    mosqueIdOrCode?: string;
+    question: string;
+    history?: Array<{ role: 'user' | 'assistant'; text: string }>;
+  }): Promise<PublicPortalAiAssistantResponse> {
+    const res = await this.request<PublicPortalAiAssistantResponse>('/public/portal/ai-assistant', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'এই মুহূর্তে AI তথ্য সহকারী উত্তর দিতে পারেনি।');
+    }
+    return res.data;
+  }
+
+  // ==========================================
+  // CENTRAL DOCUMENT & ARCHIVE AI APIS (PREVIEW/DRAFT ONLY)
+  // ==========================================
+  async scanDocumentMetadataAi(payload: {
+    fileData?: { mimeType: string; base64Data: string; fileName?: string } | null;
+    rawText?: string;
+    titleHint?: string;
+    fileNameHint?: string;
+  }): Promise<DocumentScanAiDraftResult> {
+    const res = await this.request<DocumentScanAiDraftResult>('/ai/documents/scan-draft', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'ডকুমেন্ট বিশ্লেষণ করা যায়নি। অনুগ্রহ করে ম্যানুয়ালি ফর্ম পূরণ করুন।');
+    }
+    return res.data;
+  }
+
+  async getDocumentArchiveSummaryAi(): Promise<DocumentArchiveAiSummaryResult> {
+    const res = await this.request<DocumentArchiveAiSummaryResult>('/ai/documents/archive-summary', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'আর্কাইভ সারসংক্ষেপ তৈরি করা যায়নি।');
+    }
+    return res.data;
+  }
+
+  // ==========================================
+  // REPORT CENTER AI APIS (SUGGESTION & PRINTABLE COMMENTARY)
+  // ==========================================
+  async suggestReportFiltersAi(payload: {
+    query: string;
+    todayIso?: string;
+  }): Promise<ReportFilterAiSuggestionResult> {
+    const res = await this.request<ReportFilterAiSuggestionResult>('/ai/reports/filter-suggest', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'ফিল্টার সাজেশন তৈরি করা যায়নি। নিচের ম্যানুয়াল ফিল্টার ব্যবহার করুন।');
+    }
+    return res.data;
+  }
+
+  async generateReportExecutiveSummaryAi(payload: {
+    reportType: string;
+    reportTitleBn: string;
+    fromDate: string;
+    toDate: string;
+    filterSummaryBn?: string;
+    systemMetrics: {
+      openingBalance: number;
+      totalIncome: number;
+      totalExpense: number;
+      netChange: number;
+      closingBalance: number;
+      incomeVoucherCount: number;
+      expenseVoucherCount: number;
+      topIncomeHeads?: Array<{ name: string; amount: number; count?: number }>;
+      topExpenseHeads?: Array<{ name: string; amount: number; count?: number }>;
+      extraContextBn?: string;
+    };
+  }): Promise<ReportExecutiveSummaryAiResult> {
+    const res = await this.request<ReportExecutiveSummaryAiResult>('/ai/reports/executive-summary', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'রিপোর্ট সারসংক্ষেপ নোট তৈরি করা যায়নি।');
+    }
+    return res.data;
+  }
+
+  // ==========================================
+  // CAMERA & LIVE SCAN AI APIS (PREVIEW/DRAFT ONLY)
+  // ==========================================
+  async scanSmartVoucherOrDocAi(payload: {
+    fileData?: { mimeType: string; base64Data: string; fileName?: string } | null;
+    rawHintText?: string;
+    targetModuleHint?: 'AUTO' | 'INCOME' | 'EXPENSE' | 'DOCUMENT' | 'SMART_NOTE';
+  }): Promise<LiveScanAiDraftResult> {
+    const res = await this.request<LiveScanAiDraftResult>('/ai/scanner/smart-draft', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(
+        res.error?.message || 'ছবি বা ডকুমেন্ট বিশ্লেষণ করা যায়নি। অনুগ্রহ করে ম্যানুয়াল স্ক্যান বা ফর্ম ব্যবহার করুন।'
+      );
+    }
+    return res.data;
+  }
+
+  // ==========================================
+  // NOTE & COIN COUNTER AI APIS (DETERMINISTIC SYSTEM MATH)
+  // ==========================================
+  async parseDenominationCountsAi(payload: {
+    rawText: string;
+  }): Promise<DenominationParseAiResult> {
+    const res = await this.request<DenominationParseAiResult>('/ai/counter/parse-counts', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(
+        res.error?.message || 'ভয়েস বা লেখা থেকে নোট/কয়েনের সংখ্যা বের করা যায়নি। ম্যানুয়ালি সংখ্যা বসান।'
+      );
+    }
+    return res.data;
+  }
+
+  async generateDenominationSummaryNoteAi(payload: {
+    notes: Record<number, number>;
+    coins: Record<number, number>;
+    contextLabelBn?: string;
+    countedBy?: string;
+    witnesses?: string;
+    reference?: string;
+    countingDateTime?: string;
+  }): Promise<DenominationSummaryNoteAiResult> {
+    const res = await this.request<DenominationSummaryNoteAiResult>('/ai/counter/summary-note', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(
+        res.error?.message || 'গণনা সারসংক্ষেপ নোট তৈরি করা যায়নি। সাধারণ কপি বাটন ব্যবহার করুন।'
+      );
+    }
+    return res.data;
+  }
+
+  // ==========================================
+  // SYSTEM & FINANCIAL AUDIT LOG AI APIS (READ-ONLY)
+  // ==========================================
+  async summarizeAuditLogsAi(payload: {
+    logIds?: string[];
+    filterSummaryBn?: string;
+  }): Promise<AuditLogAiSummaryResult> {
+    const res = await this.request<AuditLogAiSummaryResult>('/ai/audit/summary', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'অডিট লগ সারসংক্ষেপ তৈরি করা যায়নি।');
+    }
+    return res.data;
+  }
+
+  async suggestAuditLogFiltersAi(payload: {
+    query: string;
+    todayIso?: string;
+  }): Promise<AuditLogAiFilterSuggestionResult> {
+    const res = await this.request<AuditLogAiFilterSuggestionResult>('/ai/audit/filter-suggest', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(
+        res.error?.message || 'অডিট লগ ফিল্টার সাজেশন তৈরি করা যায়নি। নিচের ম্যানুয়াল ফিল্টার ব্যবহার করুন।'
+      );
+    }
+    return res.data;
+  }
+}
+
+export interface WaqfDocumentAnalysisResult {
+  mode: 'PROPERTY' | 'TENANT_LEASE';
+  documentTypeDetectedBn: string;
+  confidenceLevel: 'HIGH' | 'MEDIUM' | 'LOW';
+  extractedSummaryBn: string;
+  verificationNotesBn: string[];
+  unclearFieldsBn: string[];
+  propertyFields: {
+    name: string;
+    category: string;
+    type: string;
+    location: string;
+    mouza: string;
+    jlNumber: string;
+    subRegistryOffice: string;
+    areaAmount: number;
+    areaUnit: string;
+    csPlotNo: string;
+    saPlotNo: string;
+    rsPlotNo: string;
+    bsPlotNo: string;
+    plotNo: string;
+    csKhatianNo: string;
+    saKhatianNo: string;
+    rsKhatianNo: string;
+    bsKhatianNo: string;
+    mutationKhatianNo: string;
+    khatianNo: string;
+    waqfDeedNo: string;
+    waqfDeedDate: string;
+    waqfEnrollmentNo: string;
+    waqifName: string;
+    waqifFatherName: string;
+    waqifAddress: string;
+    waqfPurpose: string;
+    boundaryNorth: string;
+    boundarySouth: string;
+    boundaryEast: string;
+    boundaryWest: string;
+    estimatedValue: number;
+    monthlyIncome: number;
+  };
+  tenantFields: {
+    name: string;
+    fatherOrSpouseName: string;
+    mobile: string;
+    nid: string;
+    address: string;
+    unitOrShopNo: string;
+    businessName: string;
+    businessType: string;
+    agreementNo: string;
+    startDate: string;
+    endDate: string;
+    monthlyRent: number;
+    securityDeposit: number;
+    paymentDueDate: number;
+  };
+  modelUsed: string;
+  generatedAt: string;
+}
+
+export interface WaqfRentReminderItem {
+  propertyId: string;
+  propertyName: string;
+  propertyCode: string;
+  tenantId: string;
+  tenantName: string;
+  mobile: string;
+  unitOrShopNo: string;
+  monthlyRent: number;
+  paidThisMonth: number;
+  dueAmount: number;
+  status: 'UNPAID' | 'PARTIAL';
+  messageDraftBn: string;
+}
+
+export interface WaqfRentRemindersResult {
+  billingMonth: string;
+  billingMonthLabelBn: string;
+  totalActiveTenants: number;
+  paidTenantsCount: number;
+  overdueCount: number;
+  totalDueAmount: number;
+  summaryBn: string;
+  reminders: WaqfRentReminderItem[];
+  modelUsed: string;
+  generatedAt: string;
+}
+
+export interface WaqfPortfolioLeaseAlert {
+  propertyId: string;
+  propertyName: string;
+  tenantId: string;
+  tenantName: string;
+  unitOrShopNo: string;
+  agreementNo: string;
+  endDate: string;
+  daysRemaining: number;
+  alertType: 'EXPIRED' | 'EXPIRING_SOON';
+}
+
+export interface WaqfPortfolioSummaryResult {
+  billingMonth: string;
+  billingMonthLabelBn: string;
+  metrics: {
+    totalAssetsCount: number;
+    assetsCurrentValue: number;
+    assetsNeedingRepairCount: number;
+    totalPropertiesCount: number;
+    propertiesEstimatedValue: number;
+    rentedPropertiesCount: number;
+    vacantPropertiesCount: number;
+    disputedPropertiesCount: number;
+    totalActiveTenants: number;
+    paidTenantsCount: number;
+    overdueCount: number;
+    totalExpectedMonthlyRent: number;
+    totalCollectedThisMonth: number;
+    totalDueAmount: number;
+    collectionRatePercent: number;
+    expiringSoonCount: number;
+    expiredLeasesCount: number;
+  };
+  leaseAlerts: WaqfPortfolioLeaseAlert[];
+  headlineBn: string;
+  summaryParagraphBn: string;
+  collectionStatusBn: string;
+  upcomingRenewalsBn: string[];
+  actionableHighlightsBn: string[];
+  modelUsed: string;
+  generatedAt: string;
+}
+
+export interface CemeteryAiExtractedFields {
+  plotNumber: string;
+  block: string;
+  row: string;
+  graveLocation: string;
+  graveType: string;
+  deceasedName: string;
+  fatherOrSpouseName: string;
+  gender: string;
+  ageAtDeath: string;
+  dateOfDeath: string;
+  causeOfDeath: string;
+  burialDate: string;
+  burialTime: string;
+  janazaPlace: string;
+  contactPersonName: string;
+  relationWithDeceased: string;
+  contactPersonPhone: string;
+  heirAddress: string;
+  notes: string;
+}
+
+export interface CemeteryAiEntryExtractResult {
+  sourceMode: 'TEXT' | 'FILE' | 'BOTH';
+  confidenceLevel: 'HIGH' | 'MEDIUM' | 'LOW';
+  sourceSummaryBn: string;
+  verificationNotesBn: string[];
+  unclearFieldsBn: string[];
+  extractedFields: CemeteryAiExtractedFields;
+  modelUsed: string;
+  generatedAt: string;
+}
+
+export interface CemeteryAiVerifiedRecord {
+  id: string;
+  recordNumber: string;
+  deceasedName: string;
+  fatherOrSpouseName: string;
+  ageLabelBn: string;
+  dateOfDeath: string;
+  dateOfDeathBn: string;
+  burialDate: string;
+  burialDateBn: string;
+  burialTime: string;
+  janazaPlace: string;
+  plotNumber: string;
+  block: string;
+  row: string;
+  graveyardName: string;
+  graveTypeLabelBn: string;
+  contactPersonName: string;
+  relationWithDeceased: string;
+  contactPersonPhone: string;
+  heirAddress: string;
+  elapsedSinceBurialBn: string;
+}
+
+export interface CemeteryAiCertificateDraftResult {
+  verifiedRecord: CemeteryAiVerifiedRecord;
+  certificateTitleBn: string;
+  certificateSubtitleBn: string;
+  certificateBodyParagraphsBn: string[];
+  certificateClosingBn: string;
+  condolenceHeadingBn: string;
+  condolenceMessageBn: string;
+  duaArabicText: string;
+  duaBanglaMeaning: string;
+  shortSmsDraftBn: string;
+  modelUsed: string;
+  generatedAt: string;
+}
+
+export interface CemeteryReuseCandidateItem {
+  recordId: string;
+  recordNumber: string;
+  plotNumber: string;
+  block: string;
+  row: string;
+  deceasedName: string;
+  burialDate: string;
+  burialDateBn: string;
+  graveType: string;
+  graveTypeLabelBn: string;
+  isPermanentOrFamily: boolean;
+  elapsedDays: number;
+  elapsedTotalMonths: number;
+  durationLabelBn: string;
+  daysUntilEligible: number;
+  status: 'ELIGIBLE' | 'APPROACHING';
+}
+
+export interface CemeteryAiSummaryResult {
+  metrics: {
+    totalPlots: number;
+    occupiedCount: number;
+    availableCount: number;
+    reservedCount: number;
+    maintenanceCount: number;
+    burialsThisMonth: number;
+    burialsThisYear: number;
+    reuseYears: number;
+    reuseThresholdMonths: number;
+    eligibleTotalCount: number;
+    eligibleGeneralOrTempCount: number;
+    eligiblePermanentOrFamilyCount: number;
+    approachingCount: number;
+  };
+  blockSummary: Array<{
+    block: string;
+    total: number;
+    occupied: number;
+    available: number;
+  }>;
+  eligibleGraves: CemeteryReuseCandidateItem[];
+  approachingGraves: CemeteryReuseCandidateItem[];
+  headlineBn: string;
+  summaryParagraphBn: string;
+  reuseGuidanceBn: string;
+  highlightsBn: string[];
+  modelUsed: string;
+  generatedAt: string;
+}
+
+export interface LibraryBookAiExtractedFields {
+  title: string;
+  author: string;
+  publisher: string;
+  publicationYear: string;
+  language: string;
+  isbn: string;
+  edition: string;
+  categoryId: string;
+  suggestedCategoryNameBn: string;
+  subject: string;
+  description: string;
+}
+
+export interface LibraryBookAiDraftResult {
+  sourceMode: 'TEXT' | 'IMAGE' | 'BOTH';
+  confidenceLevel: 'HIGH' | 'MEDIUM' | 'LOW';
+  sourceSummaryBn: string;
+  verificationNotesBn: string[];
+  unclearFieldsBn: string[];
+  extractedFields: LibraryBookAiExtractedFields;
+  modelUsed: string;
+  generatedAt: string;
+}
+
+export interface KnowledgeNoteAiSummaryResult {
+  format: 'STUDY_NOTE' | 'KHUTBAH_SUMMARY' | 'BAYAN_OUTLINE';
+  speakerName: string;
+  sessionDate: string;
+  titleBn: string;
+  topicCategoryBn: string;
+  summaryParagraphBn: string;
+  keyPointsBn: string[];
+  actionableLessonsBn: string[];
+  referencesMentionedBn: string[];
+  readableNoteDraftBn: string;
+  verificationWarningBn: string;
+  modelUsed: string;
+  generatedAt: string;
+}
+
+export interface LibraryOverdueReminderItem {
+  issueId: string;
+  issueNumber: string;
+  readerName: string;
+  readerPhone: string;
+  bookTitle: string;
+  bookCopyCode: string;
+  issueDate: string;
+  dueDate: string;
+  dueDateBn: string;
+  daysOverdue: number;
+  messageBn: string;
+  shortSmsBn: string;
+}
+
+export interface LibraryOverdueRemindersAiResult {
+  todayIso: string;
+  overdueCount: number;
+  summaryBn: string;
+  reminders: LibraryOverdueReminderItem[];
+  modelUsed: string;
+  generatedAt: string;
+}
+
+export interface PublicPortalUpdateAiDraftResult {
+  updateType: 'GENERAL_UPDATE' | 'PROJECT_PROGRESS' | 'WAQF_UPDATE' | 'EVENT_NOTICE' | 'PRAYER_ANNOUNCEMENT';
+  titleBn: string;
+  descriptionBn: string;
+  suggestedPriority: 'NORMAL' | 'HIGH' | 'URGENT';
+  highlightsBn: string[];
+  safetyCheckNoteBn: string;
+  sourceSectionsUsedBn: string[];
+  modelUsed: string;
+  generatedAt: string;
+}
+
+export interface PublicPortalAiAssistantResponse {
+  mosqueId: string;
+  mosqueNameBn: string;
+  answerBn: string;
+  refusedPrivateOrUnavailable: boolean;
+  suggestedFollowUpsBn: string[];
+  modelUsed: string;
+  generatedAt: string;
+}
+
+export interface DocumentScanAiDraftResult {
+  sourceMode: 'TEXT' | 'FILE' | 'BOTH';
+  confidenceLevel: 'HIGH' | 'MEDIUM' | 'LOW';
+  detectedDocKindBn: string;
+  sourceSummaryBn: string;
+  extractedFields: {
+    name: string;
+    entityType: string;
+    entityTypeLabelBn: string;
+    entityTitle: string;
+    documentType: string;
+    documentTypeLabelBn: string;
+    documentDate: string;
+    summaryNoteBn: string;
+    suggestedTagsBn: string[];
+  };
+  detectedSensitiveFacts: Array<{
+    labelBn: string;
+    value: string;
+    verifyWarningBn: string;
+  }>;
+  verificationNotesBn: string[];
+  unclearFieldsBn: string[];
+  modelUsed: string;
+  generatedAt: string;
+}
+
+export interface DocumentArchiveAiSummaryResult {
+  metrics: {
+    totalDocuments: number;
+    addedLast30DaysCount: number;
+    directFileCount: number;
+    driveLinkCount: number;
+    publicCount: number;
+    restrictedCount: number;
+    privateCount: number;
+    topCategories: Array<{ code: string; labelBn: string; count: number }>;
+    topEntities: Array<{ code: string; labelBn: string; count: number }>;
+  };
+  headlineBn: string;
+  summaryBn: string;
+  highlightsBn: string[];
+  suggestedSearchChips: Array<{
+    labelBn: string;
+    entityType: string;
+    documentType: string;
+    searchKeyword: string;
+  }>;
+  modelUsed: string;
+  generatedAt: string;
+}
+
+export interface ReportFilterAiSuggestionResult {
+  originalQuery: string;
+  suggestedFilters: {
+    reportType: string;
+    reportTypeLabelBn: string;
+    dateRangeType: string;
+    fromDate: string;
+    toDate: string;
+    fromDateBn: string;
+    toDateBn: string;
+    grouping: string;
+    level: string;
+    selectedHeadId: string;
+    selectedHeadLabelBn: string;
+    selectedSubHeadId: string;
+    selectedSubHeadLabelBn: string;
+    selectedAccountId: string;
+    selectedAccountLabelBn: string;
+  };
+  explanationBn: string;
+  unmatchedNotesBn: string[];
+  modelUsed: string;
+  generatedAt: string;
+}
+
+export interface ReportExecutiveSummaryAiResult {
+  titleBn: string;
+  summaryNoteBn: string;
+  keyTakeawaysBn: string[];
+  verifiedMetrics: {
+    openingBalance: number;
+    totalIncome: number;
+    totalExpense: number;
+    netChange: number;
+    closingBalance: number;
+    incomeVoucherCount: number;
+    expenseVoucherCount: number;
+    topIncomeHeads: Array<{ name: string; amount: number; count: number }>;
+    topExpenseHeads: Array<{ name: string; amount: number; count: number }>;
+    extraContextBn: string;
+  };
+  modelUsed: string;
+  generatedAt: string;
+}
+
+export interface LiveScanAiDraftResult {
+  sourceMode: 'TEXT' | 'IMAGE' | 'BOTH';
+  suggestedTargetModule: 'INCOME' | 'EXPENSE' | 'DOCUMENT' | 'SMART_NOTE';
+  suggestedTargetLabelBn: string;
+  documentKindBn: string;
+  confidenceLevel: 'HIGH' | 'MEDIUM' | 'LOW';
+  draftFields: {
+    titleBn: string;
+    date: string;
+    dateBn: string;
+    amount: number | null;
+    suggestedHeadId: string;
+    suggestedHeadNameBn: string;
+    voucherOrRefNo: string;
+    partyName: string;
+    descriptionBn: string;
+  };
+  detectedSensitiveFacts: Array<{
+    labelBn: string;
+    value: string;
+    verifyWarningBn: string;
+  }>;
+  unclearFieldsBn: string[];
+  verificationNotesBn: string[];
+  modelUsed: string;
+  generatedAt: string;
+}
+
+export interface DenominationParseAiResult {
+  originalText: string;
+  notes: Record<number, number>;
+  coins: Record<number, number>;
+  totalNotesCount: number;
+  totalCoinsCount: number;
+  notesSubtotal: number;
+  coinsSubtotal: number;
+  grandTotal: number;
+  parsedItems: Array<{
+    kind: 'NOTE' | 'COIN';
+    denom: number;
+    count: number;
+    lineTotal: number;
+  }>;
+  unparsedSegmentsBn: string[];
+  verificationNoteBn: string;
+  modelUsed: string;
+  generatedAt: string;
+}
+
+export interface DenominationSummaryNoteAiResult {
+  titleBn: string;
+  summaryNoteBn: string;
+  shortCopyTextBn: string;
+  verifiedBreakdown: {
+    notes: Record<number, number>;
+    coins: Record<number, number>;
+    totalNotesCount: number;
+    totalCoinsCount: number;
+    notesSubtotal: number;
+    coinsSubtotal: number;
+    grandTotal: number;
+    parsedItems: Array<{
+      kind: 'NOTE' | 'COIN';
+      denom: number;
+      count: number;
+      lineTotal: number;
+    }>;
+  };
+  modelUsed: string;
+  generatedAt: string;
+}
+
+export interface AuditLogAiSummaryResult {
+  metrics: {
+    totalLogsAnalyzed: number;
+    createCount: number;
+    updateCount: number;
+    deleteCount: number;
+    cancelOrReverseCount: number;
+    failedOrWarningCount: number;
+    repeatedEntityEditsCount: number;
+    topUsers: Array<{ userName: string; count: number }>;
+  };
+  headlineBn: string;
+  summaryParagraphBn: string;
+  keyObservationsBn: string[];
+  attentionItemsBn: string[];
+  disclaimerBn: string;
+  modelUsed: string;
+  generatedAt: string;
+}
+
+export interface AuditLogAiFilterSuggestionResult {
+  originalQuery: string;
+  suggestedFilters: {
+    moduleFilter: string;
+    moduleLabelBn: string;
+    actionFilter: string;
+    actionLabelBn: string;
+    statusFilter: string;
+    statusLabelBn: string;
+    userFilter: string;
+    fromDate: string;
+    fromDateBn: string;
+    toDate: string;
+    toDateBn: string;
+    searchQuery: string;
+  };
+  explanationBn: string;
+  unmatchedNotesBn: string[];
+  modelUsed: string;
+  generatedAt: string;
 }
 
 export const api = new ApiService();
+
+
+

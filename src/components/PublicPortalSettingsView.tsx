@@ -33,6 +33,7 @@ import { Mosque, User, PublicPortalSettings, DEFAULT_PUBLIC_PORTAL_SETTINGS } fr
 import { Language, translations } from '../lib/i18n';
 import { api } from '../lib/api';
 import { PublicPortalView } from './PublicPortalView';
+import { PublicPortalUpdateAiDraftModal } from './publicPortal/PublicPortalUpdateAiDraftModal';
 
 interface PublicPortalSettingsViewProps {
   currentMosque: Mosque | null;
@@ -63,6 +64,8 @@ export const PublicPortalSettingsView: React.FC<PublicPortalSettingsViewProps> =
   const [previewDevice, setPreviewDevice] = useState<'DESKTOP' | 'MOBILE' | 'TV'>('DESKTOP');
   const [confirmResetModal, setConfirmResetModal] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string>('ALL');
+  const [isAiPublicDraftOpen, setIsAiPublicDraftOpen] = useState(false);
+  const [publishedDraftBanner, setPublishedDraftBanner] = useState('');
 
   // Permission Check
   const canEdit =
@@ -247,6 +250,16 @@ export const PublicPortalSettingsView: React.FC<PublicPortalSettingsViewProps> =
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-2.5">
           <button
+            type="button"
+            id="btn-ai-public-update-draft"
+            onClick={() => setIsAiPublicDraftOpen(true)}
+            className="px-3.5 py-2 rounded-xl text-xs font-bold border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 flex items-center space-x-1.5 transition-all shadow-2xs cursor-pointer"
+          >
+            <Sparkles className="w-4 h-4 text-emerald-600" />
+            <span>✨ AI পাবলিক আপডেট ড্রাফট</span>
+          </button>
+
+          <button
             id="btn-preview-portal"
             onClick={() => setPreviewModalOpen(true)}
             className="px-3.5 py-2 rounded-xl text-xs font-bold border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 flex items-center space-x-1.5 transition-all shadow-2xs"
@@ -314,6 +327,22 @@ export const PublicPortalSettingsView: React.FC<PublicPortalSettingsViewProps> =
           <span>
             পাবলিক পোর্টাল দৃশ্যমানতা সেটিংস সফলভাবে আপডেট এবং সংরক্ষিত হয়েছে! পরিবর্তনসমূহ তাৎক্ষণিকভাবে কার্যকর হয়েছে।
           </span>
+        </div>
+      )}
+
+      {publishedDraftBanner && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 text-emerald-800 text-xs flex items-center justify-between gap-2 animate-in fade-in duration-200">
+          <div className="flex items-center space-x-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{publishedDraftBanner}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setPublishedDraftBanner('')}
+            className="text-emerald-700 hover:text-emerald-900 font-bold text-xs"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
@@ -983,6 +1012,16 @@ export const PublicPortalSettingsView: React.FC<PublicPortalSettingsViewProps> =
           </div>
         </div>
       )}
+
+      {/* AI Public Page Update & Announcement Draft Modal (Admin Approved Only) */}
+      <PublicPortalUpdateAiDraftModal
+        isOpen={isAiPublicDraftOpen}
+        onClose={() => setIsAiPublicDraftOpen(false)}
+        canPublish={Boolean(canEdit)}
+        onPublishedSuccess={(title) => {
+          setPublishedDraftBanner(`"${title}" — ঘোষণাটি আপনার অনুমোদনে পাবলিক পেজে প্রকাশিত হয়েছে।`);
+        }}
+      />
     </div>
   );
 };

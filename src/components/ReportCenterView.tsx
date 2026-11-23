@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   FileText,
   Bookmark,
@@ -57,6 +57,15 @@ import { printElement } from '../lib/printUtils';
 import { PrintSettingsBar } from './common/PrintSettingsBar';
 import { SearchableSelect } from './common/SearchableSelect';
 import { HifzSubReportCenterView } from './HifzSubReportCenterView';
+import { calculateAccountingLedger } from '../lib/accountingLedgerService';
+import {
+  ReportFilterAiAssistant,
+  ReportFilterApplyPayload,
+} from './reports/ReportFilterAiAssistant';
+import {
+  ReportAiSummaryPanel,
+  PrintableReportAiNote,
+} from './reports/ReportAiSummaryPanel';
 
 interface ReportCenterViewProps {
   incomes: IncomeEntry[];
@@ -154,6 +163,9 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
   // Save report modal
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [configName, setConfigName] = useState('');
+
+  // Printable AI Summary Note (Draft/Preview until explicitly attached by user)
+  const [aiSummaryNote, setAiSummaryNote] = useState<PrintableReportAiNote | null>(null);
 
   // Handle Preset ranges
   const handleRangePreset = (range: string) => {
@@ -258,6 +270,137 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
     handleRangePreset(range);
     setGrouping(grp);
   };
+
+  // Apply AI-Suggested Filter Configuration (Only invoked after user explicitly clicks "ফিল্টার প্রয়োগ করুন")
+  const handleApplyAiFilters = (f: ReportFilterApplyPayload) => {
+    setReportType(f.reportType);
+    setDateRangeType(f.dateRangeType);
+    setFromDate(f.fromDate);
+    setToDate(f.toDate);
+    setGrouping(f.grouping);
+    setLevel(f.level);
+    setSelectedHeadId(f.selectedHeadId);
+    setSelectedSubHeadId(f.selectedSubHeadId);
+    setSelectedAccountId(f.selectedAccountId);
+  };
+
+  // Canonical system-computed metrics matching ReportPrintDocument (zero AI math)
+  const isHeadOrSubHeadFiltered = selectedHeadId !== 'ALL' || selectedSubHeadId !== 'ALL';
+  const summaryLedger = useMemo(() => {
+    const headScopedIncomes = isHeadOrSubHeadFiltered
+      ? incomes.filter(
+          (i) =>
+            (selectedHeadId === 'ALL' || i.mainHeadId === selectedHeadId) &&
+            (selectedSubHeadId === 'ALL' || i.subHeadId === selectedSubHeadId)
+        )
+      : incomes;
+    const headScopedExpenses = isHeadOrSubHeadFiltered
+      ? expenses.filter(
+          (e) =>
+            (selectedHeadId === 'ALL' || e.mainHeadId === selectedHeadId) &&
+            (selectedSubHeadId === 'ALL' || e.subHeadId === selectedSubHeadId)
+        )
+      : expenses;
+    return calculateAccountingLedger({
+      accounts,
+      incomes: headScopedIncomes,
+      expenses: headScopedExpenses,
+      transfers: isHeadOrSubHeadFiltered ? [] : transfers || [],
+      accountFilter:
+        selectedAccountId !== 'ALL'
+          ? selectedAccountId
+          : reportType === 'CASHBOOK'
+          ? 'CASH'
+          : reportType === 'BANKBOOK'
+          ? 'BANK'
+          : 'ALL',
+      startDate: fromDate,
+      endDate: toDate,
+    });
+  }, [
+    accounts,
+    incomes,
+    expenses,
+    transfers,
+    isHeadOrSubHeadFiltered,
+    selectedHeadId,
+    selectedSubHeadId,
+    selectedAccountId,
+    reportType,
+    fromDate,
+    toDate,
+  ]);
+
+  const filterSummaryBn = useMemo(() => {
+    const mainHead = selectedHeadId !== 'ALL' ? accountHeads.find((h) => h.id === selectedHeadId)?.nameBn : null;
+    const subHead = selectedSubHeadId !== 'ALL' ? accountHeads.find((h) => h.id === selectedSubHeadId)?.nameBn : null;
+    const headPart = mainHead && subHead ? `${mainHead} › ${subHead}` : mainHead || subHead || 'সকল খাত';
+    const accPart =
+      selectedAccountId !== 'ALL'
+        ? accounts.find((a) => a.id === selectedAccountId)?.nameBn || 'নির্দিষ্ট ফান্ড'
+        : 'সকল ফান্ড ও অ্যাকাউন্ট';
+    return `${headPart} | ${accPart}`;
+  }, [selectedHeadId, selectedSubHeadId, selectedAccountId, accountHeads, accounts]);
+
+  const reportExtraContextBn = useMemo(() => {
+    if (reportType === 'STAFF_SALARY_REPORT') {
+      const periodPayments = staffPayments.filter((p) => {
+        const d = (p.paymentDate || '').slice(0, 10);
+        return !d || (d >= fromDate && d <= toDate);
+      });
+      const paidTotal = periodPayments.reduce((s, p) => s + (Number(p.netPayable ?? p.amount) || 0), 0);
+      return `মোট স্টাফ: ${staffList.length} জন; নির্বাচিত সময়কালে বেতন প্রদান রেকর্ড: ${periodPayments.length} টি (মোট ৳${paidTotal.toLocaleString('en-IN')})`;
+    }
+    if (reportType === 'ASSET_REGISTER_REPORT') {
+      const totalVal = assets.reduce((s, a) => s + (Number(a.cost) || 0), 0);
+      return `মোট সম্পদ আইটেম: ${assets.length} টি, মোট ক্রয়মূল্য: ৳${totalVal.toLocaleString('en-IN')}`;
+    }
+    if (reportType === 'PROPERTY_REGISTER_REPORT') {
+      return `মোট ওয়াকফ ও স্থাবর সম্পত্তি: ${properties.length} টি`;
+    }
+    if (reportType === 'CEMETERY_REGISTER_REPORT') {
+      return `মোট কবরস্থান দাফন রেকর্ড: ${cemeteryRecords.length} টি`;
+    }
+    if (reportType === 'DONATION_BOX_REPORT') {
+      return `মোট দানবাক্স: ${donationBoxes.length} টি, কালেকশন রেকর্ড: ${boxCollections.length} টি`;
+    }
+    if (reportType === 'AUDIT_LOG_REPORT') {
+      return `মোট অডিট লগ রেকর্ড: ${auditLogs.length} টি`;
+    }
+    return '';
+  }, [
+    reportType,
+    staffList.length,
+    staffPayments,
+    fromDate,
+    toDate,
+    assets,
+    properties.length,
+    cemeteryRecords.length,
+    donationBoxes.length,
+    boxCollections.length,
+    auditLogs.length,
+  ]);
+
+  const topIncomeHeadsForSummary = useMemo(
+    () =>
+      Object.values(headWiseIncome)
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 5)
+        .map((h) => ({ name: h.name, amount: h.amount, count: 0 })),
+    [headWiseIncome]
+  );
+
+  const topExpenseHeadsForSummary = useMemo(
+    () =>
+      Object.values(headWiseExpense)
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 5)
+        .map((h) => ({ name: h.name, amount: h.amount, count: 0 })),
+    [headWiseExpense]
+  );
+
+  const filterFingerprint = `${reportType}|${fromDate}|${toDate}|${selectedHeadId}|${selectedSubHeadId}|${selectedAccountId}|${summaryLedger.totalDebit}|${summaryLedger.totalCredit}`;
 
   const handleSaveConfig = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -587,6 +730,11 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
       )}
 
       {/* ============================================================
+          2B. AI NATURAL-LANGUAGE FILTER ASSISTANT (PRINT HIDDEN)
+          ============================================================ */}
+      <ReportFilterAiAssistant onApplySuggestedFilters={handleApplyAiFilters} />
+
+      {/* ============================================================
           3. FILTER MATRIX CONFIGURATION BAR (PRINT HIDDEN)
           ============================================================ */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4 print:hidden">
@@ -828,6 +976,34 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
       )}
 
       {/* ============================================================
+          4B. PRINTABLE AI REPORT EXECUTIVE SUMMARY PANEL (PRINT HIDDEN)
+          ============================================================ */}
+      {reportType !== 'HIFZ_REPORTS' && (
+        <ReportAiSummaryPanel
+          reportType={reportType}
+          reportTitleBn={currentReportMeta.titleBn}
+          fromDate={fromDate}
+          toDate={toDate}
+          filterSummaryBn={filterSummaryBn}
+          filterFingerprint={filterFingerprint}
+          systemMetrics={{
+            openingBalance: summaryLedger.openingBalance,
+            totalIncome: summaryLedger.totalDebit,
+            totalExpense: summaryLedger.totalCredit,
+            netChange: summaryLedger.netChange,
+            closingBalance: summaryLedger.closingBalance,
+            incomeVoucherCount: filteredIncomes.length,
+            expenseVoucherCount: filteredExpenses.length,
+            topIncomeHeads: topIncomeHeadsForSummary,
+            topExpenseHeads: topExpenseHeadsForSummary,
+            extraContextBn: reportExtraContextBn,
+          }}
+          currentNote={aiSummaryNote}
+          onChangeNote={setAiSummaryNote}
+        />
+      )}
+
+      {/* ============================================================
           5. REPORT PREVIEW CARD & PRINT DOCUMENT RENDER
           ============================================================ */}
       <div className="bg-slate-200/70 p-2 sm:p-6 rounded-2xl border border-slate-300 shadow-inner">
@@ -879,6 +1055,7 @@ export const ReportCenterView: React.FC<ReportCenterViewProps> = ({
               notices={notices}
               auditLogs={auditLogs}
               transfers={transfers}
+              aiSummaryNote={aiSummaryNote}
             />
           </div>
         )}

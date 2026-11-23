@@ -216,11 +216,16 @@ aside button,
   font-family: "Baloo Da 2", system-ui, -apple-system, BlinkMacSystemFont, cursive, sans-serif !important;
 }
 
-/* Financial & Currency number support */
+/* Financial, Currency & Bangla Numeral Support (Baloo Da 2) */
 .font-taka,
 .font-currency,
-.font-numeric {
-  font-family: "Hind Siliguri", system-ui, -apple-system, sans-serif;
+.font-numeric,
+.bn-num,
+.tabular-nums,
+.font-mono:not(code):not(pre),
+svg text,
+svg tspan {
+  font-family: "Baloo Da 2", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
 }

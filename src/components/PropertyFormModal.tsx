@@ -16,10 +16,12 @@ import {
   ArrowLeft,
   Eye,
   Layers,
-  Landmark
+  Landmark,
+  Sparkles
 } from 'lucide-react';
 import { MosqueProperty } from '../types';
 import { Language, translations, formatCurrency } from '../lib/i18n';
+import { WaqfDocumentAiAnalyzerModal } from './waqf/WaqfDocumentAiAnalyzerModal';
 
 interface PropertyFormModalProps {
   isOpen: boolean;
@@ -93,6 +95,8 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
   const [activeTab, setActiveTab] = useState<'general' | 'land' | 'boundaries' | 'waqf' | 'review'>('general');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isAiDocModalOpen, setIsAiDocModalOpen] = useState(false);
+  const [aiDraftAppliedCount, setAiDraftAppliedCount] = useState<number>(0);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -154,6 +158,7 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
   });
 
   useEffect(() => {
+    setAiDraftAppliedCount(0);
     if (property) {
       setFormData({
         propertyCode: property.propertyCode || '',
@@ -327,12 +332,25 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsAiDocModalOpen(true)}
+              className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold shadow-xs border border-emerald-400/40 flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
+              title="দলিল, খতিয়ান বা পর্চার ছবি/PDF থেকে খসড়া তথ্য পড়ুন"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-200" />
+              <span className="hidden sm:inline">✨ AI ডকুমেন্ট/দলিল পড়ুন</span>
+              <span className="sm:hidden">✨ AI দলিল</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Tab / Step Navigation */}
@@ -398,6 +416,26 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
             ৫. চূড়ান্ত পর্যালোচনা
           </button>
         </div>
+
+        {/* AI Draft Verification Banner */}
+        {aiDraftAppliedCount > 0 && (
+          <div className="mx-6 mt-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-950 text-xs flex items-start justify-between gap-2 font-tiro">
+            <div className="flex items-start gap-2">
+              <CheckCircle2 className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+              <span>
+                <strong className="font-siliguri">AI খসড়া বসানো হয়েছে ({aiDraftAppliedCount.toLocaleString('bn-BD')}টি ক্ষেত্র):</strong>{' '}
+                সংরক্ষণ করার আগে জমির দাগ নম্বর, খতিয়ান নম্বর, দলিল নম্বর, তারিখ ও টাকার অঙ্ক মূল কাগজের সাথে মিলিয়ে যাচাই করে নিন।
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAiDraftAppliedCount(0)}
+              className="text-amber-700 hover:text-amber-950 p-0.5 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Error Alert */}
         {error && (
@@ -1051,6 +1089,23 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
           )}
         </form>
       </div>
+
+      <WaqfDocumentAiAnalyzerModal
+        isOpen={isAiDocModalOpen}
+        onClose={() => setIsAiDocModalOpen(false)}
+        mode="PROPERTY"
+        currentFormValues={formData}
+        onApplyDraftFields={(patch) => {
+          setFormData((prev) => ({
+            ...prev,
+            ...patch,
+            ...(patch.name ? { nameBn: prev.nameBn || patch.name } : {}),
+            ...(patch.location ? { fullAddress: prev.fullAddress || patch.location } : {}),
+            ...(patch.monthlyIncome ? { annualIncome: Number(patch.monthlyIncome) * 12 } : {}),
+          }));
+          setAiDraftAppliedCount(Object.keys(patch).length);
+        }}
+      />
     </div>
   );
 };

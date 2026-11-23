@@ -28,7 +28,7 @@ import {
   OfficialDocumentType,
   OfficialDocumentStatus,
 } from '../../types/officialDocumentTypes';
-import { Mosque, CommitteeTerm, CommitteeMeeting, MeetingResolution } from '../../types';
+import { Mosque, CommitteeTerm, CommitteeMeeting, MeetingResolution, User } from '../../types';
 import { api } from '../../lib/api';
 import { OfficialDocumentDashboard } from './OfficialDocumentDashboard';
 import { OfficialDocumentListView } from './OfficialDocumentListView';
@@ -38,9 +38,12 @@ import { GlobalAttachmentManager } from './GlobalAttachmentManager';
 import { OfficialDocumentTrackingView } from './OfficialDocumentTrackingView';
 import { OfficialDocumentReportsView } from './OfficialDocumentReportsView';
 import { SmsGatewayView } from '../SmsGatewayView';
+import { SmartNotesView } from '../notes/SmartNotesView';
 
 interface OfficialDocumentManagementViewProps {
   mosque?: Mosque | null;
+  currentUser?: User | null;
+  initialSubTab?: string;
   committeeTerms?: CommitteeTerm[];
   committeeMeetings?: CommitteeMeeting[];
   resolutions?: MeetingResolution[];
@@ -50,13 +53,15 @@ interface OfficialDocumentManagementViewProps {
 
 export const OfficialDocumentManagementView: React.FC<OfficialDocumentManagementViewProps> = ({
   mosque,
+  currentUser = null,
+  initialSubTab,
   committeeTerms = [],
   committeeMeetings = [],
   resolutions = [],
   members = [],
   staffList = [],
 }) => {
-  const [activeTab, setActiveTab] = useState<string>('dashboard');
+  const [activeTab, setActiveTab] = useState<string>(initialSubTab || 'dashboard');
   const [documents, setDocuments] = useState<OfficialDocument[]>([]);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [stats, setStats] = useState<any>({
@@ -80,6 +85,14 @@ export const OfficialDocumentManagementView: React.FC<OfficialDocumentManagement
   const [documentToEdit, setDocumentToEdit] = useState<OfficialDocument | null>(null);
   const [createDocType, setCreateDocType] = useState<OfficialDocumentType>('NOTICE');
   const [previewDoc, setPreviewDoc] = useState<OfficialDocument | null>(null);
+  const [noticeDraftFromNote, setNoticeDraftFromNote] = useState<{ title: string; body: string } | null>(null);
+  const [smsDraftFromNote, setSmsDraftFromNote] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (initialSubTab) {
+      setActiveTab(initialSubTab);
+    }
+  }, [initialSubTab]);
 
   const loadData = async () => {
     setLoading(true);
@@ -103,6 +116,7 @@ export const OfficialDocumentManagementView: React.FC<OfficialDocumentManagement
 
   const handleOpenCreateModal = (type: OfficialDocumentType = 'NOTICE', withAi = false) => {
     setDocumentToEdit(null);
+    setNoticeDraftFromNote(null);
     setCreateDocType(type);
     setOpenAiOnLaunch(withAi);
     setShowFormModal(true);
@@ -134,9 +148,10 @@ export const OfficialDocumentManagementView: React.FC<OfficialDocumentManagement
     await loadData();
   };
 
-  // Sub-Navigation Tabs (Exact 14 Sections in Required Order)
+  // Sub-Navigation Tabs
   const TABS = [
     { id: 'dashboard', label: '📊 ড্যাশবোর্ড', subLabel: 'পরিসংখ্যান ও সামগ্রিক চিত্র', badge: stats.total },
+    { id: 'smart-notes', label: '📝 খসড়া — Smart Notes', subLabel: 'স্মার্ট নোট, ভয়েস টাইপিং ও ক্যামেরা OCR', badge: 'AI' },
     { id: 'all-documents', label: '📄 দাপ্তরিক নথি', subLabel: 'সকল নথির মাস্টার তালিকা', badge: stats.total },
     { id: 'notices', label: '📢 নোটিশ ও বিজ্ঞপ্তি', subLabel: 'সভা ও সাধারণ বিজ্ঞপ্তি', badge: stats.byType?.NOTICE },
     { id: 'sms-service', label: '💬 এসএমএস সেবা ও সেটিংস', subLabel: 'এসএমএস গেটওয়ে, এপিআই কী ও বার্তা প্রেরণ', badge: 'SMS' },
@@ -288,14 +303,16 @@ export const OfficialDocumentManagementView: React.FC<OfficialDocumentManagement
                       </div>
                     </div>
 
-                    {tab.badge !== undefined && tab.badge !== null && tab.badge > 0 && (
+                    {tab.badge !== undefined && tab.badge !== null && (typeof tab.badge === 'string' ? tab.badge.length > 0 : tab.badge > 0) && (
                       <span
                         className={`
                           text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 font-baloo
                           ${
                             isActive
                               ? 'bg-white/20 text-white'
-                              : 'bg-blue-100 text-blue-800'
+                              : tab.id === 'smart-notes'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-blue-100 text-blue-800'
                           }
                         `}
                       >
@@ -330,6 +347,24 @@ export const OfficialDocumentManagementView: React.FC<OfficialDocumentManagement
               onSelectDocForPreview={setPreviewDoc}
               onSelectDocForEdit={handleOpenEditModal}
               onNavigateToTab={setActiveTab}
+            />
+          )}
+
+          {activeTab === 'smart-notes' && (
+            <SmartNotesView
+              mosque={mosque}
+              currentUser={currentUser}
+              onConvertToNotice={(draft) => {
+                setDocumentToEdit(null);
+                setCreateDocType('NOTICE');
+                setOpenAiOnLaunch(false);
+                setNoticeDraftFromNote({ title: draft.title, body: draft.bodyHtml });
+                setShowFormModal(true);
+              }}
+              onConvertToSms={(draft) => {
+                setSmsDraftFromNote(draft.text);
+                setActiveTab('sms-service');
+              }}
             />
           )}
 
@@ -489,10 +524,11 @@ export const OfficialDocumentManagementView: React.FC<OfficialDocumentManagement
           {activeTab === 'sms-service' && (
             <SmsGatewayView
               currentMosque={mosque}
-              currentUser={null}
+              currentUser={currentUser}
               members={members}
               staff={staffList}
               language="bn"
+              initialDraftMessage={smsDraftFromNote}
             />
           )}
 
@@ -512,11 +548,13 @@ export const OfficialDocumentManagementView: React.FC<OfficialDocumentManagement
         onClose={() => {
           setShowFormModal(false);
           setOpenAiOnLaunch(false);
+          setNoticeDraftFromNote(null);
         }}
         onSave={handleSaveDocument}
         documentToEdit={documentToEdit}
         initialDocType={createDocType}
         initialOpenAi={openAiOnLaunch}
+        initialDraftData={noticeDraftFromNote}
         mosque={mosque}
         committeeTerms={committeeTerms}
         committeeMeetings={committeeMeetings}

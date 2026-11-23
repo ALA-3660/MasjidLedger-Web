@@ -375,6 +375,12 @@ class CloudPersistenceService {
         qrCodes: state.qrCodes || [],
         smsLogs: state.smsLogs || [],
         documentTokens: state.documentTokens || [],
+        smartNotes: state.smartNotes || [],
+        smartNoteCategories: state.smartNoteCategories || [],
+        smartNoteVersions: state.smartNoteVersions || [],
+        smartNoteComments: state.smartNoteComments || [],
+        smartNoteActivities: state.smartNoteActivities || [],
+        smartNoteReminders: state.smartNoteReminders || [],
         updatedAt: now,
       };
 
@@ -594,9 +600,13 @@ class CloudPersistenceService {
       updatedAt: mosque.updatedAt || new Date().toISOString(),
     });
 
-    // 1. Always persist to a dedicated local JSON file as well
+    // 1. Always persist atomically to a dedicated local JSON file as well
     try {
-      const localBrandingPath = path.join(process.cwd(), 'data', 'mosque_branding_store.json');
+      const dataDir = path.join(process.cwd(), 'data');
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+      }
+      const localBrandingPath = path.join(dataDir, 'mosque_branding_store.json');
       let store: Record<string, any> = {};
       if (fs.existsSync(localBrandingPath)) {
         try {
@@ -604,7 +614,15 @@ class CloudPersistenceService {
         } catch (_) {}
       }
       store[mosque.id] = brandingPayload;
-      fs.writeFileSync(localBrandingPath, JSON.stringify(store, null, 2), 'utf8');
+      const tmpBrandingPath = `${localBrandingPath}.tmp.${process.pid}.${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const fd = fs.openSync(tmpBrandingPath, 'w', 0o600);
+      try {
+        fs.writeFileSync(fd, JSON.stringify(store, null, 2), 'utf8');
+        fs.fsyncSync(fd);
+      } finally {
+        fs.closeSync(fd);
+      }
+      fs.renameSync(tmpBrandingPath, localBrandingPath);
     } catch (_) {}
 
     if (!this.isAvailable) return false;

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Calculator, Banknote, Coins, RotateCcw, Check } from 'lucide-react';
 import { CashDenominationData } from '../types';
 import { Language, toBanglaNumber, formatCurrency } from '../lib/i18n';
+import { DenominationAiHelperBar } from './counter/DenominationAiHelperBar';
 
 interface CashDenominationCalculatorModalProps {
   isOpen: boolean;
@@ -54,6 +55,29 @@ export const CashDenominationCalculatorModal: React.FC<CashDenominationCalculato
   const handleReset = () => {
     setNotes({ 1000: 0, 500: 0, 200: 0, 100: 0, 50: 0, 20: 0, 10: 0, 5: 0, 2: 0 });
     setCoins({ 5: 0, 2: 0, 1: 0 });
+  };
+
+  const handleApplyAiParsedCounts = (
+    parsedNotes: Record<number, number>,
+    parsedCoins: Record<number, number>,
+    mode: 'REPLACE' | 'ADD'
+  ) => {
+    setNotes((prev) => {
+      const next: Record<number, number> = { ...prev };
+      NOTE_DENOMINATIONS.forEach((d) => {
+        const incoming = Math.max(0, Math.floor(Number(parsedNotes[d]) || 0));
+        next[d] = mode === 'ADD' ? (prev[d] || 0) + incoming : incoming;
+      });
+      return next;
+    });
+    setCoins((prev) => {
+      const next: Record<number, number> = { ...prev };
+      COIN_DENOMINATIONS.forEach((d) => {
+        const incoming = Math.max(0, Math.floor(Number(parsedCoins[d]) || 0));
+        next[d] = mode === 'ADD' ? (prev[d] || 0) + incoming : incoming;
+      });
+      return next;
+    });
   };
 
   const totalNotesCount = Object.values(notes).reduce<number>((acc, val) => acc + (Number(val) || 0), 0);
@@ -110,6 +134,15 @@ export const CashDenominationCalculatorModal: React.FC<CashDenominationCalculato
 
         {/* Content */}
         <div className="p-5 overflow-y-auto space-y-4 flex-1">
+          <DenominationAiHelperBar
+            compact
+            currentNotes={notes}
+            currentCoins={coins}
+            grandTotal={grandTotal}
+            contextLabelBn="নগদ টাকা নোট ও কয়েন গণনা"
+            onApplyParsedCounts={handleApplyAiParsedCounts}
+          />
+
           {/* Notes Section */}
           <div>
             <div className="flex items-center space-x-1.5 text-xs font-bold text-slate-700 mb-2 pb-1 border-b border-slate-200">

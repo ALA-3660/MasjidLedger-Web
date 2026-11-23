@@ -37,6 +37,7 @@ import {
   triggerHapticFeedback,
   MODULE_ACTIONS,
 } from '../services/qrBarcodeService';
+import { LiveScanAiDraftTab, ApprovedLiveScanDraft } from './scanner/LiveScanAiDraftTab';
 
 export interface RecentScanItem {
   id: string;
@@ -58,6 +59,7 @@ interface UniversalScannerModalProps {
   onOpenActionCardHub?: () => void;
   onOpenRecordAction?: (recordItem: ResolvedRecordItem) => void;
   resolveRecord?: (code: string) => ResolvedRecordItem | null;
+  onSendAiDraftToModule?: (draft: ApprovedLiveScanDraft) => void;
 }
 
 const RECENT_SCANS_STORAGE_KEY = 'masjidledger_recent_scans';
@@ -72,8 +74,10 @@ export const UniversalScannerModal: React.FC<UniversalScannerModalProps> = ({
   onOpenActionCardHub,
   onOpenRecordAction,
   resolveRecord,
+  onSendAiDraftToModule,
 }) => {
-  const [activeTab, setActiveTab] = useState<'camera' | 'manual' | 'history'>('camera');
+  const [activeTab, setActiveTab] = useState<'camera' | 'ai-draft' | 'manual' | 'history'>('camera');
+  const [capturedSnapshotDataUrl, setCapturedSnapshotDataUrl] = useState<string | null>(null);
   const [cameraState, setCameraState] = useState<'INIT' | 'RUNNING' | 'ERROR' | 'DENIED' | 'NOT_SUPPORTED'>('INIT');
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [hasTorch, setHasTorch] = useState<boolean>(false);
@@ -440,14 +444,31 @@ export const UniversalScannerModal: React.FC<UniversalScannerModalProps> = ({
                 setActiveTab('camera');
                 handleResumeScanning();
               }}
-              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+              className={`flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                 activeTab === 'camera'
                   ? 'bg-white text-slate-900 shadow-2xs font-bold'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <Camera className="w-3.5 h-3.5 text-blue-600" />
-              <span>{language === 'bn' ? 'ক্যামেরা স্ক্যান' : 'Camera'}</span>
+              <span>{language === 'bn' ? 'ক্যামেরা' : 'Camera'}</span>
+            </button>
+            <button
+              id="tab-scanner-ai-draft"
+              type="button"
+              onClick={() => {
+                setActiveTab('ai-draft');
+                setScanResult(null);
+                stopCamera();
+              }}
+              className={`flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                activeTab === 'ai-draft'
+                  ? 'bg-emerald-700 text-white shadow-2xs font-bold'
+                  : 'text-emerald-800 hover:bg-emerald-100/70'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>{language === 'bn' ? '✨ AI স্মার্ট স্ক্যান' : 'AI Smart Scan'}</span>
             </button>
             <button
               id="tab-scanner-manual"
@@ -456,14 +477,14 @@ export const UniversalScannerModal: React.FC<UniversalScannerModalProps> = ({
                 setActiveTab('manual');
                 stopCamera();
               }}
-              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+              className={`flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                 activeTab === 'manual'
                   ? 'bg-white text-slate-900 shadow-2xs font-bold'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <Keyboard className="w-3.5 h-3.5 text-emerald-600" />
-              <span>{language === 'bn' ? 'ম্যানুয়াল ইনপুট' : 'Manual'}</span>
+              <span>{language === 'bn' ? 'ম্যানুয়াল' : 'Manual'}</span>
             </button>
             <button
               id="tab-scanner-history"
@@ -472,14 +493,14 @@ export const UniversalScannerModal: React.FC<UniversalScannerModalProps> = ({
                 setActiveTab('history');
                 stopCamera();
               }}
-              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+              className={`flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                 activeTab === 'history'
                   ? 'bg-white text-slate-900 shadow-2xs font-bold'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <History className="w-3.5 h-3.5 text-purple-600" />
-              <span>{language === 'bn' ? 'স্ক্যান হিস্ট্রি' : 'History'}</span>
+              <span>{language === 'bn' ? 'হিস্ট্রি' : 'History'}</span>
               {recentScans.length > 0 && (
                 <span className="w-4 h-4 rounded-full bg-purple-100 text-purple-800 text-[10px] flex items-center justify-center font-mono">
                   {recentScans.length}
@@ -594,6 +615,66 @@ export const UniversalScannerModal: React.FC<UniversalScannerModalProps> = ({
                 </div>
               )}
             </div>
+          )}
+
+          {/* Quick Live Snapshot to AI Draft button under live camera */}
+          {activeTab === 'camera' && !scanResult && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs text-emerald-900">
+                <strong className="block">ক্যাশ মেমো, বিল, রসিদ বা ডকুমেন্ট স্ক্যান করতে চান?</strong>
+                <span className="text-[11px] text-emerald-700">
+                  ক্যামেরায় ছবি তুলে বা ফাইল আপলোড করে AI খসড়া প্রিভিউ তৈরি করুন
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (cameraState === 'RUNNING' && videoRef.current && canvasRef.current) {
+                    const video = videoRef.current;
+                    const canvas = canvasRef.current;
+                    if (video.videoWidth > 0 && video.videoHeight > 0) {
+                      canvas.width = video.videoWidth;
+                      canvas.height = video.videoHeight;
+                      const ctx = canvas.getContext('2d');
+                      if (ctx) {
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        const snapshotUrl = canvas.toDataURL('image/jpeg', 0.88);
+                        setCapturedSnapshotDataUrl(snapshotUrl);
+                      }
+                    }
+                  }
+                  stopCamera();
+                  setActiveTab('ai-draft');
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>
+                  {cameraState === 'RUNNING'
+                    ? 'ছবি তুলে AI খসড়া তৈরি করুন'
+                    : '✨ AI স্মার্ট স্ক্যান খুলুন'}
+                </span>
+              </button>
+            </div>
+          )}
+
+          {/* A2. AI SMART VOUCHER / DOCUMENT DRAFT TAB */}
+          {activeTab === 'ai-draft' && (
+            <LiveScanAiDraftTab
+              capturedSnapshotDataUrl={capturedSnapshotDataUrl}
+              onClearCapturedSnapshot={() => setCapturedSnapshotDataUrl(null)}
+              canCaptureLiveCamera={true}
+              onRequestLiveCapture={() => {
+                setActiveTab('camera');
+                handleResumeScanning();
+              }}
+              onSendDraftToModule={(draft) => {
+                if (onSendAiDraftToModule) {
+                  onSendAiDraftToModule(draft);
+                }
+                onClose();
+              }}
+            />
           )}
 
           {/* B. MANUAL INPUT TAB */}

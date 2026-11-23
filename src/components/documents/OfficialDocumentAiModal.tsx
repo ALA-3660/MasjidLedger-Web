@@ -14,6 +14,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import { sanitizeOfficialDocHtml, extractPlainTextSafely } from '../../lib/sanitizeHtml';
 import { OfficialDocumentType } from '../../types/officialDocumentTypes';
 import { Mosque } from '../../types';
 
@@ -125,10 +126,7 @@ export const OfficialDocumentAiModal: React.FC<OfficialDocumentAiModalProps> = (
   };
 
   const handleCopy = () => {
-    // Strip HTML for clipboard copy if needed or copy raw
-    const tempEl = document.createElement('div');
-    tempEl.innerHTML = generatedResult;
-    const text = tempEl.innerText || tempEl.textContent || generatedResult;
+    const text = extractPlainTextSafely(generatedResult);
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -378,7 +376,7 @@ export const OfficialDocumentAiModal: React.FC<OfficialDocumentAiModalProps> = (
                 </div>
                 <div
                   className="prose prose-sm max-w-none text-slate-800"
-                  dangerouslySetInnerHTML={{ __html: generatedResult }}
+                  dangerouslySetInnerHTML={{ __html: sanitizeOfficialDocHtml(generatedResult) }}
                 />
               </div>
             </div>

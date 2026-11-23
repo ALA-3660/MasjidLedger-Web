@@ -2,7 +2,10 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
+import { installBanglaDisplayEngine } from './lib/banglaDisplayEngine.ts';
 import './index.css';
+
+installBanglaDisplayEngine();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

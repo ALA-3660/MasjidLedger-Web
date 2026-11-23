@@ -16,6 +16,7 @@ import { MaktabManagementView } from './MaktabManagementView';
 import { HifzFoundationView } from './HifzFoundationView';
 import { Language } from '../lib/i18n';
 import { FinancialAccount } from '../types';
+import { KnowledgeNoteAiSummaryModal } from './library/KnowledgeNoteAiSummaryModal';
 
 export type KnowledgeCenterModule = 'library' | 'maktab' | 'hifz';
 
@@ -38,6 +39,7 @@ export const LibraryKnowledgeCenterView: React.FC<LibraryKnowledgeCenterViewProp
 }) => {
   const [activeModule, setActiveModule] = useState<KnowledgeCenterModule>(initialModule);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isKnowledgeNoteAiOpen, setIsKnowledgeNoteAiOpen] = useState(false);
 
   const modules = [
     {
@@ -86,13 +88,23 @@ export const LibraryKnowledgeCenterView: React.FC<LibraryKnowledgeCenterViewProp
               : '📖 হেফজখানা (এইচ-১ ভিত্তি)'}
           </span>
         </div>
-        <button
-          type="button"
-          onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
-          className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
-        >
-          {isMobileSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </button>
+        <div className="flex items-center space-x-1.5">
+          <button
+            type="button"
+            onClick={() => setIsKnowledgeNoteAiOpen(true)}
+            className="px-2.5 py-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+            <span>AI নোট</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
+            className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
+          >
+            {isMobileSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+        </div>
       </div>
 
       {/* Left Secondary Sidebar */}
@@ -148,15 +160,23 @@ export const LibraryKnowledgeCenterView: React.FC<LibraryKnowledgeCenterViewProp
             })}
           </nav>
 
-          {/* Quick Notice / Info Box */}
-          <div className="p-3 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl border border-emerald-100 text-emerald-950 text-xs space-y-1">
+          {/* Quick Notice / Info Box & AI Knowledge Note Summarizer */}
+          <div className="p-3.5 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl border border-emerald-200/80 text-emerald-950 text-xs space-y-2.5">
             <div className="flex items-center space-x-1.5 font-bold text-emerald-900 text-[11px]">
               <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-              <span>জ্ঞানকেন্দ্র নির্দেশিকা</span>
+              <span>জ্ঞানকেন্দ্র AI নোট সহায়ক</span>
             </div>
-            <p className="text-[11px] text-slate-600 leading-relaxed">
-              পাঠাগারের কিতাবসমূহ, মক্তবের জামাত এবং হেফজখানার শিক্ষার্থীদের সমন্বিত তথ্য ভাণ্ডার।
+            <p className="text-[11px] text-slate-600 leading-relaxed font-tiro">
+              খুতবা, বয়ান বা আলোচনার কাঁচা নোট থেকে মূল পয়েন্ট ও পাঠযোগ্য বাংলা সারসংক্ষেপ খসড়া তৈরি করুন।
             </p>
+            <button
+              type="button"
+              onClick={() => setIsKnowledgeNoteAiOpen(true)}
+              className="w-full py-2 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-emerald-200" />
+              <span>✨ AI বয়ান/নোট সারসংক্ষেপ</span>
+            </button>
           </div>
         </div>
       </div>
@@ -192,6 +212,13 @@ export const LibraryKnowledgeCenterView: React.FC<LibraryKnowledgeCenterViewProp
           />
         )}
       </div>
+
+      {/* Knowledge Center Khutbah/Bayan/Study Note AI Summarizer Modal */}
+      <KnowledgeNoteAiSummaryModal
+        isOpen={isKnowledgeNoteAiOpen}
+        onClose={() => setIsKnowledgeNoteAiOpen(false)}
+        mosque={currentMosque}
+      />
     </div>
   );
 };

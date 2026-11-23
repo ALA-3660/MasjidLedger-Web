@@ -23,6 +23,7 @@ import {
 import { CashDenominationData, Mosque } from '../types';
 import { Language } from '../lib/i18n';
 import { DenominationPrintSlip } from './DenominationPrintSlip';
+import { DenominationAiHelperBar } from './counter/DenominationAiHelperBar';
 
 export interface ChangeCalculatorModalProps {
   isOpen: boolean;
@@ -290,6 +291,30 @@ export const ChangeCalculatorModal: React.FC<ChangeCalculatorModalProps> = ({
     const emptyCoins: Record<number, number> = {};
     COIN_DENOMINATIONS.forEach((d) => (emptyCoins[d] = 0));
     setCoinCounts(emptyCoins);
+  };
+
+  // Apply AI parsed counts as draft (system deterministic math calculates totals)
+  const handleApplyAiParsedCounts = (
+    parsedNotes: Record<number, number>,
+    parsedCoins: Record<number, number>,
+    mode: 'REPLACE' | 'ADD'
+  ) => {
+    setNoteCounts((prev) => {
+      const next: Record<number, number> = {};
+      NOTE_DENOMINATIONS.forEach((d) => {
+        const incoming = Math.max(0, Math.floor(Number(parsedNotes[d]) || 0));
+        next[d] = mode === 'ADD' ? (prev[d] || 0) + incoming : incoming;
+      });
+      return next;
+    });
+    setCoinCounts((prev) => {
+      const next: Record<number, number> = {};
+      COIN_DENOMINATIONS.forEach((d) => {
+        const incoming = Math.max(0, Math.floor(Number(parsedCoins[d]) || 0));
+        next[d] = mode === 'ADD' ? (prev[d] || 0) + incoming : incoming;
+      });
+      return next;
+    });
   };
 
   // Subtotal calculations
@@ -623,6 +648,20 @@ export const ChangeCalculatorModal: React.FC<ChangeCalculatorModalProps> = ({
 
           {/* Scrollable Denomination Table */}
           <div className="p-3 sm:p-4 overflow-y-auto flex-1 bg-slate-50">
+            {/* AI Voice/Text Parser & Summary Note Helper Bar */}
+            <DenominationAiHelperBar
+              currentNotes={noteCounts}
+              currentCoins={coinCounts}
+              grandTotal={grandTotal}
+              contextLabelBn={titleBn}
+              countedBy={countedBy}
+              witnesses={witnesses}
+              reference={reference}
+              countingDateTime={countingDateTime}
+              onApplyParsedCounts={handleApplyAiParsedCounts}
+              onApplyNoteText={(noteText) => setNotes(noteText)}
+            />
+
             {/* Notes Section */}
             {(activeTab === 'ALL' || activeTab === 'NOTES') && (
               <div className="mb-4">

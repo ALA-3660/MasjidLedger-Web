@@ -52,6 +52,12 @@ export interface ReportPrintDocumentProps {
   notices?: MosqueNotice[];
   auditLogs?: AuditLog[];
   transfers?: AccountTransfer[];
+  aiSummaryNote?: {
+    titleBn: string;
+    bodyBn: string;
+    includeInPrint: boolean;
+    generatedAt?: string;
+  } | null;
 }
 
 export const REPORT_TITLES: Record<string, { titleBn: string; subtitleBn: string; isLandscape: boolean }> = {
@@ -193,6 +199,7 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
   meetings = [],
   auditLogs = [],
   transfers = [],
+  aiSummaryNote = null,
 }) => {
   const isHeadOrSubHeadFiltered = selectedHeadId !== 'ALL' || selectedSubHeadId !== 'ALL';
 
@@ -1405,6 +1412,25 @@ export const ReportPrintDocument: React.FC<ReportPrintDocumentProps> = ({
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* ============================================================
+          3B. PRINTABLE EXECUTIVE SUMMARY NOTE (VERIFIED BY USER)
+          ============================================================ */}
+      {aiSummaryNote?.includeInPrint && aiSummaryNote.bodyBn.trim() && (
+        <div className="border-2 border-slate-800 bg-slate-50/70 p-3.5 mt-4 mb-2 rounded-sm break-inside-avoid">
+          <div className="flex items-center justify-between gap-2 border-b border-slate-300 pb-1.5 mb-2">
+            <h4 className="font-siliguri font-bold text-xs text-slate-950">
+              {aiSummaryNote.titleBn || 'প্রতিবেদন সারসংক্ষেপ ও মন্তব্য'}
+            </h4>
+            <span className="text-[10px] font-baloo text-slate-600">
+              সিস্টেম-গণনাকৃত উপাত্তের ভিত্তিতে যাচাইকৃত মন্তব্য
+            </span>
+          </div>
+          <p className="font-tiro text-xs text-slate-900 leading-relaxed whitespace-pre-line">
+            {aiSummaryNote.bodyBn.trim()}
+          </p>
         </div>
       )}
 

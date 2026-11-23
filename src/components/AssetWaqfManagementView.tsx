@@ -80,6 +80,8 @@ import { PropertyRentCollectionModal } from './PropertyRentCollectionModal';
 import { PropertyRentReceiptModal } from './PropertyRentReceiptModal';
 import { ConfirmDialog } from './common/ConfirmDialog';
 import { LegalManagementView } from './legal/LegalManagementView';
+import { WaqfAiPortfolioSummaryCard } from './waqf/WaqfAiPortfolioSummaryCard';
+import { WaqfRentReminderModal } from './waqf/WaqfRentReminderModal';
 
 export interface AssetWaqfManagementViewProps {
   assets: MosqueAsset[];
@@ -172,6 +174,7 @@ export const AssetWaqfManagementView: React.FC<AssetWaqfManagementViewProps> = (
   const [inspectionModalProperty, setInspectionModalProperty] = useState<MosqueProperty | null>(null);
   const [caseModalProperty, setCaseModalProperty] = useState<MosqueProperty | null>(null);
   const [khajnaModalProperty, setKhajnaModalProperty] = useState<MosqueProperty | null>(null);
+  const [isRentReminderModalOpen, setIsRentReminderModalOpen] = useState(false);
 
   const [confirmDialog, setConfirmDialog] = useState<any>(null);
 
@@ -379,7 +382,19 @@ export const AssetWaqfManagementView: React.FC<AssetWaqfManagementViewProps> = (
 
         {/* Right Dynamic Content Area */}
         <main className="flex-1 w-full space-y-6">
-          
+          {/* Compact AI Waqf & Asset Portfolio Summary Card (Overview/List Header) */}
+          {(activeSection === 'assets' ||
+            activeSection === 'properties' ||
+            activeSection === 'tenants' ||
+            activeSection === 'leases') && (
+            <WaqfAiPortfolioSummaryCard
+              totalAssetsCount={assetMetrics.totalCount}
+              totalPropertiesCount={propertyMetrics.totalCount}
+              totalTenantsCount={allTenantsList.length}
+              onOpenRentReminders={() => setIsRentReminderModalOpen(true)}
+            />
+          )}
+
           {/* ========================================================================= */}
           {/* SECTION 1: 📦 মসজিদের সম্পদ ও সরঞ্জাম (ASSETS) */}
           {/* ========================================================================= */}
@@ -925,16 +940,28 @@ export const AssetWaqfManagementView: React.FC<AssetWaqfManagementViewProps> = (
                   </select>
                 </div>
 
-                {canEdit && (
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => handleOpenAddTenant()}
-                    className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-1.5 transition-all cursor-pointer whitespace-nowrap active:scale-95"
+                    onClick={() => setIsRentReminderModalOpen(true)}
+                    className="px-3.5 py-2 bg-gradient-to-r from-emerald-700 to-teal-700 hover:from-emerald-800 hover:to-teal-800 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-1.5 transition-all cursor-pointer whitespace-nowrap active:scale-95"
+                    title="বকেয়া ভাড়াটিয়াদের জন্য মার্জিত বাংলা রিমাইন্ডার মেসেজ ড্রাফট তৈরি করুন"
                   >
-                    <Plus className="w-4 h-4" />
-                    <span>নতুন ভাড়াটিয়া / ইজারাদার</span>
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                    <span>✨ AI বকেয়া রিমাইন্ডার ড্রাফট</span>
                   </button>
-                )}
+
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenAddTenant()}
+                      className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-1.5 transition-all cursor-pointer whitespace-nowrap active:scale-95"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>নতুন ভাড়াটিয়া / ইজারাদার</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
               {filteredTenants.length === 0 ? (
@@ -1056,7 +1083,15 @@ export const AssetWaqfManagementView: React.FC<AssetWaqfManagementViewProps> = (
                     আইনি চুক্তিনামা, মেয়াদ, মাসিক ভাড়া ও জামানতের কেন্দ্রীয় তদারকি
                   </p>
                 </div>
-                <div className="flex items-center space-x-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsRentReminderModalOpen(true)}
+                    className="px-3 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs flex items-center space-x-1 cursor-pointer active:scale-95"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                    <span>✨ AI বকেয়া রিমাইন্ডার ড্রাফট</span>
+                  </button>
                   <span className="px-3 py-1 bg-amber-200/60 text-amber-900 rounded-xl text-xs font-bold font-baloo">
                     মোট চুক্তি: {toBanglaNumber(allTenantsList.length)} টি
                   </span>
@@ -1650,6 +1685,12 @@ export const AssetWaqfManagementView: React.FC<AssetWaqfManagementViewProps> = (
           onClose={() => setConfirmDialog(null)}
         />
       )}
+
+      {/* 17. AI Overdue Rent Reminder Draft Modal (Preview & Copy Only) */}
+      <WaqfRentReminderModal
+        isOpen={isRentReminderModalOpen}
+        onClose={() => setIsRentReminderModalOpen(false)}
+      />
     </div>
   );
 };

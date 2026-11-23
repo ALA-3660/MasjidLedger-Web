@@ -261,6 +261,8 @@ export const translations = {
   },
 };
 
+export { toBanglaDigits, toEnglishDigits, parseLocalizedNumber } from './banglaDigits';
+
 export function formatCurrency(amount: number, lang: Language | string = 'bn'): string {
   const formatted = new Intl.NumberFormat('en-IN', {
     maximumFractionDigits: 2,
@@ -268,7 +270,7 @@ export function formatCurrency(amount: number, lang: Language | string = 'bn'): 
   }).format(amount || 0);
 
   if (lang === 'bn') {
-    return `৳ ${formatted}`;
+    return `৳ ${toBanglaNumber(formatted)}`;
   }
   return `BDT ${formatted}`;
 }
@@ -277,14 +279,17 @@ export function formatDate(dateString: string, lang: Language | string = 'bn'): 
   if (!dateString) return '-';
   try {
     const d = new Date(dateString);
-    if (isNaN(d.getTime())) return dateString;
-    return d.toLocaleDateString(lang === 'bn' ? 'bn-BD' : 'en-GB', {
+    if (isNaN(d.getTime())) {
+      return lang === 'bn' ? toBanglaNumber(dateString) : dateString;
+    }
+    const formatted = d.toLocaleDateString(lang === 'bn' ? 'bn-BD' : 'en-GB', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
     });
+    return lang === 'bn' ? toBanglaNumber(formatted) : formatted;
   } catch {
-    return dateString;
+    return lang === 'bn' ? toBanglaNumber(dateString) : dateString;
   }
 }
 

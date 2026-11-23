@@ -359,7 +359,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         },
         {
           id: 'backupRestore',
-          label: language === 'bn' ? '💾 ডাটা ব্যাকআপ ও রিস্টোর' : '💾 Data Backup & Restore',
+          label: language === 'bn' ? '💾 অটো-ব্যাকআপ ও রিমাইন্ডার' : '💾 Auto-Backup & Reminders',
           icon: Database,
           color: 'text-emerald-700',
         },

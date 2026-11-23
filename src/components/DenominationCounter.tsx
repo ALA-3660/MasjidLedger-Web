@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Banknote, Coins, RotateCcw, Check, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 import { DenominationBreakdown } from '../types/qrBarcodeTypes';
+import { DenominationAiHelperBar } from './counter/DenominationAiHelperBar';
 
 interface DenominationCounterProps {
   initialData?: DenominationBreakdown;
@@ -99,6 +100,29 @@ export const DenominationCounter: React.FC<DenominationCounterProps> = ({
     });
   };
 
+  const handleApplyAiParsedCounts = (
+    parsedNotes: Record<number, number>,
+    parsedCoins: Record<number, number>,
+    mode: 'REPLACE' | 'ADD'
+  ) => {
+    setNotes((prev) => {
+      const next: Record<number, number> = { ...prev };
+      NOTE_DENOMINATIONS.forEach((d) => {
+        const incoming = Math.max(0, Math.floor(Number(parsedNotes[d]) || 0));
+        next[d] = mode === 'ADD' ? (prev[d] || 0) + incoming : incoming;
+      });
+      return next;
+    });
+    setCoins((prev) => {
+      const next: Record<number, number> = { ...prev };
+      COIN_DENOMINATIONS.forEach((d) => {
+        const incoming = Math.max(0, Math.floor(Number(parsedCoins[d]) || 0));
+        next[d] = mode === 'ADD' ? (prev[d] || 0) + incoming : incoming;
+      });
+      return next;
+    });
+  };
+
   const formatTaka = (amount: number) => {
     return new Intl.NumberFormat('bn-BD').format(amount);
   };
@@ -149,6 +173,18 @@ export const DenominationCounter: React.FC<DenominationCounterProps> = ({
       {/* Expanded Content */}
       {isExpanded && (
         <div className="mt-4 space-y-4 animate-fadeIn">
+          {/* AI Voice/Text Parser & Summary Note Helper (Light Card for Readability) */}
+          <div className="text-slate-900">
+            <DenominationAiHelperBar
+              compact
+              currentNotes={notes}
+              currentCoins={coins}
+              grandTotal={grandTotal}
+              contextLabelBn="ভাংতি টাকা ও নোট গণনা"
+              onApplyParsedCounts={handleApplyAiParsedCounts}
+            />
+          </div>
+
           {/* Paper Currency Notes Grid */}
           <div>
             <div className="flex items-center justify-between text-xs font-semibold text-amber-400 mb-2">

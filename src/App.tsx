@@ -31,6 +31,7 @@ import {
   AccountTransfer,
 } from './types';
 import { Language, translations } from './lib/i18n';
+import { setBanglaDisplayLanguage } from './lib/banglaDisplayEngine';
 import { Navbar } from './components/Navbar';
 import { Sidebar, NavTab } from './components/Sidebar';
 import { DashboardView } from './components/DashboardView';
@@ -67,6 +68,8 @@ import { PwaManager } from './components/PwaManager';
 import { MoneyReceiptModal, VoucherModal, PrintFormat } from './components/PrintModals';
 import { ChangeCalculatorModal } from './components/ChangeCalculatorModal';
 import { UniversalScannerModal } from './components/UniversalScannerModal';
+import { ScannerDraftHandoffBanner } from './components/scanner/ScannerDraftHandoffBanner';
+import { ApprovedLiveScanDraft } from './components/scanner/LiveScanAiDraftTab';
 import { UnifiedIncomeEntryModal } from './components/UnifiedIncomeEntryModal';
 import { UnifiedExpenseEntryModal } from './components/UnifiedExpenseEntryModal';
 import { JumaCollectionModal } from './components/JumaCollectionModal';
@@ -87,6 +90,7 @@ import { SmsGatewayView } from './components/SmsGatewayView';
 import { PublicReceiptStandaloneView } from './components/PublicReceiptStandaloneView';
 import { AiSmartAuditorModal } from './components/AiSmartAuditorModal';
 import { FloatingAiChatWidget } from './components/FloatingAiChatWidget';
+import { QuickNoteSlideOverDrawer } from './components/notes/QuickNoteSlideOverDrawer';
 import { MobileBottomNav } from './components/common/MobileBottomNav';
 import { OfflineIndicator } from './components/common/OfflineIndicator';
 import { resolveRecordFromSystem } from './services/qrBarcodeService';
@@ -126,6 +130,10 @@ export default function App() {
 
   // App Global State
   const [language, setLanguage] = useState<Language>('bn');
+
+  useEffect(() => {
+    setBanglaDisplayLanguage(language === 'en' ? 'en' : 'bn');
+  }, [language]);
   const [currentTab, setCurrentTab] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const urlTab = new URLSearchParams(window.location.search).get('tab');
@@ -235,6 +243,8 @@ export default function App() {
     autoPrint?: boolean;
   }>({ item: null, type: 'INCOME', format: 'POS_80' });
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
+  const [isQuickNoteDrawerOpen, setIsQuickNoteDrawerOpen] = useState<boolean>(false);
+  const [noticesInitialSubTab, setNoticesInitialSubTab] = useState<string | undefined>(undefined);
 
   // Fetch all initial data from backend (isInitial = true shows full splash; isInitial = false performs background silent sync)
   const loadData = async (isInitial: boolean = false) => {
@@ -657,6 +667,23 @@ export default function App() {
       setCurrentTab(result.targetTab);
     }
     setScannedActionIntent(result);
+  };
+
+  const [activeScannerDraft, setActiveScannerDraft] = useState<ApprovedLiveScanDraft | null>(null);
+
+  const handleSendScannerAiDraft = (draft: ApprovedLiveScanDraft) => {
+    setActiveScannerDraft(draft);
+    setIsScannerOpen(false);
+    if (draft.targetModule === 'INCOME') {
+      setCurrentTab('income');
+    } else if (draft.targetModule === 'EXPENSE') {
+      setCurrentTab('expense');
+    } else if (draft.targetModule === 'DOCUMENT') {
+      setCurrentTab('documents');
+    } else if (draft.targetModule === 'SMART_NOTE') {
+      setNoticesInitialSubTab('smart-notes');
+      setCurrentTab('notices');
+    }
   };
 
   const handleExecuteRecordAction = (action: RecordSpecificAction, recordItem: ResolvedRecordItem) => {
@@ -1419,6 +1446,12 @@ export default function App() {
         </div>
       )}
 
+      {/* Approved Live Scanner AI Draft Handoff Tray (Preview/Copy Only — Zero Auto-Save) */}
+      <ScannerDraftHandoffBanner
+        draft={activeScannerDraft}
+        onDismiss={() => setActiveScannerDraft(null)}
+      />
+
       {/* 0. SaaS Platform Super Admin Control Hub View */}
       {currentTab === 'saasHub' && (
         <SaasAdminHubView
@@ -1494,6 +1527,7 @@ export default function App() {
           onOpenIncomeModal={() => setIsGlobalIncomeModalOpen(true)}
           onOpenExpenseModal={() => setIsGlobalExpenseModalOpen(true)}
           onOpenCalculator={() => setIsGlobalCalculatorOpen(true)}
+          onOpenQuickNote={() => setIsQuickNoteDrawerOpen(true)}
           onRefresh={() => loadData(false)}
         />
       )}
@@ -1776,10 +1810,12 @@ export default function App() {
         />
       )}
 
-      {/* 7.2 Official Document & Notice Management (📢 নোটিশ ও দাপ্তরিক যোগাযোগ - ১৪টি বিভাগ) */}
+      {/* 7.2 Official Document & Notice Management (📢 নোটিশ ও দাপ্তরিক যোগাযোগ) */}
       {currentTab === 'notices' && (
         <OfficialDocumentManagementView
           mosque={mosque}
+          currentUser={currentUser}
+          initialSubTab={noticesInitialSubTab}
           committeeTerms={terms}
           committeeMeetings={meetings}
           resolutions={resolutions}
@@ -2313,6 +2349,19 @@ export default function App() {
         isOpen={isGlobalCalculatorOpen}
         onClose={() => setIsGlobalCalculatorOpen(false)}
         language={language}
+        mosque={mosque}
+      />
+
+      {/* Quick Note / খসড়া Slide-Over Drawer (Dashboard Quick Action) */}
+      <QuickNoteSlideOverDrawer
+        isOpen={isQuickNoteDrawerOpen}
+        onClose={() => setIsQuickNoteDrawerOpen(false)}
+        mosque={mosque}
+        currentUser={currentUser}
+        onOpenFullModule={() => {
+          setNoticesInitialSubTab('smart-notes');
+          setCurrentTab('notices');
+        }}
       />
 
       {/* Universal QR & Barcode Camera Scanner Modal */}
@@ -2326,6 +2375,7 @@ export default function App() {
         onOpenActionCardHub={() => setIsActionCardHubOpen(true)}
         onOpenRecordAction={handleOpenRecordAction}
         resolveRecord={getResolvedRecord}
+        onSendAiDraftToModule={handleSendScannerAiDraft}
       />
 
       {/* Module Action QR Code Catalog & Printable Card Hub */}

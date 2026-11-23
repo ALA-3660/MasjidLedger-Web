@@ -309,10 +309,21 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
         </div>
 
         {/* Footer */}
-        <div className="p-3 bg-stone-50 border-t border-stone-200 text-center">
+        <div className="p-3 bg-stone-50 border-t border-stone-200 flex flex-col sm:flex-row items-center justify-between gap-2">
           <p className="text-[11px] text-stone-500">
-            নোটিফিকেশনে ক্লিক করলে সরাসরি সংশ্লিষ্ট ম্যানেজমেন্ট পেজে নিয়ে যাওয়া হবে।
+            নোটিফিকেশনে ক্লিক করলে সরাসরি সংশ্লিষ্ট পেজে নিয়ে যাওয়া হবে।
           </p>
+          <button
+            type="button"
+            onClick={() => {
+              onNavigate('backupRestore');
+              onClose();
+            }}
+            className="text-[11px] font-siliguri font-bold text-emerald-800 hover:text-emerald-950 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-lg flex items-center gap-1 transition cursor-pointer whitespace-nowrap"
+          >
+            <span>অটো-রিমাইন্ডার ও ব্যাকআপ হাব</span>
+            <ArrowRight className="w-3 h-3" />
+          </button>
         </div>
       </div>
     </div>

@@ -17,6 +17,7 @@ import { OfficialDocument } from '../../types/officialDocumentTypes';
 import { Mosque } from '../../types';
 import { MosqueOfficialLetterhead } from '../common/MosqueOfficialLetterhead';
 import { printElement } from '../../lib/printUtils';
+import { sanitizeOfficialDocHtml } from '../../lib/sanitizeHtml';
 
 interface OfficialDocumentPrintViewProps {
   document: OfficialDocument;
@@ -191,10 +192,10 @@ export const OfficialDocumentPrintView: React.FC<OfficialDocumentPrintViewProps>
                 )}
               </div>
 
-              {/* Document Body (Rendered HTML) */}
+              {/* Document Body (Rendered HTML — Sanitized) */}
               <div
                 className="text-xs sm:text-sm text-slate-900 leading-relaxed space-y-3 prose max-w-none mb-10"
-                dangerouslySetInnerHTML={{ __html: doc.body }}
+                dangerouslySetInnerHTML={{ __html: sanitizeOfficialDocHtml(doc.body) }}
               />
 
               {/* Action / Resolution Notes (If any) */}

@@ -7,6 +7,8 @@
  * - Any background UI or text from bleeding into the printed document.
  */
 
+import { convertSubtreeDigitsToBangla } from './banglaDisplayEngine';
+
 export interface PrintOptions {
   title?: string;
   pageSize?: 'A4' | 'POS_80' | 'POS_58' | 'letter';
@@ -91,7 +93,11 @@ export function printElement(
       }
 
       const headStyles = gatherCurrentDocumentStyles();
-      const contentHtml = element.outerHTML;
+      const clonedElement = element.cloneNode(true) as HTMLElement;
+      if (document.documentElement.lang !== 'en') {
+        convertSubtreeDigitsToBangla(clonedElement, true);
+      }
+      const contentHtml = clonedElement.outerHTML;
 
       const pageRule =
         pageSize === 'A4'
@@ -121,7 +127,15 @@ export function printElement(
       margin: 0 !important;
       padding: 0 !important;
       width: 100% !important;
-      font-family: 'Hind Siliguri', 'Tiro Bangla', 'Baloo Da 2', sans-serif !important;
+      font-family: 'Tiro Bangla', 'Baloo Da 2', 'Hind Siliguri', serif !important;
+    }
+    h1, .page-title, .font-siliguri, .font-mosque-name {
+      font-family: 'Hind Siliguri', sans-serif !important;
+    }
+    .font-baloo, .font-taka, .font-currency, .font-numeric, .tabular-nums, .font-mono:not(code):not(pre), .print-amount-cell, td.text-right, th.text-right {
+      font-family: 'Baloo Da 2', sans-serif !important;
+      font-variant-numeric: tabular-nums;
+      font-feature-settings: "tnum";
     }
     /* Hide all screen buttons, controls, bars, and non-print items */
     .print\\:hidden,

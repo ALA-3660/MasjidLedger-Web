@@ -47,6 +47,7 @@ interface OfficialDocumentFormModalProps {
   documentToEdit?: OfficialDocument | null;
   initialDocType?: OfficialDocumentType;
   initialOpenAi?: boolean;
+  initialDraftData?: { title: string; body: string } | null;
   mosque?: Mosque | null;
   committeeTerms?: CommitteeTerm[];
   committeeMeetings?: CommitteeMeeting[];
@@ -62,6 +63,7 @@ export const OfficialDocumentFormModal: React.FC<OfficialDocumentFormModalProps>
   documentToEdit,
   initialDocType = 'NOTICE',
   initialOpenAi = false,
+  initialDraftData = null,
   mosque,
   committeeTerms = [],
   committeeMeetings = [],
@@ -185,7 +187,7 @@ export const OfficialDocumentFormModal: React.FC<OfficialDocumentFormModalProps>
         // Reset defaults for new doc
         setDocType(initialDocType);
         setSubType('');
-        setTitle('');
+        setTitle(initialDraftData?.title || '');
         setDocumentNumber('');
         setMemoNumber('');
         setApplicationNumber('');
@@ -203,7 +205,7 @@ export const OfficialDocumentFormModal: React.FC<OfficialDocumentFormModalProps>
         setRecipientDesignation('');
         setRecipientOrg('');
         setRecipientAddress('');
-        setBody('<p></p>');
+        setBody(initialDraftData?.body || '<p></p>');
         setSummary('');
         setStatus('DRAFT');
         setPriority('NORMAL');

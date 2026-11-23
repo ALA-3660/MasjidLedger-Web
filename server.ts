@@ -44,6 +44,29 @@ import {
   verifyStaffLeaveRequestAi,
   generateStaffPayrollDraftAi,
   generateStaffSalarySmsAi,
+  composeSmsMessageAi,
+  generateAutoSmsTemplateAi,
+  analyzeSmsDeliveryInsightsAi,
+  analyzeWaqfDocumentWithAi,
+  generateWaqfOverdueRemindersAi,
+  generateWaqfPortfolioSummaryAi,
+  extractCemeteryEntryWithAi,
+  generateCemeteryCertificateAndCondolenceAi,
+  generateCemeterySummaryAndReuseAi,
+  draftLibraryBookWithAi,
+  summarizeKnowledgeNoteWithAi,
+  generateLibraryOverdueRemindersAi,
+  draftPublicPortalUpdateWithAi,
+  askPublicPortalAssistantWithAi,
+  scanDocumentMetadataWithAi,
+  summarizeDocumentArchiveWithAi,
+  suggestReportFiltersWithAi,
+  generateReportExecutiveSummaryWithAi,
+  scanSmartVoucherOrDocWithAi,
+  parseDenominationCountsWithAi,
+  generateDenominationSummaryNoteWithAi,
+  summarizeAuditLogsWithAi,
+  suggestAuditLogFiltersWithAi,
   GeminiServiceError,
 } from './src/server/geminiService.ts';
 import { sanitizeGeminiModelName, isValidGeminiModelName } from './src/config/aiConfig.ts';
@@ -65,8 +88,22 @@ import {
   ACCESS_TOKEN_TTL_SECONDS,
   REFRESH_TOKEN_TTL_SECONDS,
   JwtAccessPayload,
-  decodeTokenUnverified,
 } from './src/server/auth/jwt.ts';
+import {
+  securityHeadersMiddleware,
+  strictCorsMiddleware,
+  authBruteForceLimiter,
+  globalApiLimiter,
+  aiAndUploadLimiter,
+  getClientIp,
+  sanitizeUserForResponse,
+  sanitizeRichHtmlServer,
+  sanitizeSafeHttpUrl,
+  validateBase64FileUpload,
+  sanitizeUploadFileName,
+  logSecurityAuditEvent,
+  enforceTenantOwnershipOrRespond,
+} from './src/server/security/securityMiddleware.ts';
 import { IReadOnlyDataAccessLayer, IScopedMutationDataAccessLayer, DALOptions } from './src/server/db/interfaces/IDataAccessLayer.ts';
 import { dalContextMiddleware } from './src/server/middleware/dalContextMiddleware.ts';
 import {
@@ -212,12 +249,28 @@ import {
   OrderType,
   LegalDashboardStats,
 } from './src/types/index.ts';
+import { createSmartNotesRouter } from './src/server/smartNotesService.ts';
+import { createAutomationRouter, startAutoBackupScheduler } from './src/server/automationService.ts';
 
 export const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
+// Security Hardening: Hide framework fingerprint, trust proxy, enforce headers, strict CORS & API rate limits
+app.disable('x-powered-by');
+app.set('trust proxy', 1);
+app.use(securityHeadersMiddleware);
+app.use(strictCorsMiddleware);
+
 app.use(express.json({ limit: '35mb' }));
 app.use(express.urlencoded({ extended: true, limit: '35mb' }));
+
+// Global & sensitive-route server-side rate limiting
+app.use('/api/v1', globalApiLimiter.middleware());
+app.use('/api/v1/ai', aiAndUploadLimiter.middleware());
+app.use('/api/v1/upload', aiAndUploadLimiter.middleware());
+app.use('/api/v1/official-documents/ai-assist', aiAndUploadLimiter.middleware());
+app.use('/api/v1/mosques/current/branding', aiAndUploadLimiter.middleware());
+app.use('/api/v1/automation/queue/draft', aiAndUploadLimiter.middleware());
 
 // Health Check Endpoint (Production Readiness & Monitoring)
 app.get('/api/v1/health', (req: Request, res: Response) => {
@@ -263,111 +316,22 @@ export interface AuthRequest extends Request {
   dalOptions?: DALOptions;
 }
 
-// Multi-tenant authentication & role middleware
+// Multi-tenant authentication & role middleware (Strict Verified JWT Only)
 const authenticate = (req: AuthRequest, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
   const mosqueHeader = (req.headers['x-mosque-id'] as string) || '';
-  const userHeader = (req.headers['x-user-id'] as string) || '';
   const rawIdempotencyKey = (req.headers['idempotency-key'] as string) || (req.headers['x-idempotency-key'] as string);
+  const clientIp = getClientIp(req);
 
   req.idempotencyKey = undefined;
 
-  // Extract user strictly from verified Signed JWT access token
-  let user: User | undefined;
-  let tokenPayload: JwtAccessPayload | undefined;
-
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.substring(7).trim();
-    const verifyResult = verifyAccessToken(token);
-
-    if (verifyResult.valid) {
-      tokenPayload = verifyResult.payload;
-      user = db.users.find((u) => u.id === tokenPayload?.sub);
-    } else if (process.env.NODE_ENV !== 'test') {
-      // Seamless session migration if token was issued prior to a server restart
-      const decoded = decodeTokenUnverified(token);
-      if (decoded?.sub) {
-        user = db.users.find((u) => u.id === decoded.sub);
-        if (user) {
-          tokenPayload = decoded as JwtAccessPayload;
-        }
-      }
-      if (!user && userHeader) {
-        user = db.users.find((u) => u.id === userHeader);
-      }
-    }
-
-    if (!user && !verifyResult.valid) {
-      return res.status(401).json({
-        success: false,
-        error: {
-          code: verifyResult.code === 'EXPIRED' ? 'TOKEN_EXPIRED' : 'UNAUTHORIZED',
-          message: verifyResult.error || 'অননুমোদিত অ্যাক্সেস। অনুগ্রহ করে পুনরায় লগইন করুন।',
-        },
-      });
-    }
-
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        error: {
-          code: 'USER_NOT_FOUND',
-          message: 'ব্যবহারকারীর তথ্য সিস্টেমে পাওয়া যায়নি।',
-        },
-      });
-    }
-
-    if (user.status === 'INACTIVE' || user.status === 'SUSPENDED' || user.status === 'BLOCKED') {
-      return res.status(403).json({
-        success: false,
-        error: {
-          code: 'ACCOUNT_DISABLED',
-          message: 'আপনার অ্যাকাউন্টটি বর্তমানে নিষ্ক্রিয় বা স্থগিত রয়েছে।',
-        },
-      });
-    }
-  } else if (userHeader) {
-    user = db.users.find((u) => u.id === userHeader);
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        error: {
-          code: 'USER_NOT_FOUND',
-          message: 'ব্যবহারকারীর তথ্য সিস্টেমে পাওয়া যায়নি।',
-        },
-      });
-    }
-    if (user.status === 'INACTIVE' || user.status === 'SUSPENDED' || user.status === 'BLOCKED') {
-      return res.status(403).json({
-        success: false,
-        error: {
-          code: 'ACCOUNT_DISABLED',
-          message: 'আপনার অ্যাকাউন্টটি বর্তমানে নিষ্ক্রিয় বা স্থগিত রয়েছে।',
-        },
-      });
-    }
-  } else if (mosqueHeader && process.env.NODE_ENV !== 'test') {
-    // Self-heal active browser sessions where localStorage token was cleared during a container restart
-    user =
-      db.users.find(
-        (u) =>
-          u.mosqueId === mosqueHeader &&
-          (u.role === 'SUPER_ADMIN' || u.role === 'MOSQUE_ADMIN') &&
-          u.status === 'ACTIVE'
-      ) ||
-      db.users.find((u) => u.role === 'SUPER_ADMIN' && u.status === 'ACTIVE');
-
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        error: {
-          code: 'UNAUTHORIZED',
-          message: 'অননুমোদিত অ্যাক্সেস। অনুগ্রহ করে টোকেনসহ পুনরায় লগইন করুন।',
-        },
-      });
-    }
-  } else {
-    // Missing or invalid Authorization header
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    logSecurityAuditEvent({
+      action: 'UNAUTHORIZED_ACCESS_ATTEMPT',
+      details: `টোকেনবিহীন সুরক্ষিত API অনুরোধ প্রতিহত (${req.method} ${req.path})`,
+      ipAddress: clientIp,
+      status: 'FAILED',
+    });
     return res.status(401).json({
       success: false,
       error: {
@@ -377,13 +341,80 @@ const authenticate = (req: AuthRequest, res: Response, next: NextFunction) => {
     });
   }
 
-  // Authoritative Mosque Determination derived strictly from validated session/user
-  let mosqueId = tokenPayload?.mosqueId || user.mosqueId;
+  const token = authHeader.substring(7).trim();
+  const verifyResult = verifyAccessToken(token);
 
-  if (user.role === 'SUPER_ADMIN' && mosqueHeader) {
+  if (!verifyResult.valid || !verifyResult.payload) {
+    logSecurityAuditEvent({
+      action: verifyResult.code === 'EXPIRED' ? 'TOKEN_EXPIRED_REJECTED' : 'INVALID_TOKEN_REJECTED',
+      details: `অবৈধ বা মেয়াদোত্তীর্ণ JWT টোকেন প্রত্যাখ্যাত (${req.method} ${req.path})`,
+      ipAddress: clientIp,
+      status: 'FAILED',
+    });
+    return res.status(401).json({
+      success: false,
+      error: {
+        code: verifyResult.code === 'EXPIRED' ? 'TOKEN_EXPIRED' : 'UNAUTHORIZED',
+        message: verifyResult.error || 'অননুমোদিত অ্যাক্সেস। অনুগ্রহ করে পুনরায় লগইন করুন।',
+      },
+    });
+  }
+
+  const tokenPayload: JwtAccessPayload = verifyResult.payload;
+  const userRecord = db.users.find((u) => u.id === tokenPayload.sub);
+
+  if (!userRecord) {
+    logSecurityAuditEvent({
+      action: 'UNKNOWN_TOKEN_SUBJECT',
+      details: `অস্তিত্বহীন ব্যবহারকারী আইডির টোকেন প্রত্যাখ্যাত (${req.method} ${req.path})`,
+      ipAddress: clientIp,
+      status: 'FAILED',
+    });
+    return res.status(401).json({
+      success: false,
+      error: {
+        code: 'USER_NOT_FOUND',
+        message: 'ব্যবহারকারীর তথ্য সিস্টেমে পাওয়া যায়নি।',
+      },
+    });
+  }
+
+  if (userRecord.status === 'INACTIVE' || userRecord.status === 'SUSPENDED' || userRecord.status === 'BLOCKED') {
+    logSecurityAuditEvent({
+      mosqueId: userRecord.mosqueId,
+      userId: userRecord.id,
+      userName: userRecord.name,
+      userRole: userRecord.role,
+      action: 'DISABLED_ACCOUNT_BLOCKED',
+      details: `নিষ্ক্রিয়/স্থগিত অ্যাকাউন্ট থেকে অনুরোধ ব্লক করা হয়েছে (${req.method} ${req.path})`,
+      ipAddress: clientIp,
+      status: 'FAILED',
+    });
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: 'ACCOUNT_DISABLED',
+        message: 'আপনার অ্যাকাউন্টটি বর্তমানে নিষ্ক্রিয় বা স্থগিত রয়েছে।',
+      },
+    });
+  }
+
+  // Authoritative Mosque Determination derived strictly from verified JWT/user session
+  let mosqueId = tokenPayload.mosqueId || userRecord.mosqueId;
+
+  if (userRecord.role === 'SUPER_ADMIN' && mosqueHeader) {
     mosqueId = mosqueHeader;
-  } else if (mosqueHeader && user.role !== 'SUPER_ADMIN' && mosqueHeader !== mosqueId) {
-    // Cross-tenant access attempt blocked
+  } else if (mosqueHeader && userRecord.role !== 'SUPER_ADMIN' && mosqueHeader !== mosqueId) {
+    logSecurityAuditEvent({
+      mosqueId,
+      userId: userRecord.id,
+      userName: userRecord.name,
+      userRole: userRecord.role,
+      action: 'CROSS_TENANT_HEADER_BLOCKED',
+      details: `অন্য মসজিদ (${mosqueHeader}) অ্যাক্সেসের চেষ্টা প্রতিহত (${req.method} ${req.path})`,
+      ipAddress: clientIp,
+      status: 'FAILED',
+    });
     return res.status(403).json({
       success: false,
       error: {
@@ -404,7 +435,8 @@ const authenticate = (req: AuthRequest, res: Response, next: NextFunction) => {
     });
   }
 
-  req.user = user;
+  // Attach sanitized user object (never exposing passwordHash or reset tokens)
+  req.user = sanitizeUserForResponse(userRecord);
   req.currentMosque = mosque;
 
   if (rawIdempotencyKey && typeof rawIdempotencyKey === 'string' && rawIdempotencyKey.trim()) {
@@ -432,6 +464,16 @@ const requirePermission = (permission: Permission) => {
     if (req.user.permissions && req.user.permissions.includes(permission)) {
       return next();
     }
+    logSecurityAuditEvent({
+      mosqueId: req.currentMosque?.id,
+      userId: req.user.id,
+      userName: req.user.name,
+      userRole: req.user.role,
+      action: 'PERMISSION_DENIED',
+      details: `প্রয়োজনীয় অনুমতি (${permission}) না থাকায় অনুরোধ প্রত্যাখ্যাত (${req.method} ${req.path})`,
+      ipAddress: getClientIp(req),
+      status: 'FAILED',
+    });
     return res.status(403).json({
       success: false,
       error: { code: 'FORBIDDEN', message: 'এই কাজটি সম্পন্ন করার পর্যাপ্ত অনুমতি আপনার নেই।' }
@@ -450,6 +492,16 @@ const requireAnyPermission = (permissions: Permission[]) => {
     if (req.user.permissions && permissions.some(p => req.user.permissions.includes(p))) {
       return next();
     }
+    logSecurityAuditEvent({
+      mosqueId: req.currentMosque?.id,
+      userId: req.user.id,
+      userName: req.user.name,
+      userRole: req.user.role,
+      action: 'PERMISSION_DENIED',
+      details: `প্রয়োজনীয় অনুমতি (${permissions.join('/')}) না থাকায় অনুরোধ প্রত্যাখ্যাত (${req.method} ${req.path})`,
+      ipAddress: getClientIp(req),
+      status: 'FAILED',
+    });
     return res.status(403).json({
       success: false,
       error: { code: 'FORBIDDEN', message: 'এই কাজটি সম্পন্ন করার পর্যাপ্ত অনুমতি আপনার নেই।' }
@@ -627,10 +679,12 @@ function normalizePhoneForSearch(phone: string): string {
 // ==========================================
 // 1. AUTH & USER ENDPOINTS
 // ==========================================
-app.post('/api/v1/auth/login', (req: Request, res: Response) => {
-  const { phoneOrEmail, identifier, phone, password, mosqueId: requestedMosqueId } = req.body;
-  const rawLoginId = (identifier || phoneOrEmail || phone || '').trim();
-  const rawPassword = (password || '').trim();
+app.post('/api/v1/auth/login', authBruteForceLimiter.middleware(), (req: Request, res: Response) => {
+  const { phoneOrEmail, identifier, phone, password, mosqueId: requestedMosqueId } = req.body || {};
+  const rawLoginId = String(identifier || phoneOrEmail || phone || '').trim();
+  const rawPassword = String(password || '').trim();
+  const clientIp = getClientIp(req);
+
   if (!rawLoginId || !rawPassword) {
     return res.status(400).json({
       success: false,
@@ -650,25 +704,26 @@ app.post('/api/v1/auth/login', (req: Request, res: Response) => {
   let passwordValid = false;
   if (user) {
     passwordValid = verifyPassword(rawPassword, user.passwordHash) || verifyPassword(normalizedPassword, user.passwordHash);
-
-    // Resilient fallback for super admin accounts
-    if (!passwordValid && user.role === 'SUPER_ADMIN') {
-      if (rawPassword === '36603660' || normalizedPassword === '36603660' || rawPassword === 'super123') {
-        passwordValid = true;
-        user.passwordHash = hashPassword('36603660');
-        db.save();
-      }
-    }
   }
 
   if (!user || !passwordValid) {
+    logSecurityAuditEvent({
+      mosqueId: user?.mosqueId || db.mosques[0]?.id,
+      userId: user?.id || 'UNKNOWN_USER',
+      userName: user?.name || rawLoginId.slice(0, 40),
+      userRole: user?.role || 'UNAUTHENTICATED',
+      action: 'LOGIN_FAILED',
+      details: `ব্যর্থ লগইন প্রচেষ্টা (${rawLoginId.slice(0, 40)})`,
+      ipAddress: clientIp,
+      status: 'FAILED',
+    });
     return res.status(401).json({
       success: false,
       error: { code: 'INVALID_CREDENTIALS', message: 'মোবাইল/ইমেইল অথবা পাসওয়ার্ড সঠিক নয়।' }
     });
   }
 
-  // Automatic secure password migration to bcrypt if somehow not already hashed
+  // Automatic secure password migration to bcrypt if legacy non-bcrypt hash is encountered
   if (user.passwordHash && !user.passwordHash.startsWith('$2a$') && !user.passwordHash.startsWith('$2b$')) {
     user.passwordHash = hashPassword(rawPassword);
     user.updatedAt = new Date().toISOString();
@@ -676,11 +731,24 @@ app.post('/api/v1/auth/login', (req: Request, res: Response) => {
   }
 
   if (user.status === 'INACTIVE' || user.status === 'SUSPENDED' || user.status === 'BLOCKED') {
+    logSecurityAuditEvent({
+      mosqueId: user.mosqueId,
+      userId: user.id,
+      userName: user.name,
+      userRole: user.role,
+      action: 'LOGIN_BLOCKED_DISABLED',
+      details: 'নিষ্ক্রিয় বা স্থগিত অ্যাকাউন্টে লগইন প্রচেষ্টা প্রতিহত',
+      ipAddress: clientIp,
+      status: 'FAILED',
+    });
     return res.status(403).json({
       success: false,
       error: { code: 'ACCOUNT_DISABLED', message: 'আপনার অ্যাকাউন্টটি বর্তমানে নিষ্ক্রিয় বা স্থগিত রয়েছে।' }
     });
   }
+
+  // Reset brute-force bucket on successful authentication
+  authBruteForceLimiter.reset(`auth:${clientIp}:${rawLoginId.toLowerCase().slice(0, 80)}`);
 
   // Authoritative mosque resolution for login
   const targetMosque = (user.role === 'SUPER_ADMIN' && requestedMosqueId)
@@ -695,7 +763,7 @@ app.post('/api/v1/auth/login', (req: Request, res: Response) => {
   const refreshTokenResult = generateRefreshToken(user);
   const mosque = targetMosque || db.mosques.find(m => m.id === user.mosqueId) || db.mosques[0];
 
-  db.logAudit(mosque.id, user.id, user.name, user.role, 'LOGIN', 'AUTH', 'সফলভাবে লগইন করেছেন');
+  db.logAudit(mosque.id, user.id, user.name, user.role, 'LOGIN', 'AUTH', 'সফলভাবে লগইন করেছেন', user.id, clientIp);
 
   res.json({
     success: true,
@@ -704,17 +772,7 @@ app.post('/api/v1/auth/login', (req: Request, res: Response) => {
       accessToken: accessTokenResult.token,
       refreshToken: refreshTokenResult.token,
       expiresIn: accessTokenResult.expiresIn,
-      user: {
-        id: user.id,
-        name: user.name,
-        phone: user.phone,
-        email: user.email,
-        role: user.role,
-        permissions: user.permissions,
-        mosqueId: user.mosqueId,
-        status: user.status,
-        photoUrl: user.photoUrl,
-      },
+      user: sanitizeUserForResponse(user),
       mosque,
       allMosques: user.role === 'SUPER_ADMIN' ? db.mosques : [mosque],
     },
@@ -722,26 +780,25 @@ app.post('/api/v1/auth/login', (req: Request, res: Response) => {
   });
 });
 
-app.post('/api/v1/auth/refresh', (req: Request, res: Response) => {
-  const { refreshToken, userId } = req.body || {};
-  const headerUserId = (req.headers['x-user-id'] as string) || '';
+app.post('/api/v1/auth/refresh', authBruteForceLimiter.middleware(), (req: Request, res: Response) => {
+  const { refreshToken } = req.body || {};
+  const clientIp = getClientIp(req);
 
-  if ((!refreshToken || typeof refreshToken !== 'string') && !userId && !headerUserId) {
+  if (!refreshToken || typeof refreshToken !== 'string' || !refreshToken.trim()) {
     return res.status(400).json({
       success: false,
       error: { code: 'MISSING_TOKEN', message: 'রিফ্রেশ টোকেন প্রদান আবশ্যক।' }
     });
   }
 
-  let verifyResult = refreshToken ? verifyRefreshToken(refreshToken) : { valid: false, payload: undefined, code: 'MALFORMED', error: '' };
-  let resolvedUserId = verifyResult.payload?.sub;
-
-  if ((!verifyResult.valid || !resolvedUserId) && process.env.NODE_ENV !== 'test') {
-    const decoded = refreshToken ? decodeTokenUnverified(refreshToken) : null;
-    resolvedUserId = decoded?.sub || userId || headerUserId;
-  }
-
-  if (!resolvedUserId) {
+  const verifyResult = verifyRefreshToken(refreshToken.trim());
+  if (!verifyResult.valid || !verifyResult.payload?.sub) {
+    logSecurityAuditEvent({
+      action: 'REFRESH_TOKEN_REJECTED',
+      details: `অকার্যকর বা প্রত্যাহারকৃত রিফ্রেশ টোকেন প্রত্যাখ্যাত (${verifyResult.code || 'INVALID'})`,
+      ipAddress: clientIp,
+      status: 'FAILED',
+    });
     return res.status(401).json({
       success: false,
       error: {
@@ -752,7 +809,7 @@ app.post('/api/v1/auth/refresh', (req: Request, res: Response) => {
   }
 
   const refreshPayload = verifyResult.payload;
-  const user = db.users.find(u => u.id === resolvedUserId);
+  const user = db.users.find(u => u.id === refreshPayload.sub);
 
   if (!user) {
     return res.status(401).json({
@@ -769,7 +826,7 @@ app.post('/api/v1/auth/refresh', (req: Request, res: Response) => {
   }
 
   // Token rotation: revoke previous refresh session
-  if (refreshPayload?.jti) {
+  if (refreshPayload.jti) {
     tokenSessionManager.revoke(refreshPayload.jti);
   }
 
@@ -788,34 +845,42 @@ app.post('/api/v1/auth/refresh', (req: Request, res: Response) => {
   });
 });
 
-// Forgot Password & Reset Password Endpoints
-app.post('/api/v1/auth/forgot-password', (req: Request, res: Response) => {
+// Forgot Password & Reset Password Endpoints (Brute-force Protected & Crypto-Random OTP)
+app.post('/api/v1/auth/forgot-password', authBruteForceLimiter.middleware(), (req: Request, res: Response) => {
   const { emailOrPhone, identifier } = req.body || {};
-  const query = (identifier || emailOrPhone || '').trim().toLowerCase();
+  const rawQuery = String(identifier || emailOrPhone || '').trim();
+  const queryLower = rawQuery.toLowerCase();
+  const normalizedPhone = normalizePhoneForSearch(rawQuery);
+  const clientIp = getClientIp(req);
 
-  if (!query) {
+  if (!rawQuery) {
     return res.status(400).json({
       success: false,
       error: { code: 'MISSING_QUERY', message: 'নিবন্ধিত ইমেইল বা মোবাইল নম্বর প্রদান করুন।' }
     });
   }
 
-  const user = db.users.find(u => 
-    (u.email && u.email.toLowerCase().includes(query)) || 
-    (u.phone && u.phone.includes(query)) ||
-    (u.name && u.name.toLowerCase().includes(query))
-  ) || db.users[0];
+  const user = db.users.find(u =>
+    (u.email && u.email.toLowerCase() === queryLower) ||
+    (u.phone && (u.phone === rawQuery || (normalizedPhone && normalizePhoneForSearch(u.phone) === normalizedPhone)))
+  );
 
   if (!user) {
+    logSecurityAuditEvent({
+      action: 'FORGOT_PASSWORD_UNKNOWN',
+      details: `অনিবন্ধিত তথ্য দিয়ে পাসওয়ার্ড রিসেট অনুরোধ (${rawQuery.slice(0, 40)})`,
+      ipAddress: clientIp,
+      status: 'WARNING',
+    });
     return res.status(404).json({
       success: false,
       error: { code: 'USER_NOT_FOUND', message: 'এই ইমেইল বা মোবাইল নম্বরের সাথে কোনো অ্যাকাউন্ট পাওয়া যায়নি।' }
     });
   }
 
-  const resetToken = Math.floor(100000 + Math.random() * 900000).toString();
+  const resetToken = String(crypto.randomInt(100000, 1000000));
   (user as any).passwordResetToken = resetToken;
-  (user as any).passwordResetExpires = Date.now() + 60 * 60 * 1000; // 60 minutes
+  (user as any).passwordResetExpires = Date.now() + 15 * 60 * 1000; // 15 minutes
   db.save();
 
   db.logAudit(
@@ -825,47 +890,73 @@ app.post('/api/v1/auth/forgot-password', (req: Request, res: Response) => {
     user.role,
     'FORGOT_PASSWORD_REQUEST',
     'AUTH',
-    `পাসওয়ার্ড রিকভারি টোকেন জেনারেট করা হয়েছে (${query})`
+    `পাসওয়ার্ড রিকভারি টোকেন জেনারেট করা হয়েছে (${rawQuery.slice(0, 40)})`,
+    user.id,
+    clientIp
   );
+
+  const responseData: Record<string, any> = {
+    expiresInMinutes: 15,
+    maskedContact: user.email
+      ? user.email.replace(/(.{2})(.*)(@.*)/, '$1***$3')
+      : user.phone.replace(/.(?=.{4})/g, '*'),
+  };
+  if (process.env.NODE_ENV !== 'production') {
+    responseData.resetToken = resetToken;
+  }
 
   res.json({
     success: true,
-    data: {
-      resetToken,
-      expiresInMinutes: 60,
-      maskedContact: user.email ? user.email.replace(/(.{2})(.*)(@.*)/, '$1***$3') : user.phone,
-    },
+    data: responseData,
     message: 'পাসওয়ার্ড পুনরুদ্ধারের ওটিপি / টোকেন সফলভাবে পাঠানো হয়েছে।'
   });
 });
 
-app.post('/api/v1/auth/reset-password', (req: Request, res: Response) => {
+app.post('/api/v1/auth/reset-password', authBruteForceLimiter.middleware(), (req: Request, res: Response) => {
   const { identifier, token, newPassword } = req.body || {};
-  const query = (identifier || '').trim().toLowerCase();
+  const rawQuery = String(identifier || '').trim();
+  const queryLower = rawQuery.toLowerCase();
+  const normalizedPhone = normalizePhoneForSearch(rawQuery);
+  const submittedToken = String(token || '').trim();
+  const clientIp = getClientIp(req);
 
-  if (!token || !newPassword || newPassword.trim().length < 4) {
+  if (!submittedToken || !newPassword || String(newPassword).trim().length < 6) {
     return res.status(400).json({
       success: false,
-      error: { code: 'INVALID_INPUT', message: 'ন্যূনতম ৪ অক্ষরের নতুন পাসওয়ার্ড এবং রিসেট কোড দিন।' }
+      error: { code: 'INVALID_INPUT', message: 'ন্যূনতম ৬ অক্ষরের নতুন পাসওয়ার্ড এবং সঠিক রিসেট কোড দিন।' }
     });
   }
 
-  const user = db.users.find(u => 
-    (!query || (u.email && u.email.toLowerCase().includes(query)) || (u.phone && u.phone.includes(query))) &&
-    ((u as any).passwordResetToken === token.trim() || token.trim() === '123456')
-  ) || db.users.find(u => (u as any).passwordResetToken === token.trim() || token.trim() === '123456') || db.users[0];
+  const now = Date.now();
+  const user = db.users.find(u => {
+    const storedToken = (u as any).passwordResetToken;
+    const expiresAt = Number((u as any).passwordResetExpires || 0);
+    if (!storedToken || storedToken !== submittedToken || expiresAt < now) return false;
+    if (!rawQuery) return true;
+    return (
+      (u.email && u.email.toLowerCase() === queryLower) ||
+      (u.phone && (u.phone === rawQuery || (normalizedPhone && normalizePhoneForSearch(u.phone) === normalizedPhone)))
+    );
+  });
 
   if (!user) {
+    logSecurityAuditEvent({
+      action: 'RESET_PASSWORD_FAILED',
+      details: `ভুল বা মেয়াদোত্তীর্ণ ওটিপি দিয়ে পাসওয়ার্ড রিসেট চেষ্টা (${rawQuery.slice(0, 40) || 'no-identifier'})`,
+      ipAddress: clientIp,
+      status: 'FAILED',
+    });
     return res.status(400).json({
       success: false,
-      error: { code: 'INVALID_TOKEN', message: 'রিসেট টোকেন বা ওটিপি সঠিক নয়।' }
+      error: { code: 'INVALID_TOKEN', message: 'রিসেট টোকেন বা ওটিপি সঠিক নয় অথবা মেয়াদ শেষ হয়ে গেছে।' }
     });
   }
 
-  user.passwordHash = hashPassword(newPassword.trim());
+  user.passwordHash = hashPassword(String(newPassword).trim());
   (user as any).passwordResetToken = undefined;
   (user as any).passwordResetExpires = undefined;
   user.updatedAt = new Date().toISOString();
+  tokenSessionManager.revokeAllForUser(user.id);
   db.save();
 
   db.logAudit(
@@ -875,7 +966,9 @@ app.post('/api/v1/auth/reset-password', (req: Request, res: Response) => {
     user.role,
     'RESET_PASSWORD_SUCCESS',
     'AUTH',
-    'সফলভাবে পাসওয়ার্ড পরিবর্তন করা হয়েছে'
+    'সফলভাবে পাসওয়ার্ড পরিবর্তন করা হয়েছে এবং পূর্বের সব সেশন বাতিল করা হয়েছে',
+    user.id,
+    clientIp
   );
 
   res.json({
@@ -1106,19 +1199,10 @@ app.get('/api/v1/auth/me', authenticate, (req: AuthRequest, res: Response) => {
   res.json({
     success: true,
     data: {
-      user: req.user,
+      user: sanitizeUserForResponse(req.user!),
       mosque: req.currentMosque,
       allMosques: req.user?.role === 'SUPER_ADMIN' ? db.mosques : [req.currentMosque],
-      allUsers: db.users.filter(u => req.user?.role === 'SUPER_ADMIN' || u.mosqueId === req.currentMosque?.id).map(u => ({
-        id: u.id,
-        name: u.name,
-        phone: u.phone,
-        email: u.email,
-        role: u.role,
-        permissions: u.permissions,
-        status: u.status,
-        mosqueId: u.mosqueId,
-      }))
+      allUsers: db.users.filter(u => req.user?.role === 'SUPER_ADMIN' || u.mosqueId === req.currentMosque?.id).map(u => sanitizeUserForResponse(u))
     }
   });
 });
@@ -1522,8 +1606,11 @@ app.get('/api/v1/users', authenticate, (req: AuthRequest, res: Response) => {
 
 app.get('/api/v1/users/:id', authenticate, (req: AuthRequest, res: Response) => {
   const user = db.users.find(u => u.id === req.params.id);
-  if (!user || (req.user?.role !== 'SUPER_ADMIN' && user.mosqueId !== req.currentMosque!.id)) {
+  if (!user) {
     return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ব্যবহারকারী পাওয়া যায়নি।' } });
+  }
+  if (req.user?.role !== 'SUPER_ADMIN' && !enforceTenantOwnershipOrRespond(req, res, user, 'ব্যবহারকারী পাওয়া যায়নি।')) {
+    return;
   }
 
   res.json({
@@ -1628,8 +1715,11 @@ app.post('/api/v1/users', authenticate, requirePermission('MANAGE_USERS'), (req:
 
 app.put('/api/v1/users/:id', authenticate, requirePermission('MANAGE_USERS'), (req: AuthRequest, res: Response) => {
   const user = db.users.find(u => u.id === req.params.id);
-  if (!user || (req.user?.role !== 'SUPER_ADMIN' && user.mosqueId !== req.currentMosque!.id)) {
+  if (!user) {
     return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ব্যবহারকারী পাওয়া যায়নি।' } });
+  }
+  if (req.user?.role !== 'SUPER_ADMIN' && !enforceTenantOwnershipOrRespond(req, res, user, 'ব্যবহারকারী পাওয়া যায়নি।')) {
+    return;
   }
 
   // Protected SuperAdmin user guard: Non-SuperAdmin cannot modify SUPER_ADMIN user
@@ -1867,8 +1957,11 @@ function extractGoogleDriveFileId(url: string): string | null {
   return null;
 }
 
-// Helper to fetch image from Google Drive with strict 8-second timeout guard (SEC-MSQ-02)
+// Helper to fetch image from Google Drive with strict fileId & MIME validation + 8s timeout guard
 async function fetchGoogleDriveImage(fileId: string): Promise<{ buffer: Buffer; mimeType: string } | null> {
+  if (!fileId || !/^[a-zA-Z0-9_-]{10,120}$/.test(fileId)) {
+    return null;
+  }
   const downloadUrls = [
     `https://lh3.googleusercontent.com/d/${fileId}=w1200`,
     `https://drive.google.com/uc?export=download&id=${fileId}`,
@@ -1885,7 +1978,7 @@ async function fetchGoogleDriveImage(fileId: string): Promise<{ buffer: Buffer; 
         const response = await fetch(url, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+            'Accept': 'image/avif,image/webp,image/apng,image/png,image/jpeg,*/*;q=0.8',
           },
           redirect: 'follow',
           signal: overallController.signal,
@@ -1893,8 +1986,8 @@ async function fetchGoogleDriveImage(fileId: string): Promise<{ buffer: Buffer; 
 
         if (!response.ok) continue;
 
-        const contentType = response.headers.get('content-type') || '';
-        if (contentType.includes('text/html')) continue;
+        const contentType = (response.headers.get('content-type') || '').toLowerCase();
+        if (contentType.includes('text/html') || contentType.includes('image/svg+xml')) continue;
 
         const arrayBuffer = await response.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
@@ -1903,7 +1996,7 @@ async function fetchGoogleDriveImage(fileId: string): Promise<{ buffer: Buffer; 
         if (buffer.length > 8 * 1024 * 1024) continue;
 
         let mimeType = contentType.split(';')[0].trim();
-        if (!mimeType.startsWith('image/')) {
+        if (!mimeType.startsWith('image/') || mimeType === 'image/svg+xml') {
           if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
             mimeType = 'image/png';
           } else if (buffer[0] === 0xFF && buffer[1] === 0xD8) {
@@ -2033,26 +2126,88 @@ app.get('/api/v1/mosques/:mosqueId/branding/logo', (req: Request, res: Response)
   return res.send(defaultSvg);
 });
 
-// Serve uploaded file binary by ID
+// Serve uploaded file binary by ID (Tenant-Isolated & XSS-Safe)
 app.get('/api/v1/files/:fileId', (req: Request, res: Response) => {
-  const file = db.uploadedFiles.find(f => f.id === req.params.fileId);
+  const fileId = String(req.params.fileId || '');
+  if (!fileId || fileId.includes('..') || fileId.includes('/') || fileId.includes('\\')) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_FILE_ID', message: 'অবৈধ ফাইল আইডি।' } });
+  }
+
+  const file = db.uploadedFiles.find(f => f.id === fileId);
   if (!file) {
     return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ফাইল পাওয়া যায়নি।' } });
   }
 
+  // Public raster logos may be rendered directly in <img> tags; all other files require verified tenant JWT
+  const isPublicMosqueLogo =
+    (file.id.startsWith('logo-') || file.id.startsWith('gdrive-logo-')) &&
+    ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'].includes((file.fileType || '').toLowerCase());
+
+  if (!isPublicMosqueLogo) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      logSecurityAuditEvent({
+        mosqueId: file.mosqueId,
+        action: 'UNAUTHORIZED_FILE_ACCESS',
+        details: `টোকেনবিহীন ফাইল ডাউনলোড চেষ্টা প্রতিহত (${fileId})`,
+        recordId: fileId,
+        ipAddress: getClientIp(req),
+        status: 'FAILED',
+      });
+      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'ফাইল দেখার জন্য লগইন আবশ্যক।' } });
+    }
+    const verifyResult = verifyAccessToken(authHeader.substring(7).trim());
+    if (!verifyResult.valid || !verifyResult.payload) {
+      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'অবৈধ বা মেয়াদোত্তীর্ণ টোকেন।' } });
+    }
+    const requester = db.users.find(u => u.id === verifyResult.payload!.sub);
+    if (!requester) {
+      return res.status(401).json({ success: false, error: { code: 'USER_NOT_FOUND', message: 'ব্যবহারকারী পাওয়া যায়নি।' } });
+    }
+    const requesterMosqueId = verifyResult.payload.mosqueId || requester.mosqueId;
+    if (requester.role !== 'SUPER_ADMIN' && file.mosqueId !== requesterMosqueId) {
+      logSecurityAuditEvent({
+        mosqueId: requesterMosqueId,
+        userId: requester.id,
+        userName: requester.name,
+        userRole: requester.role,
+        action: 'CROSS_TENANT_FILE_ACCESS_DENIED',
+        details: `অন্য মসজিদের ফাইল ডাউনলোড চেষ্টা প্রতিহত (${fileId})`,
+        recordId: fileId,
+        ipAddress: getClientIp(req),
+        status: 'FAILED',
+      });
+      return res.status(403).json({
+        success: false,
+        error: { code: 'TENANT_FORBIDDEN', message: 'অন্য মসজিদের ফাইল দেখার বা ডাউনলোডের অনুমতি নেই।' }
+      });
+    }
+  }
+
   if (file.url.startsWith('data:')) {
-    const matches = file.url.match(/^data:([^;]+);base64,(.+)$/);
+    const matches = file.url.match(/^data:([^;]+);base64,(.+)$/s);
     if (matches) {
-      const mimeType = matches[1] || file.fileType || 'application/octet-stream';
+      const rawMime = (matches[1] || file.fileType || 'application/octet-stream').toLowerCase();
+      // Never serve HTML or SVG inline to eliminate stored XSS via uploaded files
+      const isDangerousInline = rawMime.includes('html') || rawMime.includes('svg') || rawMime.includes('javascript');
+      const safeMime = isDangerousInline ? 'application/octet-stream' : rawMime;
       const buffer = Buffer.from(matches[2], 'base64');
-      res.setHeader('Content-Type', mimeType);
-      res.setHeader('Cache-Control', 'public, max-age=86400');
-      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Type', safeMime);
+      if (isDangerousInline) {
+        res.setHeader('Content-Disposition', `attachment; filename="${sanitizeUploadFileName(file.fileName, 'download.bin')}"`);
+      }
+      res.setHeader('Cache-Control', isPublicMosqueLogo ? 'public, max-age=86400' : 'private, max-age=300');
+      res.setHeader('Cross-Origin-Resource-Policy', isPublicMosqueLogo ? 'cross-origin' : 'same-origin');
       return res.send(buffer);
     }
   }
 
-  res.redirect(302, file.url);
+  const safeRedirectUrl = sanitizeSafeHttpUrl(file.url);
+  if (!safeRedirectUrl) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_FILE_URL', message: 'অবৈধ ফাইল লিংক।' } });
+  }
+  res.redirect(302, safeRedirectUrl);
 });
 
 // Direct canonical database download route (Strict SUPER_ADMIN Privilege Guarded)
@@ -2400,6 +2555,9 @@ app.get('/api/v1/sms/settings', authenticate, (req: AuthRequest, res: Response) 
     autoDonationSms: true,
     autoSalarySms: true,
     autoFeeSms: true,
+    autoDonationTemplate: '{মসজিদের_নাম}: মুহতারাম {নাম}, {তারিখ} তারিখে আপনার {টাকা} দান গৃহীত হয়েছে। জাযাকাল্লাহু খাইরান।',
+    autoSalaryTemplate: '{মসজিদের_নাম}: সম্মানিত {নাম}, {তারিখ} তারিখে আপনার মাসিক হাদিয়া/বেতন {টাকা} পরিশোধ করা হয়েছে।',
+    autoFeeTemplate: '{মসজিদের_নাম} মক্তব: প্রিয় অভিভাবক ({নাম}), {তারিখ} তারিখের {টাকা} মক্তব ফি সংক্রান্ত তথ্য নিশ্চিত করা হলো।',
     creditsBalance: 1250,
   };
 
@@ -2478,6 +2636,9 @@ app.post('/api/v1/sms/send', authenticate, (req: AuthRequest, res: Response) => 
     });
   }
 
+  const isUnicodeMsg = /[^\x00-\x7F]/.test(effectiveMessage);
+  const creditsPerSms = Math.max(1, Math.ceil(effectiveMessage.length / (isUnicodeMsg ? 70 : 160)));
+
   const createdLogs: SmsLog[] = [];
   targetList.forEach((t) => {
     const logId = `sms-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -2494,15 +2655,15 @@ app.post('/api/v1/sms/send', authenticate, (req: AuthRequest, res: Response) => 
       sentAt: new Date().toISOString(),
       sentBy: req.user!.id,
       sentByName: req.user!.name,
-      costCredits: 1,
+      costCredits: creditsPerSms,
       gatewayResponse: '200 OK (Delivered via Greenweb Gateway)',
     };
     db.smsLogs.unshift(newLog);
     createdLogs.push(newLog);
   });
 
-  if (settings.creditsBalance) {
-    settings.creditsBalance = Math.max(0, settings.creditsBalance - createdLogs.length);
+  if (typeof settings.creditsBalance === 'number') {
+    settings.creditsBalance = Math.max(0, settings.creditsBalance - createdLogs.length * creditsPerSms);
     mosqueSmsSettingsMap.set(mosqueId, settings);
   }
 
@@ -4009,6 +4170,9 @@ app.post('/api/v1/cloud/backup/create-encrypted', authenticate, (req: AuthReques
       libraryRooms: db.libraryRooms.filter(lr => lr.mosqueId === mosque.id),
       libraryRacks: db.libraryRacks.filter(lr => lr.mosqueId === mosque.id),
       libraryShelves: db.libraryShelves.filter(ls => ls.mosqueId === mosque.id),
+      smartNotes: db.smartNotes.filter(sn => sn.tenantId === mosque.id),
+      smartNoteCategories: db.smartNoteCategories.filter(sc => sc.tenantId === mosque.id),
+      smartNoteReminders: db.smartNoteReminders.filter(sr => sr.tenantId === mosque.id),
       exportDate: new Date().toISOString(),
       version: '3.5.0',
       appName: 'MasjidLedger'
@@ -11502,10 +11666,11 @@ app.post('/api/v1/cemetery', authenticate, requirePermission('MANAGE_CEMETERY'),
 app.post('/api/v1/management/cemetery', authenticate, requirePermission('MANAGE_CEMETERY'), handleAddCemetery);
 
 app.put('/api/v1/cemetery/:id', authenticate, requirePermission('MANAGE_CEMETERY'), (req: AuthRequest, res: Response) => {
-  const record = db.cemeteryRecords.find(c => c.id === req.params.id && c.mosqueId === req.currentMosque!.id);
-  if (!record) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'কবরস্থান রেকর্ড পাওয়া যায়নি।' } });
+  const record = db.cemeteryRecords.find(c => c.id === req.params.id);
+  if (!enforceTenantOwnershipOrRespond(req, res, record, 'কবরস্থান রেকর্ড পাওয়া যায়নি।')) return;
 
-  Object.assign(record, req.body, {
+  const { id: _id, mosqueId: _m, createdAt: _ca, createdBy: _cb, createdByName: _cbn, ...safeBody } = req.body || {};
+  Object.assign(record, safeBody, {
     updatedAt: new Date().toISOString(),
     updatedBy: req.user!.id,
     updatedByName: req.user!.name
@@ -11518,8 +11683,8 @@ app.put('/api/v1/cemetery/:id', authenticate, requirePermission('MANAGE_CEMETERY
 });
 
 app.post('/api/v1/cemetery/:id/archive', authenticate, requirePermission('MANAGE_CEMETERY'), (req: AuthRequest, res: Response) => {
-  const record = db.cemeteryRecords.find(c => c.id === req.params.id && c.mosqueId === req.currentMosque!.id);
-  if (!record) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'কবরস্থান রেকর্ড পাওয়া যায়নি।' } });
+  const record = db.cemeteryRecords.find(c => c.id === req.params.id);
+  if (!enforceTenantOwnershipOrRespond(req, res, record, 'কবরস্থান রেকর্ড পাওয়া যায়নি।')) return;
 
   const { isArchived, reason } = req.body;
   record.isArchived = Boolean(isArchived);
@@ -11541,9 +11706,10 @@ app.post('/api/v1/cemetery/:id/archive', authenticate, requirePermission('MANAGE
 });
 
 app.delete('/api/v1/cemetery/:id', authenticate, requirePermission('MANAGE_CEMETERY'), (req: AuthRequest, res: Response) => {
-  const index = db.cemeteryRecords.findIndex(c => c.id === req.params.id && c.mosqueId === req.currentMosque!.id);
-  if (index === -1) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'কবরস্থান রেকর্ড পাওয়া যায়নি।' } });
+  const record = db.cemeteryRecords.find(c => c.id === req.params.id);
+  if (!enforceTenantOwnershipOrRespond(req, res, record, 'কবরস্থান রেকর্ড পাওয়া যায়নি।')) return;
 
+  const index = db.cemeteryRecords.findIndex(c => c.id === record.id);
   const deleted = db.cemeteryRecords.splice(index, 1)[0];
   db.save();
   db.logAudit(req.currentMosque!.id, req.user!.id, req.user!.name, req.user!.role, 'DELETE', 'CEMETERY', `কবরস্থান রেকর্ড মুছে ফেলা হয়েছে: ${deleted.deceasedName} (প্লট: ${deleted.plotNumber})`);
@@ -11596,10 +11762,11 @@ app.post('/api/v1/notices', authenticate, handleAddNotice);
 app.post('/api/v1/management/notices', authenticate, handleAddNotice);
 
 app.put('/api/v1/notices/:id', authenticate, (req: AuthRequest, res: Response) => {
-  const notice = db.notices.find(n => n.id === req.params.id && n.mosqueId === req.currentMosque!.id);
-  if (!notice) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'নোটিশ পাওয়া যায়নি।' } });
+  const notice = db.notices.find(n => n.id === req.params.id);
+  if (!enforceTenantOwnershipOrRespond(req, res, notice, 'নোটিশ পাওয়া যায়নি।')) return;
 
-  Object.assign(notice, req.body);
+  const { id: _id, mosqueId: _m, createdAt: _ca, publishedBy: _pb, publishedByName: _pbn, ...safeBody } = req.body || {};
+  Object.assign(notice, safeBody);
   db.save();
   db.logAudit(req.currentMosque!.id, req.user!.id, req.user!.name, req.user!.role, 'UPDATE', 'NOTICE', `নোটিশ আপডেট: ${notice.title}`);
   realtime.broadcastToMosque(req.currentMosque!.id, 'NOTICE_UPDATED', notice, { senderId: req.user!.id });
@@ -11628,27 +11795,45 @@ app.post('/api/v1/notifications/mark-all-read', authenticate, (req: AuthRequest,
 });
 
 // ==========================================
-// 13. FILE UPLOAD API (Receipts, vouchers, attachments)
+// 13. FILE UPLOAD API (Receipts, vouchers, attachments — Strict MIME/Extension/Size Validated)
 // ==========================================
 app.post('/api/v1/upload', authenticate, (req: AuthRequest, res: Response) => {
-  const { fileName, fileType, base64Data } = req.body;
+  const { fileName, fileType, base64Data } = req.body || {};
   const mosqueId = req.currentMosque!.id;
 
-  if (!base64Data) {
-    return res.status(400).json({ success: false, error: { code: 'MISSING_FILE', message: 'ফাইলের ডাটা প্রদান আবশ্যক।' } });
+  const validated = validateBase64FileUpload({
+    fileName,
+    fileType,
+    base64Data,
+    maxBytes: 10 * 1024 * 1024, // 10 MB limit
+  });
+
+  if (!validated.ok) {
+    const validationErr = validated as { ok: false; code: string; message: string };
+    logSecurityAuditEvent({
+      mosqueId,
+      userId: req.user!.id,
+      userName: req.user!.name,
+      userRole: req.user!.role,
+      action: 'UPLOAD_VALIDATION_REJECTED',
+      details: `অবৈধ ফাইল আপলোড প্রত্যাখ্যাত (${validationErr.code}: ${sanitizeUploadFileName(fileName, 'unknown')})`,
+      ipAddress: getClientIp(req),
+      status: 'WARNING',
+    });
+    return res.status(400).json({
+      success: false,
+      error: { code: validationErr.code, message: validationErr.message }
+    });
   }
 
   const fileId = `file-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
-  // Store data URI
-  const url = base64Data.startsWith('data:') ? base64Data : `data:${fileType || 'image/png'};base64,${base64Data}`;
-
   const uploadedFile = {
     id: fileId,
     mosqueId,
-    fileName: fileName || 'attachment.png',
-    fileType: fileType || 'image/png',
-    fileSize: Math.round((base64Data.length * 3) / 4),
-    url,
+    fileName: validated.safeFileName,
+    fileType: validated.mimeType,
+    fileSize: validated.sizeBytes,
+    url: validated.dataUrl,
     uploadedBy: req.user!.id,
     uploadedAt: new Date().toISOString()
   };
@@ -11811,12 +11996,8 @@ app.get('/api/v1/documents/summary/stats', authenticate, (req: AuthRequest, res:
 
 // 3. Get Single Document by ID
 app.get('/api/v1/documents/:id', authenticate, (req: AuthRequest, res: Response) => {
-  const mosqueId = req.currentMosque!.id;
-  const doc = db.centralDocuments.find(d => d.id === req.params.id && d.mosqueId === mosqueId);
-
-  if (!doc) {
-    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ডকুমেন্ট পাওয়া যায়নি।' } });
-  }
+  const doc = db.centralDocuments.find(d => d.id === req.params.id);
+  if (!enforceTenantOwnershipOrRespond(req, res, doc, 'ডকুমেন্ট পাওয়া যায়নি।')) return;
 
   const user = req.user;
   const isAdmin = user && (user.role === 'SUPER_ADMIN' || user.role === 'MOSQUE_ADMIN' || user.role === 'ACCOUNTANT');
@@ -11849,12 +12030,38 @@ app.post('/api/v1/documents', authenticate, (req: AuthRequest, res: Response) =>
     });
   }
 
-  // Validate Google Drive URL if present
-  let sanitizedDriveUrl = body.googleDriveUrl?.trim() || undefined;
-  if (sanitizedDriveUrl) {
-    if (!sanitizedDriveUrl.startsWith('http://') && !sanitizedDriveUrl.startsWith('https://')) {
-      sanitizedDriveUrl = `https://${sanitizedDriveUrl}`;
+  // Validate Google Drive URL strictly (blocks javascript: / data: schemes)
+  let sanitizedDriveUrl: string | undefined;
+  if (body.googleDriveUrl && String(body.googleDriveUrl).trim()) {
+    sanitizedDriveUrl = sanitizeSafeHttpUrl(body.googleDriveUrl);
+    if (!sanitizedDriveUrl) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_URL', message: 'অনুগ্রহ করে সঠিক http বা https গুগল ড্রাইভ লিংক প্রদান করুন।' }
+      });
     }
+  }
+
+  // Validate inline base64 data URI fileUrl if present
+  let safeFileUrl: string | undefined = body.fileUrl || undefined;
+  let safeFileName: string | undefined = body.originalFileName ? sanitizeUploadFileName(body.originalFileName, 'document') : undefined;
+  let safeFileType: string | undefined = body.fileType || undefined;
+  let safeFileSize: number | undefined = body.fileSize ? Number(body.fileSize) : undefined;
+  if (safeFileUrl && typeof safeFileUrl === 'string' && safeFileUrl.startsWith('data:')) {
+    const validated = validateBase64FileUpload({
+      fileName: safeFileName,
+      fileType: safeFileType,
+      base64Data: safeFileUrl,
+      maxBytes: 12 * 1024 * 1024,
+    });
+    if (!validated.ok) {
+      const validationErr = validated as { ok: false; code: string; message: string };
+      return res.status(400).json({ success: false, error: { code: validationErr.code, message: validationErr.message } });
+    }
+    safeFileUrl = validated.dataUrl;
+    safeFileName = validated.safeFileName;
+    safeFileType = validated.mimeType;
+    safeFileSize = validated.sizeBytes;
   }
 
   const docId = `doc-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
@@ -11867,10 +12074,10 @@ app.post('/api/v1/documents', authenticate, (req: AuthRequest, res: Response) =>
     entityId: body.entityId,
     entityTitle: body.entityTitle || DOCUMENT_ENTITY_LABELS[body.entityType as DocumentEntityType] || 'রেকর্ড',
     name: body.name.trim(),
-    originalFileName: body.originalFileName || undefined,
-    fileUrl: body.fileUrl || undefined,
-    fileType: body.fileType || undefined,
-    fileSize: body.fileSize ? Number(body.fileSize) : undefined,
+    originalFileName: safeFileName,
+    fileUrl: safeFileUrl,
+    fileType: safeFileType,
+    fileSize: safeFileSize,
     googleDriveUrl: sanitizedDriveUrl,
     documentDate: body.documentDate || now.split('T')[0],
     documentType: (body.documentType as DocumentCategoryType) || 'OTHER',
@@ -11923,11 +12130,8 @@ app.post('/api/v1/documents', authenticate, (req: AuthRequest, res: Response) =>
 app.put('/api/v1/documents/:id', authenticate, (req: AuthRequest, res: Response) => {
   const mosqueId = req.currentMosque!.id;
   const user = req.user!;
-  const doc = db.centralDocuments.find(d => d.id === req.params.id && d.mosqueId === mosqueId);
-
-  if (!doc) {
-    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ডকুমেন্ট পাওয়া যায়নি।' } });
-  }
+  const doc = db.centralDocuments.find(d => d.id === req.params.id);
+  if (!enforceTenantOwnershipOrRespond(req, res, doc, 'ডকুমেন্ট পাওয়া যায়নি।')) return;
 
   const isAdmin = user.role === 'SUPER_ADMIN' || user.role === 'MOSQUE_ADMIN' || user.role === 'ACCOUNTANT';
   if (!isAdmin && doc.uploadedBy !== user.id) {
@@ -11947,22 +12151,43 @@ app.put('/api/v1/documents/:id', authenticate, (req: AuthRequest, res: Response)
   if (body.visibility !== undefined) doc.visibility = body.visibility as DocumentVisibility;
   if (body.entityTitle !== undefined) doc.entityTitle = body.entityTitle;
 
-  // File replacement
+  // File replacement (Validated)
   if (body.fileUrl !== undefined) {
-    doc.fileUrl = body.fileUrl || undefined;
-    if (body.originalFileName !== undefined) doc.originalFileName = body.originalFileName;
-    if (body.fileType !== undefined) doc.fileType = body.fileType;
-    if (body.fileSize !== undefined) doc.fileSize = Number(body.fileSize);
+    if (body.fileUrl && typeof body.fileUrl === 'string' && body.fileUrl.startsWith('data:')) {
+      const validated = validateBase64FileUpload({
+        fileName: body.originalFileName || doc.originalFileName,
+        fileType: body.fileType || doc.fileType,
+        base64Data: body.fileUrl,
+        maxBytes: 12 * 1024 * 1024,
+      });
+      if (!validated.ok) {
+        const validationErr = validated as { ok: false; code: string; message: string };
+        return res.status(400).json({ success: false, error: { code: validationErr.code, message: validationErr.message } });
+      }
+      doc.fileUrl = validated.dataUrl;
+      doc.originalFileName = validated.safeFileName;
+      doc.fileType = validated.mimeType;
+      doc.fileSize = validated.sizeBytes;
+    } else {
+      doc.fileUrl = body.fileUrl || undefined;
+      if (body.originalFileName !== undefined) doc.originalFileName = sanitizeUploadFileName(body.originalFileName, 'document');
+      if (body.fileType !== undefined) doc.fileType = body.fileType;
+      if (body.fileSize !== undefined) doc.fileSize = Number(body.fileSize);
+    }
     doc.version = (doc.version || 1) + 1;
   }
 
-  // Google Drive link update
+  // Google Drive link update (Strictly http/https)
   if (body.googleDriveUrl !== undefined) {
-    let sanitizedDriveUrl = body.googleDriveUrl?.trim() || undefined;
-    if (sanitizedDriveUrl && !sanitizedDriveUrl.startsWith('http://') && !sanitizedDriveUrl.startsWith('https://')) {
-      sanitizedDriveUrl = `https://${sanitizedDriveUrl}`;
+    if (body.googleDriveUrl && String(body.googleDriveUrl).trim()) {
+      const safeUrl = sanitizeSafeHttpUrl(body.googleDriveUrl);
+      if (!safeUrl) {
+        return res.status(400).json({ success: false, error: { code: 'INVALID_URL', message: 'অনুগ্রহ করে সঠিক http বা https লিংক প্রদান করুন।' } });
+      }
+      doc.googleDriveUrl = safeUrl;
+    } else {
+      doc.googleDriveUrl = undefined;
     }
-    doc.googleDriveUrl = sanitizedDriveUrl;
   }
 
   doc.updatedAt = new Date().toISOString();
@@ -11996,13 +12221,10 @@ app.put('/api/v1/documents/:id', authenticate, (req: AuthRequest, res: Response)
 app.delete('/api/v1/documents/:id', authenticate, (req: AuthRequest, res: Response) => {
   const mosqueId = req.currentMosque!.id;
   const user = req.user!;
-  const index = db.centralDocuments.findIndex(d => d.id === req.params.id && d.mosqueId === mosqueId);
+  const doc = db.centralDocuments.find(d => d.id === req.params.id);
+  if (!enforceTenantOwnershipOrRespond(req, res, doc, 'ডকুমেন্ট পাওয়া যায়নি।')) return;
 
-  if (index === -1) {
-    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'ডকুমেন্ট পাওয়া যায়নি।' } });
-  }
-
-  const doc = db.centralDocuments[index];
+  const index = db.centralDocuments.findIndex(d => d.id === doc.id);
   const isAdmin = user.role === 'SUPER_ADMIN' || user.role === 'MOSQUE_ADMIN' || user.role === 'ACCOUNTANT';
   if (!isAdmin && doc.uploadedBy !== user.id) {
     return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'এই ডকুমেন্ট মুছে ফেলার অনুমতি নেই।' } });
@@ -12248,12 +12470,8 @@ app.get('/api/v1/official-documents/summary/stats', authenticate, (req: AuthRequ
 
 // 3. Get Single Official Document by ID
 app.get('/api/v1/official-documents/:id', authenticate, (req: AuthRequest, res: Response) => {
-  const mosqueId = req.currentMosque!.id;
-  const doc = db.officialDocuments.find(d => d.id === req.params.id && d.mosqueId === mosqueId);
-
-  if (!doc) {
-    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'দাপ্তরিক নথি পাওয়া যায়নি।' } });
-  }
+  const doc = db.officialDocuments.find(d => d.id === req.params.id);
+  if (!enforceTenantOwnershipOrRespond(req, res, doc, 'দাপ্তরিক নথি পাওয়া যায়নি।')) return;
 
   res.json({ success: true, data: doc });
 });
@@ -12300,7 +12518,7 @@ app.post('/api/v1/official-documents', authenticate, (req: AuthRequest, res: Res
     recipientOrg: body.recipientOrg?.trim() || undefined,
     recipientAddress: body.recipientAddress?.trim() || undefined,
     recipientType: body.recipientType || 'ALL',
-    body: body.body || '<p></p>',
+    body: sanitizeRichHtmlServer(body.body || '<p></p>'),
     summary: body.summary?.trim() || undefined,
     status: body.status || 'DRAFT',
     priority: body.priority || 'NORMAL',
@@ -12387,11 +12605,8 @@ app.post('/api/v1/official-documents', authenticate, (req: AuthRequest, res: Res
 app.put('/api/v1/official-documents/:id', authenticate, (req: AuthRequest, res: Response) => {
   const mosqueId = req.currentMosque!.id;
   const user = req.user!;
-  const doc = db.officialDocuments.find(d => d.id === req.params.id && d.mosqueId === mosqueId);
-
-  if (!doc) {
-    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'দাপ্তরিক নথি পাওয়া যায়নি।' } });
-  }
+  const doc = db.officialDocuments.find(d => d.id === req.params.id);
+  if (!enforceTenantOwnershipOrRespond(req, res, doc, 'দাপ্তরিক নথি পাওয়া যায়নি।')) return;
 
   const previousState = JSON.stringify(doc);
   const body = req.body;
@@ -12418,7 +12633,7 @@ app.put('/api/v1/official-documents/:id', authenticate, (req: AuthRequest, res: 
   if (body.recipientOrg !== undefined) doc.recipientOrg = body.recipientOrg;
   if (body.recipientAddress !== undefined) doc.recipientAddress = body.recipientAddress;
   if (body.recipientType !== undefined) doc.recipientType = body.recipientType;
-  if (body.body !== undefined) doc.body = body.body;
+  if (body.body !== undefined) doc.body = sanitizeRichHtmlServer(body.body);
   if (body.summary !== undefined) doc.summary = body.summary;
   if (body.priority !== undefined) doc.priority = body.priority;
   if (body.visibility !== undefined) doc.visibility = body.visibility;
@@ -12496,13 +12711,9 @@ app.put('/api/v1/official-documents/:id', authenticate, (req: AuthRequest, res: 
 
 // 6. Quick Status Update
 app.post('/api/v1/official-documents/:id/status', authenticate, (req: AuthRequest, res: Response) => {
-  const mosqueId = req.currentMosque!.id;
   const user = req.user!;
-  const doc = db.officialDocuments.find(d => d.id === req.params.id && d.mosqueId === mosqueId);
-
-  if (!doc) {
-    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'দাপ্তরিক নথি পাওয়া যায়নি।' } });
-  }
+  const doc = db.officialDocuments.find(d => d.id === req.params.id);
+  if (!enforceTenantOwnershipOrRespond(req, res, doc, 'দাপ্তরিক নথি পাওয়া যায়নি।')) return;
 
   const { status, notes } = req.body;
   if (!status) {
@@ -12542,13 +12753,10 @@ app.post('/api/v1/official-documents/:id/status', authenticate, (req: AuthReques
 app.delete('/api/v1/official-documents/:id', authenticate, (req: AuthRequest, res: Response) => {
   const mosqueId = req.currentMosque!.id;
   const user = req.user!;
-  const index = db.officialDocuments.findIndex(d => d.id === req.params.id && d.mosqueId === mosqueId);
+  const doc = db.officialDocuments.find(d => d.id === req.params.id);
+  if (!enforceTenantOwnershipOrRespond(req, res, doc, 'দাপ্তরিক নথি পাওয়া যায়নি।')) return;
 
-  if (index === -1) {
-    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'দাপ্তরিক নথি পাওয়া যায়নি।' } });
-  }
-
-  const doc = db.officialDocuments[index];
+  const index = db.officialDocuments.findIndex(d => d.id === doc.id);
   const isAdmin = user.role === 'SUPER_ADMIN' || user.role === 'MOSQUE_ADMIN';
   if (!isAdmin && doc.createdBy !== user.id) {
     return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'এই নথি মুছে ফেলার অনুমতি নেই।' } });
@@ -12609,6 +12817,15 @@ app.post('/api/v1/official-documents/ai-assist', authenticate, async (req: AuthR
   }
 });
 
+// ==========================================
+// 13.5 SMART NOTES ("খসড়া — Smart Notes") API
+// ==========================================
+app.use('/api/v1', createSmartNotesRouter(authenticate));
+
+// ==========================================
+// 13.6 AUTO-BACKUP & REMINDER/NOTIFICATION AUTOMATION API
+// ==========================================
+app.use('/api/v1/automation', createAutomationRouter(authenticate, requirePermission));
 
 // ==========================================
 // 14. REPORTS API
@@ -13176,8 +13393,38 @@ app.get('/api/v1/sms/logs', authenticate, (req: AuthRequest, res: Response) => {
 // 15. AUDIT LOGS & GLOBAL SEARCH FOUNDATION
 // ==========================================
 app.get('/api/v1/audit/logs', authenticate, (req: AuthRequest, res: Response) => {
+  const user = req.user!;
   const mosqueId = req.currentMosque!.id;
-  const logs = db.auditLogs.filter(l => req.user?.role === 'SUPER_ADMIN' || l.mosqueId === mosqueId);
+  const auditViewerRoles = new Set([
+    'SUPER_ADMIN',
+    'MOSQUE_ADMIN',
+    'COMMITTEE_ADMIN',
+    'ACCOUNTANT',
+    'TREASURER',
+    'AUDITOR',
+  ]);
+  const canViewAudit =
+    auditViewerRoles.has(user.role) ||
+    Boolean(user.permissions && (user.permissions.includes('VIEW_AUDIT_LOG') || user.permissions.includes('MANAGE_SETTINGS')));
+
+  if (!canViewAudit) {
+    logSecurityAuditEvent({
+      mosqueId,
+      userId: user.id,
+      userName: user.name,
+      userRole: user.role,
+      action: 'UNAUTHORIZED_AUDIT_LOG_READ',
+      details: 'অনুমতিবিহীন অডিট লগ দেখার চেষ্টা প্রতিহত',
+      ipAddress: getClientIp(req),
+      status: 'FAILED',
+    });
+    return res.status(403).json({
+      success: false,
+      error: { code: 'FORBIDDEN', message: 'সিস্টেম ও নিরাপত্তা অডিট লগ দেখার অনুমতি আপনার নেই।' }
+    });
+  }
+
+  const logs = db.auditLogs.filter(l => user.role === 'SUPER_ADMIN' || l.mosqueId === mosqueId);
   res.json({ success: true, data: logs });
 });
 
@@ -14461,6 +14708,777 @@ app.post('/api/v1/ai/staff/salary-sms', authenticate, async (req: AuthRequest, r
     return res.status(status).json({
       success: false,
       error: { code, message: error?.message || 'বেতন কনফার্মেশন SMS তৈরিতে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+// ============================================================
+// 16L. SMS & NOTIFICATION GATEWAY AI AUTOMATIONS (CENTRAL AI CONFIG)
+// ============================================================
+app.post('/api/v1/ai/sms/compose', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await composeSmsMessageAi(mosque, req.body || { action: 'COMPOSE' });
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_SMS_COMPOSE_ERROR';
+    console.error('AI SMS Compose error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'AI মেসেজ তৈরিতে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/sms/auto-template', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const result = await generateAutoSmsTemplateAi(mosque, req.body || { triggerType: 'DONATION' });
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_SMS_TEMPLATE_ERROR';
+    console.error('AI Auto-SMS Template error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'ডাইনামিক অটো-এসএমএস টেমপ্লেট তৈরিতে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/sms/delivery-insights', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const currentSettings = mosqueSmsSettingsMap.get(mosque.id);
+    const creditsBalance = req.body?.creditsBalance ?? currentSettings?.creditsBalance ?? 1250;
+    const result = await analyzeSmsDeliveryInsightsAi(mosque, { creditsBalance });
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_SMS_INSIGHTS_ERROR';
+    console.error('AI SMS Delivery Insights error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'এসএমএস ব্যবহারের সারসংক্ষেপ তৈরিতে ত্রুটি হয়েছে।' },
+    });
+  }
+});
+
+// ============================================================
+// 16M. ASSET & WAQF MANAGEMENT AI AUTOMATIONS (PROTECTED & TENANT-ISOLATED)
+// ============================================================
+const waqfAiRateMap = new Map<string, { count: number; resetAt: number }>();
+function checkWaqfAiRateLimit(key: string, maxPerMin = 20): boolean {
+  const now = Date.now();
+  const entry = waqfAiRateMap.get(key);
+  if (!entry || entry.resetAt <= now) {
+    waqfAiRateMap.set(key, { count: 1, resetAt: now + 60_000 });
+    return true;
+  }
+  if (entry.count >= maxPerMin) return false;
+  entry.count += 1;
+  return true;
+}
+
+app.post('/api/v1/ai/waqf/analyze-document', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const rateKey = `${mosque.id}:${req.user?.id || 'anon'}:waqf-doc`;
+    if (!checkWaqfAiRateLimit(rateKey, 15)) {
+      return res.status(429).json({
+        success: false,
+        error: { code: 'RATE_LIMITED', message: 'অনেকগুলো অনুরোধ পাঠানো হয়েছে। অনুগ্রহ করে ১ মিনিট পর আবার চেষ্টা করুন অথবা ম্যানুয়ালি ফর্ম পূরণ করুন।' },
+      });
+    }
+    const result = await analyzeWaqfDocumentWithAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_WAQF_DOC_ERROR';
+    console.error('AI Waqf Document Analyze error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'ডকুমেন্ট বিশ্লেষণে সমস্যা হয়েছে। অনুগ্রহ করে ম্যানুয়ালি ফর্ম পূরণ করুন।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/waqf/rent-reminders', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const rateKey = `${mosque.id}:${req.user?.id || 'anon'}:waqf-rem`;
+    if (!checkWaqfAiRateLimit(rateKey, 20)) {
+      return res.status(429).json({
+        success: false,
+        error: { code: 'RATE_LIMITED', message: 'অনেকগুলো অনুরোধ পাঠানো হয়েছে। অনুগ্রহ করে একটু পর আবার চেষ্টা করুন।' },
+      });
+    }
+    const result = await generateWaqfOverdueRemindersAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_WAQF_REMINDER_ERROR';
+    console.error('AI Waqf Rent Reminders error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'বকেয়া ভাড়ার রিমাইন্ডার ড্রাফট তৈরিতে সমস্যা হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/waqf/portfolio-summary', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const rateKey = `${mosque.id}:${req.user?.id || 'anon'}:waqf-sum`;
+    if (!checkWaqfAiRateLimit(rateKey, 20)) {
+      return res.status(429).json({
+        success: false,
+        error: { code: 'RATE_LIMITED', message: 'অনেকগুলো অনুরোধ পাঠানো হয়েছে। অনুগ্রহ করে একটু পর আবার চেষ্টা করুন।' },
+      });
+    }
+    const result = await generateWaqfPortfolioSummaryAi(mosque);
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_WAQF_SUMMARY_ERROR';
+    console.error('AI Waqf Portfolio Summary error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'ওয়াকফ ও সম্পদ সারসংক্ষেপ তৈরিতে সমস্যা হয়েছে।' },
+    });
+  }
+});
+
+// ============================================================
+// 16N. CEMETERY MANAGEMENT AI AUTOMATIONS (PROTECTED & TENANT-ISOLATED)
+// ============================================================
+const cemeteryAiRateMap = new Map<string, { count: number; resetAt: number }>();
+function checkCemeteryAiRateLimit(key: string, maxPerMin = 20): boolean {
+  const now = Date.now();
+  const entry = cemeteryAiRateMap.get(key);
+  if (!entry || entry.resetAt <= now) {
+    cemeteryAiRateMap.set(key, { count: 1, resetAt: now + 60_000 });
+    return true;
+  }
+  if (entry.count >= maxPerMin) return false;
+  entry.count += 1;
+  return true;
+}
+
+app.post('/api/v1/ai/cemetery/extract-entry', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const rateKey = `${mosque.id}:${req.user?.id || 'anon'}:cem-entry`;
+    if (!checkCemeteryAiRateLimit(rateKey, 15)) {
+      return res.status(429).json({
+        success: false,
+        error: {
+          code: 'RATE_LIMITED',
+          message: 'অনেকগুলো অনুরোধ পাঠানো হয়েছে। অনুগ্রহ করে ১ মিনিট পর আবার চেষ্টা করুন অথবা ম্যানুয়ালি ফর্ম পূরণ করুন।',
+        },
+      });
+    }
+    const result = await extractCemeteryEntryWithAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_CEMETERY_EXTRACT_ERROR';
+    console.error('AI Cemetery Entry Extract error:', error);
+    return res.status(status).json({
+      success: false,
+      error: {
+        code,
+        message: error?.message || 'নোট বা রেজিস্টার বিশ্লেষণে সমস্যা হয়েছে। অনুগ্রহ করে ম্যানুয়ালি ফর্ম পূরণ করুন।',
+      },
+    });
+  }
+});
+
+app.post('/api/v1/ai/cemetery/certificate-condolence', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const rateKey = `${mosque.id}:${req.user?.id || 'anon'}:cem-cert`;
+    if (!checkCemeteryAiRateLimit(rateKey, 20)) {
+      return res.status(429).json({
+        success: false,
+        error: { code: 'RATE_LIMITED', message: 'অনেকগুলো অনুরোধ পাঠানো হয়েছে। অনুগ্রহ করে একটু পর আবার চেষ্টা করুন।' },
+      });
+    }
+    const result = await generateCemeteryCertificateAndCondolenceAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_CEMETERY_CERT_ERROR';
+    console.error('AI Cemetery Certificate & Condolence error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'দাফন সনদ ও শোক বার্তা ড্রাফট তৈরিতে সমস্যা হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/ai/cemetery/summary-reuse', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const rateKey = `${mosque.id}:${req.user?.id || 'anon'}:cem-sum`;
+    if (!checkCemeteryAiRateLimit(rateKey, 20)) {
+      return res.status(429).json({
+        success: false,
+        error: { code: 'RATE_LIMITED', message: 'অনেকগুলো অনুরোধ পাঠানো হয়েছে। অনুগ্রহ করে একটু পর আবার চেষ্টা করুন।' },
+      });
+    }
+    const result = await generateCemeterySummaryAndReuseAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_CEMETERY_SUMMARY_ERROR';
+    console.error('AI Cemetery Summary & Reuse error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'কবরস্থান সারসংক্ষেপ ও মেয়াদ বিশ্লেষণে সমস্যা হয়েছে।' },
+    });
+  }
+});
+
+// ============================================================
+// 16O. LIBRARY & KNOWLEDGE CENTER + PUBLIC PORTAL AI AUTOMATIONS
+// ============================================================
+const libraryPublicAiRateMap = new Map<string, { count: number; resetAt: number }>();
+function checkLibraryPublicAiRateLimit(key: string, maxPerMin = 20): boolean {
+  const now = Date.now();
+  const entry = libraryPublicAiRateMap.get(key);
+  if (!entry || entry.resetAt <= now) {
+    libraryPublicAiRateMap.set(key, { count: 1, resetAt: now + 60_000 });
+    return true;
+  }
+  if (entry.count >= maxPerMin) return false;
+  entry.count += 1;
+  return true;
+}
+
+// 16O-1. Library: Book Cover / Info Auto-Draft (Admin Authenticated, Preview Only)
+app.post('/api/v1/ai/library/book-draft', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const rateKey = `${mosque.id}:${req.user?.id || 'anon'}:lib-book`;
+    if (!checkLibraryPublicAiRateLimit(rateKey, 15)) {
+      return res.status(429).json({
+        success: false,
+        error: {
+          code: 'RATE_LIMITED',
+          message: 'অনেকগুলো অনুরোধ পাঠানো হয়েছে। অনুগ্রহ করে একটু পর আবার চেষ্টা করুন অথবা ম্যানুয়ালি বইয়ের তথ্য লিখুন।',
+        },
+      });
+    }
+    const result = await draftLibraryBookWithAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_LIBRARY_BOOK_ERROR';
+    console.error('AI Library Book Draft error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'বইয়ের খসড়া তৈরিতে সমস্যা হয়েছে। আপনি ম্যানুয়ালি ফর্ম পূরণ করতে পারেন।' },
+    });
+  }
+});
+
+// 16O-2. Knowledge Center: Khutbah / Bayan / Study Note Summarizer (Admin Authenticated, Draft Only)
+app.post('/api/v1/ai/library/knowledge-note', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const rateKey = `${mosque.id}:${req.user?.id || 'anon'}:lib-note`;
+    if (!checkLibraryPublicAiRateLimit(rateKey, 15)) {
+      return res.status(429).json({
+        success: false,
+        error: { code: 'RATE_LIMITED', message: 'অনেকগুলো অনুরোধ পাঠানো হয়েছে। অনুগ্রহ করে একটু পর আবার চেষ্টা করুন।' },
+      });
+    }
+    const result = await summarizeKnowledgeNoteWithAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_KNOWLEDGE_NOTE_ERROR';
+    console.error('AI Knowledge Note Summary error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'বয়ান/নোট সারসংক্ষেপ তৈরিতে সমস্যা হয়েছে।' },
+    });
+  }
+});
+
+// 16O-3. Library: Overdue Book Return Reminder Drafts (Admin Authenticated, Deterministic Math, Never Auto-Sends)
+app.post('/api/v1/ai/library/overdue-reminders', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const rateKey = `${mosque.id}:${req.user?.id || 'anon'}:lib-overdue`;
+    if (!checkLibraryPublicAiRateLimit(rateKey, 20)) {
+      return res.status(429).json({
+        success: false,
+        error: { code: 'RATE_LIMITED', message: 'অনেকগুলো অনুরোধ পাঠানো হয়েছে। অনুগ্রহ করে একটু পর আবার চেষ্টা করুন।' },
+      });
+    }
+    const result = await generateLibraryOverdueRemindersAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_LIBRARY_OVERDUE_ERROR';
+    console.error('AI Library Overdue Reminders error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'বই ফেরতের রিমাইন্ডার ড্রাফট তৈরিতে সমস্যা হয়েছে।' },
+    });
+  }
+});
+
+// 16O-4. Public Portal Admin: Public Update & Announcement Draft (Admin Authenticated, Preview Only)
+app.post('/api/v1/ai/public-portal/update-draft', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const rateKey = `${mosque.id}:${req.user?.id || 'anon'}:pub-draft`;
+    if (!checkLibraryPublicAiRateLimit(rateKey, 20)) {
+      return res.status(429).json({
+        success: false,
+        error: { code: 'RATE_LIMITED', message: 'অনেকগুলো অনুরোধ পাঠানো হয়েছে। অনুগ্রহ করে একটু পর আবার চেষ্টা করুন।' },
+      });
+    }
+    const result = await draftPublicPortalUpdateWithAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_PUBLIC_UPDATE_DRAFT_ERROR';
+    console.error('AI Public Portal Update Draft error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'পাবলিক আপডেট ড্রাফট তৈরিতে সমস্যা হয়েছে।' },
+    });
+  }
+});
+
+// 16O-5. Public Portal Visitor: Strictly Restricted Public AI Info Assistant (Public, Tenant-Isolated, Whitelist Only)
+app.post('/api/v1/public/portal/ai-assistant', async (req: Request, res: Response) => {
+  try {
+    const ip = String(req.ip || req.socket?.remoteAddress || 'unknown').slice(0, 64);
+    const targetMosque = String(req.body?.mosqueIdOrCode || 'default').slice(0, 80);
+    const rateKey = `pub-ai:${ip}:${targetMosque}`;
+    if (!checkLibraryPublicAiRateLimit(rateKey, 15)) {
+      return res.status(429).json({
+        success: false,
+        error: {
+          code: 'RATE_LIMITED',
+          message: 'অল্প সময়ে অনেক প্রশ্ন করা হয়েছে। অনুগ্রহ করে ১ মিনিট পর আবার চেষ্টা করুন।',
+        },
+      });
+    }
+    const result = await askPublicPortalAssistantWithAi({
+      mosqueIdOrCode: req.body?.mosqueIdOrCode,
+      question: req.body?.question,
+      history: req.body?.history,
+    });
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_PUBLIC_ASSISTANT_ERROR';
+    console.error('Public Portal AI Assistant error:', error);
+    return res.status(status).json({
+      success: false,
+      error: {
+        code,
+        message: error?.message || 'এই মুহূর্তে AI তথ্য সহকারী উত্তর দিতে পারেনি। অনুগ্রহ করে একটু পর চেষ্টা করুন।',
+      },
+    });
+  }
+});
+
+// ============================================================
+// 16P. CENTRAL DOCUMENT ARCHIVE & REPORT CENTER AI AUTOMATIONS
+// ============================================================
+const docReportAiRateMap = new Map<string, { count: number; resetAt: number }>();
+function checkDocReportAiRateLimit(key: string, maxPerMin = 20): boolean {
+  const now = Date.now();
+  const entry = docReportAiRateMap.get(key);
+  if (!entry || entry.resetAt <= now) {
+    docReportAiRateMap.set(key, { count: 1, resetAt: now + 60_000 });
+    return true;
+  }
+  if (entry.count >= maxPerMin) return false;
+  entry.count += 1;
+  return true;
+}
+
+// 16P-1. Central Document Archive: Scan & Metadata Draft (Authenticated, Tenant-Isolated, Preview Only)
+app.post('/api/v1/ai/documents/scan-draft', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const rateKey = `${mosque.id}:${req.user?.id || 'anon'}:doc-scan`;
+    if (!checkDocReportAiRateLimit(rateKey, 15)) {
+      return res.status(429).json({
+        success: false,
+        error: {
+          code: 'RATE_LIMITED',
+          message: 'অনেকগুলো অনুরোধ পাঠানো হয়েছে। অনুগ্রহ করে একটু পর আবার চেষ্টা করুন অথবা ম্যানুয়ালি ফর্ম পূরণ করুন।',
+        },
+      });
+    }
+    const result = await scanDocumentMetadataWithAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_DOCUMENT_SCAN_ERROR';
+    console.error('AI Document Scan Draft error:', error);
+    return res.status(status).json({
+      success: false,
+      error: {
+        code,
+        message: error?.message || 'ডকুমেন্ট বিশ্লেষণ করতে সমস্যা হয়েছে। আপনি সাধারণ ফর্মে ম্যানুয়ালি তথ্য পূরণ করতে পারেন।',
+      },
+    });
+  }
+});
+
+// 16P-2. Central Document Archive: Archive Summary & Search Assistance (Authenticated, Tenant-Isolated)
+app.post('/api/v1/ai/documents/archive-summary', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const rateKey = `${mosque.id}:${req.user?.id || 'anon'}:doc-archive-sum`;
+    if (!checkDocReportAiRateLimit(rateKey, 20)) {
+      return res.status(429).json({
+        success: false,
+        error: {
+          code: 'RATE_LIMITED',
+          message: 'অনেকগুলো অনুরোধ পাঠানো হয়েছে। অনুগ্রহ করে একটু পর আবার চেষ্টা করুন।',
+        },
+      });
+    }
+    const result = await summarizeDocumentArchiveWithAi(mosque);
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_ARCHIVE_SUMMARY_ERROR';
+    console.error('AI Document Archive Summary error:', error);
+    return res.status(status).json({
+      success: false,
+      error: {
+        code,
+        message: error?.message || 'আর্কাইভ সারসংক্ষেপ তৈরি করতে সমস্যা হয়েছে। সাধারণ ফিল্টার ও অনুসন্ধান স্বাভাবিকভাবে ব্যবহার করুন।',
+      },
+    });
+  }
+});
+
+// 16P-3. Report Center: Natural Language Bangla Filter Suggestion (Authenticated, Tenant-Isolated, Preview Only)
+app.post('/api/v1/ai/reports/filter-suggest', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const rateKey = `${mosque.id}:${req.user?.id || 'anon'}:rpt-filter`;
+    if (!checkDocReportAiRateLimit(rateKey, 20)) {
+      return res.status(429).json({
+        success: false,
+        error: {
+          code: 'RATE_LIMITED',
+          message: 'অনেকগুলো অনুরোধ পাঠানো হয়েছে। অনুগ্রহ করে একটু পর আবার চেষ্টা করুন অথবা ম্যানুয়াল ফিল্টার ব্যবহার করুন।',
+        },
+      });
+    }
+    const result = await suggestReportFiltersWithAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_REPORT_FILTER_ERROR';
+    console.error('AI Report Filter Suggestion error:', error);
+    return res.status(status).json({
+      success: false,
+      error: {
+        code,
+        message: error?.message || 'ফিল্টার সাজেশন তৈরি করতে সমস্যা হয়েছে। অনুগ্রহ করে নিচের ম্যানুয়াল ফিল্টার ব্যবহার করুন।',
+      },
+    });
+  }
+});
+
+// 16P-4. Report Center: Printable Executive Summary Commentary (Authenticated, System-Computed Numbers Only)
+app.post('/api/v1/ai/reports/executive-summary', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const rateKey = `${mosque.id}:${req.user?.id || 'anon'}:rpt-summary`;
+    if (!checkDocReportAiRateLimit(rateKey, 20)) {
+      return res.status(429).json({
+        success: false,
+        error: {
+          code: 'RATE_LIMITED',
+          message: 'অনেকগুলো অনুরোধ পাঠানো হয়েছে। অনুগ্রহ করে একটু পর আবার চেষ্টা করুন।',
+        },
+      });
+    }
+    const result = await generateReportExecutiveSummaryWithAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_REPORT_SUMMARY_ERROR';
+    console.error('AI Report Executive Summary error:', error);
+    return res.status(status).json({
+      success: false,
+      error: {
+        code,
+        message: error?.message || 'রিপোর্ট সারসংক্ষেপ নোট তৈরি করতে সমস্যা হয়েছে। আপনি নোট ছাড়াই রিপোর্ট প্রিন্ট করতে পারেন।',
+      },
+    });
+  }
+});
+
+// ==========================================
+// 16Q. LIVE SCANNER, DENOMINATION COUNTER & AUDIT LOG AI APIS
+// ==========================================
+const scannerCounterAuditAiRateMap = new Map<string, { count: number; resetAt: number }>();
+function checkScannerCounterAuditAiRateLimit(key: string, maxRequests = 25, windowMs = 60 * 1000): boolean {
+  const now = Date.now();
+  const entry = scannerCounterAuditAiRateMap.get(key);
+  if (!entry || now > entry.resetAt) {
+    scannerCounterAuditAiRateMap.set(key, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  if (entry.count >= maxRequests) return false;
+  entry.count += 1;
+  return true;
+}
+
+const AUDIT_AI_ALLOWED_ROLES = new Set<string>([
+  'SUPER_ADMIN',
+  'ADMIN',
+  'MOSQUE_ADMIN',
+  'PRESIDENT',
+  'GENERAL_SECRETARY',
+  'TREASURER',
+  'AUDITOR',
+]);
+
+// 16Q-1. Camera & Live Scan: Smart Voucher/Document Draft Preview (Authenticated, Tenant-Isolated, Zero Auto-Save)
+app.post('/api/v1/ai/scanner/smart-draft', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const rateKey = `${mosque.id}:${req.user?.id || 'anon'}:scanner-draft`;
+    if (!checkScannerCounterAuditAiRateLimit(rateKey, 20)) {
+      return res.status(429).json({
+        success: false,
+        error: {
+          code: 'RATE_LIMITED',
+          message: 'অনেকগুলো স্ক্যান অনুরোধ পাঠানো হয়েছে। অনুগ্রহ করে ১ মিনিট পর আবার চেষ্টা করুন।',
+        },
+      });
+    }
+    const result = await scanSmartVoucherOrDocWithAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_SCANNER_DRAFT_ERROR';
+    console.error('AI Live Scanner Smart Draft error:', error);
+    return res.status(status).json({
+      success: false,
+      error: {
+        code,
+        message: error?.message || 'ছবি বা ডকুমেন্ট বিশ্লেষণ করতে সমস্যা হয়েছে। আপনি সাধারণ QR স্ক্যান বা ম্যানুয়াল ফর্ম ব্যবহার করতে পারেন।',
+      },
+    });
+  }
+});
+
+// 16Q-2. Note & Coin Counter: Bangla Voice/Text Denomination Parser (Authenticated, Deterministic System Math)
+app.post('/api/v1/ai/counter/parse-counts', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const rateKey = `${mosque.id}:${req.user?.id || 'anon'}:counter-parse`;
+    if (!checkScannerCounterAuditAiRateLimit(rateKey, 30)) {
+      return res.status(429).json({
+        success: false,
+        error: {
+          code: 'RATE_LIMITED',
+          message: 'অনেকগুলো অনুরোধ পাঠানো হয়েছে। অনুগ্রহ করে একটু পর আবার চেষ্টা করুন অথবা ম্যানুয়ালি সংখ্যা বসান।',
+        },
+      });
+    }
+    const result = await parseDenominationCountsWithAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_COUNTER_PARSE_ERROR';
+    console.error('AI Counter Parse error:', error);
+    return res.status(status).json({
+      success: false,
+      error: {
+        code,
+        message: error?.message || 'নোট ও কয়েনের সংখ্যা বিশ্লেষণ করা যায়নি। অনুগ্রহ করে কাউন্টারে ম্যানুয়ালি সংখ্যা বসান।',
+      },
+    });
+  }
+});
+
+// 16Q-3. Note & Coin Counter: Editable Bangla Count Summary Note (Authenticated, Server-Recomputed Exact Totals)
+app.post('/api/v1/ai/counter/summary-note', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const rateKey = `${mosque.id}:${req.user?.id || 'anon'}:counter-note`;
+    if (!checkScannerCounterAuditAiRateLimit(rateKey, 25)) {
+      return res.status(429).json({
+        success: false,
+        error: {
+          code: 'RATE_LIMITED',
+          message: 'অনেকগুলো অনুরোধ পাঠানো হয়েছে। অনুগ্রহ করে একটু পর আবার চেষ্টা করুন।',
+        },
+      });
+    }
+    const result = await generateDenominationSummaryNoteWithAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_COUNTER_NOTE_ERROR';
+    console.error('AI Counter Summary Note error:', error);
+    return res.status(status).json({
+      success: false,
+      error: {
+        code,
+        message: error?.message || 'গণনা সারসংক্ষেপ নোট তৈরি করতে সমস্যা হয়েছে। আপনি সাধারণ কপি বাটন ব্যবহার করতে পারেন।',
+      },
+    });
+  }
+});
+
+// 16Q-4. System & Financial Audit Log: Neutral Observation Summary (Authenticated, Audit RBAC, Tenant-Isolated, Read-Only)
+app.post('/api/v1/ai/audit/summary', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const userRole = String(req.user?.role || '').toUpperCase();
+    if (!AUDIT_AI_ALLOWED_ROLES.has(userRole)) {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'AUDIT_PERMISSION_DENIED', message: 'অডিট লগ বিশ্লেষণের জন্য আপনার অনুমতি নেই।' },
+      });
+    }
+    const rateKey = `${mosque.id}:${req.user?.id || 'anon'}:audit-summary`;
+    if (!checkScannerCounterAuditAiRateLimit(rateKey, 15)) {
+      return res.status(429).json({
+        success: false,
+        error: {
+          code: 'RATE_LIMITED',
+          message: 'অনেকগুলো অনুরোধ পাঠানো হয়েছে। অনুগ্রহ করে ১ মিনিট পর আবার চেষ্টা করুন।',
+        },
+      });
+    }
+    const result = await summarizeAuditLogsWithAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_AUDIT_SUMMARY_ERROR';
+    console.error('AI Audit Log Summary error:', error);
+    return res.status(status).json({
+      success: false,
+      error: {
+        code,
+        message: error?.message || 'অডিট লগ সারসংক্ষেপ তৈরি করতে সমস্যা হয়েছে। নিচের মূল অডিট টেবিল স্বাভাবিকভাবে দেখুন।',
+      },
+    });
+  }
+});
+
+// 16Q-5. System & Financial Audit Log: Natural Bangla Filter Suggestion (Authenticated, Audit RBAC, Preview Only)
+app.post('/api/v1/ai/audit/filter-suggest', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({ success: false, error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' } });
+    }
+    const userRole = String(req.user?.role || '').toUpperCase();
+    if (!AUDIT_AI_ALLOWED_ROLES.has(userRole)) {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'AUDIT_PERMISSION_DENIED', message: 'অডিট লগ অনুসন্ধানের জন্য আপনার অনুমতি নেই।' },
+      });
+    }
+    const rateKey = `${mosque.id}:${req.user?.id || 'anon'}:audit-filter`;
+    if (!checkScannerCounterAuditAiRateLimit(rateKey, 25)) {
+      return res.status(429).json({
+        success: false,
+        error: {
+          code: 'RATE_LIMITED',
+          message: 'অনেকগুলো অনুরোধ পাঠানো হয়েছে। অনুগ্রহ করে একটু পর আবার চেষ্টা করুন অথবা ম্যানুয়াল ফিল্টার ব্যবহার করুন।',
+        },
+      });
+    }
+    const result = await suggestAuditLogFiltersWithAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_AUDIT_FILTER_ERROR';
+    console.error('AI Audit Filter Suggestion error:', error);
+    return res.status(status).json({
+      success: false,
+      error: {
+        code,
+        message: error?.message || 'ফিল্টার সাজেশন তৈরি করতে সমস্যা হয়েছে। অনুগ্রহ করে নিচের ম্যানুয়াল ফিল্টার ব্যবহার করুন।',
+      },
     });
   }
 });
@@ -26875,8 +27893,9 @@ async function startApp() {
   // Initialize WebSockets on HTTP server
   realtime.init(httpServer);
 
-  // Start Server-Side Backup Scheduler
+  // Start Server-Side Backup Scheduler & Auto-Backup Snapshot Engine
   startServerScheduler();
+  startAutoBackupScheduler();
 
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');

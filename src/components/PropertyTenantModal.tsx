@@ -15,10 +15,13 @@ import {
   FileText,
   Clock,
   Briefcase,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Sparkles,
+  CheckCircle2
 } from 'lucide-react';
 import { PropertyTenant, MosqueProperty } from '../types';
 import { Language, formatCurrency } from '../lib/i18n';
+import { WaqfDocumentAiAnalyzerModal } from './waqf/WaqfDocumentAiAnalyzerModal';
 
 interface PropertyTenantModalProps {
   isOpen: boolean;
@@ -67,10 +70,13 @@ export const PropertyTenantModal: React.FC<PropertyTenantModalProps> = ({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isAiDocModalOpen, setIsAiDocModalOpen] = useState(false);
+  const [aiDraftAppliedCount, setAiDraftAppliedCount] = useState<number>(0);
 
   // Initialize or reset form data
   useEffect(() => {
     if (!isOpen) return;
+    setAiDraftAppliedCount(0);
 
     // Determine initial property id
     const initialPropId = property?.id || (properties.length > 0 ? properties[0].id : '');
@@ -206,14 +212,46 @@ export const PropertyTenantModal: React.FC<PropertyTenantModalProps> = ({
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsAiDocModalOpen(true)}
+              className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold shadow-xs border border-emerald-400/40 flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
+              title="ভাড়া বা ইজারা চুক্তিপত্রের ছবি/PDF থেকে খসড়া তথ্য পড়ুন"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-200" />
+              <span className="hidden sm:inline">✨ AI ডকুমেন্ট/দলিল পড়ুন</span>
+              <span className="sm:hidden">✨ AI চুক্তি</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
+
+        {/* AI Draft Verification Banner */}
+        {aiDraftAppliedCount > 0 && (
+          <div className="mx-6 mt-3 p-3 bg-amber-50 border border-amber-200 rounded-2xl flex items-start justify-between gap-2 text-amber-950 text-xs font-tiro">
+            <div className="flex items-start gap-2">
+              <CheckCircle2 className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+              <span>
+                <strong className="font-siliguri">AI চুক্তি খসড়া বসানো হয়েছে ({aiDraftAppliedCount.toLocaleString('bn-BD')}টি ক্ষেত্র):</strong>{' '}
+                সংরক্ষণের আগে ভাড়াটিয়ার নাম, চুক্তি নম্বর, মাসিক ভাড়া ও মেয়াদ মূল চুক্তিপত্রের সাথে মিলিয়ে নিন।
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAiDraftAppliedCount(0)}
+              className="text-amber-700 hover:text-amber-950 p-0.5 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Error notification */}
         {error && (
@@ -588,6 +626,21 @@ export const PropertyTenantModal: React.FC<PropertyTenantModalProps> = ({
         </div>
 
       </div>
+
+      <WaqfDocumentAiAnalyzerModal
+        isOpen={isAiDocModalOpen}
+        onClose={() => setIsAiDocModalOpen(false)}
+        mode="TENANT_LEASE"
+        currentFormValues={formData}
+        onApplyDraftFields={(patch) => {
+          setFormData((prev) => ({
+            ...prev,
+            ...patch,
+            ...(patch.monthlyRent ? { annualRent: Number(patch.monthlyRent) * 12 } : {}),
+          }));
+          setAiDraftAppliedCount(Object.keys(patch).length);
+        }}
+      />
     </div>
   );
 };

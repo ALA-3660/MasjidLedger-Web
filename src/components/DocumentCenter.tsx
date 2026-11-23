@@ -29,7 +29,8 @@ import {
   Grid,
   List,
   ChevronRight,
-  Database
+  Database,
+  Sparkles,
 } from 'lucide-react';
 import {
   CentralDocument,
@@ -43,6 +44,11 @@ import {
 } from '../types';
 import { api } from '../lib/api';
 import { printElement } from '../lib/printUtils';
+import {
+  DocumentScanAiDraftModal,
+  DocumentFormAppliedDraft,
+} from './documents/DocumentScanAiDraftModal';
+import { DocumentArchiveAiSummaryCard } from './documents/DocumentArchiveAiSummaryCard';
 
 interface DocumentCenterProps {
   currentMosque: Mosque;
@@ -93,6 +99,8 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
 
   // Modals
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isAiScanModalOpen, setIsAiScanModalOpen] = useState(false);
+  const [aiDraftAppliedNotice, setAiDraftAppliedNotice] = useState(false);
   const [editingDoc, setEditingDoc] = useState<CentralDocument | null>(null);
   const [previewDoc, setPreviewDoc] = useState<CentralDocument | null>(null);
 
@@ -174,6 +182,7 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
     setSelectedFileBase64(null);
     setEditingDoc(null);
     setUploadProgress(null);
+    setAiDraftAppliedNotice(false);
   };
 
   const handleOpenAddModal = () => {
@@ -194,7 +203,22 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
     setGoogleDriveUrl(doc.googleDriveUrl || '');
     setSelectedFile(null);
     setSelectedFileBase64(null);
+    setAiDraftAppliedNotice(false);
     setIsModalOpen(true);
+  };
+
+  const handleApplyAiDocumentDraft = (draft: DocumentFormAppliedDraft) => {
+    if (draft.name) setDocName(draft.name);
+    if (draft.entityType) setDocEntityType(draft.entityType);
+    if (draft.entityTitle) setDocEntityTitle(draft.entityTitle);
+    if (draft.documentType) setDocCategory(draft.documentType);
+    if (draft.documentDate) setDocDate(draft.documentDate);
+    if (draft.description) setDocDescription(draft.description);
+    if (draft.scannedFile && draft.scannedFileBase64) {
+      setSelectedFile(draft.scannedFile);
+      setSelectedFileBase64(draft.scannedFileBase64);
+    }
+    setAiDraftAppliedNotice(true);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -451,6 +475,16 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
           <p className="text-[11px] text-stone-400 mt-1">সরাসরি ফাইল স্টোরেজ আকার</p>
         </div>
       </div>
+
+      {/* AI Archive Summary & Search Assistance Card */}
+      <DocumentArchiveAiSummaryCard
+        totalDocuments={stats.totalDocuments}
+        onApplySearchSuggestion={({ entityType, documentType, searchKeyword }) => {
+          setSelectedEntity(entityType || 'ALL');
+          setSelectedCategory(documentType || 'ALL');
+          setSearchQuery(searchKeyword || '');
+        }}
+      />
 
       {/* Filter and Search Bar */}
       <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-xs space-y-3 print:hidden">
@@ -1021,6 +1055,41 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              {/* AI Document Scan & Metadata Draft Bar */}
+              <div className="p-3 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl flex flex-wrap items-center justify-between gap-2.5">
+                <div className="min-w-0">
+                  <p className="font-siliguri text-xs font-bold text-emerald-950">
+                    স্ক্যান করা নথি বা তথ্য থেকে দ্রুত খসড়া পূরণ
+                  </p>
+                  <p className="font-tiro text-[11px] text-emerald-800">
+                    দলিল, চুক্তি, রেজুলেশন বা ভাউচার পড়ে কেবল খসড়া বসাবে — সেভ করার আগে অবশ্যই যাচাই করুন
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsAiScanModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-siliguri font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl shadow-xs transition cursor-pointer shrink-0"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  ✨ AI ডকুমেন্ট পড়ুন ও খসড়া ভরুন
+                </button>
+              </div>
+
+              {aiDraftAppliedNotice && (
+                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-950 font-tiro flex items-center justify-between gap-2">
+                  <span>
+                    ⚠ AI প্রস্তাবিত খসড়া ফর্মে বসানো হয়েছে। দলিল নম্বর, খতিয়ান/দাগ নম্বর, তারিখ, টাকার অঙ্ক ও নাম মূল কাগজের সাথে মিলিয়ে নিচের &ldquo;ডকুমেন্ট সংরক্ষণ করুন&rdquo; বাটনে চাপুন।
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setAiDraftAppliedNotice(false)}
+                    className="text-amber-700 hover:text-amber-950 p-0.5 cursor-pointer shrink-0"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
               {/* Document Name */}
               <div>
                 <label className="block text-xs font-semibold text-stone-700 mb-1">
@@ -1267,6 +1336,23 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
           </div>
         </div>
       )}
+
+      {/* AI DOCUMENT SCAN & METADATA DRAFT MODAL */}
+      <DocumentScanAiDraftModal
+        isOpen={isAiScanModalOpen}
+        onClose={() => setIsAiScanModalOpen(false)}
+        currentForm={{
+          name: docName,
+          entityType: docEntityType,
+          entityTitle: docEntityTitle,
+          documentType: docCategory,
+          documentDate: docDate,
+          description: docDescription,
+        }}
+        initialFile={selectedFile}
+        initialFileBase64={selectedFileBase64}
+        onApplyDraft={handleApplyAiDocumentDraft}
+      />
 
       {/* PREVIEW MODAL */}
       {previewDoc && (
