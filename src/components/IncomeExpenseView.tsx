@@ -33,6 +33,7 @@ import {
   Building2,
   Users,
 } from 'lucide-react';
+import { FormAlertAssistant } from './common/FormAlertAssistant';
 import {
   IncomeEntry,
   ExpenseEntry,
@@ -1481,9 +1482,20 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
 
             <form onSubmit={(e) => handleFormSubmit(e, 'SAVE_AND_PRINT')} className="p-5 space-y-4 overflow-y-auto flex-1">
               {errorMessage && (
-                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-center space-x-2">
-                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-                  <span>{errorMessage}</span>
+                <div className="space-y-2">
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-center space-x-2">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>{errorMessage}</span>
+                  </div>
+                  <FormAlertAssistant
+                    moduleName={modalType === 'INCOME' ? 'আয় ও প্রাপ্তি ভাউচার (Income/Expense View)' : 'ব্যয় ও পরিশোধ ভাউচার (Income/Expense View)'}
+                    alertMessage={errorMessage}
+                    formValues={{
+                      modalType,
+                      entryDate,
+                    }}
+                    onDismissAlert={() => setErrorMessage('')}
+                  />
                 </div>
               )}
 

@@ -318,20 +318,58 @@ const BENGALI_MONTHS = [
   'ডিসেম্বর',
 ];
 
+const ENGLISH_MONTHS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
+function normalizeDigitsToEnglish(str: string): string {
+  const bnToEn: Record<string, string> = {
+    '০': '0', '১': '1', '২': '2', '৩': '3', '৪': '4',
+    '৫': '5', '৬': '6', '৭': '7', '৮': '8', '৯': '9',
+  };
+  return str.replace(/[০-৯]/g, (d) => bnToEn[d] || d);
+}
+
 /**
- * Formats a month string like "2026-09" or ISO date into full Bengali month and year: "সেপ্টেম্বর ২০২৬"
+ * Formats a month string like "2026-01", "2026-1", "২০২৬-০১", or ISO date into "জানুয়ারি-২০২৬" (bn) or "January-2026" (en)
  */
-export function formatBengaliMonthYear(monthOrDateStr?: string | null): string {
-  if (!monthOrDateStr) return '';
+export function formatSalaryMonth(monthOrDateStr?: string | null, lang: Language | string = 'bn'): string {
+  if (!monthOrDateStr) return '-';
   try {
-    const trimmed = String(monthOrDateStr).trim();
-    // Check if format is YYYY-MM
-    const yyyyMmMatch = trimmed.match(/^(\d{4})-(\d{1,2})/);
+    const trimmed = normalizeDigitsToEnglish(String(monthOrDateStr).trim());
+    // Match YYYY-MM or YYYY-M or YYYY/MM
+    const yyyyMmMatch = trimmed.match(/^(\d{4})[-/](\d{1,2})(?:[-/]\d{1,2})?$/);
     if (yyyyMmMatch) {
       const yearNum = parseInt(yyyyMmMatch[1], 10);
       const monthIdx = parseInt(yyyyMmMatch[2], 10) - 1;
       if (monthIdx >= 0 && monthIdx < 12) {
-        return `${BENGALI_MONTHS[monthIdx]} ${toBanglaNumber(yearNum)}`;
+        if (lang === 'en') {
+          return `${ENGLISH_MONTHS[monthIdx]}-${yearNum}`;
+        }
+        return `${BENGALI_MONTHS[monthIdx]}-${toBanglaNumber(yearNum)}`;
+      }
+    }
+    // Match MM-YYYY or M-YYYY
+    const mmYyyyMatch = trimmed.match(/^(\d{1,2})[-/](\d{4})$/);
+    if (mmYyyyMatch) {
+      const monthIdx = parseInt(mmYyyyMatch[1], 10) - 1;
+      const yearNum = parseInt(mmYyyyMatch[2], 10);
+      if (monthIdx >= 0 && monthIdx < 12) {
+        if (lang === 'en') {
+          return `${ENGLISH_MONTHS[monthIdx]}-${yearNum}`;
+        }
+        return `${BENGALI_MONTHS[monthIdx]}-${toBanglaNumber(yearNum)}`;
       }
     }
     // Fallback Date parser
@@ -339,12 +377,23 @@ export function formatBengaliMonthYear(monthOrDateStr?: string | null): string {
     if (!isNaN(d.getTime())) {
       const monthIdx = d.getMonth();
       const yearNum = d.getFullYear();
-      return `${BENGALI_MONTHS[monthIdx]} ${toBanglaNumber(yearNum)}`;
+      if (lang === 'en') {
+        return `${ENGLISH_MONTHS[monthIdx]}-${yearNum}`;
+      }
+      return `${BENGALI_MONTHS[monthIdx]}-${toBanglaNumber(yearNum)}`;
     }
-    return trimmed;
+    return String(monthOrDateStr).trim();
   } catch {
-    return monthOrDateStr;
+    return String(monthOrDateStr);
   }
+}
+
+/**
+ * Formats a month string like "2026-09" or ISO date into full Bengali month and year: "সেপ্টেম্বর-২০২৬"
+ */
+export function formatBengaliMonthYear(monthOrDateStr?: string | null): string {
+  if (!monthOrDateStr) return '';
+  return formatSalaryMonth(monthOrDateStr, 'bn');
 }
 
 /**

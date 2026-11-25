@@ -51,22 +51,31 @@ import {
   StaffDocumentRecord,
   StaffPositionChangeRecord,
   StaffPhotoType,
-  StaffDocumentType
+  StaffDocumentType,
+  ExpenseEntry
 } from '../types';
-import { Language, translations, formatCurrency, formatDate } from '../lib/i18n';
+import { Language, translations, formatCurrency, formatDate, formatSalaryMonth } from '../lib/i18n';
 import { printElement } from '../lib/printUtils';
 import { AiStaffDocumentModal } from './staff/AiStaffDocumentModal';
+import {
+  buildUnifiedStaffPaymentHistory,
+  resolveStaffPaymentNetAmount,
+  UnifiedStaffPaymentItem,
+} from '../lib/staffPaymentSync';
 
 interface StaffPersonnelProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
   staff: Staff | null;
+  allStaff?: Staff[];
   payments?: StaffPayment[];
   staffPayments?: StaffPayment[];
+  expenses?: ExpenseEntry[];
   accounts?: FinancialAccount[];
   currentMosque?: Mosque | null;
   onOpenPayModal?: (staffId: string) => void;
   onPaySalary?: (staffId: string) => void;
+  onEditPayment?: (payment: UnifiedStaffPaymentItem) => void;
   onEditStaff?: (staff: Staff) => void;
   onUpdateStaff?: (staffId: string, updatedData: Partial<Staff>) => Promise<void>;
   onReviseSalary?: (staffId: string, data: { newSalary: number; effectiveDate: string; reason?: string }) => Promise<void>;
@@ -96,12 +105,15 @@ export const StaffPersonnelProfileModal: React.FC<StaffPersonnelProfileModalProp
   isOpen,
   onClose,
   staff,
+  allStaff = [],
   payments = [],
   staffPayments,
+  expenses = [],
   accounts = [],
   currentMosque,
   onOpenPayModal,
   onPaySalary,
+  onEditPayment,
   onEditStaff,
   onUpdateStaff,
   onReviseSalary,
@@ -116,6 +128,7 @@ export const StaffPersonnelProfileModal: React.FC<StaffPersonnelProfileModalProp
   const t = translations[language];
   const isBn = language === 'bn';
   const resolvedPayments = staffPayments || payments || [];
+  const handleTriggerPay = onOpenPayModal || onPaySalary;
 
   const [activeTab, setActiveTab] = useState<ProfileTab>('PERSONAL');
   const [isAiDocModalOpen, setIsAiDocModalOpen] = useState(false);
@@ -152,9 +165,16 @@ export const StaffPersonnelProfileModal: React.FC<StaffPersonnelProfileModalProp
 
   if (!isOpen || !staff) return null;
 
-  // Filter payments for this staff
-  const staffPaymentsList = resolvedPayments.filter((p) => p.staffId === staff.id);
-  const totalPaid = staffPaymentsList.reduce((sum, p) => sum + (p.netPayable || p.basicSalary || 0), 0);
+  // Filter & unify payments for this staff (both Staff module & Expense module salary vouchers)
+  const staffPaymentsList = buildUnifiedStaffPaymentHistory(
+    staff,
+    resolvedPayments,
+    expenses,
+    allStaff.length > 0 ? allStaff : [staff]
+  );
+  const totalPaid = staffPaymentsList
+    .filter((p) => p.status !== 'CANCELLED')
+    .reduce((sum, p) => sum + resolveStaffPaymentNetAmount(p), 0);
 
   // Print Profile Handlers
   const handlePrintProfile = () => {
@@ -944,11 +964,11 @@ export const StaffPersonnelProfileModal: React.FC<StaffPersonnelProfileModalProp
                   <h3 className="text-sm font-bold text-slate-900">বেতন ও ভাতার পেমেন্ট হিস্ট্রি</h3>
                   <p className="text-xs text-slate-500">পরিশোধিত মোট: {formatCurrency(totalPaid, language)}</p>
                 </div>
-                {onOpenPayModal && (
+                {handleTriggerPay && (
                   <button
                     type="button"
-                    onClick={() => onOpenPayModal(staff.id)}
-                    className="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5"
+                    onClick={() => handleTriggerPay(staff.id)}
+                    className="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
                     <span>বেতন পরিশোধ</span>
@@ -969,35 +989,62 @@ export const StaffPersonnelProfileModal: React.FC<StaffPersonnelProfileModalProp
                         <th className="p-3">মাস</th>
                         <th className="p-3">পরিশোধ তারিখ</th>
                         <th className="p-3">মূল বেতন</th>
-                        <th className="p-3">ভাতা</th>
+                        <th className="p-3">ভাতা / বোনাস</th>
                         <th className="p-3">কর্তন</th>
                         <th className="p-3">পরিশোধিত টাকা</th>
-                        <th className="p-3 text-right">রসিদ / স্লিপ</th>
+                        <th className="p-3 text-right">রসিদ / সম্পাদনা</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {staffPaymentsList.map((pmt) => (
-                        <tr key={pmt.id} className="hover:bg-slate-50">
-                          <td className="p-3 font-bold text-slate-800 font-siliguri">{pmt.paymentMonth || pmt.month}</td>
-                          <td className="p-3 text-slate-600">{formatDate(pmt.paymentDate, language)}</td>
-                          <td className="p-3 font-mono">{formatCurrency(pmt.basicSalary, language)}</td>
-                          <td className="p-3 font-mono text-emerald-600">+{formatCurrency(pmt.allowance || 0, language)}</td>
-                          <td className="p-3 font-mono text-rose-600">-{formatCurrency(pmt.deduction || 0, language)}</td>
-                          <td className="p-3 font-mono font-bold text-slate-900">{formatCurrency(pmt.netPayable, language)}</td>
-                          <td className="p-3 text-right">
-                            {onPrintSlip && (
-                              <button
-                                type="button"
-                                onClick={() => onPrintSlip(pmt, staff)}
-                                className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold inline-flex items-center space-x-1"
-                              >
-                                <Printer className="w-3.5 h-3.5" />
-                                <span>স্লিপ</span>
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
+                      {staffPaymentsList.map((pmt) => {
+                        const netAmount = resolveStaffPaymentNetAmount(pmt);
+                        const allowanceAmount = pmt.allowance ?? ((pmt.bonus || 0) + (pmt.otherAllowance || 0));
+                        return (
+                          <tr key={pmt.id} className={`hover:bg-slate-50 ${pmt.status === 'CANCELLED' ? 'opacity-60 line-through' : ''}`}>
+                            <td className="p-3">
+                              <div className="font-bold text-slate-800 font-siliguri">
+                                {formatSalaryMonth((pmt as any).paymentMonth || pmt.month, language)}
+                              </div>
+                              {pmt.expenseVoucherNumber && (
+                                <div className="text-[10px] font-mono text-slate-400 mt-0.5">
+                                  {pmt.expenseVoucherNumber}
+                                  {pmt.isFromExpenseVoucher ? ' • ব্যয় ভাউচার' : ''}
+                                </div>
+                              )}
+                            </td>
+                            <td className="p-3 text-slate-600 whitespace-nowrap">{formatDate(pmt.paymentDate, language)}</td>
+                            <td className="p-3 font-mono whitespace-nowrap">{formatCurrency(pmt.basicSalary || 0, language)}</td>
+                            <td className="p-3 font-mono text-emerald-600 whitespace-nowrap">+{formatCurrency(allowanceAmount, language)}</td>
+                            <td className="p-3 font-mono text-rose-600 whitespace-nowrap">-{formatCurrency(pmt.deduction || 0, language)}</td>
+                            <td className="p-3 font-mono font-bold text-slate-900 whitespace-nowrap">{formatCurrency(netAmount, language)}</td>
+                            <td className="p-3 text-right whitespace-nowrap">
+                              <div className="inline-flex items-center space-x-1.5">
+                                {onEditPayment && pmt.status !== 'CANCELLED' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onEditPayment(pmt)}
+                                    className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold inline-flex items-center space-x-1 cursor-pointer"
+                                    title="বেতন/মাস সংশোধন করুন"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                    <span>সম্পাদনা</span>
+                                  </button>
+                                )}
+                                {onPrintSlip && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onPrintSlip(pmt, staff)}
+                                    className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold inline-flex items-center space-x-1 cursor-pointer"
+                                  >
+                                    <Printer className="w-3.5 h-3.5" />
+                                    <span>স্লিপ</span>
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

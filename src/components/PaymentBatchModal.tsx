@@ -29,7 +29,7 @@ import {
   Mosque,
   CommitteeTerm
 } from '../types';
-import { Language, formatCurrency, formatDate } from '../lib/i18n';
+import { Language, formatCurrency, formatDate, formatSalaryMonth } from '../lib/i18n';
 import { numberToBanglaWords } from '../lib/banglaNumberToWords';
 import { printElement } from '../lib/printUtils';
 import { api } from '../lib/api';
@@ -698,7 +698,7 @@ export const PaymentBatchModal: React.FC<PaymentBatchModalProps> = ({
                     <h3 className="text-lg font-bold text-slate-800 mt-2">{selectedBatch?.title}</h3>
                     <div className="text-xs text-slate-500 mt-1 flex flex-wrap gap-4">
                       <span>ব্যাচ নং: <strong>{selectedBatch?.batchNumber}</strong></span>
-                      <span>মাস: <strong>{selectedBatch?.paymentMonth}</strong></span>
+                      <span>মাস: <strong>{formatSalaryMonth(selectedBatch?.paymentMonth, language)}</strong></span>
                       <span>তারিখ: <strong>{selectedBatch?.paymentDate ? formatDate(selectedBatch.paymentDate, language) : ''}</strong></span>
                       <span>তৈরি করেছেন: <strong>{selectedBatch?.createdByName}</strong></span>
                     </div>

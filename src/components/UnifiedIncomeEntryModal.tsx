@@ -55,6 +55,7 @@ import { MoneyReceiptModal, VoucherModal, PrintFormat } from './PrintModals';
 import { getDurationSinceLastOpened } from './DonationView';
 import { AiSmartEntryToolbar, AiSmartEntryResult } from './common/AiSmartEntryToolbar';
 import { AiNoteCounterModal } from './income/AiNoteCounterModal';
+import { FormAlertAssistant } from './common/FormAlertAssistant';
 
 export type IncomeEntryType = 'JUMMA' | 'DONATION' | 'DONATION_BOX' | 'WAQF_RENT' | 'OTHER_INCOME';
 
@@ -1068,9 +1069,22 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
 
             {/* Error Banner */}
             {errorMessage && (
-              <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-center space-x-2.5 text-rose-700 text-sm animate-shake">
-                <AlertCircle className="w-5 h-5 shrink-0 text-rose-600" />
-                <span className="font-siliguri font-semibold">{errorMessage}</span>
+              <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl space-y-1.5 text-rose-700 text-sm animate-shake">
+                <div className="flex items-center space-x-2.5">
+                  <AlertCircle className="w-5 h-5 shrink-0 text-rose-600" />
+                  <span className="font-siliguri font-semibold">{errorMessage}</span>
+                </div>
+                <FormAlertAssistant
+                  alertMessage={errorMessage}
+                  formNameBn="আয় ও প্রাপ্তি এন্ট্রি ফর্ম"
+                  moduleKey="UNIFIED_INCOME_ENTRY"
+                  alertType="ERROR"
+                  fieldValuesSnapshot={{ incomeType, date, amount, paymentMethod, accountId }}
+                  availablePatchFields={[{ fieldKey: 'description', fieldLabelBn: 'আয়ের বিবরণ', currentValue: description }]}
+                  onApplyPatch={(key, val) => {
+                    if (key === 'description') setDescription(val);
+                  }}
+                />
               </div>
             )}
 

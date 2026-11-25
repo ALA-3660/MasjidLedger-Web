@@ -34,6 +34,7 @@ import { OfficialReportSignatures } from './common/OfficialReportSignatures';
 import { AiCoaOptimizerModal } from './coa/AiCoaOptimizerModal';
 import { AiInactiveHeadsPanel } from './coa/AiInactiveHeadsPanel';
 import { AiCoaStructureNoteBox } from './coa/AiCoaStructureNoteBox';
+import { FormAlertAssistant } from './common/FormAlertAssistant';
 
 interface AccountHeadsViewProps {
   accountHeads: AccountHead[];
@@ -1013,8 +1014,21 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
 
             <form onSubmit={handleSubmitNewHead} className="p-5 space-y-4 overflow-y-auto">
               {errorMsg && (
-                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-bold">
-                  {errorMsg}
+                <div className="space-y-2">
+                  <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-bold">
+                    {errorMsg}
+                  </div>
+                  <FormAlertAssistant
+                    moduleName="হিসাব খাত (নতুন খাত তৈরি)"
+                    alertMessage={errorMsg}
+                    formValues={{
+                      nameBn: headNameBn,
+                      nameEn: headNameEn,
+                      type: headType,
+                      parentId: headParentId,
+                    }}
+                    onDismissAlert={() => setErrorMsg('')}
+                  />
                 </div>
               )}
 
@@ -1060,8 +1074,16 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
               </div>
 
               {aiSuggestError && (
-                <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-bold">
-                  {aiSuggestError}
+                <div className="space-y-2">
+                  <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-bold">
+                    {aiSuggestError}
+                  </div>
+                  <FormAlertAssistant
+                    moduleName="হিসাব খাত (AI সাজেস্ট)"
+                    alertMessage={aiSuggestError}
+                    formValues={{ nameBn: headNameBn, type: headType }}
+                    onDismissAlert={() => setAiSuggestError('')}
+                  />
                 </div>
               )}
 
@@ -1274,8 +1296,22 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
 
             <form onSubmit={handleSubmitEditHead} className="p-5 space-y-4">
               {errorMsg && (
-                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-bold">
-                  {errorMsg}
+                <div className="space-y-2">
+                  <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-bold">
+                    {errorMsg}
+                  </div>
+                  <FormAlertAssistant
+                    moduleName="হিসাব খাত (সম্পাদনা)"
+                    alertMessage={errorMsg}
+                    formValues={{
+                      code: selectedHead.code,
+                      type: selectedHead.type,
+                      nameBn: editNameBn,
+                      nameEn: editNameEn,
+                      status: editStatus,
+                    }}
+                    onDismissAlert={() => setErrorMsg('')}
+                  />
                 </div>
               )}
 
@@ -1401,8 +1437,20 @@ export const AccountHeadsView: React.FC<AccountHeadsViewProps> = ({
 
             <div className="p-5 space-y-4 text-xs font-siliguri">
               {errorMsg && (
-                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl font-bold">
-                  {errorMsg}
+                <div className="space-y-2">
+                  <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl font-bold">
+                    {errorMsg}
+                  </div>
+                  <FormAlertAssistant
+                    moduleName="হিসাব খাত (অপসারণ / আর্কাইভ)"
+                    alertMessage={errorMsg}
+                    formValues={{
+                      nameBn: selectedHead.nameBn,
+                      code: selectedHead.code,
+                      usageCount: getUsageCount(selectedHead),
+                    }}
+                    onDismissAlert={() => setErrorMsg('')}
+                  />
                 </div>
               )}
 

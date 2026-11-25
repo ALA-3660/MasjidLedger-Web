@@ -29,6 +29,7 @@ import {
   MeetingStatus,
   Mosque
 } from '../types';
+import { FormAlertAssistant } from './common/FormAlertAssistant';
 
 interface MeetingMinutesModalProps {
   isOpen: boolean;
@@ -472,9 +473,16 @@ export const MeetingMinutesModal: React.FC<MeetingMinutesModalProps> = ({
         {/* Modal Body */}
         <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1 font-baloo">
           {formError && (
-            <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-semibold flex items-center space-x-2">
-              <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
-              <span>{formError}</span>
+            <div className="space-y-2">
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-semibold flex items-center space-x-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                <span>{formError}</span>
+              </div>
+              <FormAlertAssistant
+                moduleName="কমিটি মিটিং কার্যবিবরণী (Meeting Minutes)"
+                alertMessage={formError}
+                onDismissAlert={() => setFormError('')}
+              />
             </div>
           )}
 

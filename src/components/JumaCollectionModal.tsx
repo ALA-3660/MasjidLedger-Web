@@ -25,6 +25,7 @@ import {
 } from '../types';
 import { Language, translations, formatCurrency, formatDate } from '../lib/i18n';
 import { ChangeCalculatorModal } from './ChangeCalculatorModal';
+import { FormAlertAssistant } from './common/FormAlertAssistant';
 
 export interface JumaCollectionModalProps {
   isOpen: boolean;
@@ -184,9 +185,18 @@ export const JumaCollectionModal: React.FC<JumaCollectionModalProps> = ({
           {/* Body Form */}
           <form onSubmit={(e) => handleSubmit(e, 'SAVE_AND_PRINT')} className="p-5 space-y-4 overflow-y-auto flex-1">
             {errorMessage && (
-              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-center space-x-2">
-                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-                <span>{errorMessage}</span>
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs space-y-1.5">
+                <div className="flex items-center space-x-2 font-semibold">
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{errorMessage}</span>
+                </div>
+                <FormAlertAssistant
+                  alertMessage={errorMessage}
+                  formNameBn="জুমার কালেকশন ফর্ম"
+                  moduleKey="JUMA_COLLECTION"
+                  alertType="ERROR"
+                  compact
+                />
               </div>
             )}
 

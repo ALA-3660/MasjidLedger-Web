@@ -3,6 +3,7 @@ import { X, Gift, Check, AlertCircle, Building, DollarSign, Users, Landmark, Shi
 import { Staff, FinancialAccount } from '../types';
 import { Language, translations, formatCurrency } from '../lib/i18n';
 import { numberToBanglaWords } from '../lib/banglaNumberToWords';
+import { FormAlertAssistant } from './common/FormAlertAssistant';
 
 interface StaffFestivalAllowanceModalProps {
   isOpen: boolean;
@@ -213,9 +214,25 @@ export const StaffFestivalAllowanceModal: React.FC<StaffFestivalAllowanceModalPr
         {/* Modal Form */}
         <form onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto text-xs flex-1">
           {error && (
-            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center space-x-2 text-rose-800 font-medium">
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-              <span>{error}</span>
+            <div className="space-y-2">
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center space-x-2 text-rose-800 font-medium">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{error}</span>
+              </div>
+              <FormAlertAssistant
+                moduleName="উৎসব ভাতা ও বোনাস বিতরণ (Festival Allowance)"
+                alertMessage={error}
+                formValues={{
+                  festivalName,
+                  paymentType,
+                  paymentMonth,
+                  paymentDate,
+                  selectedStaffCount: selectedStaffList.length,
+                  totalAmount,
+                  paymentMethod,
+                }}
+                onDismissAlert={() => setError(null)}
+              />
             </div>
           )}
 

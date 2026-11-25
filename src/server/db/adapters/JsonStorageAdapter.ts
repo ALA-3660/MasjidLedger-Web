@@ -2133,8 +2133,41 @@ export class JsonExpenseParityRepository implements IExpenseRepository {
       if (updates.payeePhone !== undefined) item.payeePhone = updates.payeePhone;
       if (updates.reference !== undefined) item.reference = updates.reference;
       if (updates.description !== undefined) item.description = updates.description;
+      if (updates.attachmentUrl !== undefined) item.attachmentUrl = updates.attachmentUrl;
       if (updates.date !== undefined) item.date = updates.date;
+      if (updates.sourceModule !== undefined) item.sourceModule = updates.sourceModule;
+      if (updates.sourceId !== undefined) item.sourceId = updates.sourceId;
+      if (updates.sourceType !== undefined) item.sourceType = updates.sourceType;
+      if (updates.staffId !== undefined) (item as any).staffId = updates.staffId;
+      if (updates.salaryMonth !== undefined) (item as any).salaryMonth = updates.salaryMonth;
       item.updatedAt = new Date().toISOString();
+
+      // Keep any linked StaffPayment synchronized when its ExpenseEntry is updated
+      const linkedPayment = (this.dataSource.staffPayments || []).find(
+        (p: any) =>
+          p.mosqueId === mosqueId &&
+          ((p.expenseEntryId && p.expenseEntryId === item.id) ||
+            (p.expenseVoucherNumber && item.voucherNumber && p.expenseVoucherNumber === item.voucherNumber))
+      );
+      if (linkedPayment) {
+        if (updates.date !== undefined) linkedPayment.paymentDate = updates.date;
+        if (updates.salaryMonth !== undefined && updates.salaryMonth) {
+          linkedPayment.month = updates.salaryMonth;
+          if ((linkedPayment as any).paymentMonth !== undefined) {
+            (linkedPayment as any).paymentMonth = updates.salaryMonth;
+          }
+        }
+        if (updates.paymentMethod !== undefined) linkedPayment.paymentMethod = updates.paymentMethod;
+        if (updates.accountId !== undefined) {
+          linkedPayment.accountId = item.accountId;
+          linkedPayment.accountNameBn = item.accountName;
+        }
+        if (updates.amount !== undefined) {
+          linkedPayment.netPaid = item.amount;
+        }
+        if (updates.description !== undefined) linkedPayment.notes = updates.description;
+        linkedPayment.updatedAt = new Date().toISOString();
+      }
 
       const actorName = resolveActorName(this.dataSource, activeOptions!);
       tx.logAudit(
@@ -4157,14 +4190,20 @@ export class JsonStaffParityRepository implements IStaffRepository {
       if (!Array.isArray(staff.attendanceRecords)) staff.attendanceRecords = [];
       const existingIdx = staff.attendanceRecords.findIndex((a: any) => a.date === date);
 
+      const existingRec = existingIdx >= 0 ? staff.attendanceRecords[existingIdx] : null;
       const record = {
-        id: existingIdx >= 0 ? staff.attendanceRecords[existingIdx].id : `att-day-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        id: existingRec ? existingRec.id : `att-day-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         date,
         status: entry.status || 'PRESENT',
-        inTime: entry.inTime || '',
-        outTime: entry.outTime || '',
+        inTime: entry.inTime !== undefined ? entry.inTime : (existingRec?.inTime || ''),
+        outTime: entry.outTime !== undefined ? entry.outTime : (existingRec?.outTime || ''),
+        prayersAttended: Array.isArray(entry.prayersAttended)
+          ? entry.prayersAttended
+          : Array.isArray(existingRec?.prayersAttended)
+          ? existingRec.prayersAttended
+          : undefined,
         substituteName: entry.substituteName || '',
-        remarks: entry.remarks || '',
+        remarks: entry.remarks !== undefined ? entry.remarks : (existingRec?.remarks || ''),
         recordedBy: actor.userName,
         updatedAt: nowIso,
       };
@@ -4179,7 +4218,7 @@ export class JsonStaffParityRepository implements IStaffRepository {
       const monthLogs = staff.attendanceRecords.filter((a: any) => a.date && a.date.startsWith(monthPrefix));
       const presentDays = monthLogs.filter((a: any) => a.status === 'PRESENT').length;
       const absentDays = monthLogs.filter((a: any) => a.status === 'ABSENT').length;
-      const leaveDays = monthLogs.filter((a: any) => a.status === 'LEAVE').length;
+      const leaveDays = monthLogs.filter((a: any) => a.status === 'LEAVE' || a.status === 'ON_LEAVE').length;
       const lateDays = monthLogs.filter((a: any) => a.status === 'LATE').length;
       const halfDays = monthLogs.filter((a: any) => a.status === 'HALF_DAY').length;
 
@@ -4740,6 +4779,10 @@ export class JsonStaffParityRepository implements IStaffRepository {
         accountName: account.nameBn,
         payeeName: txStaff.name,
         payeePhone: txStaff.phone,
+        sourceModule: 'STAFF_EXPENSE',
+        sourceId: txStaff.id,
+        staffId: txStaff.id,
+        salaryMonth: monthName,
         reference: `${paymentType === 'FESTIVAL_ALLOWANCE' ? festivalName || 'উৎসব ভাতা' : 'Salary Month'}: ${monthName}`,
         description: `${txStaff.name} (${txStaff.designationBn}) এর ${monthName} মাসের ${
           paymentType === 'FESTIVAL_ALLOWANCE' ? `${festivalName || 'উৎসব ভাতা'}` : 'বেতন/হাদিয়া'
@@ -4789,38 +4832,98 @@ export class JsonStaffParityRepository implements IStaffRepository {
       throw new DalDomainError('NOT_FOUND', 'পেমেন্ট রেকর্ড পাওয়া যায়নি।');
     }
 
-    const { notes, basicSalary, bonus, otherAllowance, deduction, netPaid, paymentMethod, accountId, paymentDate } =
-      payload;
+    const {
+      staffId,
+      month,
+      notes,
+      basicSalary,
+      bonus,
+      otherAllowance,
+      deduction,
+      netPaid,
+      paymentMethod,
+      accountId,
+      paymentDate,
+    } = payload;
     const expEntry = (this.dataSource.expenseEntries || []).find(
-      (e: any) => e.voucherNumber === payment.expenseVoucherNumber || e.id === payment.expenseEntryId
+      (e: any) =>
+        e.mosqueId === mosqueId &&
+        (e.voucherNumber === payment.expenseVoucherNumber || e.id === payment.expenseEntryId)
     );
 
-    const oldAmount = payment.netPaid;
+    const oldAmount = Number(payment.netPaid) || 0;
     const oldAccountId = payment.accountId;
 
-    if (basicSalary !== undefined) payment.basicSalary = Number(basicSalary);
-    if (bonus !== undefined) payment.bonus = Number(bonus);
-    if (otherAllowance !== undefined) payment.otherAllowance = Number(otherAllowance);
-    if (payment.bonus !== undefined || payment.otherAllowance !== undefined) {
-      payment.allowance = (payment.bonus || 0) + (payment.otherAllowance || 0);
+    // Allow changing staff member if requested
+    let staffChanged = false;
+    if (staffId && staffId !== payment.staffId) {
+      const targetStaff = (this.dataSource.staffList || []).find(
+        (s: any) => s.id === staffId && s.mosqueId === mosqueId
+      );
+      if (targetStaff) {
+        staffChanged = true;
+        payment.staffId = targetStaff.id;
+        payment.staffName = targetStaff.fullNameBn || targetStaff.name;
+        payment.designationBn = targetStaff.designationBn || payment.designationBn;
+        if (expEntry) {
+          expEntry.payeeName = targetStaff.fullNameBn || targetStaff.name;
+          if (targetStaff.phone) expEntry.payeePhone = targetStaff.phone;
+          expEntry.sourceId = targetStaff.id;
+          (expEntry as any).staffId = targetStaff.id;
+        }
+      }
     }
-    if (deduction !== undefined) payment.deduction = Number(deduction);
 
-    if (payment.basicSalary !== undefined) {
-      payment.totalPayable = (payment.basicSalary || 0) + (payment.bonus || 0) + (payment.otherAllowance || 0);
+    // Allow changing salary month (YYYY-MM)
+    let monthChanged = false;
+    if (month && typeof month === 'string' && month.trim() !== '') {
+      const normalizedMonth = month.trim();
+      if (payment.month !== normalizedMonth) {
+        monthChanged = true;
+      }
+      payment.month = normalizedMonth;
+      if ((payment as any).paymentMonth !== undefined) {
+        (payment as any).paymentMonth = normalizedMonth;
+      }
+      if (expEntry) {
+        (expEntry as any).salaryMonth = normalizedMonth;
+      }
+    }
+
+    if (basicSalary !== undefined) payment.basicSalary = Number(basicSalary) || 0;
+    if (bonus !== undefined) payment.bonus = Number(bonus) || 0;
+    if (otherAllowance !== undefined) payment.otherAllowance = Number(otherAllowance) || 0;
+    if (bonus !== undefined || otherAllowance !== undefined) {
+      payment.allowance = (Number(payment.bonus) || 0) + (Number(payment.otherAllowance) || 0);
+    }
+    if (deduction !== undefined) payment.deduction = Number(deduction) || 0;
+
+    if (
+      basicSalary !== undefined ||
+      bonus !== undefined ||
+      otherAllowance !== undefined
+    ) {
+      payment.totalPayable =
+        (Number(payment.basicSalary) || 0) +
+        (Number(payment.bonus) || 0) +
+        (Number(payment.otherAllowance) || 0);
     }
 
     const newAmount =
       netPaid !== undefined
         ? Number(netPaid)
-        : payment.totalPayable
-        ? payment.totalPayable - (payment.deduction || 0)
-        : payment.netPaid;
+        : payment.totalPayable !== undefined
+        ? Math.max(0, Number(payment.totalPayable) - (Number(payment.deduction) || 0))
+        : oldAmount;
     const newAccountId = accountId || payment.accountId;
 
     if (newAmount !== oldAmount || newAccountId !== oldAccountId) {
-      const oldAcc = (this.dataSource.accounts || []).find((a: any) => a.id === oldAccountId);
-      const newAcc = (this.dataSource.accounts || []).find((a: any) => a.id === newAccountId);
+      const oldAcc = (this.dataSource.accounts || []).find(
+        (a: any) => a.id === oldAccountId && a.mosqueId === mosqueId
+      );
+      const newAcc = (this.dataSource.accounts || []).find(
+        (a: any) => a.id === newAccountId && a.mosqueId === mosqueId
+      );
 
       if (oldAcc) oldAcc.currentBalance += oldAmount;
       if (newAcc) newAcc.currentBalance -= newAmount;
@@ -4835,6 +4938,8 @@ export class JsonStaffParityRepository implements IStaffRepository {
         if (newAcc) expEntry.accountName = newAcc.nameBn;
         (expEntry as any).updatedAt = new Date().toISOString();
       }
+    } else {
+      payment.netPaid = newAmount;
     }
 
     if (paymentMethod) {
@@ -4847,12 +4952,28 @@ export class JsonStaffParityRepository implements IStaffRepository {
       if (expEntry) expEntry.date = paymentDate;
     }
 
-    if (notes !== undefined) {
-      payment.notes = notes;
+    if (notes !== undefined || monthChanged || staffChanged) {
+      if (notes !== undefined) payment.notes = notes;
       if (expEntry) {
-        expEntry.description = `${payment.staffName} (${payment.designationBn}) এর ${payment.month} মাসের বেতন পরিশোধ [সংশোধিত] ${
-          notes ? `(${notes})` : ''
+        const bnMonths = [
+          'জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন',
+          'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর',
+        ];
+        const toBn = (s: string) =>
+          s.replace(/[0-9]/g, (d) => '০১২৩৪৫৬৭৮৯'[Number(d)] || d);
+        let formattedMonthBn = payment.month || '';
+        const mm = String(payment.month || '').match(/^(\d{4})-(\d{1,2})/);
+        if (mm) {
+          const idx = parseInt(mm[2], 10) - 1;
+          if (idx >= 0 && idx < 12) {
+            formattedMonthBn = `${bnMonths[idx]}-${toBn(mm[1])}`;
+          }
+        }
+        const effectiveNotes = notes !== undefined ? notes : payment.notes;
+        expEntry.description = `${payment.staffName} (${payment.designationBn}) এর ${formattedMonthBn} মাসের বেতন পরিশোধ [সংশোধিত] ${
+          effectiveNotes ? `(${effectiveNotes})` : ''
         }`.trim();
+        (expEntry as any).updatedAt = new Date().toISOString();
       }
     }
 

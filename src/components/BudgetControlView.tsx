@@ -26,6 +26,7 @@ import {
   Edit,
   Trash2,
 } from 'lucide-react';
+import { FormAlertAssistant } from './common/FormAlertAssistant';
 import {
   BarChart,
   Bar,
@@ -623,11 +624,24 @@ export const BudgetControlView: React.FC<BudgetControlViewProps> = ({
 
         {/* Notifications */}
         {errorMessage && (
-          <div className="mt-3 p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium flex items-center justify-between">
-            <span>{errorMessage}</span>
-            <button onClick={() => setErrorMessage('')} className="text-rose-500 hover:text-rose-700">
-              <X className="w-4 h-4" />
-            </button>
+          <div className="mt-3 space-y-2">
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium flex items-center justify-between">
+              <span>{errorMessage}</span>
+              <button onClick={() => setErrorMessage('')} className="text-rose-500 hover:text-rose-700">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <FormAlertAssistant
+              moduleName="বাজেট ও ব্যয় নিয়ন্ত্রণ (Budget Control)"
+              alertMessage={errorMessage}
+              formValues={{
+                activeSubTab,
+                selectedBudgetId: selectedBudget?.id,
+                selectedBudgetName: selectedBudget?.budgetName,
+                budgetStatus: selectedBudget?.status,
+              }}
+              onDismissAlert={() => setErrorMessage('')}
+            />
           </div>
         )}
 

@@ -19,6 +19,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { formatDate } from '../lib/i18n';
+import { FormAlertAssistant } from './common/FormAlertAssistant';
 
 interface OpeningBalanceModalProps {
   isOpen: boolean;
@@ -399,9 +400,18 @@ export const OpeningBalanceModal: React.FC<OpeningBalanceModalProps> = ({
 
               {/* Messages */}
               {errorMessage && (
-                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center space-x-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{errorMessage}</span>
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 space-y-1.5">
+                  <div className="flex items-center space-x-2 font-semibold">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{errorMessage}</span>
+                  </div>
+                  <FormAlertAssistant
+                    alertMessage={errorMessage}
+                    formNameBn="প্রারম্ভিক জের (Opening Balance) ফর্ম"
+                    moduleKey="OPENING_BALANCE"
+                    alertType="ERROR"
+                    compact
+                  />
                 </div>
               )}
 

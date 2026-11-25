@@ -62,6 +62,7 @@ import { QrScanResult } from '../types/qrBarcodeTypes';
 import { DualScrollTableWrapper } from './DualScrollTableWrapper';
 import { AiAppreciationModal, AppreciationTarget } from './income/AiAppreciationModal';
 import { AiNoteCounterModal } from './income/AiNoteCounterModal';
+import { FormAlertAssistant } from './common/FormAlertAssistant';
 
 interface DonationViewProps {
   forcedSubTab?: 'donations' | 'boxes' | 'juma';
@@ -1786,9 +1787,18 @@ export const DonationView: React.FC<DonationViewProps> = ({
 
             <form onSubmit={handleDonationSubmit} className="p-5 space-y-4 overflow-y-auto flex-1">
               {errorMessage && (
-                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-center space-x-2">
-                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                  <span>{errorMessage}</span>
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs space-y-1.5">
+                  <div className="flex items-center space-x-2 font-semibold">
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>{errorMessage}</span>
+                  </div>
+                  <FormAlertAssistant
+                    alertMessage={errorMessage}
+                    formNameBn="দান গ্রহণ ফর্ম"
+                    moduleKey="DONATION_ENTRY"
+                    alertType="ERROR"
+                    compact
+                  />
                 </div>
               )}
 
@@ -2031,9 +2041,18 @@ export const DonationView: React.FC<DonationViewProps> = ({
 
             <form onSubmit={handleAddBoxMaster} className="p-5 overflow-y-auto space-y-4 flex-1">
               {addBoxError && (
-                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center space-x-2">
-                  <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
-                  <span>{addBoxError}</span>
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 space-y-1.5">
+                  <div className="flex items-center space-x-2 font-semibold">
+                    <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                    <span>{addBoxError}</span>
+                  </div>
+                  <FormAlertAssistant
+                    alertMessage={addBoxError}
+                    formNameBn="দানবাক্স নিবন্ধন ফর্ম"
+                    moduleKey="DONATION_BOX_REGISTER"
+                    alertType="ERROR"
+                    compact
+                  />
                 </div>
               )}
 

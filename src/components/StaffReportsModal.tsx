@@ -19,7 +19,7 @@ import {
   Search
 } from 'lucide-react';
 import { Staff, StaffPayment, Mosque, StaffBankTransferLetter } from '../types';
-import { Language, translations, formatDate } from '../lib/i18n';
+import { Language, translations, formatDate, formatSalaryMonth } from '../lib/i18n';
 import { numberToBanglaWords } from '../lib/banglaNumberToWords';
 import { printElement } from '../lib/printUtils';
 import { OfficialReportSignatures } from './common/OfficialReportSignatures';
@@ -510,7 +510,7 @@ export const StaffReportsModal: React.FC<StaffReportsModalProps> = ({
             return (
               <div className="space-y-4">
                 <div className="flex items-center justify-between text-xs font-medium text-slate-700 pb-1">
-                  <span>পরিশোধের মাস: <strong className="text-slate-900 font-bold">{filterMonth}</strong></span>
+                  <span>পরিশোধের মাস: <strong className="text-slate-900 font-bold">{formatSalaryMonth(filterMonth, language)}</strong></span>
                   <span>মোট পরিশোধিত: <strong className="text-blue-900 font-bold">৳ {totalNet.toLocaleString('en-IN')}</strong> ({numberToBanglaWords(totalNet)} মাত্র)</span>
                 </div>
 
@@ -696,7 +696,7 @@ export const StaffReportsModal: React.FC<StaffReportsModalProps> = ({
                       <tr key={p.id} className="border-b border-slate-200">
                         <td className="border border-slate-300 p-2 text-center">{idx + 1}</td>
                         <td className="border border-slate-300 p-2 font-bold">{p.staffName}</td>
-                        <td className="border border-slate-300 p-2 text-center font-mono">{p.month}</td>
+                        <td className="border border-slate-300 p-2 text-center font-medium">{formatSalaryMonth(p.month || p.paymentMonth, language)}</td>
                         <td className="border border-slate-300 p-2 text-center font-mono">{p.paymentDate}</td>
                         <td className="border border-slate-300 p-2 text-right font-mono">{p.basicSalary?.toLocaleString('en-IN')}</td>
                         <td className="border border-slate-300 p-2 text-right font-mono text-emerald-800">
@@ -827,7 +827,7 @@ export const StaffReportsModal: React.FC<StaffReportsModalProps> = ({
                         <td className="border border-slate-300 p-2 font-semibold text-amber-950">
                           {p.festivalName || p.notes || 'উৎসব ভাতা'}
                         </td>
-                        <td className="border border-slate-300 p-2 text-center font-mono">{p.month}</td>
+                        <td className="border border-slate-300 p-2 text-center font-medium">{formatSalaryMonth(p.month || p.paymentMonth, language)}</td>
                         <td className="border border-slate-300 p-2 text-center font-mono">{p.paymentDate}</td>
                         <td className="border border-slate-300 p-2 text-right font-mono font-bold bg-amber-50/60 text-amber-950">
                           ৳ {(p.bonus || p.netPaid)?.toLocaleString('en-IN')}
@@ -882,7 +882,7 @@ export const StaffReportsModal: React.FC<StaffReportsModalProps> = ({
                           <td className="border border-slate-300 p-2 font-mono font-bold text-blue-900">{l.memoNumber}</td>
                           <td className="border border-slate-300 p-2 text-center font-mono">{l.letterDate}</td>
                           <td className="border border-slate-300 p-2">{l.bankName}, {l.branchName}</td>
-                          <td className="border border-slate-300 p-2 text-center font-mono">{l.paymentMonth}</td>
+                          <td className="border border-slate-300 p-2 text-center font-medium">{formatSalaryMonth(l.paymentMonth, language)}</td>
                           <td className="border border-slate-300 p-2 text-center font-bold">{l.staffCount} জন</td>
                           <td className="border border-slate-300 p-2 text-right font-mono font-bold bg-blue-50/50 text-blue-950">
                             ৳ {l.totalAmount?.toLocaleString('en-IN')}
@@ -911,13 +911,13 @@ export const StaffReportsModal: React.FC<StaffReportsModalProps> = ({
             return (
               <div className="space-y-4">
                 <div className="flex items-center justify-between text-xs font-medium text-slate-700 pb-1">
-                  <span>মাস: <strong className="text-slate-900 font-bold">{filterMonth}</strong> — বকেয়া / অপরিশোধিত স্টাফ: <strong className="text-rose-700 font-bold">{unpaidList.length} জন</strong></span>
+                  <span>মাস: <strong className="text-slate-900 font-bold">{formatSalaryMonth(filterMonth, language)}</strong> — বকেয়া / অপরিশোধিত স্টাফ: <strong className="text-rose-700 font-bold">{unpaidList.length} জন</strong></span>
                   <span>মোট বকেয়া দায়ভার: <strong className="text-rose-800 font-bold">৳ {totalUnpaid.toLocaleString('en-IN')}</strong></span>
                 </div>
 
                 {unpaidList.length === 0 ? (
                   <div className="p-8 text-center bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900 font-bold text-sm">
-                    ✓ চমৎকার! {filterMonth} মাসের সকল কর্মরত ইমাম ও স্টাফদের বেতন সম্পূর্ণ পরিশোধিত রয়েছে। কোনো বকেয়া নেই।
+                    ✓ চমৎকার! {formatSalaryMonth(filterMonth, language)} মাসের সকল কর্মরত ইমাম ও স্টাফদের বেতন সম্পূর্ণ পরিশোধিত রয়েছে। কোনো বকেয়া নেই।
                   </div>
                 ) : (
                   <table className="w-full border-collapse border border-slate-300 text-[11px]">

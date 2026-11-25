@@ -10,6 +10,7 @@ import {
   HelpCircle,
 } from 'lucide-react';
 import { FinancialAccount } from '../types';
+import { FormAlertAssistant } from './common/FormAlertAssistant';
 
 interface FinancialAccountModalProps {
   isOpen: boolean;
@@ -577,9 +578,25 @@ export const FinancialAccountModal: React.FC<FinancialAccountModalProps> = ({
           </div>
 
           {errorMsg && (
-            <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-xl flex items-center space-x-2">
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-              <span>{errorMsg}</span>
+            <div className="space-y-2">
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-xl flex items-center space-x-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{errorMsg}</span>
+              </div>
+              <FormAlertAssistant
+                moduleName="আর্থিক হিসাব ও ব্যাংক/মোবাইল ব্যাংকিং (Financial Accounts)"
+                alertMessage={errorMsg}
+                formValues={{
+                  accountType,
+                  nameBn,
+                  bankName,
+                  branchName,
+                  accountNumber,
+                  openingBalance,
+                  status,
+                }}
+                onDismissAlert={() => setErrorMsg('')}
+              />
             </div>
           )}
 

@@ -20,6 +20,7 @@ import {
   Building2
 } from 'lucide-react';
 import { CommitteeMember, CommitteeTerm } from '../types';
+import { FormAlertAssistant } from './common/FormAlertAssistant';
 
 export const POSITION_MAP_BN: Record<CommitteeMember['position'], string> = {
   PRESIDENT: 'সভাপতি (President)',
@@ -326,9 +327,26 @@ export const MemberFormModal: React.FC<MemberFormModalProps> = ({
         {/* Form Body - Scrollable */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
           {error && (
-            <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs sm:text-sm flex items-start space-x-2">
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-              <span>{error}</span>
+            <div className="space-y-2">
+              <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs sm:text-sm flex items-start space-x-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <span>{error}</span>
+              </div>
+              <FormAlertAssistant
+                moduleName="কমিটি সদস্য নিবন্ধন ও প্রোফাইল (Committee Member)"
+                alertMessage={error}
+                formValues={{
+                  termId,
+                  name,
+                  phone,
+                  position,
+                  positionCustomBn,
+                  status,
+                  email,
+                  dateOfBirth,
+                }}
+                onDismissAlert={() => setError('')}
+              />
             </div>
           )}
 

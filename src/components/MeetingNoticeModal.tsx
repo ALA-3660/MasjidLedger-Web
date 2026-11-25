@@ -15,6 +15,7 @@ import {
 import { CommitteeMeetingNotice, Mosque, CommitteeMember } from '../types';
 import { formatDate, Language } from '../lib/i18n';
 import { printElement } from '../lib/printUtils';
+import { FormAlertAssistant } from './common/FormAlertAssistant';
 
 interface MeetingNoticeModalProps {
   isOpen: boolean;
@@ -179,8 +180,24 @@ export const MeetingNoticeModal: React.FC<MeetingNoticeModalProps> = ({
         {/* Body */}
         <form onSubmit={handleSubmit} className="p-4 sm:p-6 overflow-y-auto space-y-4 font-baloo flex-1">
           {formError && (
-            <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-semibold">
-              {formError}
+            <div className="space-y-2">
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-semibold">
+                {formError}
+              </div>
+              <FormAlertAssistant
+                moduleName="কমিটি মিটিং আহবান নোটিশ (Meeting Notice)"
+                alertMessage={formError}
+                formValues={{
+                  memoNo,
+                  serialNumber,
+                  noticeDate,
+                  meetingDate,
+                  time,
+                  venue,
+                  meetingTypeBn,
+                }}
+                onDismissAlert={() => setFormError('')}
+              />
             </div>
           )}
 

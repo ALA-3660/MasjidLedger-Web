@@ -12,6 +12,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { AdvisorConsultation, AdvisorMember } from '../types';
+import { FormAlertAssistant } from './common/FormAlertAssistant';
 
 interface AdvisorConsultationModalProps {
   isOpen: boolean;
@@ -150,9 +151,17 @@ export const AdvisorConsultationModal: React.FC<AdvisorConsultationModalProps> =
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           {error && (
-            <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-start space-x-3 text-rose-700 text-sm">
-              <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-              <span>{error}</span>
+            <div className="space-y-2">
+              <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-start space-x-3 text-rose-700 text-sm">
+                <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                <span>{error}</span>
+              </div>
+              <FormAlertAssistant
+                moduleName="উপদেষ্টা পরামর্শ ও দিকনির্দেশনা (Advisor Consultation)"
+                alertMessage={error}
+                formValues={formData}
+                onDismissAlert={() => setError(null)}
+              />
             </div>
           )}
 

@@ -44,6 +44,7 @@ import {
   FinancialAccount,
   PaymentMethod,
   Staff,
+  StaffPayment,
   MosqueAsset,
   MosqueProperty,
   User,
@@ -54,14 +55,20 @@ import {
   ExpenseReconciliationDataset,
 } from '../lib/expenseReconciliationService';
 import { AiSmartEntryToolbar, AiSmartEntryResult } from './common/AiSmartEntryToolbar';
+import { FormAlertAssistant } from './common/FormAlertAssistant';
 import { ExpenseReconciliationView } from './ExpenseReconciliationView';
 import { BudgetControlView } from './BudgetControlView';
 import { Language, translations, formatCurrency, formatDate } from '../lib/i18n';
 import { api } from '../lib/api';
 import { ChangeCalculatorModal } from './ChangeCalculatorModal';
-import { EditTransactionModal } from './EditModals';
 import { SmsPreviewModal } from './SmsPreviewModal';
 import { UnifiedExpenseEntryModal, ExpenseEntryType, ExpenseAiPrefill } from './UnifiedExpenseEntryModal';
+import { StaffPaymentModal } from './StaffPaymentModal';
+import {
+  isSalaryExpenseEntry,
+  findLinkedStaffPaymentForExpense,
+} from '../lib/staffPaymentSync';
+import { formatSalaryMonth } from '../lib/i18n';
 import { AiUtilityBillScannerPanel, UtilityPrefillPayload } from './expense/AiUtilityBillScannerPanel';
 import { AiPayrollAssistantModal, PayrollVoucherPrefill } from './expense/AiPayrollAssistantModal';
 import { AiExpenseReconciliationPanel, ExpenseReconAuditResult } from './expense/AiExpenseReconciliationPanel';
@@ -131,6 +138,7 @@ interface ExpenseManagementViewProps {
   incomes?: IncomeEntry[];
   transfers?: AccountTransfer[];
   staff?: Staff[];
+  staffPayments?: StaffPayment[];
   assets?: MosqueAsset[];
   properties?: MosqueProperty[];
   currentUser: User | null;
@@ -140,6 +148,8 @@ interface ExpenseManagementViewProps {
   onClearScannedAction?: () => void;
   onNavigateTab?: (tab: string) => void;
   onAddExpense: (data: any, options?: { print?: boolean; format?: 'A4' | 'POS_80' | 'POS_58' }) => Promise<any>;
+  onPayStaff?: (data: any) => Promise<void>;
+  onUpdateStaffPayment?: (id: string, data: any) => Promise<void>;
   onUpdateExpense?: (id: string, data: any) => Promise<void>;
   onReverseExpense: (id: string, reason: string) => Promise<void>;
   onRestoreExpense?: (id: string, reason?: string) => Promise<void>;
@@ -160,6 +170,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
   incomes = [],
   transfers = [],
   staff,
+  staffPayments = [],
   assets,
   properties,
   currentUser,
@@ -169,6 +180,8 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
   onClearScannedAction,
   onNavigateTab,
   onAddExpense,
+  onPayStaff,
+  onUpdateStaffPayment,
   onUpdateExpense,
   onReverseExpense,
   onRestoreExpense,
@@ -181,6 +194,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
 
   // Unified Expense Entry Modal State
   const [isUnifiedExpenseModalOpen, setIsUnifiedExpenseModalOpen] = useState(false);
+  const [isStaffPaymentModalOpen, setIsStaffPaymentModalOpen] = useState(false);
   const [unifiedExpenseType, setUnifiedExpenseType] = useState<ExpenseEntryType>('GENERAL_EXPENSE');
   const [unifiedMainHeadId, setUnifiedMainHeadId] = useState<string | undefined>();
   const [unifiedStaffId, setUnifiedStaffId] = useState<string | undefined>();
@@ -235,6 +249,15 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
   const [editingItem, setEditingItem] = useState<ExpenseEntry | null>(null);
   const [smsItem, setSmsItem] = useState<ExpenseEntry | null>(null);
   const [isReportPreviewOpen, setIsReportPreviewOpen] = useState(false);
+
+  // Determine whether the expense currently being edited is a staff salary payment
+  const editingLinkedStaffPayment = useMemo(
+    () => (editingItem ? findLinkedStaffPaymentForExpense(editingItem, staffPayments) : undefined),
+    [editingItem, staffPayments]
+  );
+  const isEditingSalaryExpense = Boolean(
+    editingItem && (editingLinkedStaffPayment || isSalaryExpenseEntry(editingItem))
+  );
 
   // Reversal Modal State
   const [reversalTarget, setReversalTarget] = useState<ExpenseEntry | null>(null);
@@ -1450,9 +1473,18 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
               </div>
 
               {formError && (
-                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-semibold flex items-center space-x-2">
-                  <AlertTriangle className="w-4 h-4 shrink-0" />
-                  <span>{formError}</span>
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-semibold space-y-1.5">
+                  <div className="flex items-center space-x-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>{formError}</span>
+                  </div>
+                  <FormAlertAssistant
+                    alertMessage={formError}
+                    formNameBn="ব্যয় ব্যবস্থাপনা এন্ট্রি ফর্ম"
+                    moduleKey="EXPENSE_MANAGEMENT"
+                    alertType="ERROR"
+                    compact
+                  />
                 </div>
               )}
 
@@ -1702,7 +1734,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                   <button
                     onClick={() => {
                       if (activeTab === 'salary') {
-                        handleOpenUnifiedExpense('STAFF_EXPENSE');
+                        setIsStaffPaymentModalOpen(true);
                       } else if (activeTab === 'maintenance') {
                         handleOpenUnifiedExpense('ASSET_EXPENSE');
                       } else if (activeTab === 'construction') {
@@ -1720,7 +1752,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                     className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs transition-all cursor-pointer shrink-0"
                   >
                     <Plus className="w-4 h-4" />
-                    <span>+ এই খাতে ব্যয় এন্ট্রি</span>
+                    <span>{activeTab === 'salary' ? 'বেতন পরিশোধ' : '+ এই খাতে ব্যয় এন্ট্রি'}</span>
                   </button>
                 </div>
               </div>
@@ -3841,9 +3873,18 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
 
             <form onSubmit={(e) => handleCreateSubmit(e, true)} className="p-5 space-y-4 overflow-y-auto flex-1">
               {formError && (
-                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-semibold flex items-center space-x-2">
-                  <AlertTriangle className="w-4 h-4 shrink-0" />
-                  <span>{formError}</span>
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-semibold space-y-1.5">
+                  <div className="flex items-center space-x-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>{formError}</span>
+                  </div>
+                  <FormAlertAssistant
+                    alertMessage={formError}
+                    formNameBn="ব্যয় ভাউচার এন্ট্রি মোডাল"
+                    moduleKey="EXPENSE_MODAL"
+                    alertType="ERROR"
+                    compact
+                  />
                 </div>
               )}
 
@@ -4087,23 +4128,8 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
         }}
       />
 
-      {/* ==================== EDIT TRANSACTION MODAL ==================== */}
-      {editingItem && onUpdateExpense && (
-        <EditTransactionModal
-          isOpen={!!editingItem}
-          onClose={() => setEditingItem(null)}
-          transaction={editingItem}
-          item={editingItem}
-          type="EXPENSE"
-          accountHeads={accountHeads}
-          accounts={accounts}
-          onSave={async (id, data) => {
-            await onUpdateExpense(id, data);
-            setEditingItem(null);
-          }}
-          language={language}
-        />
-      )}
+      {/* ==================== EDIT EXPENSE ROUTING (EXACT ENTRY FORM) ==================== */}
+      {/* Salary expenses edit via StaffPaymentModal below; all other expenses edit via UnifiedExpenseEntryModal below */}
 
       {/* ==================== E5-C DRILL-DOWN VOUCHERS MODAL ==================== */}
       {selectedDrillDownEntity && (
@@ -4301,12 +4327,15 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
         onExcel={activeReportModalConfig.onExcel}
       />
 
-      {/* ==================== UNIFIED EXPENSE ENTRY MODAL (Phase E2) ==================== */}
+      {/* ==================== UNIFIED EXPENSE ENTRY / EDIT MODAL (Phase E2) ==================== */}
       <UnifiedExpenseEntryModal
-        isOpen={isUnifiedExpenseModalOpen}
+        isOpen={isUnifiedExpenseModalOpen || Boolean(editingItem && !isEditingSalaryExpense)}
         onClose={() => {
           setIsUnifiedExpenseModalOpen(false);
           setUnifiedAiPrefill(null);
+          if (editingItem && !isEditingSalaryExpense) {
+            setEditingItem(null);
+          }
         }}
         initialType={unifiedExpenseType}
         initialMainHeadId={unifiedMainHeadId}
@@ -4314,6 +4343,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
         initialAssetId={unifiedAssetId}
         initialPropertyId={unifiedPropertyId}
         initialAiPrefill={unifiedAiPrefill}
+        editingExpense={editingItem && !isEditingSalaryExpense ? editingItem : null}
         accounts={accounts}
         accountHeads={accountHeads}
         staff={staff}
@@ -4324,6 +4354,12 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
         language={language}
         onSaveExpense={async (data, options) => {
           return await onAddExpense(data, options);
+        }}
+        onUpdateExpense={async (id, data) => {
+          if (onUpdateExpense) {
+            await onUpdateExpense(id, data);
+          }
+          setEditingItem(null);
         }}
         onPrintVoucher={onPrintVoucher}
       />
@@ -4349,6 +4385,62 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
             },
           });
         }}
+      />
+
+      {/* ==================== STAFF MONTHLY SALARY PAYMENT / EDIT MODAL ==================== */}
+      <StaffPaymentModal
+        isOpen={isStaffPaymentModalOpen || Boolean(editingItem && isEditingSalaryExpense)}
+        onClose={() => {
+          setIsStaffPaymentModalOpen(false);
+          if (editingItem && isEditingSalaryExpense) {
+            setEditingItem(null);
+          }
+        }}
+        staffList={staff || []}
+        staffPayments={staffPayments}
+        accounts={accounts}
+        editingPayment={editingItem && isEditingSalaryExpense ? editingLinkedStaffPayment || null : null}
+        editingExpense={
+          editingItem && isEditingSalaryExpense && !editingLinkedStaffPayment ? editingItem : null
+        }
+        onPayStaff={async (data) => {
+          if (onPayStaff) {
+            await onPayStaff(data);
+          } else {
+            await api.payStaffSalary(data);
+          }
+          setIsStaffPaymentModalOpen(false);
+        }}
+        onUpdatePayment={async (paymentId, data) => {
+          if (onUpdateStaffPayment) {
+            await onUpdateStaffPayment(paymentId, data);
+          } else {
+            await api.updateStaffPayment(paymentId, data);
+          }
+          setEditingItem(null);
+        }}
+        onUpdateSalaryExpense={async (expenseId, data) => {
+          if (onUpdateExpense) {
+            const monthLabel = formatSalaryMonth(data.month, 'bn');
+            await onUpdateExpense(expenseId, {
+              date: data.paymentDate,
+              amount: data.netPaid,
+              accountId: data.accountId,
+              paymentMethod: data.paymentMethod,
+              payeeName: data.staffName || editingItem?.payeeName,
+              payeePhone: data.staffPhone || editingItem?.payeePhone,
+              description:
+                data.notes ||
+                `${data.staffName || editingItem?.payeeName || 'স্টাফ'} এর ${monthLabel} মাসের বেতন/সম্মানী পরিশোধ`,
+              sourceModule: 'STAFF_EXPENSE',
+              sourceId: data.staffId,
+              staffId: data.staffId,
+              salaryMonth: data.month,
+            });
+          }
+          setEditingItem(null);
+        }}
+        language={language}
       />
     </div>
   );

@@ -833,6 +833,8 @@ export interface ExpenseEntry {
   sourceModule?: string;
   sourceId?: string;
   sourceType?: string;
+  staffId?: string;
+  salaryMonth?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -3007,6 +3009,61 @@ export interface AccountTransfer {
   createdBy: string;
   createdByName: string;
   createdAt: string;
+}
+
+export interface BankReconciliationRecord {
+  id: string;
+  mosqueId: string;
+  accountId: string;
+  accountName: string;
+  accountNumberMasked?: string;
+  date: string;
+  bookBalance: number;
+  totalBankCredit?: number;
+  totalBankDebit?: number;
+  netBankAdjustment?: number;
+  adjustedBookBalance?: number;
+  statementBalance: number;
+  difference: number;
+  status: 'VERIFIED' | 'DISCREPANCY';
+  verifiedBy: string;
+  notes?: string;
+  createdBy: string;
+  createdByName: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export type BankAdjustmentDirection = 'CREDIT' | 'DEBIT';
+
+export type BankAdjustmentCategory =
+  | 'BANK_PROFIT'
+  | 'BANK_INTEREST'
+  | 'OTHER_CREDIT'
+  | 'SERVICE_CHARGE'
+  | 'EXCISE_DUTY'
+  | 'TAX_AIT'
+  | 'SMS_CHEQUE_FEE'
+  | 'INTEREST_DISPOSAL'
+  | 'OTHER_DEBIT';
+
+export interface BankAdjustmentRecord {
+  id: string;
+  mosqueId: string;
+  accountId: string;
+  accountName: string;
+  accountNumberMasked?: string;
+  date: string;
+  direction: BankAdjustmentDirection;
+  category: BankAdjustmentCategory;
+  categoryLabelBn: string;
+  amount: number;
+  reference?: string;
+  notes?: string;
+  createdBy: string;
+  createdByName: string;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface UploadedFile {

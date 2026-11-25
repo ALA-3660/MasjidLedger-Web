@@ -20,18 +20,23 @@ import { StaffSalarySlipModal } from './StaffSalarySlipModal';
 import { CashSalaryResolutionModal } from './CashSalaryResolutionModal';
 import { AiStaffDocumentModal } from './staff/AiStaffDocumentModal';
 
-import { Staff, StaffPayment, FinancialAccount, Mosque, StaffAttendanceStatus, StaffLeaveStatus } from '../types';
-import { Language } from '../lib/i18n';
+import { Staff, StaffPayment, FinancialAccount, Mosque, StaffAttendanceStatus, StaffLeaveStatus, ExpenseEntry } from '../types';
+import { Language, formatSalaryMonth } from '../lib/i18n';
+import { UnifiedStaffPaymentItem } from '../lib/staffPaymentSync';
+import { api } from '../lib/api';
 
 interface StaffManagementViewProps {
   staffList: Staff[];
   staffPayments: StaffPayment[];
+  expenses?: ExpenseEntry[];
   accounts: FinancialAccount[];
   currentMosque?: Mosque | null;
   onAddStaff: (data: Partial<Staff>) => Promise<void>;
   onUpdateStaff: (id: string, data: Partial<Staff>) => Promise<void>;
   onDeleteStaff: (id: string) => Promise<void>;
   onPayStaff: (data: any) => Promise<void>;
+  onUpdateStaffPayment?: (id: string, data: any) => Promise<void>;
+  onUpdateExpense?: (id: string, data: any) => Promise<void>;
   onLogAttendance?: (data: {
     staffId: string;
     date: string;
@@ -50,12 +55,15 @@ interface StaffManagementViewProps {
 export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
   staffList = [],
   staffPayments = [],
+  expenses = [],
   accounts = [],
   currentMosque,
   onAddStaff,
   onUpdateStaff,
   onDeleteStaff,
   onPayStaff,
+  onUpdateStaffPayment,
+  onUpdateExpense,
   onLogAttendance,
   onApplyLeave,
   onUpdateLeaveStatus,
@@ -73,6 +81,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
 
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [payStaffId, setPayStaffId] = useState<string | undefined>(undefined);
+  const [editingPaymentItem, setEditingPaymentItem] = useState<UnifiedStaffPaymentItem | null>(null);
 
   const [isAdvanceModalOpen, setIsAdvanceModalOpen] = useState(false);
   const [advanceStaffId, setAdvanceStaffId] = useState<string | undefined>(undefined);
@@ -316,9 +325,14 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
           <StaffSalaryDisbursementSection
             staffList={staffList}
             staffPayments={staffPayments}
+            expenses={expenses}
             accounts={accounts}
             currentMosque={currentMosque}
             onOpenPayModal={handleOpenPay}
+            onEditPayment={(pmt) => {
+              setEditingPaymentItem(pmt);
+              setIsPaymentModalOpen(true);
+            }}
             onPrintSlip={handlePrintSlip}
             onOpenResolutionModal={handleOpenResolution}
             language={language}
@@ -384,7 +398,9 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
           setSelectedProfileStaff(null);
         }}
         staff={selectedProfileStaff}
+        allStaff={staffList}
         staffPayments={staffPayments}
+        expenses={expenses}
         currentMosque={currentMosque}
         onEditStaff={(s) => {
           setIsProfileModalOpen(false);
@@ -392,8 +408,14 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
         }}
         onPaySalary={(sId) => {
           setIsProfileModalOpen(false);
+          setEditingPaymentItem(null);
           handleOpenPay(sId);
         }}
+        onEditPayment={(pmt) => {
+          setEditingPaymentItem(pmt);
+          setIsPaymentModalOpen(true);
+        }}
+        onPrintSlip={handlePrintSlip}
         onUpdateStaff={onUpdateStaff}
         language={language}
       />
@@ -419,21 +441,55 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
         language={language}
       />
 
-      {/* Salary Payment Modal */}
+      {/* Salary Payment / Edit Modal */}
       <StaffPaymentModal
         isOpen={isPaymentModalOpen}
         onClose={() => {
           setIsPaymentModalOpen(false);
           setPayStaffId(undefined);
+          setEditingPaymentItem(null);
         }}
         staffList={staffList}
         staffPayments={staffPayments}
         accounts={accounts}
         initialStaffId={payStaffId}
+        editingPayment={editingPaymentItem && !editingPaymentItem.isFromExpenseVoucher ? editingPaymentItem : null}
+        editingExpense={editingPaymentItem?.isFromExpenseVoucher ? editingPaymentItem.linkedExpense || null : null}
         onPayStaff={async (data) => {
           await onPayStaff(data);
           setIsPaymentModalOpen(false);
           setPayStaffId(undefined);
+        }}
+        onUpdatePayment={async (paymentId, data) => {
+          if (onUpdateStaffPayment) {
+            await onUpdateStaffPayment(paymentId, data);
+          } else {
+            await api.updateStaffPayment(paymentId, data);
+          }
+          setIsPaymentModalOpen(false);
+          setEditingPaymentItem(null);
+        }}
+        onUpdateSalaryExpense={async (expenseId, data) => {
+          if (onUpdateExpense) {
+            const monthLabel = formatSalaryMonth(data.month, 'bn');
+            await onUpdateExpense(expenseId, {
+              date: data.paymentDate,
+              amount: data.netPaid,
+              accountId: data.accountId,
+              paymentMethod: data.paymentMethod,
+              payeeName: data.staffName || editingPaymentItem?.staffName,
+              payeePhone: data.staffPhone || editingPaymentItem?.linkedExpense?.payeePhone,
+              description:
+                data.notes ||
+                `${data.staffName || editingPaymentItem?.staffName || 'স্টাফ'} এর ${monthLabel} মাসের বেতন/সম্মানী পরিশোধ`,
+              sourceModule: 'STAFF_EXPENSE',
+              sourceId: data.staffId,
+              staffId: data.staffId,
+              salaryMonth: data.month,
+            });
+          }
+          setIsPaymentModalOpen(false);
+          setEditingPaymentItem(null);
         }}
         language={language}
       />

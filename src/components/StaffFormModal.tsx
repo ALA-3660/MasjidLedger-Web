@@ -21,11 +21,15 @@ import {
   Heart,
   Upload,
   Loader2,
-  CheckCircle2
+  CheckCircle2,
+  Camera,
+  Check
 } from 'lucide-react';
 import { Staff, StaffEmploymentType } from '../types';
 import { Language, translations } from '../lib/i18n';
-import { api } from '../lib/api';
+import { api, StaffDocumentScanResult } from '../lib/api';
+import { ZeroStorageCameraModal } from './common/ZeroStorageCameraModal';
+import { FormAlertAssistant } from './common/FormAlertAssistant';
 
 interface StaffFormModalProps {
   isOpen: boolean;
@@ -117,11 +121,28 @@ export const StaffFormModal: React.FC<StaffFormModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // AI NID/Document Scan States
+  // AI NID/Document Scan States (Zero-Storage + Human-in-the-Loop Preview)
   const scanFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isCameraScanOpen, setIsCameraScanOpen] = useState(false);
   const [aiScanning, setAiScanning] = useState(false);
   const [aiScanMessage, setAiScanMessage] = useState<string | null>(null);
   const [aiScanError, setAiScanError] = useState<string | null>(null);
+  const [pendingScanPreview, setPendingScanPreview] = useState<StaffDocumentScanResult | null>(null);
+  const [selectedScanSections, setSelectedScanSections] = useState<{
+    personal: boolean;
+    appointment: boolean;
+    education: boolean;
+    salary: boolean;
+    bank: boolean;
+    docsNotes: boolean;
+  }>({
+    personal: true,
+    appointment: true,
+    education: true,
+    salary: true,
+    bank: true,
+    docsNotes: true,
+  });
 
   const designationMap: Record<Staff['designation'], string> = {
     IMAM: 'পেশ ইমাম',
@@ -292,7 +313,77 @@ export const StaffFormModal: React.FC<StaffFormModalProps> = ({
     setError(null);
     setAiScanMessage(null);
     setAiScanError(null);
+    setPendingScanPreview(null);
   }, [staff, isOpen]);
+
+  const prepareScanPreview = (extracted: StaffDocumentScanResult) => {
+    setPendingScanPreview(extracted);
+    setSelectedScanSections({
+      personal: Boolean(
+        extracted.fullNameBn ||
+          extracted.nameEn ||
+          extracted.fatherName ||
+          extracted.motherName ||
+          extracted.nid ||
+          extracted.dateOfBirth ||
+          extracted.phone ||
+          extracted.presentAddress ||
+          extracted.permanentAddress
+      ),
+      appointment: Boolean(
+        extracted.appointment?.designation ||
+          extracted.appointment?.designationBn ||
+          extracted.appointment?.joiningDate ||
+          extracted.appointment?.appointmentDate ||
+          extracted.appointment?.appointmentLetterNo ||
+          extracted.appointment?.responsibilities
+      ),
+      education: Boolean(
+        extracted.education?.generalEducation ||
+          extracted.generalEducation ||
+          extracted.education?.religiousEducation ||
+          extracted.religiousEducation ||
+          extracted.education?.specialSkills ||
+          extracted.education?.previousExperience ||
+          extracted.previousExperience
+      ),
+      salary: Boolean(
+        extracted.salary?.basicSalary !== null && extracted.salary?.basicSalary !== undefined
+      ),
+      bank: Boolean(
+        extracted.bank?.bankName ||
+          extracted.bank?.accountNumber ||
+          extracted.bank?.branchName ||
+          extracted.bank?.accountHolderName
+      ),
+      docsNotes: Boolean(
+        extracted.docsNotes?.notes || extracted.docsNotes?.officialAdminNotes
+      ),
+    });
+  };
+
+  const handleZeroStorageCameraConfirm = async (payload: {
+    base64: string;
+    mimeType: string;
+    source: 'CAMERA' | 'FILE';
+  }) => {
+    setAiScanning(true);
+    setAiScanError(null);
+    setAiScanMessage(null);
+
+    try {
+      const extracted = await api.scanStaffDocumentAi({
+        fileBase64: payload.base64,
+        mimeType: payload.mimeType,
+      });
+      prepareScanPreview(extracted);
+    } catch (err: any) {
+      setAiScanError(err?.message || 'NID বা ডকুমেন্ট স্ক্যান ব্যর্থ হয়েছে।');
+      throw err;
+    } finally {
+      setAiScanning(false);
+    }
+  };
 
   const handleAiDocumentScanFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -303,8 +394,9 @@ export const StaffFormModal: React.FC<StaffFormModalProps> = ({
     setAiScanError(null);
     setAiScanMessage(null);
 
+    let tempBase64 = '';
     try {
-      const base64Data = await new Promise<string>((resolve, reject) => {
+      tempBase64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
           const raw = typeof reader.result === 'string' ? reader.result : '';
@@ -316,35 +408,123 @@ export const StaffFormModal: React.FC<StaffFormModalProps> = ({
       });
 
       const extracted = await api.scanStaffDocumentAi({
-        fileBase64: base64Data,
+        fileBase64: tempBase64,
         mimeType: file.type || 'image/jpeg',
       });
-
-      let filledCount = 0;
-      if (extracted.fullNameBn) { setFullNameBn(extracted.fullNameBn); filledCount++; }
-      if (extracted.nameEn) { setName(extracted.nameEn); filledCount++; }
-      else if (extracted.fullNameBn && !name) { setName(extracted.fullNameBn); }
-      if (extracted.fatherName) { setFatherName(extracted.fatherName); filledCount++; }
-      if (extracted.motherName) { setMotherName(extracted.motherName); filledCount++; }
-      if (extracted.nid) { setNid(extracted.nid); filledCount++; }
-      if (extracted.dateOfBirth) { setDateOfBirth(extracted.dateOfBirth); filledCount++; }
-      if (extracted.phone) { setPhone(extracted.phone); filledCount++; }
-      if (extracted.presentAddress) { setPresentAddress(extracted.presentAddress); filledCount++; }
-      if (extracted.permanentAddress) { setPermanentAddress(extracted.permanentAddress); filledCount++; }
-      if (extracted.bloodGroup) { setBloodGroup(extracted.bloodGroup); filledCount++; }
-      if (extracted.generalEducation) { setGeneralEducation(extracted.generalEducation); filledCount++; }
-      if (extracted.religiousEducation) { setReligiousEducation(extracted.religiousEducation); filledCount++; }
-      if (extracted.previousExperience) { setPreviousExperience(extracted.previousExperience); filledCount++; }
-
-      setAiScanMessage(
-        extracted.confidenceNoteBn ||
-          `AI সফলভাবে ${filledCount}টি তথ্য ফর্মে বসিয়েছে। অনুগ্রহ করে তথ্যগুলো যাচাই করে "সংরক্ষণ করুন" বাটনে ক্লিক করুন।`
-      );
+      prepareScanPreview(extracted);
     } catch (err: any) {
       setAiScanError(err?.message || 'NID বা ডকুমেন্ট স্ক্যান ব্যর্থ হয়েছে।');
     } finally {
+      tempBase64 = '';
       setAiScanning(false);
     }
+  };
+
+  const handleApplyApprovedScanSections = () => {
+    if (!pendingScanPreview) return;
+    const ex = pendingScanPreview;
+    let appliedCount = 0;
+
+    if (selectedScanSections.personal) {
+      if (ex.fullNameBn) { setFullNameBn(ex.fullNameBn); appliedCount++; }
+      if (ex.nameEn) { setName(ex.nameEn); appliedCount++; }
+      else if (ex.fullNameBn && !name) { setName(ex.fullNameBn); }
+      if (ex.fatherName) { setFatherName(ex.fatherName); appliedCount++; }
+      if (ex.motherName) { setMotherName(ex.motherName); appliedCount++; }
+      if (ex.nid) { setNid(ex.nid); appliedCount++; }
+      if (ex.dateOfBirth) { setDateOfBirth(ex.dateOfBirth); appliedCount++; }
+      if (ex.phone) { setPhone(ex.phone); appliedCount++; }
+      if (ex.alternatePhone) { setAlternatePhone(ex.alternatePhone); appliedCount++; }
+      if (ex.email) { setEmail(ex.email); appliedCount++; }
+      if (ex.presentAddress) { setPresentAddress(ex.presentAddress); appliedCount++; }
+      if (ex.permanentAddress) { setPermanentAddress(ex.permanentAddress); appliedCount++; }
+      if (ex.bloodGroup) { setBloodGroup(ex.bloodGroup); appliedCount++; }
+    }
+
+    if (selectedScanSections.appointment && ex.appointment) {
+      if (ex.appointment.designation && designationMap[ex.appointment.designation as Staff['designation']]) {
+        const d = ex.appointment.designation as Staff['designation'];
+        setDesignation(d);
+        setDesignationBn(ex.appointment.designationBn || designationMap[d]);
+        appliedCount++;
+      } else if (ex.appointment.designationBn) {
+        setDesignationBn(ex.appointment.designationBn);
+        appliedCount++;
+      }
+      if (ex.appointment.appointmentDate) { setAppointmentDate(ex.appointment.appointmentDate); appliedCount++; }
+      if (ex.appointment.joiningDate) { setJoiningDate(ex.appointment.joiningDate); appliedCount++; }
+      if (ex.appointment.appointmentLetterNo) { setAppointmentLetterNo(ex.appointment.appointmentLetterNo); appliedCount++; }
+      if (ex.appointment.responsibilities) { setResponsibilities(ex.appointment.responsibilities); appliedCount++; }
+    }
+
+    if (selectedScanSections.education) {
+      const genEd = ex.education?.generalEducation || ex.generalEducation;
+      const relEd = ex.education?.religiousEducation || ex.religiousEducation;
+      const skills = ex.education?.specialSkills;
+      const exp = ex.education?.previousExperience || ex.previousExperience;
+      if (genEd) { setGeneralEducation(genEd); appliedCount++; }
+      if (relEd) { setReligiousEducation(relEd); appliedCount++; }
+      if (skills) { setSpecialSkills(skills); appliedCount++; }
+      if (exp) { setPreviousExperience(exp); appliedCount++; }
+      if (typeof ex.education?.quranMemorizationHifz === 'boolean') {
+        setQuranMemorizationHifz(ex.education.quranMemorizationHifz);
+      }
+      if (typeof ex.education?.qiratTajweedCertification === 'boolean') {
+        setQiratTajweedCertification(ex.education.qiratTajweedCertification);
+      }
+    }
+
+    if (selectedScanSections.salary && ex.salary) {
+      if (ex.salary.basicSalary !== null && ex.salary.basicSalary !== undefined) {
+        setBasicSalary(ex.salary.basicSalary);
+        appliedCount++;
+      }
+      if (ex.salary.housingAllowance !== null && ex.salary.housingAllowance !== undefined) {
+        setHousingAllowance(ex.salary.housingAllowance);
+        appliedCount++;
+      }
+      if (ex.salary.medicalAllowance !== null && ex.salary.medicalAllowance !== undefined) {
+        setMedicalAllowance(ex.salary.medicalAllowance);
+        appliedCount++;
+      }
+      if (ex.salary.transportAllowance !== null && ex.salary.transportAllowance !== undefined) {
+        setTransportAllowance(ex.salary.transportAllowance);
+        appliedCount++;
+      }
+      if (ex.salary.otherAllowance !== null && ex.salary.otherAllowance !== undefined) {
+        setOtherAllowance(ex.salary.otherAllowance);
+        appliedCount++;
+      }
+      if (ex.salary.paymentPreference && ['BANK', 'CASH', 'CHEQUE'].includes(ex.salary.paymentPreference)) {
+        setPaymentPreference(ex.salary.paymentPreference as any);
+      }
+    }
+
+    if (selectedScanSections.bank && ex.bank) {
+      if (ex.bank.bankName) { setBankName(ex.bank.bankName); appliedCount++; }
+      if (ex.bank.branchName) { setBranchName(ex.bank.branchName); appliedCount++; }
+      if (ex.bank.accountHolderName) { setAccountHolderName(ex.bank.accountHolderName); appliedCount++; }
+      if (ex.bank.accountNumber) { setAccountNumber(ex.bank.accountNumber); appliedCount++; }
+      if (ex.bank.routingNumber) { setRoutingNumber(ex.bank.routingNumber); appliedCount++; }
+    }
+
+    if (selectedScanSections.docsNotes && ex.docsNotes) {
+      if (ex.docsNotes.notes) {
+        setNotes((prev) => (prev ? `${prev}\n${ex.docsNotes!.notes}` : ex.docsNotes!.notes!));
+        appliedCount++;
+      }
+      if (ex.docsNotes.officialAdminNotes) {
+        setOfficialAdminNotes((prev) =>
+          prev ? `${prev}\n${ex.docsNotes!.officialAdminNotes}` : ex.docsNotes!.officialAdminNotes!
+        );
+        appliedCount++;
+      }
+    }
+
+    setPendingScanPreview(null);
+    setAiScanMessage(
+      `অনুমোদিত ${appliedCount}টি তথ্য ফর্মের সংশ্লিষ্ট সেকশনগুলোতে বসানো হয়েছে (ডাটাবেসে এখনো সেভ হয়নি)। অনুগ্রহ করে NID, জন্মতারিখ ও নামের বানান যাচাই করে নিজে "নিবন্ধন/আপডেট" বাটনে ক্লিক করুন।`
+    );
   };
 
   if (!isOpen) return null;
@@ -560,10 +740,251 @@ export const StaffFormModal: React.FC<StaffFormModalProps> = ({
 
         {/* Modal Form Body */}
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4 flex-1 text-xs text-slate-700">
+          <ZeroStorageCameraModal
+            isOpen={isCameraScanOpen}
+            onClose={() => setIsCameraScanOpen(false)}
+            titleBn="📷 ক্যামেরা দিয়ে NID / বায়োডাটা / সনদ স্ক্যান (ফাইল সেভ না করে)"
+            subtitleBn="ছবি বা নথি স্ক্যান শেষে মেমোরি থেকে মুছে যাবে; প্রাপ্ত তথ্য আগে প্রিভিউতে দেখে অনুমোদন দিন।"
+            accentColor="emerald"
+            allowPdfFallback={true}
+            onCaptureConfirm={handleZeroStorageCameraConfirm}
+          />
+
           {error && (
-            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{error}</span>
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 space-y-1.5">
+              <div className="flex items-center gap-2 font-bold">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{error}</span>
+              </div>
+              <FormAlertAssistant
+                alertMessage={error}
+                formNameBn="ইমাম, খতিব ও স্টাফ নিবন্ধন ফর্ম"
+                moduleKey="STAFF_REGISTRATION"
+                alertType="ERROR"
+                fieldValuesSnapshot={{ fullNameBn, name, phone, designationBn, basicSalary, activeTab }}
+                compact
+              />
+            </div>
+          )}
+
+          {/* Universal Zero-Storage Camera & Document Scan Bar (Accessible across tabs) */}
+          <div className="p-3.5 bg-gradient-to-r from-emerald-50 via-white to-indigo-50 border border-emerald-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-emerald-700 text-white flex items-center justify-center shrink-0">
+                <Sparkles className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="font-bold text-slate-900 font-siliguri flex flex-wrap items-center gap-1.5">
+                  <span>জিরো-স্টোরেজ NID / বায়োডাটা / সনদ স্ক্যানার</span>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px]">
+                    ফাইল সেভ হয় না
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600 font-tiro">
+                  NID, বায়োডাটা, মাদ্রাসা/সাধারণ সনদ বা নিয়োগপত্র স্ক্যান করে প্রিভিউ দেখে ফর্মের ৬টি সেকশনে নিরাপদে বসান।
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <input
+                ref={scanFileInputRef}
+                type="file"
+                accept="image/*,application/pdf"
+                onChange={handleAiDocumentScanFile}
+                className="hidden"
+              />
+              <button
+                type="button"
+                disabled={aiScanning}
+                onClick={() => {
+                  setAiScanError(null);
+                  setIsCameraScanOpen(true);
+                }}
+                className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-60 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+              >
+                {aiScanning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
+                <span>📷 ক্যামেরা দিয়ে স্ক্যান করুন (ফাইল সেভ না করে)</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={aiScanning}
+                onClick={() => scanFileInputRef.current?.click()}
+                className="px-3 py-2 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>ফাইল / PDF</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Mandatory 6-Section Scan Preview & Checkbox Approval Card */}
+          {pendingScanPreview && (
+            <div className="p-4 rounded-2xl bg-white border-2 border-indigo-300 shadow-sm space-y-3">
+              <div className="flex items-start justify-between gap-2 border-b border-slate-200 pb-2">
+                <div>
+                  <div className="text-sm font-bold text-slate-900 font-siliguri flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-emerald-700" />
+                    <span>স্ক্যান প্রিভিউ — {pendingScanPreview.detectedDocTypeBn}</span>
+                  </div>
+                  <p className="text-[11px] text-amber-800 font-tiro mt-0.5">
+                    {(pendingScanPreview.verificationWarningsBn && pendingScanPreview.verificationWarningsBn[0]) ||
+                      'NID নম্বর, জন্মতারিখ, নামের বানান এবং ব্যাংক/বেতন তথ্য নিজ চোখে মিলিয়ে অনুমোদন দিন।'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPendingScanPreview(null)}
+                  className="text-slate-400 hover:text-slate-700 p-1"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-[11px]">
+                {/* Section 1 */}
+                <label className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedScanSections.personal}
+                    onChange={(e) => setSelectedScanSections((p) => ({ ...p, personal: e.target.checked }))}
+                    className="mt-0.5 rounded text-emerald-700"
+                  />
+                  <div className="space-y-0.5">
+                    <div className="font-bold text-slate-900">১. ব্যক্তিগত ও যোগাযোগ</div>
+                    <div className="text-slate-600 font-tiro">
+                      নাম: {pendingScanPreview.fullNameBn || pendingScanPreview.nameEn || '—'} | পিতা: {pendingScanPreview.fatherName || '—'} | NID: {pendingScanPreview.nid || '—'} | জন্ম: {pendingScanPreview.dateOfBirth || '—'} | মোবাইল: {pendingScanPreview.phone || '—'}
+                    </div>
+                  </div>
+                </label>
+
+                {/* Section 2 */}
+                <label className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedScanSections.appointment}
+                    onChange={(e) => setSelectedScanSections((p) => ({ ...p, appointment: e.target.checked }))}
+                    className="mt-0.5 rounded text-emerald-700"
+                  />
+                  <div className="space-y-0.5">
+                    <div className="font-bold text-slate-900">২. নিয়োগ ও কর্মসংস্থান</div>
+                    <div className="text-slate-600 font-tiro">
+                      পদবী: {pendingScanPreview.appointment?.designationBn || pendingScanPreview.appointment?.designation || '—'} | যোগদান: {pendingScanPreview.appointment?.joiningDate || '—'} | স্মারক: {pendingScanPreview.appointment?.appointmentLetterNo || '—'}
+                    </div>
+                  </div>
+                </label>
+
+                {/* Section 3 */}
+                <label className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedScanSections.education}
+                    onChange={(e) => setSelectedScanSections((p) => ({ ...p, education: e.target.checked }))}
+                    className="mt-0.5 rounded text-emerald-700"
+                  />
+                  <div className="space-y-0.5">
+                    <div className="font-bold text-slate-900">৩. শিক্ষা ও ধর্মীয় যোগ্যতা</div>
+                    <div className="text-slate-600 font-tiro">
+                      সাধারণ: {pendingScanPreview.education?.generalEducation || pendingScanPreview.generalEducation || '—'} | দ্বীনি: {pendingScanPreview.education?.religiousEducation || pendingScanPreview.religiousEducation || '—'}
+                    </div>
+                  </div>
+                </label>
+
+                {/* Section 4 */}
+                <label className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedScanSections.salary}
+                    onChange={(e) => setSelectedScanSections((p) => ({ ...p, salary: e.target.checked }))}
+                    className="mt-0.5 rounded text-emerald-700"
+                  />
+                  <div className="space-y-0.5">
+                    <div className="font-bold text-slate-900">৪. বেতন ও ভাতা কাঠামো</div>
+                    <div className="text-slate-600 font-tiro">
+                      মূল বেতন: {pendingScanPreview.salary?.basicSalary !== null && pendingScanPreview.salary?.basicSalary !== undefined ? `৳${pendingScanPreview.salary.basicSalary}` : 'উল্লেখ নেই'} | মাধ্যম: {pendingScanPreview.salary?.paymentPreference || '—'}
+                    </div>
+                  </div>
+                </label>
+
+                {/* Section 5 */}
+                <label className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedScanSections.bank}
+                    onChange={(e) => setSelectedScanSections((p) => ({ ...p, bank: e.target.checked }))}
+                    className="mt-0.5 rounded text-emerald-700"
+                  />
+                  <div className="space-y-0.5">
+                    <div className="font-bold text-slate-900">৫. ব্যাংক ও পেমেন্ট তথ্য</div>
+                    <div className="text-slate-600 font-tiro">
+                      ব্যাংক: {pendingScanPreview.bank?.bankName || '—'} | হিসাব নং: {pendingScanPreview.bank?.accountNumber || '—'}
+                    </div>
+                  </div>
+                </label>
+
+                {/* Section 6 */}
+                <label className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedScanSections.docsNotes}
+                    onChange={(e) => setSelectedScanSections((p) => ({ ...p, docsNotes: e.target.checked }))}
+                    className="mt-0.5 rounded text-emerald-700"
+                  />
+                  <div className="space-y-0.5">
+                    <div className="font-bold text-slate-900">৬. নথি ও দাপ্তরিক নোট (শুধু টেক্সট)</div>
+                    <div className="text-slate-600 font-tiro line-clamp-2">
+                      {pendingScanPreview.docsNotes?.notes || pendingScanPreview.docsNotes?.officialAdminNotes || 'অতিরিক্ত নোট নেই'}
+                    </div>
+                  </div>
+                </label>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                <span className="text-[11px] text-slate-500 font-tiro">
+                  {pendingScanPreview.confidenceNoteBn}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPendingScanPreview(null)}
+                    className="px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-xs font-bold text-slate-700"
+                  >
+                    বাতিল
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleApplyApprovedScanSections}
+                    className="px-4 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>অনুমোদিত তথ্য ফর্মে বসান</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {aiScanMessage && (
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center gap-2 font-siliguri">
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+              <span>{aiScanMessage}</span>
+            </div>
+          )}
+
+          {aiScanError && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 space-y-1.5">
+              <div className="flex items-center gap-2 font-bold">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{aiScanError}</span>
+              </div>
+              <FormAlertAssistant
+                alertMessage={aiScanError}
+                formNameBn="স্টাফ NID / বায়োডাটা স্ক্যানার"
+                moduleKey="STAFF_DOCUMENT_SCANNER"
+                alertType="ERROR"
+                compact
+              />
             </div>
           )}
 
@@ -572,64 +993,6 @@ export const StaffFormModal: React.FC<StaffFormModalProps> = ({
           {/* ========================================================= */}
           {activeTab === 'PERSONAL' && (
             <div className="space-y-4">
-              {/* AI NID / Biodata Smart Scanner Bar */}
-              <div className="p-3.5 bg-gradient-to-r from-emerald-50 via-white to-indigo-50 border border-emerald-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-start gap-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-emerald-700 text-white flex items-center justify-center shrink-0">
-                    <Sparkles className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="font-bold text-slate-900 font-siliguri">
-                      AI NID / বায়োডাটা স্ক্যান (অটো-ফিল)
-                    </div>
-                    <p className="text-[11px] text-slate-600">
-                      জাতীয় পরিচয়পত্র বা বায়োডাটার ছবি/PDF আপলোড করলে নাম, পিতা-মাতার নাম, NID, জন্মতারিখ, ঠিকানা ও শিক্ষা ফর্মে বসে যাবে।
-                    </p>
-                  </div>
-                </div>
-
-                <div className="shrink-0">
-                  <input
-                    ref={scanFileInputRef}
-                    type="file"
-                    accept="image/*,application/pdf"
-                    onChange={handleAiDocumentScanFile}
-                    className="hidden"
-                  />
-                  <button
-                    type="button"
-                    disabled={aiScanning}
-                    onClick={() => scanFileInputRef.current?.click()}
-                    className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-60 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition"
-                  >
-                    {aiScanning ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>স্ক্যান হচ্ছে...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="w-4 h-4" />
-                        <span>AI NID/ডকুমেন্ট স্ক্যান</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {aiScanMessage && (
-                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center gap-2 font-siliguri">
-                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
-                  <span>{aiScanMessage}</span>
-                </div>
-              )}
-
-              {aiScanError && (
-                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{aiScanError}</span>
-                </div>
-              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                 <div>

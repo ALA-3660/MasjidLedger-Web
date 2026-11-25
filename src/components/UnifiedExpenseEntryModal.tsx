@@ -46,6 +46,8 @@ import { numberToBanglaWords } from '../lib/banglaNumberToWords';
 import { ChangeCalculatorModal } from './ChangeCalculatorModal';
 import { PrintFormat } from './PrintModals';
 import { AiSmartEntryToolbar, AiSmartEntryResult } from './common/AiSmartEntryToolbar';
+import { FormAlertAssistant } from './common/FormAlertAssistant';
+import { extractSalaryMonthFromExpense } from '../lib/staffPaymentSync';
 
 export type ExpenseEntryType =
   | 'GENERAL_EXPENSE'   // 💸 সাধারণ পরিচালন ব্যয়
@@ -76,6 +78,7 @@ export interface UnifiedExpenseEntryModalProps {
   initialAssetId?: string;
   initialPropertyId?: string;
   initialAiPrefill?: ExpenseAiPrefill | null;
+  editingExpense?: ExpenseEntry | null;
   accounts: FinancialAccount[];
   accountHeads: AccountHead[];
   staff?: Staff[];
@@ -89,6 +92,7 @@ export interface UnifiedExpenseEntryModalProps {
     data: any,
     options?: { print?: boolean; format?: PrintFormat }
   ) => Promise<ExpenseEntry>;
+  onUpdateExpense?: (id: string, data: any) => Promise<any>;
   onPrintVoucher?: (
     item: ExpenseEntry,
     type: 'EXPENSE',
@@ -106,6 +110,7 @@ export const UnifiedExpenseEntryModal: React.FC<UnifiedExpenseEntryModalProps> =
   initialAssetId,
   initialPropertyId,
   initialAiPrefill,
+  editingExpense,
   accounts: initialAccounts,
   accountHeads: initialAccountHeads,
   staff: initialStaff,
@@ -116,10 +121,12 @@ export const UnifiedExpenseEntryModal: React.FC<UnifiedExpenseEntryModalProps> =
   language = 'bn',
   onSuccess,
   onSaveExpense,
+  onUpdateExpense,
   onPrintVoucher,
 }) => {
   const t = translations[language] || translations.bn;
   const isBn = language === 'bn';
+  const isEditMode = Boolean(editingExpense);
 
   // Dynamic / local dataset states with fallback fetch
   const [accounts, setAccounts] = useState<FinancialAccount[]>(initialAccounts || []);
@@ -254,9 +261,55 @@ export const UnifiedExpenseEntryModal: React.FC<UnifiedExpenseEntryModalProps> =
 
     // First time opening the modal: perform initial setup
     isInitializedRef.current = true;
+    setErrorMessage('');
+
+    // Edit Mode: pre-fill exact existing expense entry values
+    if (editingExpense) {
+      const validTypes: ExpenseEntryType[] = [
+        'GENERAL_EXPENSE',
+        'STAFF_EXPENSE',
+        'ASSET_EXPENSE',
+        'PROPERTY_EXPENSE',
+      ];
+      const resolvedType: ExpenseEntryType = validTypes.includes(editingExpense.sourceModule as ExpenseEntryType)
+        ? (editingExpense.sourceModule as ExpenseEntryType)
+        : editingExpense.staffId
+        ? 'STAFF_EXPENSE'
+        : 'GENERAL_EXPENSE';
+
+      setExpenseType(resolvedType);
+      setEntryDate(editingExpense.date || new Date().toISOString().split('T')[0]);
+      setMainHeadId(editingExpense.mainHeadId || '');
+      setSubHeadId(editingExpense.subHeadId || '');
+      setAmount(editingExpense.amount !== undefined ? String(editingExpense.amount) : '');
+      setPaymentMethod(editingExpense.paymentMethod || 'CASH');
+      setAccountId(editingExpense.accountId || accounts[0]?.id || '');
+      setPayeeName(editingExpense.payeeName || '');
+      setPayeePhone(editingExpense.payeePhone || '');
+      setReference(editingExpense.reference || '');
+      setDescription(editingExpense.description || '');
+      setAttachmentUrl(editingExpense.attachmentUrl || '');
+
+      if (resolvedType === 'STAFF_EXPENSE') {
+        setSelectedStaffId(editingExpense.staffId || editingExpense.sourceId || '');
+        if (editingExpense.sourceType) setSalaryDisbursementType(editingExpense.sourceType);
+        setSalaryMonth(editingExpense.salaryMonth || extractSalaryMonthFromExpense(editingExpense));
+      } else if (resolvedType === 'ASSET_EXPENSE') {
+        setSelectedAssetId(editingExpense.sourceId || '');
+        if (editingExpense.sourceType) setAssetMaintenanceType(editingExpense.sourceType);
+      } else if (resolvedType === 'PROPERTY_EXPENSE') {
+        setSelectedPropertyId(editingExpense.sourceId || '');
+        if (editingExpense.sourceType) setPropertyExpenseNature(editingExpense.sourceType);
+      }
+      return;
+    }
+
     setExpenseType(initialType);
     setEntryDate(new Date().toISOString().split('T')[0]);
-    setErrorMessage('');
+    setAmount('');
+    setSubHeadId('');
+    setReference('');
+    setAttachmentUrl('');
 
     // Pre-select cash account
     const defaultAcc = accounts.find((a) => a.accountType === 'CASH') || accounts[0];
@@ -299,7 +352,7 @@ export const UnifiedExpenseEntryModal: React.FC<UnifiedExpenseEntryModalProps> =
       if (initialAiPrefill.salaryMonth) setSalaryMonth(initialAiPrefill.salaryMonth);
       if (initialAiPrefill.staffId) setSelectedStaffId(initialAiPrefill.staffId);
     }
-  }, [isOpen, initialType, initialStaffId, initialAssetId, initialPropertyId, initialMainHeadId, initialAiPrefill]);
+  }, [isOpen, initialType, initialStaffId, initialAssetId, initialPropertyId, initialMainHeadId, initialAiPrefill, editingExpense]);
 
   const applyContextDefaults = (
     type: ExpenseEntryType | string,
@@ -467,13 +520,19 @@ export const UnifiedExpenseEntryModal: React.FC<UnifiedExpenseEntryModalProps> =
       return;
     }
 
-    // Account Balance check validation
+    // Account Balance check validation (accounting for original amount in edit mode)
     const acc = accounts.find((a) => a.id === effectiveAccId);
-    if (acc && acc.currentBalance < num) {
+    const availableBalance = acc
+      ? acc.currentBalance +
+        (editingExpense && editingExpense.accountId === effectiveAccId && editingExpense.status === 'APPROVED'
+          ? Number(editingExpense.amount) || 0
+          : 0)
+      : 0;
+    if (acc && availableBalance < num) {
       setErrorMessage(
         isBn
-          ? `অপর্যাপ্ত ব্যালেন্স! নির্বাচিত অ্যাকাউন্ট "${acc.nameBn}"-এর বর্তমান স্থিতি ৳ ${acc.currentBalance.toLocaleString('en-IN')}, যা ব্যয়ের পরিমাণ ৳ ${num.toLocaleString('en-IN')} থেকে কম। অনুগ্রহ করে ব্যয়ের পরিমাণ সংশোধন করুন বা পর্যাপ্ত ব্যালেন্স বিশিষ্ট অ্যাকাউন্ট নির্বাচন করুন।`
-          : `Insufficient balance in account "${acc.nameBn}". Current balance: ৳ ${acc.currentBalance.toLocaleString('en-IN')}, Expense amount: ৳ ${num.toLocaleString('en-IN')}.`
+          ? `অপর্যাপ্ত ব্যালেন্স! নির্বাচিত অ্যাকাউন্ট "${acc.nameBn}"-এর বর্তমান স্থিতি ৳ ${availableBalance.toLocaleString('en-IN')}, যা ব্যয়ের পরিমাণ ৳ ${num.toLocaleString('en-IN')} থেকে কম। অনুগ্রহ করে ব্যয়ের পরিমাণ সংশোধন করুন বা পর্যাপ্ত ব্যালেন্স বিশিষ্ট অ্যাকাউন্ট নির্বাচন করুন।`
+          : `Insufficient balance in account "${acc.nameBn}". Available balance: ৳ ${availableBalance.toLocaleString('en-IN')}, Expense amount: ৳ ${num.toLocaleString('en-IN')}.`
       );
       return;
     }
@@ -497,11 +556,11 @@ export const UnifiedExpenseEntryModal: React.FC<UnifiedExpenseEntryModalProps> =
         sourceModule: expenseType,
         sourceId:
           expenseType === 'STAFF_EXPENSE'
-            ? selectedStaffId
+            ? selectedStaffId || undefined
             : expenseType === 'ASSET_EXPENSE'
-            ? selectedAssetId
+            ? selectedAssetId || undefined
             : expenseType === 'PROPERTY_EXPENSE'
-            ? selectedPropertyId
+            ? selectedPropertyId || undefined
             : undefined,
         sourceType:
           expenseType === 'STAFF_EXPENSE'
@@ -511,18 +570,39 @@ export const UnifiedExpenseEntryModal: React.FC<UnifiedExpenseEntryModalProps> =
             : expenseType === 'PROPERTY_EXPENSE'
             ? propertyExpenseNature
             : undefined,
+        ...(expenseType === 'STAFF_EXPENSE'
+          ? {
+              staffId: selectedStaffId || undefined,
+              salaryMonth: salaryMonth || undefined,
+            }
+          : {}),
       };
 
-      const savedRecord = await onSaveExpense(payload, { print: shouldPrint, format: 'POS_80' });
+      let savedRecord: ExpenseEntry | undefined;
+      if (isEditMode && editingExpense && onUpdateExpense) {
+        const res = await onUpdateExpense(editingExpense.id, payload);
+        savedRecord = res || { ...editingExpense, ...payload };
+      } else {
+        savedRecord = await onSaveExpense(payload, { print: shouldPrint, format: 'POS_80' });
+      }
 
       if (shouldPrint && onPrintVoucher && savedRecord) {
-        onPrintVoucher(savedRecord, 'EXPENSE', 'POS_80', false);
+        onPrintVoucher(savedRecord, 'EXPENSE', 'POS_80', isEditMode);
       }
 
       onSuccess?.();
       onClose();
     } catch (err: any) {
-      setErrorMessage(err.message || (isBn ? 'ব্যয় ভাউচার সংরক্ষণ ব্যর্থ হয়েছে।' : 'Failed to save expense.'));
+      setErrorMessage(
+        err.message ||
+          (isEditMode
+            ? isBn
+              ? 'ব্যয় ভাউচার সংশোধন ব্যর্থ হয়েছে।'
+              : 'Failed to update expense.'
+            : isBn
+            ? 'ব্যয় ভাউচার সংরক্ষণ ব্যর্থ হয়েছে।'
+            : 'Failed to save expense.')
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -545,14 +625,28 @@ export const UnifiedExpenseEntryModal: React.FC<UnifiedExpenseEntryModalProps> =
             <div>
               <div className="flex items-center space-x-2">
                 <h2 className="font-heading font-bold text-lg sm:text-xl text-white tracking-tight">
-                  {isBn ? 'নতুন ব্যয় ও পরিশোধ' : 'New Expense & Payment'}
+                  {isEditMode
+                    ? isBn
+                      ? 'ব্যয় ও পরিশোধ সংশোধন'
+                      : 'Edit Expense & Payment'
+                    : isBn
+                    ? 'নতুন ব্যয় ও পরিশোধ'
+                    : 'New Expense & Payment'}
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/30 text-rose-100 border border-rose-400/30">
-                  {isBn ? 'ভাউচার সিস্টেম' : 'Voucher System'}
+                  {isEditMode && editingExpense?.voucherNumber
+                    ? `ভাউচার: ${editingExpense.voucherNumber}`
+                    : isBn
+                    ? 'ভাউচার সিস্টেম'
+                    : 'Voucher System'}
                 </span>
               </div>
               <p className="text-xs text-rose-100/90 font-body mt-0.5">
-                {isBn
+                {isEditMode
+                  ? isBn
+                    ? 'মূল ব্যয় এন্ট্রি ফর্মের সকল তথ্য সংশোধন করে সংরক্ষণ করুন'
+                    : 'Update expense details and save changes'
+                  : isBn
                   ? 'ব্যয়ের ধরন নির্বাচন করে প্রয়োজনীয় তথ্য পূরণ করুন'
                   : 'Select expense type and fill in required payment details'}
               </p>
@@ -613,9 +707,22 @@ export const UnifiedExpenseEntryModal: React.FC<UnifiedExpenseEntryModalProps> =
 
           {/* Error Banner */}
           {errorMessage && (
-            <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-start space-x-3 text-rose-800 text-xs animate-shake">
-              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-              <div className="font-semibold leading-relaxed">{errorMessage}</div>
+            <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl space-y-1.5 text-rose-800 text-xs animate-shake">
+              <div className="flex items-start space-x-3">
+                <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                <div className="font-semibold leading-relaxed">{errorMessage}</div>
+              </div>
+              <FormAlertAssistant
+                alertMessage={errorMessage}
+                formNameBn="ব্যয় ও পরিশোধ এন্ট্রি ফর্ম"
+                moduleKey="UNIFIED_EXPENSE_ENTRY"
+                alertType="ERROR"
+                fieldValuesSnapshot={{ expenseType, entryDate, amount, paymentMethod, mainHeadId, payeeName }}
+                availablePatchFields={[{ fieldKey: 'description', fieldLabelBn: 'ব্যয়ের বিবরণ', currentValue: description }]}
+                onApplyPatch={(key, val) => {
+                  if (key === 'description') setDescription(val);
+                }}
+              />
             </div>
           )}
 
@@ -1317,7 +1424,13 @@ export const UnifiedExpenseEntryModal: React.FC<UnifiedExpenseEntryModalProps> =
               className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
             >
               <FileText className="w-4 h-4" />
-              <span>{isSubmitting ? 'সংরক্ষণ হচ্ছে...' : 'শুধু সংরক্ষণ করুন'}</span>
+              <span>
+                {isSubmitting
+                  ? 'সংরক্ষণ হচ্ছে...'
+                  : isEditMode
+                  ? 'পরিবর্তন সংরক্ষণ করুন'
+                  : 'শুধু সংরক্ষণ করুন'}
+              </span>
             </button>
 
             {/* Button 2: Save + Print */}
@@ -1328,7 +1441,13 @@ export const UnifiedExpenseEntryModal: React.FC<UnifiedExpenseEntryModalProps> =
               className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
             >
               <Printer className="w-4 h-4" />
-              <span>{isSubmitting ? 'প্রসেসিং হচ্ছে...' : 'সংরক্ষণ ও ভাউচার প্রিন্ট'}</span>
+              <span>
+                {isSubmitting
+                  ? 'প্রসেসিং হচ্ছে...'
+                  : isEditMode
+                  ? 'সংরক্ষণ ও ভাউচার প্রিন্ট'
+                  : 'সংরক্ষণ ও ভাউচার প্রিন্ট'}
+              </span>
             </button>
           </div>
         </div>

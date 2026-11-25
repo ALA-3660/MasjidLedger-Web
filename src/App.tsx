@@ -1607,6 +1607,7 @@ export default function App() {
           incomes={incomes}
           transfers={transfers}
           staff={staff}
+          staffPayments={staffPayments}
           assets={assets}
           properties={properties}
           currentUser={currentUser}
@@ -1616,6 +1617,8 @@ export default function App() {
           onClearScannedAction={() => setScannedActionIntent(null)}
           onNavigateTab={(tab) => setCurrentTab(tab as NavTab)}
           onAddExpense={handleAddExpense}
+          onPayStaff={handlePayStaff}
+          onUpdateStaffPayment={handleUpdateStaffPayment}
           onUpdateExpense={handleUpdateExpense}
           onReverseExpense={handleReverseExpense}
           onRestoreExpense={handleRestoreExpense}
@@ -1766,12 +1769,15 @@ export default function App() {
         <StaffManagementView
           staffList={staff}
           staffPayments={staffPayments}
+          expenses={expenses}
           accounts={accounts}
           currentMosque={mosque}
           onAddStaff={handleAddStaff}
           onUpdateStaff={handleUpdateStaff}
           onDeleteStaff={handleDeleteStaff}
           onPayStaff={handlePayStaff}
+          onUpdateStaffPayment={handleUpdateStaffPayment}
+          onUpdateExpense={handleUpdateExpense}
           onLogAttendance={handleLogStaffAttendance}
           onApplyLeave={handleAddStaffLeave}
           onUpdateLeaveStatus={handleUpdateStaffLeaveStatus}

@@ -37,6 +37,8 @@ import {
   MosqueNotice,
   MosqueNotification,
   AccountTransfer,
+  BankReconciliationRecord,
+  BankAdjustmentRecord,
   UploadedFile,
   AuditLog,
   DashboardStats,
@@ -548,6 +550,8 @@ export class DatabaseStore {
   notices: MosqueNotice[] = [];
   notifications: MosqueNotification[] = [];
   transfers: AccountTransfer[] = [];
+  bankReconciliations: BankReconciliationRecord[] = [];
+  bankAdjustments: BankAdjustmentRecord[] = [];
   uploadedFiles: UploadedFile[] = [];
   centralDocuments: CentralDocument[] = [];
   auditLogs: AuditLog[] = [];
@@ -804,6 +808,10 @@ export class DatabaseStore {
         this.notices = parsed.notices || [];
         this.notifications = parsed.notifications || [];
         this.transfers = parsed.transfers || [];
+        this.bankReconciliations = (parsed.bankReconciliations || []).filter(
+          (r: any) => r && r.id !== 'recon-1' && r.verifiedBy !== 'আব্দুল কাদির (হিসাবরক্ষক)'
+        );
+        this.bankAdjustments = Array.isArray(parsed.bankAdjustments) ? parsed.bankAdjustments : [];
         this.uploadedFiles = parsed.uploadedFiles || [];
         this.centralDocuments = parsed.centralDocuments || [];
 
@@ -1272,6 +1280,8 @@ export class DatabaseStore {
       notices: this.notices,
       notifications: this.notifications,
       transfers: this.transfers,
+      bankReconciliations: this.bankReconciliations,
+      bankAdjustments: this.bankAdjustments,
       uploadedFiles: this.uploadedFiles,
       centralDocuments: this.centralDocuments,
       qrCodes: this.qrCodes,

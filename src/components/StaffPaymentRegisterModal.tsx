@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Printer, DollarSign, Building, Filter, Calendar, Users } from 'lucide-react';
 import { Staff, StaffPayment, Mosque } from '../types';
-import { Language, formatDate } from '../lib/i18n';
+import { Language, formatDate, formatSalaryMonth } from '../lib/i18n';
 import { numberToBanglaWords } from '../lib/banglaNumberToWords';
 import { printElement } from '../lib/printUtils';
 
@@ -52,7 +52,13 @@ export const StaffPaymentRegisterModal: React.FC<StaffPaymentRegisterModalProps>
   };
 
   // Get unique months from payments
-  const availableMonths = Array.from(new Set(payments.map((p) => p.month))).filter(Boolean).sort().reverse();
+  const availableMonths: string[] = Array.from(
+    new Set<string>(
+      payments
+        .map((p) => String(p.month || (p as any).paymentMonth || '').trim())
+        .filter((m) => m.length > 0)
+    )
+  ).sort().reverse();
 
   // Filter payments
   const filteredPayments = payments.filter((p) => {
@@ -104,7 +110,7 @@ export const StaffPaymentRegisterModal: React.FC<StaffPaymentRegisterModalProps>
               <option value="ALL">সকল মাস</option>
               {availableMonths.map((m) => (
                 <option key={m} value={m}>
-                  মাস: {m}
+                  মাস: {formatSalaryMonth(m, language)}
                 </option>
               ))}
             </select>
@@ -196,7 +202,9 @@ export const StaffPaymentRegisterModal: React.FC<StaffPaymentRegisterModalProps>
             <div className="flex items-center space-x-4">
               <div>
                 <span className="text-slate-500 font-baloo">বিবেচ্য মাস/পিরিয়ড: </span>
-                <strong className="text-slate-900 font-siliguri">{selectedMonth === 'ALL' ? 'সকল রেকর্ড' : selectedMonth}</strong>
+                <strong className="text-slate-900 font-siliguri">
+                  {selectedMonth === 'ALL' ? 'সকল রেকর্ড' : formatSalaryMonth(selectedMonth, language)}
+                </strong>
               </div>
               <div>
                 <span className="text-slate-500 font-baloo">প্রিন্ট তারিখ: </span>
@@ -261,7 +269,7 @@ export const StaffPaymentRegisterModal: React.FC<StaffPaymentRegisterModalProps>
                           <div className="text-[10px] text-slate-500 font-normal font-baloo">{pay.designationBn}</div>
                         </td>
                         <td className="py-2 px-2 border-r border-slate-200 text-center font-semibold text-slate-800 whitespace-nowrap">
-                          {pay.month}
+                          {formatSalaryMonth(pay.month || pay.paymentMonth, language)}
                         </td>
                         <td className="py-2 px-2.5 border-r border-slate-200 text-right font-mono text-slate-800">
                           ৳{basic.toLocaleString('en-IN')}

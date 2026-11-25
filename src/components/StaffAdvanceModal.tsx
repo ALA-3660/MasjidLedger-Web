@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Banknote, Save, AlertCircle, Building2, Wallet, Calendar, User, DollarSign } from 'lucide-react';
 import { Staff, FinancialAccount } from '../types';
 import { Language, translations, formatCurrency } from '../lib/i18n';
+import { FormAlertAssistant } from './common/FormAlertAssistant';
 
 interface StaffAdvanceModalProps {
   isOpen: boolean;
@@ -118,9 +119,24 @@ export const StaffAdvanceModal: React.FC<StaffAdvanceModalProps> = ({
         {/* Modal Body */}
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4 flex-1">
           {error && (
-            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{error}</span>
+            <div className="space-y-2">
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{error}</span>
+              </div>
+              <FormAlertAssistant
+                moduleName="স্টাফ অগ্রিম প্রদান (Staff Advance)"
+                alertMessage={error}
+                formValues={{
+                  staffId,
+                  staffName: selectedStaff?.name,
+                  amount,
+                  reason,
+                  paymentMethod,
+                  advanceDate,
+                }}
+                onDismissAlert={() => setError(null)}
+              />
             </div>
           )}
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, CheckCircle2, AlertTriangle, ShieldCheck, FileEdit } from 'lucide-react';
 import { Budget, BudgetLine, AccountHead, CommitteeActionPlan } from '../../types';
 import { formatCurrencyBn, toBnDigits } from '../../lib/budgetService';
+import { FormAlertAssistant } from '../common/FormAlertAssistant';
 
 // ============================================================================
 // 1. CREATE OR EDIT DRAFT BUDGET MODAL
@@ -208,9 +209,24 @@ export const CreateOrEditBudgetModal: React.FC<CreateOrEditBudgetModalProps> = (
         {/* Content Form */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           {errorMessage && (
-            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium flex items-center space-x-2">
-              <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
-              <span>{errorMessage}</span>
+            <div className="space-y-2">
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium flex items-center space-x-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+                <span>{errorMessage}</span>
+              </div>
+              <FormAlertAssistant
+                moduleName="বাজেট তৈরি ও সম্পাদনা (Budget Form)"
+                alertMessage={errorMessage}
+                formValues={{
+                  budgetName,
+                  budgetType,
+                  startDate,
+                  endDate,
+                  lineCount: lines.length,
+                  totalPlanned,
+                }}
+                onDismissAlert={() => setErrorMessage('')}
+              />
             </div>
           )}
 
@@ -525,8 +541,21 @@ export const ReviseBudgetModal: React.FC<ReviseBudgetModalProps> = ({
 
         <div className="p-5 overflow-y-auto space-y-4 flex-1">
           {errorMessage && (
-            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium">
-              {errorMessage}
+            <div className="space-y-2">
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium">
+                {errorMessage}
+              </div>
+              <FormAlertAssistant
+                moduleName="বাজেট সংশোধন ও রিভিশন (Budget Revision)"
+                alertMessage={errorMessage}
+                formValues={{
+                  budgetName: budget.budgetName,
+                  revisionNumber: budget.revisionNumber + 1,
+                  revisionNotes,
+                  totalRevised,
+                }}
+                onDismissAlert={() => setErrorMessage('')}
+              />
             </div>
           )}
 

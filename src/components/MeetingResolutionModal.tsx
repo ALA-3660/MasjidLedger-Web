@@ -35,6 +35,7 @@ import {
   MeetingDecisionItem,
   Mosque
 } from '../types';
+import { FormAlertAssistant } from './common/FormAlertAssistant';
 
 interface MeetingResolutionModalProps {
   isOpen: boolean;
@@ -706,12 +707,19 @@ export const MeetingResolutionModal: React.FC<MeetingResolutionModalProps> = ({
         <form onSubmit={handleSubmit} className="overflow-y-auto p-4 sm:p-6 space-y-6 flex-1 bg-slate-50/50">
           
           {formError && (
-            <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl flex items-start space-x-3 text-xs font-baloo">
-              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-              <div>
-                <strong className="font-bold font-siliguri block text-sm">ত্রুটি দেখা দিয়েছে</strong>
-                <span>{formError}</span>
+            <div className="space-y-2">
+              <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl flex items-start space-x-3 text-xs font-baloo">
+                <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="font-bold font-siliguri block text-sm">ত্রুটি দেখা দিয়েছে</strong>
+                  <span>{formError}</span>
+                </div>
               </div>
+              <FormAlertAssistant
+                moduleName="মিটিং রেজোলিউশন (Meeting Resolution)"
+                alertMessage={formError}
+                onDismissAlert={() => setFormError('')}
+              />
             </div>
           )}
 

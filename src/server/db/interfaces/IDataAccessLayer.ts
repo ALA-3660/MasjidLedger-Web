@@ -189,7 +189,13 @@ export interface UpdateExpenseInput {
   payeePhone?: string;
   reference?: string;
   description?: string;
+  attachmentUrl?: string;
   date?: string;
+  sourceModule?: string;
+  sourceId?: string;
+  sourceType?: string;
+  staffId?: string;
+  salaryMonth?: string;
 }
 
 /**

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Award, Save, AlertCircle, DollarSign, Banknote, Calendar, CheckCircle2 } from 'lucide-react';
 import { Staff, FinancialAccount } from '../types';
 import { Language, translations, formatCurrency } from '../lib/i18n';
+import { FormAlertAssistant } from './common/FormAlertAssistant';
 
 interface StaffSettlementModalProps {
   isOpen: boolean;
@@ -127,9 +128,24 @@ export const StaffSettlementModal: React.FC<StaffSettlementModalProps> = ({
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4 flex-1 text-xs text-slate-700">
           {error && (
-            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{error}</span>
+            <div className="space-y-2">
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{error}</span>
+              </div>
+              <FormAlertAssistant
+                moduleName="স্টাফ চূড়ান্ত নিষ্পত্তি (Final Settlement)"
+                alertMessage={error}
+                formValues={{
+                  staffId: staff.id,
+                  staffName: staff.name,
+                  settlementDate,
+                  resignationOrTerminationDate,
+                  netSettlement,
+                  paymentMethod,
+                }}
+                onDismissAlert={() => setError(null)}
+              />
             </div>
           )}
 

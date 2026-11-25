@@ -671,51 +671,60 @@ ${payload.entryType === 'EXPENSE' && staffNames.length > 0 ? `মসজিদে
         }
       : `${instructionPrompt}\n\nক্যাশিয়ারের ইনপুট: "${payload.text || ''}"`;
 
-  const parsed = await withRetry(async () => {
-    const response = await ai.models.generateContent({
-      model: getActiveGeminiModel(),
-      contents,
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            date: { type: Type.STRING, description: 'তারিখ YYYY-MM-DD ফরম্যাটে' },
-            amount: { type: Type.NUMBER, description: 'মোট টাকার পরিমাণ (সংখ্যায়)' },
-            mainHeadId: { type: Type.STRING, description: 'প্রদত্ত তালিকা থেকে নির্বাচিত প্রধান খাতের ID' },
-            mainHeadNameBn: { type: Type.STRING, description: 'নির্বাচিত প্রধান খাতের বাংলা নাম' },
-            subHeadId: { type: Type.STRING, description: 'প্রদত্ত তালিকা থেকে নির্বাচিত উপ-খাতের ID (না থাকলে খালি স্ট্রিং)' },
-            subHeadNameBn: { type: Type.STRING, description: 'নির্বাচিত উপ-খাতের বাংলা নাম (না থাকলে খালি স্ট্রিং)' },
-            personName: { type: Type.STRING, description: 'দাতা, ভাড়াটিয়া, স্টাফ বা দোকান/প্রাপকের নাম' },
-            personPhone: { type: Type.STRING, description: 'মোবাইল নম্বর (যদি থাকে, নতুবা খালি স্ট্রিং)' },
-            paymentMethod: { type: Type.STRING, description: 'CASH, BANK, BKASH, NAGAD, অথবা ROCKET' },
-            reference: { type: Type.STRING, description: 'রসিদ/বিল/ভাউচার/মিটার নম্বর (যদি থাকে)' },
-            description: { type: Type.STRING, description: 'মার্জিত ও স্পষ্ট বাংলা বিবরণ' },
-            suggestedIncomeType: {
-              type: Type.STRING,
-              description: 'আয়ের ক্ষেত্রে: JUMMA | DONATION | DONATION_BOX | WAQF_RENT | OTHER_INCOME',
+  let parsed: any;
+  try {
+    parsed = await withRetry(async () => {
+      const response = await ai.models.generateContent({
+        model: getActiveGeminiModel(),
+        contents,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              date: { type: Type.STRING, description: 'তারিখ YYYY-MM-DD ফরম্যাটে' },
+              amount: { type: Type.NUMBER, description: 'মোট টাকার পরিমাণ (সংখ্যায়)' },
+              mainHeadId: { type: Type.STRING, description: 'প্রদত্ত তালিকা থেকে নির্বাচিত প্রধান খাতের ID' },
+              mainHeadNameBn: { type: Type.STRING, description: 'নির্বাচিত প্রধান খাতের বাংলা নাম' },
+              subHeadId: { type: Type.STRING, description: 'প্রদত্ত তালিকা থেকে নির্বাচিত উপ-খাতের ID (না থাকলে খালি স্ট্রিং)' },
+              subHeadNameBn: { type: Type.STRING, description: 'নির্বাচিত উপ-খাতের বাংলা নাম (না থাকলে খালি স্ট্রিং)' },
+              personName: { type: Type.STRING, description: 'দাতা, ভাড়াটিয়া, স্টাফ বা প্রাপক ব্যক্তির নাম' },
+              vendorOrOrgName: { type: Type.STRING, description: 'দোকান, প্রতিষ্ঠান, হার্ডওয়্যার স্টোর বা সংস্থার নাম (থাকলে, নতুবা খালি স্ট্রিং)' },
+              personPhone: { type: Type.STRING, description: 'মোবাইল নম্বর (যদি থাকে, নতুবা খালি স্ট্রিং)' },
+              paymentMethod: { type: Type.STRING, description: 'CASH, BANK, BKASH, NAGAD, অথবা ROCKET' },
+              reference: { type: Type.STRING, description: 'রসিদ/বিল/ভাউচার/মিটার/TrxID নম্বর (যদি থাকে)' },
+              description: { type: Type.STRING, description: 'মার্জিত ও স্পষ্ট বাংলা বিবরণ' },
+              suggestedIncomeType: {
+                type: Type.STRING,
+                description: 'আয়ের ক্ষেত্রে: JUMMA | DONATION | DONATION_BOX | WAQF_RENT | OTHER_INCOME',
+              },
+              suggestedExpenseType: {
+                type: Type.STRING,
+                description: 'ব্যয়ের ক্ষেত্রে: GENERAL_EXPENSE | STAFF_EXPENSE | ASSET_EXPENSE | PROPERTY_EXPENSE',
+              },
+              matchedStaffId: {
+                type: Type.STRING,
+                description: 'স্টাফ বেতন হলে তালিকা থেকে স্টাফের ID, নতুবা খালি স্ট্রিং',
+              },
+              confidenceNoteBn: {
+                type: Type.STRING,
+                description: 'শনাক্তকৃত তথ্যের সংক্ষিপ্ত ১ লাইনের বাংলা সারসংক্ষেপ',
+              },
             },
-            suggestedExpenseType: {
-              type: Type.STRING,
-              description: 'ব্যয়ের ক্ষেত্রে: GENERAL_EXPENSE | STAFF_EXPENSE | ASSET_EXPENSE | PROPERTY_EXPENSE',
-            },
-            matchedStaffId: {
-              type: Type.STRING,
-              description: 'স্টাফ বেতন হলে তালিকা থেকে স্টাফের ID, নতুবা খালি স্ট্রিং',
-            },
-            confidenceNoteBn: {
-              type: Type.STRING,
-              description: 'শনাক্তকৃত তথ্যের সংক্ষিপ্ত ১ লাইনের বাংলা সারসংক্ষেপ',
-            },
+            required: ['date', 'amount', 'description', 'confidenceNoteBn'],
           },
-          required: ['date', 'amount', 'description', 'confidenceNoteBn'],
         },
-      },
-    });
+      });
 
-    const rawText = (response.text || '{}').trim();
-    return JSON.parse(rawText);
-  });
+      const rawText = (response.text || '{}').trim();
+      return JSON.parse(rawText);
+    });
+  } finally {
+    // Zero-storage policy: drop binary buffer reference immediately after inference
+    if (payload && typeof payload === 'object') {
+      payload.imageBase64 = undefined;
+    }
+  }
 
   // Safety validation against actual mosque head IDs so dropdowns always bind cleanly
   let resolvedMainHeadId = parsed.mainHeadId || '';
@@ -739,6 +748,9 @@ ${payload.entryType === 'EXPENSE' && staffNames.length > 0 ? `মসজিদে
     ? parsed.paymentMethod
     : 'CASH';
 
+  const cleanPerson = String(parsed.personName || '').trim();
+  const cleanVendor = String(parsed.vendorOrOrgName || '').trim();
+
   return {
     date: validDate,
     amount: Number(parsed.amount) > 0 ? Number(parsed.amount) : 0,
@@ -746,7 +758,8 @@ ${payload.entryType === 'EXPENSE' && staffNames.length > 0 ? `মসজিদে
     mainHeadNameBn: mainHeads.find((m) => m.id === resolvedMainHeadId)?.nameBn || parsed.mainHeadNameBn || '',
     subHeadId: resolvedSubHeadId,
     subHeadNameBn: subHeads.find((s) => s.id === resolvedSubHeadId)?.nameBn || parsed.subHeadNameBn || '',
-    personName: parsed.personName || '',
+    personName: cleanPerson || cleanVendor,
+    vendorOrOrgName: cleanVendor,
     personPhone: parsed.personPhone || '',
     paymentMethod: validPayment,
     reference: parsed.reference || '',
@@ -754,7 +767,7 @@ ${payload.entryType === 'EXPENSE' && staffNames.length > 0 ? `মসজিদে
     suggestedIncomeType: parsed.suggestedIncomeType || 'OTHER_INCOME',
     suggestedExpenseType: parsed.suggestedExpenseType || 'GENERAL_EXPENSE',
     matchedStaffId: parsed.matchedStaffId || '',
-    confidenceNoteBn: parsed.confidenceNoteBn || 'তথ্য সফলভাবে শনাক্ত করে ফর্মে বসানো হয়েছে।',
+    confidenceNoteBn: parsed.confidenceNoteBn || 'তথ্য সফলভাবে শনাক্ত করা হয়েছে — সংরক্ষণের আগে যাচাই করুন।',
   };
 }
 
@@ -5843,37 +5856,31 @@ export async function scanStaffDocumentAi(
 
   if (!hasFile && !hasText) {
     throw new GeminiServiceError(
-      'স্ক্যান করার জন্য জাতীয় পরিচয়পত্র (NID) বা বায়োডাটার ছবি (JPG/PNG) অথবা PDF ফাইল আপলোড করুন।',
+      'স্ক্যান করার জন্য জাতীয় পরিচয়পত্র (NID), বায়োডাটা, সনদ বা নিয়োগপত্রের ছবি (JPG/PNG) অথবা PDF দিন।',
       400,
       'STAFF_DOC_INPUT_REQUIRED'
     );
   }
 
-  const prompt = `আপনি "${mosque.nameBn || mosque.name}"-এর একজন দক্ষ HR ডকুমেন্ট স্ক্যানার ও বাংলা OCR বিশেষজ্ঞ।
-প্রদত্ত বাংলাদেশের জাতীয় পরিচয়পত্র (NID / Smart Card) অথবা কর্মীর বায়োডাটা/সিভি (ছবি, PDF বা টেক্সট) মনোযোগ দিয়ে পড়ে নিচের তথ্যগুলো নিখুঁতভাবে JSON ফরম্যাটে বের করুন:
-- fullNameBn: বাংলায় পূর্ণ নাম (যেমন NID-এর "নাম" অংশ; না থাকলে ফাঁকা স্ট্রিং "")
-- nameEn: ইংরেজিতে পূর্ণ নাম (যেমন NID-এর "Name" অংশ; না থাকলে ফাঁকা স্ট্রিং "")
-- fatherName: পিতার নাম (বাংলায়; না থাকলে "")
-- motherName: মাতার নাম (বাংলায়; না থাকলে "")
-- nid: জাতীয় পরিচয়পত্র (NID) নম্বর (ইংরেজি অঙ্কে, যেমন "19901234567890123"; না থাকলে "")
-- dateOfBirth: জন্ম তারিখ YYYY-MM-DD ফরম্যাটে (যেমন "1990-05-14"; না থাকলে "")
-- phone: মোবাইল নম্বর (বাংলাদেশি ১১ অঙ্কের নম্বর যেমন "01712345678"; না থাকলে "")
-- presentAddress: বর্তমান ঠিকানা (বাংলায়; না থাকলে "")
-- permanentAddress: স্থায়ী ঠিকানা (NID-এর পেছনের ঠিকানা বাংলায়; না থাকলে presentAddress-এর সমান বা "")
-- bloodGroup: রক্তের গ্রুপ ("A+"|"A-"|"B+"|"B-"|"O+"|"O-"|"AB+"|"AB-" অথবা "")
-- generalEducation: সাধারণ শিক্ষাগত যোগ্যতা (বায়োডাটায় থাকলে, না থাকলে "")
-- religiousEducation: দ্বীনি/মাদ্রাসা শিক্ষাগত যোগ্যতা (যেমন হাফেজ, দাওরায়ে হাদিস, কামিল — থাকলে, না থাকলে "")
-- previousExperience: পূর্ববর্তী অভিজ্ঞতা (থাকলে, না থাকলে "")
-- confidenceNoteBn: কোন কোন তথ্য পাওয়া গেছে এবং কী কী যাচাই করা উচিত তার ১ লাইনের বাংলা নোট।
+  const prompt = `আপনি "${mosque.nameBn || mosque.name}"-এর একজন দক্ষ HR ডকুমেন্ট স্ক্যানার ও বাংলা/ইংরেজি OCR বিশেষজ্ঞ।
+প্রদত্ত বাংলাদেশের জাতীয় পরিচয়পত্র (NID / Smart Card), বায়োডাটা/সিভি, মাদ্রাসা/সাধারণ সনদ, নিয়োগপত্র বা ব্যাংক চেকের পাতা থেকে নিচের ৬টি সেকশনের তথ্য JSON আকারে বের করুন।
 
-নিয়ম: ডকুমেন্টে যে তথ্য স্পষ্টভাবে নেই তা কখনোই অনুমান করে বানাবেন না—ফাঁকা স্ট্রিং "" দিন।`;
+কঠোর নিয়মাবলী (NON-NEGOTIABLE):
+১. নথিতে যে তথ্য স্পষ্টভাবে লেখা নেই তা কখনোই অনুমান বা কল্পনা করে বানাবেন না — ফাঁকা স্ট্রিং "" (বা সংখ্যার ক্ষেত্রে null/0 নয় এমন ফাঁকা/null) দিন।
+২. NID নম্বর, জন্ম তারিখ, ফোন নম্বর, টাকার অঙ্ক, ও ব্যাংক হিসাব নম্বর একদম হুবহু ইংরেজি অঙ্কে (0-9) দিন; কোনো সংখ্যা নিজে থেকে বানাবেন না।
+৩. সেকশন ১ (ব্যক্তিগত ও যোগাযোগ): fullNameBn, nameEn, fatherName, motherName, nid, dateOfBirth (YYYY-MM-DD), phone, alternatePhone, email, presentAddress, permanentAddress, bloodGroup ("A+"|"A-"|"B+"|"B-"|"O+"|"O-"|"AB+"|"AB-"|"").
+৪. সেকশন ২ (নিয়োগ ও কর্মসংস্থান): designation ("IMAM"|"KHATIB"|"MUEZZIN"|"TEACHER"|"CLEANER"|"SECURITY"|"OTHER"|""), designationBn, appointmentDate (YYYY-MM-DD বা ""), joiningDate (YYYY-MM-DD বা ""), appointmentLetterNo, responsibilities.
+৫. সেকশন ৩ (শিক্ষা ও ধর্মীয় যোগ্যতা): generalEducation, religiousEducation, specialSkills, previousExperience, institutionNameBn, quranMemorizationHifz (boolean বা null যদি বোঝা না যায়), qiratTajweedCertification (boolean বা null যদি বোঝা না যায়).
+৬. সেকশন ৪ (বেতন ও ভাতা — শুধু নিয়োগপত্র/বেতন চুক্তিতে স্পষ্ট থাকলে): basicSalary (সংখ্যা বা -1 যদি উল্লেখ না থাকে), housingAllowance (সংখ্যা বা -1), medicalAllowance (সংখ্যা বা -1), transportAllowance (সংখ্যা বা -1), otherAllowance (সংখ্যা বা -1), paymentPreference ("BANK"|"CASH"|"CHEQUE"|"").
+৭. সেকশন ৫ (ব্যাংক তথ্য — শুধু চেক/বায়োডাটায় স্পষ্ট থাকলে): bankName, branchName, accountHolderName, accountNumber, routingNumber.
+৮. সেকশন ৬ (নথি ও দাপ্তরিক নোট): notes (নথির গুরুত্বপূর্ণ সারসংক্ষেপ টেক্সট), officialAdminNotes (যাচাইকরণ বা নিয়োগ সম্পর্কিত সংক্ষিপ্ত টেক্সট), detectedDocTypeBn (যেমন: "জাতীয় পরিচয়পত্র (NID)", "বায়োডাটা", "শিক্ষাগত সনদ", "ব্যাংক চেক"), confidenceNoteBn, verificationWarningsBn (কোন কোন তথ্য যেমন NID/জন্মতারিখ/নামের বানান/বেতন হাতের ছাপা দেখে যাচাই করা উচিত তার তালিকা)।`;
 
   const parts: any[] = [];
   if (hasFile) {
     parts.push({
       inlineData: {
         mimeType: payload.mimeType || 'image/jpeg',
-        data: payload.fileBase64!.trim(),
+        data: String(payload.fileBase64 || '').replace(/^data:[^;]+;base64,/, '').trim(),
       },
     });
   }
@@ -5881,58 +5888,102 @@ export async function scanStaffDocumentAi(
     text: hasText ? `${prompt}\n\nঅতিরিক্ত টেক্সট:\n${payload.extraText!.slice(0, 6000)}` : prompt,
   });
 
-  const extracted = await withRetry(async () => {
-    const response = await ai.models.generateContent({
-      model: getActiveGeminiModel(),
-      contents: { parts },
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            fullNameBn: { type: Type.STRING },
-            nameEn: { type: Type.STRING },
-            fatherName: { type: Type.STRING },
-            motherName: { type: Type.STRING },
-            nid: { type: Type.STRING },
-            dateOfBirth: { type: Type.STRING },
-            phone: { type: Type.STRING },
-            presentAddress: { type: Type.STRING },
-            permanentAddress: { type: Type.STRING },
-            bloodGroup: { type: Type.STRING },
-            generalEducation: { type: Type.STRING },
-            religiousEducation: { type: Type.STRING },
-            previousExperience: { type: Type.STRING },
-            confidenceNoteBn: { type: Type.STRING },
+  let extracted: any;
+  try {
+    extracted = await withRetry(async () => {
+      const response = await ai.models.generateContent({
+        model: getActiveGeminiModel(),
+        contents: { parts },
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              detectedDocTypeBn: { type: Type.STRING },
+              fullNameBn: { type: Type.STRING },
+              nameEn: { type: Type.STRING },
+              fatherName: { type: Type.STRING },
+              motherName: { type: Type.STRING },
+              nid: { type: Type.STRING },
+              dateOfBirth: { type: Type.STRING },
+              phone: { type: Type.STRING },
+              alternatePhone: { type: Type.STRING },
+              email: { type: Type.STRING },
+              presentAddress: { type: Type.STRING },
+              permanentAddress: { type: Type.STRING },
+              bloodGroup: { type: Type.STRING },
+              designation: { type: Type.STRING },
+              designationBn: { type: Type.STRING },
+              appointmentDate: { type: Type.STRING },
+              joiningDate: { type: Type.STRING },
+              appointmentLetterNo: { type: Type.STRING },
+              responsibilities: { type: Type.STRING },
+              generalEducation: { type: Type.STRING },
+              religiousEducation: { type: Type.STRING },
+              specialSkills: { type: Type.STRING },
+              previousExperience: { type: Type.STRING },
+              institutionNameBn: { type: Type.STRING },
+              quranMemorizationHifz: { type: Type.BOOLEAN },
+              qiratTajweedCertification: { type: Type.BOOLEAN },
+              basicSalary: { type: Type.NUMBER },
+              housingAllowance: { type: Type.NUMBER },
+              medicalAllowance: { type: Type.NUMBER },
+              transportAllowance: { type: Type.NUMBER },
+              otherAllowance: { type: Type.NUMBER },
+              paymentPreference: { type: Type.STRING },
+              bankName: { type: Type.STRING },
+              branchName: { type: Type.STRING },
+              accountHolderName: { type: Type.STRING },
+              accountNumber: { type: Type.STRING },
+              routingNumber: { type: Type.STRING },
+              notes: { type: Type.STRING },
+              officialAdminNotes: { type: Type.STRING },
+              confidenceNoteBn: { type: Type.STRING },
+              verificationWarningsBn: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+              },
+            },
+            required: ['fullNameBn', 'nameEn', 'nid', 'dateOfBirth', 'confidenceNoteBn'],
           },
-          required: [
-            'fullNameBn',
-            'nameEn',
-            'fatherName',
-            'motherName',
-            'nid',
-            'dateOfBirth',
-            'phone',
-            'presentAddress',
-            'permanentAddress',
-            'bloodGroup',
-            'generalEducation',
-            'religiousEducation',
-            'previousExperience',
-            'confidenceNoteBn',
-          ],
         },
-      },
+      });
+      return JSON.parse(cleanJsonText(response.text || '{}'));
     });
-    return JSON.parse((response.text || '{}').trim());
-  });
+  } finally {
+    // Zero-storage policy: scrub binary base64 from memory immediately
+    if (payload && typeof payload === 'object') {
+      payload.fileBase64 = undefined;
+    }
+    parts.length = 0;
+  }
 
   const validBloodGroups = new Set(['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-']);
+  const validDesignations = new Set(['IMAM', 'KHATIB', 'MUEZZIN', 'KHADEM', 'TEACHER', 'CLEANER', 'SECURITY', 'OTHER']);
+  const validPayPrefs = new Set(['BANK', 'CASH', 'CHEQUE']);
+
   const dobRaw = String(extracted.dateOfBirth || '').trim();
   const safeDob = /^\d{4}-\d{2}-\d{2}$/.test(dobRaw) ? dobRaw : '';
+  const appDateRaw = String(extracted.appointmentDate || '').trim();
+  const safeAppDate = /^\d{4}-\d{2}-\d{2}$/.test(appDateRaw) ? appDateRaw : '';
+  const joinDateRaw = String(extracted.joiningDate || '').trim();
+  const safeJoinDate = /^\d{4}-\d{2}-\d{2}$/.test(joinDateRaw) ? joinDateRaw : '';
+
   const bgRaw = String(extracted.bloodGroup || '').trim().toUpperCase();
+  const desigRaw = String(extracted.designation || '').trim().toUpperCase();
+  const prefRaw = String(extracted.paymentPreference || '').trim().toUpperCase();
+
+  const positiveOrNull = (val: any) => {
+    const n = Number(val);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  };
+
+  const inst = String(extracted.institutionNameBn || '').trim();
+  const relEd = String(extracted.religiousEducation || '').trim();
+  const mergedRelEd = inst && relEd && !relEd.includes(inst) ? `${relEd} (${inst})` : relEd || inst;
 
   return {
+    detectedDocTypeBn: String(extracted.detectedDocTypeBn || 'পরিচয়পত্র / বায়োডাটা').trim(),
     fullNameBn: String(extracted.fullNameBn || '').trim(),
     nameEn: String(extracted.nameEn || '').trim(),
     fatherName: String(extracted.fatherName || '').trim(),
@@ -5940,13 +5991,57 @@ export async function scanStaffDocumentAi(
     nid: String(extracted.nid || '').trim(),
     dateOfBirth: safeDob,
     phone: String(extracted.phone || '').trim(),
+    alternatePhone: String(extracted.alternatePhone || '').trim(),
+    email: String(extracted.email || '').trim(),
     presentAddress: String(extracted.presentAddress || '').trim(),
     permanentAddress: String(extracted.permanentAddress || '').trim(),
     bloodGroup: validBloodGroups.has(bgRaw) ? bgRaw : '',
     generalEducation: String(extracted.generalEducation || '').trim(),
-    religiousEducation: String(extracted.religiousEducation || '').trim(),
+    religiousEducation: mergedRelEd,
     previousExperience: String(extracted.previousExperience || '').trim(),
-    confidenceNoteBn: String(extracted.confidenceNoteBn || 'ডকুমেন্ট থেকে প্রাপ্ত তথ্য ফর্মে বসানো হয়েছে। সংরক্ষণের আগে যাচাই করুন।').trim(),
+    appointment: {
+      designation: validDesignations.has(desigRaw) ? desigRaw : '',
+      designationBn: String(extracted.designationBn || '').trim(),
+      appointmentDate: safeAppDate,
+      joiningDate: safeJoinDate,
+      appointmentLetterNo: String(extracted.appointmentLetterNo || '').trim(),
+      responsibilities: String(extracted.responsibilities || '').trim(),
+    },
+    education: {
+      generalEducation: String(extracted.generalEducation || '').trim(),
+      religiousEducation: mergedRelEd,
+      specialSkills: String(extracted.specialSkills || '').trim(),
+      previousExperience: String(extracted.previousExperience || '').trim(),
+      quranMemorizationHifz: typeof extracted.quranMemorizationHifz === 'boolean' ? extracted.quranMemorizationHifz : null,
+      qiratTajweedCertification:
+        typeof extracted.qiratTajweedCertification === 'boolean' ? extracted.qiratTajweedCertification : null,
+      institutionNameBn: inst,
+    },
+    salary: {
+      basicSalary: positiveOrNull(extracted.basicSalary),
+      housingAllowance: positiveOrNull(extracted.housingAllowance),
+      medicalAllowance: positiveOrNull(extracted.medicalAllowance),
+      transportAllowance: positiveOrNull(extracted.transportAllowance),
+      otherAllowance: positiveOrNull(extracted.otherAllowance),
+      paymentPreference: validPayPrefs.has(prefRaw) ? prefRaw : '',
+    },
+    bank: {
+      bankName: String(extracted.bankName || '').trim(),
+      branchName: String(extracted.branchName || '').trim(),
+      accountHolderName: String(extracted.accountHolderName || '').trim(),
+      accountNumber: String(extracted.accountNumber || '').trim(),
+      routingNumber: String(extracted.routingNumber || '').trim(),
+    },
+    docsNotes: {
+      notes: String(extracted.notes || '').trim(),
+      officialAdminNotes: String(extracted.officialAdminNotes || '').trim(),
+    },
+    verificationWarningsBn: Array.isArray(extracted.verificationWarningsBn)
+      ? extracted.verificationWarningsBn.map(String).filter(Boolean).slice(0, 5)
+      : ['NID নম্বর, জন্মতারিখ, নামের বানান এবং টাকার অঙ্ক বা ব্যাংক হিসাব নম্বর নিজ চোখে যাচাই করে নিন।'],
+    confidenceNoteBn: String(
+      extracted.confidenceNoteBn || 'স্ক্যান থেকে তথ্য পাওয়া গেছে। প্রিভিউ যাচাই করে অনুমোদন দিলে ফর্মে বসবে।'
+    ).trim(),
     generatedAt: new Date().toISOString(),
   };
 }
@@ -11014,3 +11109,140 @@ export async function generateAutomationReminderDraftWithAi(
     generatedAt: new Date().toISOString(),
   };
 }
+
+// ============================================================================
+// MODULE: UNIVERSAL AI FORM ALERT & VALIDATION ASSISTANT (HUMAN-IN-THE-LOOP)
+// Explains why an alert/validation error happened across any entry form in
+// simple Bengali, shows actionable fix steps, and optionally proposes safe
+// non-sensitive text/structural suggestions (NEVER auto-applies or alters
+// verified money amounts/NID/DOB/receipt numbers without explicit consent).
+// ============================================================================
+export async function analyzeFormAlertWithAi(
+  mosque: Mosque,
+  payload: {
+    formNameBn: string;
+    moduleKey: string;
+    alertType?: 'ERROR' | 'WARNING' | 'VALIDATION';
+    alertMessageBn: string;
+    fieldValuesSnapshot?: Record<string, any>;
+    availablePatchFields?: Array<{ fieldKey: string; fieldLabelBn: string; currentValue?: string }>;
+  }
+): Promise<{
+  causeBn: string;
+  howToFixBn: string;
+  safeSuggestionBn: string;
+  checklistBn: string[];
+  patchSuggestions: Array<{
+    fieldKey: string;
+    fieldLabelBn: string;
+    proposedValue: string;
+    reasonBn: string;
+  }>;
+  modelUsed: string;
+  generatedAt: string;
+}> {
+  const alertMessage = String(payload.alertMessageBn || '').trim();
+  if (!alertMessage) {
+    throw new GeminiServiceError('বিশ্লেষণ করার জন্য সতর্কবার্তা বা ত্রুটির বার্তা আবশ্যক।', 400, 'ALERT_MESSAGE_REQUIRED');
+  }
+
+  const ai = getGeminiClient();
+  const activeModel = getActiveGeminiModel();
+  const mosqueName = mosque.nameBn || mosque.name || 'মসজিদ কর্তৃপক্ষ';
+
+  // Sanitize snapshot so no accidental huge blobs/base64 ever reach prompts
+  const safeSnapshot: Record<string, any> = {};
+  if (payload.fieldValuesSnapshot && typeof payload.fieldValuesSnapshot === 'object') {
+    for (const [k, v] of Object.entries(payload.fieldValuesSnapshot).slice(0, 20)) {
+      if (v === undefined || v === null) continue;
+      const str = typeof v === 'string' ? v : JSON.stringify(v);
+      if (str.length <= 240 && !str.startsWith('data:image')) {
+        safeSnapshot[k] = v;
+      }
+    }
+  }
+
+  const safePatchDefs = Array.isArray(payload.availablePatchFields)
+    ? payload.availablePatchFields.slice(0, 8)
+    : [];
+
+  const responseSchema = {
+    type: Type.OBJECT,
+    properties: {
+      causeBn: { type: Type.STRING },
+      howToFixBn: { type: Type.STRING },
+      safeSuggestionBn: { type: Type.STRING },
+      checklistBn: {
+        type: Type.ARRAY,
+        items: { type: Type.STRING },
+      },
+      patchSuggestions: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            fieldKey: { type: Type.STRING },
+            fieldLabelBn: { type: Type.STRING },
+            proposedValue: { type: Type.STRING },
+            reasonBn: { type: Type.STRING },
+          },
+          required: ['fieldKey', 'fieldLabelBn', 'proposedValue', 'reasonBn'],
+        },
+      },
+    },
+    required: ['causeBn', 'howToFixBn', 'safeSuggestionBn', 'checklistBn', 'patchSuggestions'],
+  };
+
+  const systemInstruction = `আপনি "${mosqueName}"-এর MasjidLedger Pro সফটওয়্যারের একজন অভিজ্ঞ ও সহজবোধ্য বাংলা ফর্ম সহায়ক (Form Alert Assistant)।
+কঠোর নিরাপত্তা ও নির্ভুলতা নীতি:
+১. কারণ (causeBn), সমাধানের উপায় (howToFixBn) এবং নিরাপদ পরামর্শ (safeSuggestionBn) সহজ, স্পষ্ট ও প্রাঞ্জল বাংলায় লিখবেন যাতে সাধারণ মসজিদ ক্যাশিয়ার/সচিব সহজেই বুঝতে পারেন।
+২. কখনোই টাকার অঙ্ক, রসিদ/ভাউচার নম্বর, NID, জন্মতারিখ বা তারিখ নিজে থেকে অনুমান করে পরিবর্তন করার প্রস্তাব দেবেন না। যদি ব্যালেন্স কম থাকে বা টাকার অঙ্ক ভুল হয়, তবে ব্যবহারকারীকে সঠিক অ্যাকাউন্ট নির্বাচন বা মূল রসিদ দেখে নিজে ঠিক করার পরামর্শ দিন।
+৩. patchSuggestions শুধুমাত্র প্রদত্ত availablePatchFields-এর মধ্য থেকেই দেবেন এবং তা কেবল নিরাপদ টেক্সট/বিবরণ/রেফারেন্স নোট/ফর্ম্যাটিং ধরনের হলেই দেবেন; প্রযোজ্য না হলে খালি অ্যারে [] রাখুন।`;
+
+  const contents = `ফর্মের নাম: ${payload.formNameBn || 'এন্ট্রি ফর্ম'} (মডিউল: ${payload.moduleKey || 'GENERAL'})
+সতর্কতার ধরন: ${payload.alertType || 'ERROR'}
+সিস্টেম অ্যালার্ট / ত্রুটি বার্তা: "${alertMessage}"
+বর্তমান ফর্মের সংক্ষিপ্ত অবস্থা: ${JSON.stringify(safeSnapshot)}
+নিরাপদ সংশোধনযোগ্য ফিল্ড তালিকা (ঐচ্ছিক): ${JSON.stringify(safePatchDefs)}`;
+
+  const parsed = await withRetry(async () => {
+    const response = await ai.models.generateContent({
+      model: activeModel,
+      contents,
+      config: {
+        systemInstruction,
+        responseMimeType: 'application/json',
+        responseSchema,
+      },
+    });
+    return JSON.parse(cleanJsonText(response.text || '{}'));
+  });
+
+  const allowedKeys = new Set(safePatchDefs.map((f) => f.fieldKey));
+  const cleanPatches = Array.isArray(parsed.patchSuggestions)
+    ? parsed.patchSuggestions
+        .filter((p: any) => p && allowedKeys.has(String(p.fieldKey)) && String(p.proposedValue || '').trim())
+        .slice(0, 3)
+        .map((p: any) => ({
+          fieldKey: String(p.fieldKey),
+          fieldLabelBn: String(p.fieldLabelBn || p.fieldKey),
+          proposedValue: String(p.proposedValue).slice(0, 200),
+          reasonBn: String(p.reasonBn || ''),
+        }))
+    : [];
+
+  return {
+    causeBn: String(parsed.causeBn || 'ফর্মের আবশ্যকীয় কোনো তথ্য অসম্পূর্ণ বা নিয়ম বহির্ভূত হওয়ায় এই সতর্কবার্তা এসেছে।').trim(),
+    howToFixBn: String(parsed.howToFixBn || 'লাল চিহ্নিত বা সতর্কবার্তায় উল্লেখিত ঘরটি পুনরায় যাচাই করে সঠিক তথ্য দিন।').trim(),
+    safeSuggestionBn: String(
+      parsed.safeSuggestionBn || 'টাকার অঙ্ক, তারিখ, NID ও হিসাব নম্বর মূল নথির সাথে মিলিয়ে তারপর সংরক্ষণ করুন।'
+    ).trim(),
+    checklistBn: Array.isArray(parsed.checklistBn)
+      ? parsed.checklistBn.map(String).filter(Boolean).slice(0, 4)
+      : [],
+    patchSuggestions: cleanPatches,
+    modelUsed: activeModel,
+    generatedAt: new Date().toISOString(),
+  };
+}
+

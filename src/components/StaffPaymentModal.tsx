@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, DollarSign, AlertCircle, AlertTriangle, CheckCircle, Wallet, Calendar, FileText } from 'lucide-react';
-import { Staff, StaffPayment, FinancialAccount } from '../types';
-import { Language, translations, formatCurrency } from '../lib/i18n';
+import { Staff, StaffPayment, FinancialAccount, ExpenseEntry, PaymentMethod } from '../types';
+import { Language, translations, formatCurrency, formatSalaryMonth } from '../lib/i18n';
+import { FormAlertAssistant } from './common/FormAlertAssistant';
+import { extractSalaryMonthFromExpense, findMatchingStaffForExpense } from '../lib/staffPaymentSync';
 
 interface StaffPaymentModalProps {
   isOpen: boolean;
@@ -11,7 +13,11 @@ interface StaffPaymentModalProps {
   accounts: FinancialAccount[];
   initialStaffId?: string;
   initialMonth?: string;
+  editingPayment?: StaffPayment | null;
+  editingExpense?: ExpenseEntry | null;
   onPayStaff: (data: any) => Promise<void>;
+  onUpdatePayment?: (paymentId: string, data: any) => Promise<void>;
+  onUpdateSalaryExpense?: (expenseId: string, data: any) => Promise<void>;
   language: Language;
 }
 
@@ -23,10 +29,20 @@ export const StaffPaymentModal: React.FC<StaffPaymentModalProps> = ({
   accounts,
   initialStaffId,
   initialMonth,
+  editingPayment,
+  editingExpense,
   onPayStaff,
+  onUpdatePayment,
+  onUpdateSalaryExpense,
   language,
 }) => {
   const t = translations[language];
+
+  const isLegacyExpenseEdit =
+    Boolean(editingExpense) || Boolean((editingPayment as any)?.isFromExpenseVoucher);
+  const isEditMode = Boolean(editingPayment || editingExpense);
+  const activeVoucherNo =
+    editingPayment?.expenseVoucherNumber || editingExpense?.voucherNumber || '';
 
   // Filter staff - Active by default
   const [includeInactive, setIncludeInactive] = useState(false);
@@ -41,7 +57,7 @@ export const StaffPaymentModal: React.FC<StaffPaymentModalProps> = ({
   const [otherAllowance, setOtherAllowance] = useState<number | ''>(0);
   const [deduction, setDeduction] = useState<number | ''>(0);
   const [accountId, setAccountId] = useState<string>('');
-  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'BANK' | 'CHEQUE' | 'MFS'>('CASH');
+  const [paymentMethod, setPaymentMethod] = useState<string>('CASH');
   const [notes, setNotes] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,18 +80,86 @@ export const StaffPaymentModal: React.FC<StaffPaymentModalProps> = ({
     }
 
     isInitializedRef.current = true;
+    const now = new Date();
+    const defaultYearMonth = initialMonth || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const todayStr = now.toISOString().split('T')[0];
+
+    if (editingPayment) {
+      const matchedStaff =
+        staffList.find((s) => s.id === editingPayment.staffId) ||
+        activeStaff[0] ||
+        staffList[0];
+      if (matchedStaff && matchedStaff.status !== 'ACTIVE') {
+        setIncludeInactive(true);
+      }
+      setSelectedStaffId(matchedStaff?.id || editingPayment.staffId || '');
+      const rawMonth = (editingPayment as any).paymentMonth || editingPayment.month || defaultYearMonth;
+      const normMonthMatch = String(rawMonth).match(/^(\d{4})-(\d{1,2})/);
+      setPaymentMonth(
+        normMonthMatch ? `${normMonthMatch[1]}-${normMonthMatch[2].padStart(2, '0')}` : defaultYearMonth
+      );
+      setPaymentDate(editingPayment.paymentDate || todayStr);
+      const initBasic = Number(editingPayment.basicSalary) || 0;
+      const initBonus =
+        editingPayment.bonus !== undefined
+          ? Number(editingPayment.bonus) || 0
+          : editingPayment.otherAllowance === undefined && Number(editingPayment.allowance) > 0
+          ? Number(editingPayment.allowance) || 0
+          : 0;
+      const initOther =
+        editingPayment.otherAllowance !== undefined
+          ? Number(editingPayment.otherAllowance) || 0
+          : editingPayment.bonus !== undefined && Number(editingPayment.allowance) > Number(editingPayment.bonus)
+          ? Number(editingPayment.allowance) - Number(editingPayment.bonus)
+          : 0;
+      setBasicSalary(initBasic);
+      setBonus(initBonus);
+      setOtherAllowance(initOther);
+      setDeduction(Number(editingPayment.deduction) || 0);
+      setAccountId(editingPayment.accountId || accounts[0]?.id || '');
+      setPaymentMethod(editingPayment.paymentMethod || 'CASH');
+      setNotes(editingPayment.notes || '');
+      setError(null);
+      return;
+    }
+
+    if (editingExpense) {
+      const matchedStaff =
+        findMatchingStaffForExpense(editingExpense, staffList) ||
+        activeStaff[0] ||
+        staffList[0];
+      if (matchedStaff && matchedStaff.status !== 'ACTIVE') {
+        setIncludeInactive(true);
+      }
+      setSelectedStaffId(matchedStaff?.id || '');
+      setPaymentMonth(extractSalaryMonthFromExpense(editingExpense));
+      setPaymentDate(editingExpense.date || todayStr);
+
+      const descLower = `${editingExpense.description || ''} ${editingExpense.subHeadNameBn || ''}`.toLowerCase();
+      const isBonusLike =
+        ['বোনাস', 'ঈদ', 'উৎসব', 'শবেবরাত', 'শবে বরাত', 'সম্মানী', 'bonus'].some((kw) => descLower.includes(kw)) &&
+        !descLower.includes('মাসের বেতন') &&
+        !descLower.includes('মূল বেতন');
+      const amt = Number(editingExpense.amount) || 0;
+      setBasicSalary(isBonusLike ? 0 : amt);
+      setBonus(isBonusLike ? amt : 0);
+      setOtherAllowance(0);
+      setDeduction(0);
+      setAccountId(editingExpense.accountId || accounts[0]?.id || '');
+      setPaymentMethod(editingExpense.paymentMethod || 'CASH');
+      setNotes(editingExpense.description || editingExpense.reference || '');
+      setError(null);
+      return;
+    }
+
     const defaultStaff = (initialStaffId && staffList.find((s) => s.id === initialStaffId)) ||
       (activeStaff[0] || staffList[0]);
-
-    const now = new Date();
-    const currentYearMonth = initialMonth || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const todayStr = now.toISOString().split('T')[0];
 
     if (defaultStaff) {
       setSelectedStaffId(defaultStaff.id);
       setBasicSalary(defaultStaff.monthlySalary || 0);
     }
-    setPaymentMonth(currentYearMonth);
+    setPaymentMonth(defaultYearMonth);
     setPaymentDate(todayStr);
     setBonus(0);
     setOtherAllowance(0);
@@ -84,22 +168,29 @@ export const StaffPaymentModal: React.FC<StaffPaymentModalProps> = ({
     setPaymentMethod('CASH');
     setNotes('');
     setError(null);
-  }, [isOpen, initialStaffId, initialMonth]);
+  }, [isOpen, initialStaffId, initialMonth, editingPayment, editingExpense]);
 
-  // When selected staff changes, auto-fill basic salary
+  // When selected staff changes, auto-fill basic salary in create mode
   const handleStaffChange = (staffId: string) => {
     setSelectedStaffId(staffId);
-    const st = staffList.find((s) => s.id === staffId);
-    if (st) {
-      setBasicSalary(st.monthlySalary || 0);
+    if (!isEditMode) {
+      const st = staffList.find((s) => s.id === staffId);
+      if (st) {
+        setBasicSalary(st.monthlySalary || 0);
+      }
     }
   };
 
   const currentSelectedStaff = staffList.find((s) => s.id === selectedStaffId);
 
-  // Check duplicate payment
+  // Check duplicate payment (ignoring the record currently being edited)
   const duplicatePayment = staffPayments.find(
-    (p) => p.staffId === selectedStaffId && p.month === paymentMonth && p.status !== 'CANCELLED'
+    (p) =>
+      p.staffId === selectedStaffId &&
+      p.month === paymentMonth &&
+      p.status !== 'CANCELLED' &&
+      (!editingPayment || p.id !== editingPayment.id) &&
+      (!editingExpense || p.expenseEntryId !== editingExpense.id)
   );
 
   // Real-time calculations
@@ -112,7 +203,16 @@ export const StaffPaymentModal: React.FC<StaffPaymentModalProps> = ({
   const netPaid = Math.max(0, totalPayable - numDeduction);
 
   const selectedAccount = accounts.find((a) => a.id === accountId) || accounts[0];
-  const isInsufficientBalance = selectedAccount && selectedAccount.currentBalance < netPaid;
+  const originalEditAccountId = editingPayment?.accountId || editingExpense?.accountId;
+  const originalEditAmount = editingPayment
+    ? Number(editingPayment.netPaid ?? (editingPayment as any).netPayable ?? editingPayment.basicSalary ?? 0)
+    : editingExpense
+    ? Number(editingExpense.amount || 0)
+    : 0;
+  const effectiveAvailableBalance =
+    (selectedAccount?.currentBalance || 0) +
+    (isEditMode && selectedAccount && selectedAccount.id === originalEditAccountId ? originalEditAmount : 0);
+  const isInsufficientBalance = Boolean(selectedAccount) && effectiveAvailableBalance < netPaid;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -129,29 +229,51 @@ export const StaffPaymentModal: React.FC<StaffPaymentModalProps> = ({
       return;
     }
 
+    const payload = {
+      staffId: selectedStaffId,
+      staffName: currentSelectedStaff?.fullNameBn || currentSelectedStaff?.name || '',
+      staffPhone: currentSelectedStaff?.phone || '',
+      designationBn: currentSelectedStaff?.designationBn || '',
+      month: paymentMonth,
+      paymentDate: paymentDate || new Date().toISOString().split('T')[0],
+      basicSalary: numBasic,
+      bonus: numBonus,
+      otherAllowance: numOther,
+      allowance: numBonus + numOther,
+      deduction: numDeduction,
+      totalPayable: totalPayable,
+      netPaid: netPaid,
+      accountId: accountId || accounts[0]?.id,
+      paymentMethod: paymentMethod as PaymentMethod,
+      notes: notes.trim(),
+    };
+
     try {
       setLoading(true);
       setError(null);
 
-      await onPayStaff({
-        staffId: selectedStaffId,
-        month: paymentMonth,
-        paymentDate: paymentDate || new Date().toISOString().split('T')[0],
-        basicSalary: numBasic,
-        bonus: numBonus,
-        otherAllowance: numOther,
-        allowance: numBonus + numOther,
-        deduction: numDeduction,
-        totalPayable: totalPayable,
-        netPaid: netPaid,
-        accountId: accountId || accounts[0]?.id,
-        paymentMethod: paymentMethod,
-        notes: notes.trim(),
-      });
+      if (isEditMode) {
+        const legacyExpId =
+          editingExpense?.id ||
+          (editingPayment as any)?.linkedExpense?.id ||
+          ((editingPayment as any)?.isFromExpenseVoucher ? editingPayment?.expenseEntryId : undefined);
+
+        if (!isLegacyExpenseEdit && editingPayment && onUpdatePayment) {
+          await onUpdatePayment(editingPayment.id, payload);
+        } else if (legacyExpId && onUpdateSalaryExpense) {
+          await onUpdateSalaryExpense(legacyExpId, payload);
+        } else if (editingPayment && onUpdatePayment) {
+          await onUpdatePayment(editingPayment.id, payload);
+        } else {
+          await onPayStaff(payload);
+        }
+      } else {
+        await onPayStaff(payload);
+      }
 
       onClose();
     } catch (err: any) {
-      setError(err?.message || 'বেতন পরিশোধ করতে ব্যর্থ হয়েছে।');
+      setError(err?.message || (isEditMode ? 'বেতন তথ্য সংশোধন করতে ব্যর্থ হয়েছে।' : 'বেতন পরিশোধ করতে ব্যর্থ হয়েছে।'));
     } finally {
       setLoading(false);
     }
@@ -169,8 +291,14 @@ export const StaffPaymentModal: React.FC<StaffPaymentModalProps> = ({
               <DollarSign className="w-5 h-5 text-emerald-400" />
             </div>
             <div>
-              <h3 className="font-bold text-base font-siliguri">ইমাম ও স্টাফ মাসিক হাদিয়া/বেতন পরিশোধ</h3>
-              <p className="text-xs text-slate-400">হাদিয়া, বোনাস ও ভাতা ভাউচার প্রস্তুত ও হিসাবভুক্তি</p>
+              <h3 className="font-bold text-base font-siliguri">
+                {isEditMode ? 'ইমাম ও স্টাফ বেতন/হাদিয়া সংশোধন' : 'ইমাম ও স্টাফ মাসিক হাদিয়া/বেতন পরিশোধ'}
+              </h3>
+              <p className="text-xs text-slate-400">
+                {isEditMode && activeVoucherNo
+                  ? `ভাউচার নং: ${activeVoucherNo} • মাস, পরিমাণ ও বিবরণ সংশোধন`
+                  : 'হাদিয়া, বোনাস ও ভাতা ভাউচার প্রস্তুত ও হিসাবভুক্তি'}
+              </p>
             </div>
           </div>
           <button
@@ -184,9 +312,28 @@ export const StaffPaymentModal: React.FC<StaffPaymentModalProps> = ({
         {/* Modal Body */}
         <form onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto text-xs">
           {error && (
-            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center space-x-2 text-rose-800 font-medium">
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-              <span>{error}</span>
+            <div className="space-y-2">
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center space-x-2 text-rose-800 font-medium">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{error}</span>
+              </div>
+              <FormAlertAssistant
+                moduleName="ইমাম ও স্টাফ বেতন পরিশোধ (Staff Payment)"
+                alertMessage={error}
+                formValues={{
+                  selectedStaffId,
+                  staffName: currentSelectedStaff?.name,
+                  paymentMonth,
+                  paymentDate,
+                  basicSalary,
+                  bonus,
+                  otherAllowance,
+                  deduction,
+                  netPaid,
+                  paymentMethod,
+                }}
+                onDismissAlert={() => setError(null)}
+              />
             </div>
           )}
 
@@ -198,7 +345,7 @@ export const StaffPaymentModal: React.FC<StaffPaymentModalProps> = ({
                 <span>সতর্কতা: এই মাসের বেতন ইতিমধ্যে পরিশোধিত হয়েছে!</span>
               </div>
               <p className="text-[11px] leading-relaxed text-amber-800">
-                <strong>{duplicatePayment.staffName}</strong>-কে <strong>{duplicatePayment.month}</strong> মাসের জন্য ইতিমধ্যে{' '}
+                <strong>{duplicatePayment.staffName}</strong>-কে <strong>{formatSalaryMonth(duplicatePayment.month, language)}</strong> মাসের জন্য ইতিমধ্যে{' '}
                 <strong>{formatCurrency(duplicatePayment.netPaid, language)}</strong> পরিশোধ করা হয়েছে (ভাউচার:{' '}
                 <span className="font-mono font-bold text-amber-950">{duplicatePayment.expenseVoucherNumber}</span>, তারিখ:{' '}
                 {duplicatePayment.paymentDate})। আপনি যদি কোনো বকেয়া বা বিশেষ বোনাস দিতে চান তবে নিচের অতিরিক্ত ফিল্ড ব্যবহার করুন।
@@ -250,6 +397,11 @@ export const StaffPaymentModal: React.FC<StaffPaymentModalProps> = ({
                 onChange={(e) => setPaymentMonth(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500 font-bold"
               />
+              {paymentMonth && (
+                <span className="inline-block mt-1 text-[11px] font-bold text-emerald-700 font-siliguri">
+                  নির্বাচিত মাস: {formatSalaryMonth(paymentMonth, language)}
+                </span>
+              )}
             </div>
 
             <div>
@@ -401,13 +553,16 @@ export const StaffPaymentModal: React.FC<StaffPaymentModalProps> = ({
               <select
                 id="select-pay-method"
                 value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value as any)}
+                onChange={(e) => setPaymentMethod(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500 font-medium"
               >
                 <option value="CASH">ক্যাশ / নগদ টাকা</option>
                 <option value="BANK">ব্যাংক ট্রান্সফার / EFT</option>
                 <option value="CHEQUE">ব্যাংক চেক</option>
                 <option value="MFS">বিকাশ / নগদ / রকেট</option>
+                <option value="BKASH">বিকাশ (bKash)</option>
+                <option value="NAGAD">নগদ (Nagad)</option>
+                <option value="ROCKET">রকেট (Rocket)</option>
               </select>
             </div>
           </div>
@@ -450,7 +605,13 @@ export const StaffPaymentModal: React.FC<StaffPaymentModalProps> = ({
               className="px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-98 rounded-lg shadow-sm flex items-center space-x-1.5 transition-all"
             >
               <CheckCircle className="w-3.5 h-3.5" />
-              <span>{loading ? 'প্রক্রিয়াকরণ হচ্ছে...' : 'পরিশোধ ও ভাউচার নিশ্চিত করুন'}</span>
+              <span>
+                {loading
+                  ? 'প্রক্রিয়াকরণ হচ্ছে...'
+                  : isEditMode
+                  ? 'পরিবর্তন সংরক্ষণ করুন'
+                  : 'পরিশোধ ও ভাউচার নিশ্চিত করুন'}
+              </span>
             </button>
           </div>
         </form>

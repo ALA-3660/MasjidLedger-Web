@@ -264,6 +264,8 @@ class CloudPersistenceService {
         donationBoxes: state.donationBoxes || [],
         donationBoxCollections: state.donationBoxCollections || [],
         transfers: state.transfers || [],
+        bankReconciliations: state.bankReconciliations || [],
+        bankAdjustments: state.bankAdjustments || [],
         budgets: state.budgets || [],
         budgetLines: state.budgetLines || [],
         updatedAt: now,

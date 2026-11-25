@@ -56,6 +56,7 @@ import { EditTransactionModal } from './EditModals';
 import { SmsPreviewModal } from './SmsPreviewModal';
 import { JumaCollectionModal } from './JumaCollectionModal';
 import { AiSmartEntryToolbar, AiSmartEntryResult } from './common/AiSmartEntryToolbar';
+import { FormAlertAssistant } from './common/FormAlertAssistant';
 import { DonationView } from './DonationView';
 import { UnifiedIncomeEntryModal, IncomeEntryType } from './UnifiedIncomeEntryModal';
 import { AiNoteCounterModal } from './income/AiNoteCounterModal';
@@ -2041,9 +2042,18 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
               />
 
               {formError && (
-                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-semibold flex items-center space-x-2">
-                  <AlertTriangle className="w-4 h-4 shrink-0" />
-                  <span>{formError}</span>
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-semibold space-y-1.5">
+                  <div className="flex items-center space-x-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>{formError}</span>
+                  </div>
+                  <FormAlertAssistant
+                    alertMessage={formError}
+                    formNameBn="আয় ব্যবস্থাপনা এন্ট্রি ফর্ম"
+                    moduleKey="INCOME_MANAGEMENT"
+                    alertType="ERROR"
+                    compact
+                  />
                 </div>
               )}
 

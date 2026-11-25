@@ -34,6 +34,7 @@ import {
   Check,
   Lock,
   Unlock,
+  Trash2,
 } from 'lucide-react';
 import {
   FinancialAccount,
@@ -42,8 +43,15 @@ import {
   Mosque,
   User,
   AccountTransfer,
+  BankReconciliationRecord,
+  BankAdjustmentRecord,
+  BankAdjustmentDirection,
+  BankAdjustmentCategory,
 } from '../types';
 import { Language, translations, formatDate, formatCurrency } from '../lib/i18n';
+import { api } from '../lib/api';
+import { printElement } from '../lib/printUtils';
+import { FormAlertAssistant } from './common/FormAlertAssistant';
 import { FinancialSecondarySidebar, SecondarySidebarItem } from './FinancialSecondarySidebar';
 import {
   calculateAccountingLedger,
@@ -191,7 +199,7 @@ export const BankBookView: React.FC<BankBookViewProps> = ({
   const [transferSubmitting, setTransferSubmitting] = useState<boolean>(false);
   const [transferSuccessMsg, setTransferSuccessMsg] = useState<string>('');
 
-  // Bank Reconciliation State
+  // Bank Reconciliation State (Strictly Tenant-Isolated & Persisted in DB — Zero Demo Data)
   const [reconAccountId, setReconAccountId] = useState<string>(bankAccountsOnly[0]?.id || bankAndMfsAccounts[0]?.id || '');
   const [reconStatementDate, setReconStatementDate] = useState<string>(todayStr);
   const [reconStatementBalance, setReconStatementBalance] = useState<string>('');
@@ -200,27 +208,65 @@ export const BankBookView: React.FC<BankBookViewProps> = ({
   const [reconVerifiedBy, setReconVerifiedBy] = useState<string>(currentUser?.name || '');
   const [reconNotes, setReconNotes] = useState<string>('');
   const [reconSuccessMsg, setReconSuccessMsg] = useState<string>('');
-  const [reconciliationLogs, setReconciliationLogs] = useState<Array<{
-    id: string;
-    date: string;
-    accountName: string;
-    bookBalance: number;
-    statementBalance: number;
-    difference: number;
-    status: 'VERIFIED' | 'DISCREPANCY';
-    verifiedBy: string;
-  }>>([
-    {
-      id: 'recon-1',
-      date: '2026-03-01',
-      accountName: 'ইসলামী ব্যাংক বাংলাদেশ (চলতি হিসাব)',
-      bookBalance: 1250000,
-      statementBalance: 1250000,
-      difference: 0,
-      status: 'VERIFIED',
-      verifiedBy: 'আব্দুল কাদির (হিসাবরক্ষক)',
-    },
-  ]);
+  const [reconErrorMsg, setReconErrorMsg] = useState<string>('');
+  const [reconLoading, setReconLoading] = useState<boolean>(false);
+  const [reconSaving, setReconSaving] = useState<boolean>(false);
+  const [reconciliationLogs, setReconciliationLogs] = useState<BankReconciliationRecord[]>([]);
+
+  // Isolated Bank Adjustments State (Profit / Interest / Bank Charges — Separate from Core Income & Expense)
+  const [bankAdjustments, setBankAdjustments] = useState<BankAdjustmentRecord[]>([]);
+  const [adjLoading, setAdjLoading] = useState<boolean>(false);
+  const [adjSaving, setAdjSaving] = useState<boolean>(false);
+  const [adjDirection, setAdjDirection] = useState<BankAdjustmentDirection>('DEBIT');
+  const [adjCategory, setAdjCategory] = useState<BankAdjustmentCategory>('SERVICE_CHARGE');
+  const [adjDate, setAdjDate] = useState<string>(todayStr);
+  const [adjAmount, setAdjAmount] = useState<string>('');
+  const [adjReference, setAdjReference] = useState<string>('');
+  const [adjNotes, setAdjNotes] = useState<string>('');
+  const [adjErrorMsg, setAdjErrorMsg] = useState<string>('');
+  const [adjSuccessMsg, setAdjSuccessMsg] = useState<string>('');
+  const [adjFilterSelectedAccountOnly, setAdjFilterSelectedAccountOnly] = useState<boolean>(true);
+
+  useEffect(() => {
+    if (currentUser?.name && !reconVerifiedBy) {
+      setReconVerifiedBy(currentUser.name);
+    }
+  }, [currentUser?.name]);
+
+  useEffect(() => {
+    if (!reconAccountId && (bankAccountsOnly[0]?.id || bankAndMfsAccounts[0]?.id)) {
+      setReconAccountId(bankAccountsOnly[0]?.id || bankAndMfsAccounts[0]?.id || '');
+    }
+  }, [bankAccountsOnly, bankAndMfsAccounts, reconAccountId]);
+
+  const loadReconciliationLogs = async () => {
+    try {
+      setReconLoading(true);
+      const list = await api.getBankReconciliations();
+      setReconciliationLogs(Array.isArray(list) ? list : []);
+    } catch (_) {
+      setReconciliationLogs([]);
+    } finally {
+      setReconLoading(false);
+    }
+  };
+
+  const loadBankAdjustments = async () => {
+    try {
+      setAdjLoading(true);
+      const list = await api.getBankAdjustments();
+      setBankAdjustments(Array.isArray(list) ? list : []);
+    } catch (_) {
+      setBankAdjustments([]);
+    } finally {
+      setAdjLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadReconciliationLogs();
+    loadBankAdjustments();
+  }, [currentMosque?.id]);
 
   // Summary Tabs
   const [summaryTab, setSummaryTab] = useState<'DAILY' | 'MONTHLY' | 'YEARLY' | 'BY_ACCOUNT'>('MONTHLY');
@@ -317,17 +363,74 @@ export const BankBookView: React.FC<BankBookViewProps> = ({
     return totalCombinedBalance;
   }, [activeAccountObj, totalCombinedBalance]);
 
-  // Reconciliation Difference Calculation
+  // Reconciliation & Isolated Bank Adjustments Calculation
   const reconBookBalance = useMemo(() => {
     const targetAcc = accounts.find((a) => a.id === reconAccountId);
     return targetAcc ? Number(targetAcc.currentBalance) || 0 : currentViewBalance;
   }, [accounts, reconAccountId, currentViewBalance]);
 
+  const reconAccountAdjustmentsUpToDate = useMemo(() => {
+    return bankAdjustments.filter((item) => {
+      if (reconAccountId && item.accountId !== reconAccountId) return false;
+      if (reconStatementDate && item.date && item.date.slice(0, 10) > reconStatementDate) return false;
+      return true;
+    });
+  }, [bankAdjustments, reconAccountId, reconStatementDate]);
+
+  const visibleBankAdjustments = useMemo(() => {
+    if (!adjFilterSelectedAccountOnly || !reconAccountId) return bankAdjustments;
+    return bankAdjustments.filter((item) => item.accountId === reconAccountId);
+  }, [bankAdjustments, adjFilterSelectedAccountOnly, reconAccountId]);
+
+  const reconTotalBankCredit = useMemo(() => {
+    return Number(
+      reconAccountAdjustmentsUpToDate
+        .filter((i) => i.direction === 'CREDIT')
+        .reduce((sum, i) => sum + (Number(i.amount) || 0), 0)
+        .toFixed(2)
+    );
+  }, [reconAccountAdjustmentsUpToDate]);
+
+  const reconTotalBankProfit = useMemo(() => {
+    return Number(
+      reconAccountAdjustmentsUpToDate
+        .filter((i) => i.direction === 'CREDIT' && i.category === 'BANK_PROFIT')
+        .reduce((sum, i) => sum + (Number(i.amount) || 0), 0)
+        .toFixed(2)
+    );
+  }, [reconAccountAdjustmentsUpToDate]);
+
+  const reconTotalBankInterest = useMemo(() => {
+    return Number(
+      reconAccountAdjustmentsUpToDate
+        .filter((i) => i.direction === 'CREDIT' && i.category === 'BANK_INTEREST')
+        .reduce((sum, i) => sum + (Number(i.amount) || 0), 0)
+        .toFixed(2)
+    );
+  }, [reconAccountAdjustmentsUpToDate]);
+
+  const reconTotalBankDebit = useMemo(() => {
+    return Number(
+      reconAccountAdjustmentsUpToDate
+        .filter((i) => i.direction === 'DEBIT')
+        .reduce((sum, i) => sum + (Number(i.amount) || 0), 0)
+        .toFixed(2)
+    );
+  }, [reconAccountAdjustmentsUpToDate]);
+
+  const reconNetBankAdjustment = useMemo(() => {
+    return Number((reconTotalBankCredit - reconTotalBankDebit).toFixed(2));
+  }, [reconTotalBankCredit, reconTotalBankDebit]);
+
+  const reconAdjustedBookBalance = useMemo(() => {
+    return Number((reconBookBalance + reconNetBankAdjustment).toFixed(2));
+  }, [reconBookBalance, reconNetBankAdjustment]);
+
   const reconDiff = useMemo(() => {
     const stmt = parseFloat(reconStatementBalance);
     if (isNaN(stmt)) return 0;
-    return stmt - reconBookBalance;
-  }, [reconStatementBalance, reconBookBalance]);
+    return Number((stmt - reconAdjustedBookBalance).toFixed(2));
+  }, [reconStatementBalance, reconAdjustedBookBalance]);
 
   // Handle Account Save (Add / Update)
   const handleSaveAccount = async (payload: Partial<FinancialAccount>) => {
@@ -478,26 +581,137 @@ export const BankBookView: React.FC<BankBookViewProps> = ({
     }
   };
 
-  // Save Reconciliation Snapshot
-  const handleSaveReconciliation = () => {
+  // Save Isolated Bank Adjustment (Profit / Interest / Bank Charges — Separate from Core Income & Expense)
+  const handleSaveBankAdjustment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdjErrorMsg('');
+    setAdjSuccessMsg('');
+
+    if (!reconAccountId) {
+      setAdjErrorMsg('অনুগ্রহ করে প্রথমে একটি ব্যাংক হিসাব নির্বাচন করুন।');
+      return;
+    }
+    if (!adjDate) {
+      setAdjErrorMsg('তারিখ নির্ধারণ করুন।');
+      return;
+    }
+    const numAmt = parseFloat(adjAmount);
+    if (isNaN(numAmt) || numAmt <= 0) {
+      setAdjErrorMsg('সঠিক টাকার পরিমাণ লিখুন (০-এর বেশি হতে হবে)।');
+      return;
+    }
+
     const acc = accounts.find((a) => a.id === reconAccountId);
-    const stmtBal = parseFloat(reconStatementBalance) || reconBookBalance;
-    const diff = stmtBal - reconBookBalance;
+    try {
+      setAdjSaving(true);
+      const saved = await api.createBankAdjustment({
+        accountId: reconAccountId,
+        accountName: acc?.nameBn || 'ব্যাংক হিসাব',
+        accountNumberMasked: maskAccountNumber(acc?.accountNumber),
+        date: adjDate,
+        direction: adjDirection,
+        category: adjCategory,
+        amount: numAmt,
+        reference: adjReference.trim() || undefined,
+        notes: adjNotes.trim() || undefined,
+      });
 
-    const newLog = {
-      id: `recon-${Date.now()}`,
-      date: reconStatementDate,
-      accountName: acc?.nameBn || 'ব্যাংক হিসাব',
-      bookBalance: reconBookBalance,
-      statementBalance: stmtBal,
-      difference: diff,
-      status: diff === 0 ? ('VERIFIED' as const) : ('DISCREPANCY' as const),
-      verifiedBy: reconVerifiedBy || currentUser?.name || 'হিসাবরক্ষক',
-    };
+      setBankAdjustments((prev) => [saved, ...prev]);
+      setAdjAmount('');
+      setAdjReference('');
+      setAdjNotes('');
+      setAdjSuccessMsg('পৃথক ব্যাংক সমন্বয় এন্ট্রি সফলভাবে সংরক্ষিত হয়েছে (মূল আয়-ব্যয়ে প্রভাব পড়েনি)।');
+      setTimeout(() => setAdjSuccessMsg(''), 4000);
+    } catch (err: any) {
+      setAdjErrorMsg(err?.message || 'ব্যাংক মুনাফা/চার্জ সংরক্ষণ করতে সমস্যা হয়েছে।');
+    } finally {
+      setAdjSaving(false);
+    }
+  };
 
-    setReconciliationLogs([newLog, ...reconciliationLogs]);
-    setReconSuccessMsg('ব্যাংক সমন্বয়ের স্ন্যাপশট সফলভাবে সংরক্ষিত হয়েছে।');
-    setTimeout(() => setReconSuccessMsg(''), 4000);
+  const handleDeleteBankAdjustment = async (id: string) => {
+    setAdjErrorMsg('');
+    try {
+      await api.deleteBankAdjustment(id);
+      setBankAdjustments((prev) => prev.filter((item) => item.id !== id));
+      setAdjSuccessMsg('ব্যাংক সমন্বয় এন্ট্রি মুছে ফেলা হয়েছে।');
+      setTimeout(() => setAdjSuccessMsg(''), 3500);
+    } catch (err: any) {
+      setAdjErrorMsg(err?.message || 'এন্ট্রি মুছতে সমস্যা হয়েছে।');
+    }
+  };
+
+  const handlePrintBankAdjustments = () => {
+    printElement('bank-adjustments-printable-area', {
+      title: `ব্যাংক_মুনাফা_ও_চার্জ_সমন্বয়_${currentMosque?.nameBn || currentMosque?.name || 'মসজিদ'}`,
+    });
+  };
+
+  // Save Reconciliation Snapshot (Persisted per Mosque / tenantId)
+  const handleSaveReconciliation = async () => {
+    setReconErrorMsg('');
+    setReconSuccessMsg('');
+
+    if (!reconAccountId) {
+      setReconErrorMsg('অনুগ্রহ করে একটি ব্যাংক বা এমএফএস হিসাব নির্বাচন করুন।');
+      return;
+    }
+    if (!reconStatementDate) {
+      setReconErrorMsg('স্টেটমেন্টের তারিখ নির্ধারণ করুন।');
+      return;
+    }
+    if (reconStatementBalance.trim() === '' || isNaN(Number(reconStatementBalance))) {
+      setReconErrorMsg('ব্যাংক স্টেটমেন্ট ব্যালেন্সের ঘরে সঠিক টাকার অঙ্ক লিখুন।');
+      return;
+    }
+
+    const acc = accounts.find((a) => a.id === reconAccountId);
+    const stmtBal = parseFloat(reconStatementBalance);
+
+    try {
+      setReconSaving(true);
+      const saved = await api.createBankReconciliation({
+        accountId: reconAccountId,
+        accountName: acc?.nameBn || 'ব্যাংক হিসাব',
+        accountNumberMasked: maskAccountNumber(acc?.accountNumber),
+        date: reconStatementDate,
+        bookBalance: reconBookBalance,
+        totalBankCredit: reconTotalBankCredit,
+        totalBankDebit: reconTotalBankDebit,
+        netBankAdjustment: reconNetBankAdjustment,
+        adjustedBookBalance: reconAdjustedBookBalance,
+        statementBalance: stmtBal,
+        verifiedBy: reconVerifiedBy || currentUser?.name || 'হিসাবরক্ষক',
+        notes: reconOutstandingCheques.trim() || reconNotes.trim() || undefined,
+      });
+
+      setReconciliationLogs((prev) => [saved, ...prev]);
+      setReconOutstandingCheques('');
+      setReconSuccessMsg('ব্যাংক সমন্বয়ের স্ন্যাপশট ডাটাবেসে স্থায়ীভাবে সংরক্ষিত হয়েছে।');
+      setTimeout(() => setReconSuccessMsg(''), 4000);
+    } catch (err: any) {
+      setReconErrorMsg(err?.message || 'ব্যাংক সমন্বয় সংরক্ষণ করতে সমস্যা হয়েছে।');
+    } finally {
+      setReconSaving(false);
+    }
+  };
+
+  const handleDeleteReconciliation = async (id: string) => {
+    setReconErrorMsg('');
+    try {
+      await api.deleteBankReconciliation(id);
+      setReconciliationLogs((prev) => prev.filter((item) => item.id !== id));
+      setReconSuccessMsg('ব্যাংক সমন্বয় লগ সফলভাবে মুছে ফেলা হয়েছে।');
+      setTimeout(() => setReconSuccessMsg(''), 3500);
+    } catch (err: any) {
+      setReconErrorMsg(err?.message || 'ব্যাংক সমন্বয় লগ মুছতে সমস্যা হয়েছে।');
+    }
+  };
+
+  const handlePrintReconciliationTable = () => {
+    printElement('bank-reconciliation-printable-area', {
+      title: `ব্যাংক_সমন্বয়_বিবরণী_${currentMosque?.nameBn || currentMosque?.name || 'মসজিদ'}`,
+    });
   };
 
   // Export to Excel
@@ -1829,7 +2043,308 @@ export const BankBookView: React.FC<BankBookViewProps> = ({
               {/* AI Bank & MFS Statement Reconciliation Panel */}
               <AiBankReconciliationPanel accounts={accounts} defaultAccountId={reconAccountId} />
 
-              {/* Form Card */}
+              {/* Isolated Bank Profit / Interest & Charge Adjustment Section (Separate from Core Income/Expense) */}
+              <div className="border border-indigo-200 rounded-xl p-4 sm:p-5 bg-indigo-50/30 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                      <Scale className="w-4 h-4 text-indigo-600" />
+                      <span>ব্যাংক মুনাফা / ইন্টারেস্ট ও ব্যাংক চার্জ সমন্বয় (পৃথক হিসাব)</span>
+                    </h3>
+                    <p className="text-[11px] text-slate-600 mt-0.5">
+                      এখানে যুক্ত করা ব্যাংক মুনাফা, ইন্টারেস্ট, আবগারি শুল্ক, ভ্যাট বা ব্যাংক চার্জ মসজিদের <strong>মূল আয় বা মূল ব্যয়ে মিশবে না</strong>—শুধুমাত্র এই ব্যাংক হিসাবের সমন্বয়ে পৃথকভাবে সংরক্ষিত থাকবে।
+                    </p>
+                  </div>
+                  {visibleBankAdjustments.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handlePrintBankAdjustments}
+                      className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center space-x-1.5 self-start sm:self-auto"
+                    >
+                      <Printer className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>মুনাফা ও চার্জ বিবরণী প্রিন্ট</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* 4 Clear Reconciliation Balance Summary Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="p-3 bg-white border border-slate-200 rounded-xl">
+                    <span className="text-[11px] font-semibold text-slate-500 block">
+                      ১. মূল বুক ব্যালেন্স (আয়-ব্যয় খতিয়ান)
+                    </span>
+                    <span className="text-sm font-mono font-bold text-slate-900 block mt-0.5">
+                      ৳ {reconBookBalance.toLocaleString('en-IN')}
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl">
+                    <span className="text-[11px] font-semibold text-emerald-800 block">
+                      ২. ব্যাংক মুনাফা / ইন্টারেস্ট (+)
+                    </span>
+                    <span className="text-sm font-mono font-bold text-emerald-700 block mt-0.5">
+                      + ৳ {reconTotalBankCredit.toLocaleString('en-IN')}
+                    </span>
+                    {(reconTotalBankProfit > 0 || reconTotalBankInterest > 0) && (
+                      <span className="text-[10px] text-emerald-700/80 block mt-0.5">
+                        মুনাফা: ৳ {reconTotalBankProfit.toLocaleString('en-IN')} | ইন্টারেস্ট: ৳ {reconTotalBankInterest.toLocaleString('en-IN')}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="p-3 bg-rose-50/70 border border-rose-200 rounded-xl">
+                    <span className="text-[11px] font-semibold text-rose-800 block">
+                      ৩. ব্যাংক চার্জ / শুল্ক / কর (−)
+                    </span>
+                    <span className="text-sm font-mono font-bold text-rose-700 block mt-0.5">
+                      − ৳ {reconTotalBankDebit.toLocaleString('en-IN')}
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-indigo-900 text-white border border-indigo-800 rounded-xl">
+                    <span className="text-[11px] font-semibold text-indigo-200 block">
+                      ৪. সমন্বিত বুক ব্যালেন্স (Adjusted)
+                    </span>
+                    <span className="text-sm font-mono font-bold text-white block mt-0.5">
+                      ৳ {reconAdjustedBookBalance.toLocaleString('en-IN')}
+                    </span>
+                    <span className="text-[10px] text-indigo-200 block mt-0.5">
+                      নেট ব্যাংক সমন্বয়: {reconNetBankAdjustment >= 0 ? '+' : ''}৳ {reconNetBankAdjustment.toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Inline Add Form for Bank Profit / Interest / Charge */}
+                <form onSubmit={handleSaveBankAdjustment} className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-slate-800">
+                      নতুন ব্যাংক মুনাফা / ইন্টারেস্ট বা চার্জ যোগ করুন (নির্বাচিত ব্যাংক হিসাবের জন্য)
+                    </span>
+                    <div className="inline-flex rounded-lg border border-slate-300 overflow-hidden text-xs font-bold">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAdjDirection('DEBIT');
+                          setAdjCategory('SERVICE_CHARGE');
+                        }}
+                        className={`px-3 py-1.5 cursor-pointer transition-colors ${
+                          adjDirection === 'DEBIT'
+                            ? 'bg-rose-600 text-white'
+                            : 'bg-white text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        − ব্যাংক চার্জ / শুল্ক / কর
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAdjDirection('CREDIT');
+                          setAdjCategory('BANK_PROFIT');
+                        }}
+                        className={`px-3 py-1.5 cursor-pointer transition-colors ${
+                          adjDirection === 'CREDIT'
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-white text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        + ব্যাংক মুনাফা / ইন্টারেস্ট
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 block mb-1">বিবরণ / ধরন *</label>
+                      <select
+                        value={adjCategory}
+                        onChange={(e) => setAdjCategory(e.target.value as BankAdjustmentCategory)}
+                        className="w-full text-xs font-semibold px-3 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:border-indigo-500 bg-white"
+                      >
+                        {adjDirection === 'CREDIT' ? (
+                          <>
+                            <option value="BANK_PROFIT">ব্যাংক মুনাফা (ইসলামী ব্যাংক)</option>
+                            <option value="BANK_INTEREST">ব্যাংক ইন্টারেস্ট / সুদ (পৃথক হিসাব)</option>
+                            <option value="OTHER_CREDIT">অন্যান্য ব্যাংক ক্রেডিট / রিফান্ড</option>
+                          </>
+                        ) : (
+                          <>
+                            <option value="SERVICE_CHARGE">ব্যাংক সার্ভিস ও মেইনটেন্যান্স চার্জ</option>
+                            <option value="EXCISE_DUTY">আবগারি শুল্ক (Excise Duty)</option>
+                            <option value="TAX_AIT">উৎসে কর / ভ্যাট / AIT</option>
+                            <option value="SMS_CHEQUE_FEE">SMS / চেকবই / অনলাইন চার্জ</option>
+                            <option value="INTEREST_DISPOSAL">সুদ / পৃথক তহবিল নিষ্পত্তি</option>
+                            <option value="OTHER_DEBIT">অন্যান্য ব্যাংক চার্জ / কর্তন</option>
+                          </>
+                        )}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 block mb-1">স্টেটমেন্ট তারিখ *</label>
+                      <input
+                        type="date"
+                        value={adjDate}
+                        onChange={(e) => setAdjDate(e.target.value)}
+                        className="w-full text-xs font-mono px-3 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:border-indigo-500 bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 block mb-1">টাকার পরিমাণ (৳) *</label>
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        placeholder="০.০০"
+                        value={adjAmount}
+                        onChange={(e) => setAdjAmount(e.target.value)}
+                        className="w-full text-xs font-mono font-bold px-3 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:border-indigo-500 bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 block mb-1">রেফারেন্স / নোট (ঐচ্ছিক)</label>
+                      <input
+                        type="text"
+                        placeholder="যেমন: অর্ধ-বার্ষিক চার্জ / জুন ক্লোজিং..."
+                        value={adjNotes}
+                        onChange={(e) => setAdjNotes(e.target.value)}
+                        className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:border-indigo-500 bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  {adjErrorMsg && (
+                    <div className="space-y-2">
+                      <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-lg flex items-center space-x-2">
+                        <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                        <span>{adjErrorMsg}</span>
+                      </div>
+                      <FormAlertAssistant
+                        moduleName="ব্যাংক মুনাফা ও চার্জ সমন্বয় (পৃথক হিসাব)"
+                        alertMessage={adjErrorMsg}
+                        formValues={{
+                          reconAccountId,
+                          adjDirection,
+                          adjCategory,
+                          adjDate,
+                          adjAmount,
+                          adjNotes,
+                        }}
+                        onDismissAlert={() => setAdjErrorMsg('')}
+                      />
+                    </div>
+                  )}
+
+                  {adjSuccessMsg && (
+                    <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-lg flex items-center space-x-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>{adjSuccessMsg}</span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[11px] text-slate-500">
+                      হিসাব: <strong>{accounts.find((a) => a.id === reconAccountId)?.nameBn || 'নির্বাচিত ব্যাংক'}</strong>
+                    </span>
+                    <button
+                      type="submit"
+                      disabled={adjSaving}
+                      className={`px-4 py-2 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer disabled:opacity-50 ${
+                        adjDirection === 'CREDIT'
+                          ? 'bg-emerald-600 hover:bg-emerald-700'
+                          : 'bg-rose-600 hover:bg-rose-700'
+                      }`}
+                    >
+                      {adjSaving
+                        ? 'সংরক্ষণ হচ্ছে...'
+                        : adjDirection === 'CREDIT'
+                        ? '+ মুনাফা / ইন্টারেস্ট সংরক্ষণ করুন'
+                        : '− ব্যাংক চার্জ / শুল্ক সংরক্ষণ করুন'}
+                    </button>
+                  </div>
+                </form>
+
+                {/* Isolated Bank Adjustments Table */}
+                <div id="bank-adjustments-printable-area" className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+                  <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-bold text-xs text-slate-800">
+                      পৃথক ব্যাংক মুনাফা, ইন্টারেস্ট ও চার্জ রেজিস্টার ({visibleBankAdjustments.length} টি)
+                    </span>
+                    <label className="inline-flex items-center space-x-1.5 text-[11px] text-slate-600 cursor-pointer print:hidden">
+                      <input
+                        type="checkbox"
+                        checked={adjFilterSelectedAccountOnly}
+                        onChange={(e) => setAdjFilterSelectedAccountOnly(e.target.checked)}
+                        className="rounded border-slate-300 text-indigo-600"
+                      />
+                      <span>শুধু নির্বাচিত ব্যাংক হিসাব দেখান</span>
+                    </label>
+                  </div>
+
+                  {adjLoading ? (
+                    <div className="p-5 text-center text-xs text-slate-500">লোড হচ্ছে...</div>
+                  ) : visibleBankAdjustments.length === 0 ? (
+                    <div className="p-5 text-center text-xs text-slate-500">
+                      কোনো পৃথক ব্যাংক মুনাফা, ইন্টারেস্ট বা ব্যাংক চার্জ এন্ট্রি পাওয়া যায়নি।
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-left">
+                        <thead className="bg-slate-100 text-slate-600 font-bold">
+                          <tr>
+                            <th className="p-2.5">তারিখ</th>
+                            <th className="p-2.5">ব্যাংক হিসাব</th>
+                            <th className="p-2.5">খাত / ধরন</th>
+                            <th className="p-2.5">বিবরণ / নোট</th>
+                            <th className="p-2.5 text-right">মুনাফা / জমা (+)</th>
+                            <th className="p-2.5 text-right">চার্জ / কর্তন (−)</th>
+                            <th className="p-2.5 text-center print:hidden">মুছুন</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {visibleBankAdjustments.map((item) => (
+                            <tr key={item.id} className="hover:bg-slate-50">
+                              <td className="p-2.5 font-mono">{formatDate(item.date)}</td>
+                              <td className="p-2.5 font-semibold text-slate-800">{item.accountName}</td>
+                              <td className="p-2.5">
+                                <span
+                                  className={`px-2 py-0.5 rounded-md text-[11px] font-bold border ${
+                                    item.direction === 'CREDIT'
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                      : 'bg-rose-50 text-rose-700 border-rose-200'
+                                  }`}
+                                >
+                                  {item.categoryLabelBn}
+                                </span>
+                              </td>
+                              <td className="p-2.5 text-slate-600">{item.notes || item.reference || '—'}</td>
+                              <td className="p-2.5 text-right font-mono font-bold text-emerald-700">
+                                {item.direction === 'CREDIT' ? `+ ৳ ${Number(item.amount || 0).toLocaleString('en-IN')}` : '—'}
+                              </td>
+                              <td className="p-2.5 text-right font-mono font-bold text-rose-700">
+                                {item.direction === 'DEBIT' ? `− ৳ ${Number(item.amount || 0).toLocaleString('en-IN')}` : '—'}
+                              </td>
+                              <td className="p-2.5 text-center print:hidden">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteBankAdjustment(item.id)}
+                                  className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                  title="এন্ট্রি মুছুন"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Form Card: Bank Reconciliation Statement Snapshot */}
               <div className="border border-slate-200 rounded-xl p-5 bg-slate-50/50 space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
                   <div>
@@ -1859,10 +2374,10 @@ export const BankBookView: React.FC<BankBookViewProps> = ({
 
                   <div>
                     <label className="text-xs font-bold text-slate-700 block mb-1">
-                      সিস্টেম বুক ব্যালেন্স (Book Balance)
+                      সমন্বিত বুক ব্যালেন্স (Adjusted Book)
                     </label>
-                    <div className="text-sm font-mono font-bold text-slate-900 px-3 py-2 bg-white border border-slate-300 rounded-lg">
-                      ৳ {reconBookBalance.toLocaleString('en-IN')}
+                    <div className="text-sm font-mono font-bold text-indigo-900 px-3 py-2 bg-indigo-50/60 border border-indigo-200 rounded-lg">
+                      ৳ {reconAdjustedBookBalance.toLocaleString('en-IN')}
                     </div>
                   </div>
 
@@ -1885,15 +2400,15 @@ export const BankBookView: React.FC<BankBookViewProps> = ({
                     <label className="text-xs font-bold text-slate-700 block mb-1">অমিল / পার্থক্য (Difference)</label>
                     <div
                       className={`text-sm font-mono font-bold px-3 py-2 border rounded-lg ${
-                        reconDiff === 0 && reconStatementBalance
+                        Math.abs(reconDiff) < 0.01 && reconStatementBalance
                           ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                          : reconDiff !== 0 && reconStatementBalance
+                          : Math.abs(reconDiff) >= 0.01 && reconStatementBalance
                           ? 'bg-amber-50 text-amber-800 border-amber-300'
                           : 'bg-white text-slate-500 border-slate-300'
                       }`}
                     >
                       {reconStatementBalance ? (
-                        reconDiff === 0 ? (
+                        Math.abs(reconDiff) < 0.01 ? (
                           '৳ ০.০০ (সমন্বিত / Balanced)'
                         ) : (
                           `৳ ${reconDiff.toLocaleString('en-IN')} (${reconDiff > 0 ? 'স্টেটমেন্টে বেশি' : 'লেজারে বেশি'})`
@@ -1920,13 +2435,37 @@ export const BankBookView: React.FC<BankBookViewProps> = ({
                     </label>
                     <input
                       type="text"
-                      placeholder="উদাঃ চেক নং ৪৪৫৫৬৬ এখনও ব্যাংকে ক্লিয়ার হয়নি বা ব্যাংকের মাসিক চার্জ..."
+                      placeholder="উদাঃ চেক নং ৪৪৫৫৬৬ এখনও ব্যাংকে ক্লিয়ার হয়নি বা ট্রানজিট জমা..."
                       value={reconOutstandingCheques}
                       onChange={(e) => setReconOutstandingCheques(e.target.value)}
                       className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:border-indigo-500 bg-white"
                     />
                   </div>
                 </div>
+
+                {reconErrorMsg && (
+                  <div className="space-y-2">
+                    <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-lg flex items-center space-x-2">
+                      <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                      <span>{reconErrorMsg}</span>
+                    </div>
+                    <FormAlertAssistant
+                      moduleName="ব্যাংক সমন্বয় বিবরণী (Bank Reconciliation)"
+                      alertMessage={reconErrorMsg}
+                      formValues={{
+                        reconAccountId,
+                        reconStatementDate,
+                        reconBookBalance,
+                        reconNetBankAdjustment,
+                        reconAdjustedBookBalance,
+                        reconStatementBalance,
+                        reconVerifiedBy,
+                        reconOutstandingCheques,
+                      }}
+                      onDismissAlert={() => setReconErrorMsg('')}
+                    />
+                  </div>
+                )}
 
                 {reconSuccessMsg && (
                   <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-lg flex items-center space-x-2">
@@ -1935,58 +2474,125 @@ export const BankBookView: React.FC<BankBookViewProps> = ({
                   </div>
                 )}
 
-                <button
-                  type="button"
-                  onClick={handleSaveReconciliation}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
-                >
-                  ব্যাংক সমন্বয় স্ন্যাপশট সংরক্ষণ করুন
-                </button>
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <button
+                    type="button"
+                    disabled={reconSaving}
+                    onClick={handleSaveReconciliation}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    {reconSaving ? 'সংরক্ষণ হচ্ছে...' : 'ব্যাংক সমন্বয় স্ন্যাপশট সংরক্ষণ করুন'}
+                  </button>
+
+                  {reconciliationLogs.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handlePrintReconciliationTable}
+                      className="px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center space-x-1.5"
+                    >
+                      <Printer className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>সমন্বয় লগ প্রিন্ট করুন</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
-              {/* Saved Reconciliation Records */}
-              <div className="border border-slate-200 rounded-xl overflow-hidden">
-                <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 font-bold text-xs text-slate-800">
-                  সংরক্ষিত ব্যাংক সমন্বয় লগ ({reconciliationLogs.length} টি)
+              {/* Saved Reconciliation Records (Strictly Tenant-Isolated from DB) */}
+              <div id="bank-reconciliation-printable-area" className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+                <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                  <span className="font-bold text-xs text-slate-800">
+                    সংরক্ষিত ব্যাংক সমন্বয় লগ ({reconciliationLogs.length} টি)
+                  </span>
+                  <span className="text-[11px] text-slate-500">
+                    {currentMosque?.nameBn || currentMosque?.name || ''}
+                  </span>
                 </div>
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-slate-100 text-slate-600 font-bold">
-                    <tr>
-                      <th className="p-2.5">তারিখ</th>
-                      <th className="p-2.5">ব্যাংক হিসাব</th>
-                      <th className="p-2.5 text-right">বুক ব্যালেন্স</th>
-                      <th className="p-2.5 text-right">স্টেটমেন্ট ব্যালেন্স</th>
-                      <th className="p-2.5 text-right">পার্থক্য</th>
-                      <th className="p-2.5 text-center">অবস্থা</th>
-                      <th className="p-2.5">যাচাইকারী</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {reconciliationLogs.map((log) => (
-                      <tr key={log.id} className="hover:bg-slate-50">
-                        <td className="p-2.5 font-mono">{formatDate(log.date)}</td>
-                        <td className="p-2.5 font-semibold text-slate-800">{log.accountName}</td>
-                        <td className="p-2.5 text-right font-mono">৳ {log.bookBalance.toLocaleString('en-IN')}</td>
-                        <td className="p-2.5 text-right font-mono">৳ {log.statementBalance.toLocaleString('en-IN')}</td>
-                        <td className="p-2.5 text-right font-mono font-bold">
-                          {log.difference === 0 ? '৳ ০.০০' : `৳ ${log.difference.toLocaleString('en-IN')}`}
-                        </td>
-                        <td className="p-2.5 text-center">
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                              log.status === 'VERIFIED'
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                : 'bg-amber-50 text-amber-700 border-amber-200'
-                            }`}
-                          >
-                            {log.status === 'VERIFIED' ? 'সমন্বিত' : 'পার্থক্যযুক্ত'}
-                          </span>
-                        </td>
-                        <td className="p-2.5 text-slate-600">{log.verifiedBy}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                {reconLoading ? (
+                  <div className="p-6 text-center text-xs text-slate-500">
+                    ব্যাংক সমন্বয় লগ লোড হচ্ছে...
+                  </div>
+                ) : reconciliationLogs.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-slate-500">
+                    এই মসজিদের জন্য এখনো কোনো ব্যাংক সমন্বয় স্ন্যাপশট সংরক্ষণ করা হয়নি।
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left">
+                      <thead className="bg-slate-100 text-slate-600 font-bold">
+                        <tr>
+                          <th className="p-2.5">তারিখ</th>
+                          <th className="p-2.5">ব্যাংক হিসাব</th>
+                          <th className="p-2.5 text-right">মূল বুক ব্যালেন্স</th>
+                          <th className="p-2.5 text-right">মুনাফা/চার্জ (±)</th>
+                          <th className="p-2.5 text-right">সমন্বিত বুক</th>
+                          <th className="p-2.5 text-right">স্টেটমেন্ট</th>
+                          <th className="p-2.5 text-right">পার্থক্য</th>
+                          <th className="p-2.5">বিবরণ</th>
+                          <th className="p-2.5 text-center">অবস্থা</th>
+                          <th className="p-2.5">যাচাইকারী</th>
+                          <th className="p-2.5 text-center print:hidden">অ্যাকশন</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {reconciliationLogs.map((log) => {
+                          const netAdj = Number(log.netBankAdjustment || 0);
+                          const adjBook =
+                            log.adjustedBookBalance !== undefined
+                              ? Number(log.adjustedBookBalance)
+                              : Number(log.bookBalance || 0) + netAdj;
+                          return (
+                            <tr key={log.id} className="hover:bg-slate-50">
+                              <td className="p-2.5 font-mono">{formatDate(log.date)}</td>
+                              <td className="p-2.5 font-semibold text-slate-800">{log.accountName}</td>
+                              <td className="p-2.5 text-right font-mono">৳ {Number(log.bookBalance || 0).toLocaleString('en-IN')}</td>
+                              <td
+                                className={`p-2.5 text-right font-mono font-semibold ${
+                                  netAdj > 0 ? 'text-emerald-700' : netAdj < 0 ? 'text-rose-700' : 'text-slate-500'
+                                }`}
+                              >
+                                {netAdj === 0 ? '৳ ০.০০' : `${netAdj > 0 ? '+' : ''}৳ ${netAdj.toLocaleString('en-IN')}`}
+                              </td>
+                              <td className="p-2.5 text-right font-mono font-bold text-indigo-900">
+                                ৳ {adjBook.toLocaleString('en-IN')}
+                              </td>
+                              <td className="p-2.5 text-right font-mono">৳ {Number(log.statementBalance || 0).toLocaleString('en-IN')}</td>
+                              <td className="p-2.5 text-right font-mono font-bold">
+                                {Math.abs(Number(log.difference || 0)) < 0.01
+                                  ? '৳ ০.০০'
+                                  : `৳ ${Number(log.difference || 0).toLocaleString('en-IN')}`}
+                              </td>
+                              <td className="p-2.5 text-slate-600 max-w-xs truncate" title={log.notes || ''}>
+                                {log.notes || '—'}
+                              </td>
+                              <td className="p-2.5 text-center">
+                                <span
+                                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                    log.status === 'VERIFIED'
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                      : 'bg-amber-50 text-amber-700 border-amber-200'
+                                  }`}
+                                >
+                                  {log.status === 'VERIFIED' ? 'সমন্বিত' : 'পার্থক্যযুক্ত'}
+                                </span>
+                              </td>
+                              <td className="p-2.5 text-slate-600">{log.verifiedBy}</td>
+                              <td className="p-2.5 text-center print:hidden">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteReconciliation(log.id)}
+                                  className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                  title="সমন্বয় লগ মুছুন"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
           )}

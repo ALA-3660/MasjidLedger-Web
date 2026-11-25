@@ -32,7 +32,7 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import { Staff, StaffPayment, FinancialAccount, SalaryHistoryEntry, StaffLeaveRecord, StaffAdvanceRecord } from '../types';
-import { Language, translations, formatCurrency, formatDate } from '../lib/i18n';
+import { Language, translations, formatCurrency, formatDate, formatSalaryMonth } from '../lib/i18n';
 import { api } from '../lib/api';
 import { DocumentSection } from './DocumentSection';
 
@@ -650,7 +650,9 @@ export const StaffProfileDrawer: React.FC<StaffProfileDrawerProps> = ({
                     >
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-900 text-sm">মাস: {p.month}</span>
+                          <span className="font-bold text-slate-900 text-sm">
+                            মাস: {formatSalaryMonth(p.month || p.paymentMonth, language)}
+                          </span>
                           <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 font-bold rounded">
                             ৳{(p.netPaid || p.amount).toLocaleString()}
                           </span>

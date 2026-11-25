@@ -17,11 +17,17 @@ import {
   CreditCard,
   FileCheck2,
   Sparkles,
-  MessageSquare
+  MessageSquare,
+  Edit2
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { Staff, StaffPayment, FinancialAccount, Mosque } from '../types';
-import { Language, formatCurrency, formatDate, formatBengaliMonthYear } from '../lib/i18n';
+import { Staff, StaffPayment, FinancialAccount, Mosque, ExpenseEntry } from '../types';
+import { Language, formatCurrency, formatDate, formatSalaryMonth } from '../lib/i18n';
+import {
+  buildUnifiedStaffPaymentHistory,
+  resolveStaffPaymentNetAmount,
+  UnifiedStaffPaymentItem,
+} from '../lib/staffPaymentSync';
 import { printElement } from '../lib/printUtils';
 import { MosqueOfficialLetterhead } from './common/MosqueOfficialLetterhead';
 import { OfficialReportSignatures } from './common/OfficialReportSignatures';
@@ -31,9 +37,11 @@ import { AiSalarySmsModal } from './staff/AiSalarySmsModal';
 interface StaffSalaryDisbursementSectionProps {
   staffList: Staff[];
   staffPayments: StaffPayment[];
+  expenses?: ExpenseEntry[];
   accounts: FinancialAccount[];
   currentMosque?: Mosque | null;
   onOpenPayModal: (staffId: string) => void;
+  onEditPayment?: (payment: UnifiedStaffPaymentItem) => void;
   onPrintSlip: (payment: StaffPayment, staff: Staff) => void;
   onOpenResolutionModal?: (paymentId?: string, month?: string) => void;
   language: Language;
@@ -42,9 +50,11 @@ interface StaffSalaryDisbursementSectionProps {
 export const StaffSalaryDisbursementSection: React.FC<StaffSalaryDisbursementSectionProps> = ({
   staffList = [],
   staffPayments = [],
+  expenses = [],
   accounts = [],
   currentMosque,
   onOpenPayModal,
+  onEditPayment,
   onPrintSlip,
   onOpenResolutionModal,
   language = 'bn',
@@ -63,19 +73,29 @@ export const StaffSalaryDisbursementSection: React.FC<StaffSalaryDisbursementSec
 
   const activeStaff = staffList.filter((s) => s.status === 'ACTIVE');
 
-  // Compute breakdown for selected month for each staff
+  // Compute breakdown for selected month for each staff (including unified expense-module salary vouchers)
   const staffSalaryRows = useMemo(() => {
     return activeStaff.map((staff) => {
-      const payment = staffPayments.find(
-        (p) => (p.paymentMonth === selectedMonth || p.month === selectedMonth) && p.staffId === staff.id && p.status !== 'CANCELLED'
+      const unifiedHistory = buildUnifiedStaffPaymentHistory(staff, staffPayments, expenses, staffList);
+      const monthPayments = unifiedHistory.filter(
+        (p) => (p.month === selectedMonth || p.paymentMonth === selectedMonth) && p.status !== 'CANCELLED'
       );
+      const payment = monthPayments[0];
 
-      const basic = staff.monthlySalary || staff.basicSalary || 0;
-      const allowance = staff.allowance || 0;
+      const basic = payment
+        ? monthPayments.reduce((sum, p) => sum + Number(p.basicSalary || 0), 0)
+        : staff.monthlySalary || staff.basicSalary || 0;
+      const allowance = payment
+        ? monthPayments.reduce((sum, p) => sum + Number(p.allowance ?? ((p.bonus || 0) + (p.otherAllowance || 0))), 0)
+        : staff.allowance || 0;
       const gross = basic + allowance;
-      const deduction = payment ? payment.deduction || 0 : 0;
-      const netPayable = payment ? payment.netPayable : gross;
-      const isPaid = Boolean(payment);
+      const deduction = payment
+        ? monthPayments.reduce((sum, p) => sum + Number(p.deduction || 0), 0)
+        : 0;
+      const netPayable = payment
+        ? monthPayments.reduce((sum, p) => sum + resolveStaffPaymentNetAmount(p), 0)
+        : gross;
+      const isPaid = monthPayments.length > 0;
 
       return {
         staff,
@@ -88,7 +108,7 @@ export const StaffSalaryDisbursementSection: React.FC<StaffSalaryDisbursementSec
         isPaid,
       };
     });
-  }, [activeStaff, staffPayments, selectedMonth]);
+  }, [activeStaff, staffPayments, expenses, staffList, selectedMonth]);
 
   // Filtered
   const filteredRows = useMemo(() => {
@@ -110,8 +130,8 @@ export const StaffSalaryDisbursementSection: React.FC<StaffSalaryDisbursementSec
 
   // Total summary
   const totalGross = staffSalaryRows.reduce((sum, r) => sum + r.gross, 0);
-  const totalPaid = staffSalaryRows.filter((r) => r.isPaid).reduce((sum, r) => sum + (r.payment?.netPayable || r.netPayable), 0);
-  const totalDue = totalGross - totalPaid;
+  const totalPaid = staffSalaryRows.filter((r) => r.isPaid).reduce((sum, r) => sum + r.netPayable, 0);
+  const totalDue = Math.max(0, totalGross - totalPaid);
   const paidCount = staffSalaryRows.filter((r) => r.isPaid).length;
 
   // Print Salary Sheet
@@ -169,7 +189,7 @@ export const StaffSalaryDisbursementSection: React.FC<StaffSalaryDisbursementSec
               className="bg-transparent font-bold text-slate-800 focus:outline-none"
             />
             <span className="text-indigo-800 font-extrabold font-siliguri border-l border-slate-300 pl-2">
-              {formatBengaliMonthYear(selectedMonth)}
+              {formatSalaryMonth(selectedMonth, language)}
             </span>
           </div>
 
@@ -343,6 +363,17 @@ export const StaffSalaryDisbursementSection: React.FC<StaffSalaryDisbursementSec
                     <div className="flex items-center justify-end space-x-1.5">
                       {row.isPaid && row.payment ? (
                         <>
+                          {onEditPayment && (
+                            <button
+                              type="button"
+                              onClick={() => onEditPayment(row.payment!)}
+                              className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 rounded-lg text-xs font-bold inline-flex items-center space-x-1"
+                              title="বেতন পরিশোধ সম্পাদনা করুন"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                              <span>সম্পাদনা</span>
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => setSmsTarget({ staff: row.staff, payment: row.payment! })}
@@ -397,12 +428,12 @@ export const StaffSalaryDisbursementSection: React.FC<StaffSalaryDisbursementSec
           <MosqueOfficialLetterhead
             mosque={currentMosque}
             documentTitle="মাসিক কর্মকর্তা ও কর্মচারী বেতন বিবরণী"
-            dateStr={`বেতন মাস: ${formatBengaliMonthYear(selectedMonth)}`}
+            dateStr={`বেতন মাস: ${formatSalaryMonth(selectedMonth, language)}`}
           />
         ) : (
           <div className="text-center pb-4 border-b border-slate-300 mb-6">
             <h1 className="text-xl font-bold font-siliguri">মাসিক কর্মকর্তা ও কর্মচারী বেতন বিবরণী</h1>
-            <p className="text-xs text-slate-600 mt-1">বেতন মাস: {formatBengaliMonthYear(selectedMonth)}</p>
+            <p className="text-xs text-slate-600 mt-1">বেতন মাস: {formatSalaryMonth(selectedMonth, language)}</p>
           </div>
         )}
 

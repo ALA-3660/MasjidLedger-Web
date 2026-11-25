@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { StaffPayment, StaffPaymentDocument } from '../types';
 import { api } from '../lib/api';
+import { formatSalaryMonth } from '../lib/i18n';
 
 interface PaymentDocumentModalProps {
   isOpen: boolean;
@@ -83,7 +84,7 @@ export const PaymentDocumentModal: React.FC<PaymentDocumentModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-bold">পেমেন্ট ডকুমেন্ট ও ব্যাংক রসিদ সংযুক্তি</h3>
-              <p className="text-xs text-slate-300">{payment.staffName} ({payment.month})</p>
+              <p className="text-xs text-slate-300">{payment.staffName} ({formatSalaryMonth(payment.month || payment.paymentMonth, 'bn')})</p>
             </div>
           </div>
           <button onClick={onClose} className="p-1.5 hover:bg-white/10 rounded-lg text-white/80 hover:text-white">

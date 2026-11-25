@@ -17,6 +17,10 @@ import {
   FinancialAccount,
   AccountOpeningBalancePayload,
   AccountTransfer,
+  BankReconciliationRecord,
+  BankAdjustmentRecord,
+  BankAdjustmentDirection,
+  BankAdjustmentCategory,
   IncomeEntry,
   CashDenominationData,
   ExpenseEntry,
@@ -1521,6 +1525,80 @@ class ApiService {
     return this.getTransfers();
   }
 
+  async getBankReconciliations(): Promise<BankReconciliationRecord[]> {
+    const res = await this.request<BankReconciliationRecord[]>('/accounting/bank-reconciliations');
+    return res.data || [];
+  }
+
+  async createBankReconciliation(data: {
+    accountId: string;
+    accountName?: string;
+    accountNumberMasked?: string;
+    date: string;
+    bookBalance: number;
+    totalBankCredit?: number;
+    totalBankDebit?: number;
+    netBankAdjustment?: number;
+    adjustedBookBalance?: number;
+    statementBalance: number;
+    verifiedBy?: string;
+    notes?: string;
+  }): Promise<BankReconciliationRecord> {
+    const res = await this.request<BankReconciliationRecord>('/accounting/bank-reconciliations', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'ব্যাংক সমন্বয় সংরক্ষণ ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async deleteBankReconciliation(id: string): Promise<void> {
+    const res = await this.request<{ id: string }>(`/accounting/bank-reconciliations/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    if (!res.success) {
+      throw new Error(res.error?.message || 'ব্যাংক সমন্বয় লগ মুছতে সমস্যা হয়েছে।');
+    }
+  }
+
+  async getBankAdjustments(accountId?: string): Promise<BankAdjustmentRecord[]> {
+    const qs = accountId ? `?accountId=${encodeURIComponent(accountId)}` : '';
+    const res = await this.request<BankAdjustmentRecord[]>(`/accounting/bank-adjustments${qs}`);
+    return res.data || [];
+  }
+
+  async createBankAdjustment(data: {
+    accountId: string;
+    accountName?: string;
+    accountNumberMasked?: string;
+    date: string;
+    direction: BankAdjustmentDirection;
+    category: BankAdjustmentCategory;
+    amount: number;
+    reference?: string;
+    notes?: string;
+  }): Promise<BankAdjustmentRecord> {
+    const res = await this.request<BankAdjustmentRecord>('/accounting/bank-adjustments', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'ব্যাংক মুনাফা/চার্জ সংরক্ষণ ব্যর্থ হয়েছে।');
+    }
+    return res.data;
+  }
+
+  async deleteBankAdjustment(id: string): Promise<void> {
+    const res = await this.request<{ id: string }>(`/accounting/bank-adjustments/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    if (!res.success) {
+      throw new Error(res.error?.message || 'ব্যাংক মুনাফা/চার্জ এন্ট্রি মুছতে সমস্যা হয়েছে।');
+    }
+  }
+
   // Committee
   async getCommitteeTerms(): Promise<CommitteeTerm[]> {
     const res = await this.request<{ terms: CommitteeTerm[]; members: CommitteeMember[]; meetings: CommitteeMeeting[] }>('/committee');
@@ -2752,6 +2830,7 @@ class ApiService {
       subHeadId: string;
       subHeadNameBn: string;
       personName: string;
+      vendorOrOrgName?: string;
       personPhone: string;
       paymentMethod: 'CASH' | 'BANK' | 'BKASH' | 'NAGAD' | 'ROCKET';
       reference: string;
@@ -3807,23 +3886,7 @@ class ApiService {
     mimeType?: string;
     extraText?: string;
   }) {
-    const res = await this.request<{
-      fullNameBn: string;
-      nameEn: string;
-      fatherName: string;
-      motherName: string;
-      nid: string;
-      dateOfBirth: string;
-      phone: string;
-      presentAddress: string;
-      permanentAddress: string;
-      bloodGroup: string;
-      generalEducation: string;
-      religiousEducation: string;
-      previousExperience: string;
-      confidenceNoteBn: string;
-      generatedAt: string;
-    }>('/ai/staff/scan-document', {
+    const res = await this.request<StaffDocumentScanResult>('/ai/staff/scan-document', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
@@ -7063,6 +7126,24 @@ class ApiService {
     }
     return res.data;
   }
+
+  async analyzeFormAlertAi(payload: {
+    formNameBn: string;
+    moduleKey: string;
+    alertType?: 'ERROR' | 'WARNING' | 'VALIDATION';
+    alertMessageBn: string;
+    fieldValuesSnapshot?: Record<string, any>;
+    availablePatchFields?: Array<{ fieldKey: string; fieldLabelBn: string; currentValue?: string }>;
+  }): Promise<FormAlertAssistResult> {
+    const res = await this.request<FormAlertAssistResult>('/ai/form-alert-assist', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'সতর্কতার AI ব্যাখ্যা পাওয়া যায়নি।');
+    }
+    return res.data;
+  }
 }
 
 export interface WaqfDocumentAnalysisResult {
@@ -7616,6 +7697,79 @@ export interface AuditLogAiFilterSuggestionResult {
   };
   explanationBn: string;
   unmatchedNotesBn: string[];
+  modelUsed: string;
+  generatedAt: string;
+}
+
+export interface StaffDocumentScanResult {
+  detectedDocTypeBn: string;
+  fullNameBn: string;
+  nameEn: string;
+  fatherName: string;
+  motherName: string;
+  nid: string;
+  dateOfBirth: string;
+  phone: string;
+  alternatePhone?: string;
+  email?: string;
+  presentAddress: string;
+  permanentAddress: string;
+  bloodGroup: string;
+  generalEducation: string;
+  religiousEducation: string;
+  previousExperience: string;
+  appointment?: {
+    designation?: string;
+    designationBn?: string;
+    appointmentDate?: string;
+    joiningDate?: string;
+    appointmentLetterNo?: string;
+    responsibilities?: string;
+  };
+  education?: {
+    generalEducation?: string;
+    religiousEducation?: string;
+    specialSkills?: string;
+    previousExperience?: string;
+    quranMemorizationHifz?: boolean | null;
+    qiratTajweedCertification?: boolean | null;
+    institutionNameBn?: string;
+  };
+  salary?: {
+    basicSalary?: number | null;
+    housingAllowance?: number | null;
+    medicalAllowance?: number | null;
+    transportAllowance?: number | null;
+    otherAllowance?: number | null;
+    paymentPreference?: string;
+  };
+  bank?: {
+    bankName?: string;
+    branchName?: string;
+    accountHolderName?: string;
+    accountNumber?: string;
+    routingNumber?: string;
+  };
+  docsNotes?: {
+    notes?: string;
+    officialAdminNotes?: string;
+  };
+  verificationWarningsBn?: string[];
+  confidenceNoteBn: string;
+  generatedAt: string;
+}
+
+export interface FormAlertAssistResult {
+  causeBn: string;
+  howToFixBn: string;
+  safeSuggestionBn: string;
+  checklistBn: string[];
+  patchSuggestions: Array<{
+    fieldKey: string;
+    fieldLabelBn: string;
+    proposedValue: string;
+    reasonBn: string;
+  }>;
   modelUsed: string;
   generatedAt: string;
 }

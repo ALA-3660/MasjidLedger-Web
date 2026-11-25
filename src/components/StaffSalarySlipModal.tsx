@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Printer, CheckCircle, Building, Phone, Mail, FileText, Check } from 'lucide-react';
 import { Staff, StaffPayment, Mosque } from '../types';
-import { Language, formatDate } from '../lib/i18n';
+import { Language, formatDate, formatSalaryMonth } from '../lib/i18n';
 import { numberToBanglaWords } from '../lib/banglaNumberToWords';
 import { printElement } from '../lib/printUtils';
 
@@ -180,7 +180,7 @@ export const StaffSalarySlipModal: React.FC<StaffSalarySlipModalProps> = ({
               <div>
                 <span className="text-slate-500 font-medium">বেতনের মাস: </span>
                 <span className="inline-block bg-blue-100 text-blue-900 font-bold px-2 py-0.5 rounded text-[11px]">
-                  {payment.month}
+                  {formatSalaryMonth(payment.month || payment.paymentMonth, language)}
                 </span>
               </div>
               <div>
@@ -283,7 +283,7 @@ export const StaffSalarySlipModal: React.FC<StaffSalarySlipModalProps> = ({
               <span>স্টাফ প্রাপ্তি স্বীকার (Staff Acknowledgement):</span>
             </div>
             <p className="text-slate-600 text-xs italic">
-              "আমি নিশ্চিত করিতেছি যে, উপরিউক্ত {payment.month} মাসের নির্ধারিত বেতন/হাদিয়া বাবদ মোট ৳{netPaid.toLocaleString('en-IN')} ({amountInWords}) সম্পূর্ণ বুঝিয়া পাইলাম এবং গ্রহণ করিলাম।"
+              "আমি নিশ্চিত করিতেছি যে, উপরিউক্ত {formatSalaryMonth(payment.month || payment.paymentMonth, language)} মাসের নির্ধারিত বেতন/হাদিয়া বাবদ মোট ৳{netPaid.toLocaleString('en-IN')} ({amountInWords}) সম্পূর্ণ বুঝিয়া পাইলাম এবং গ্রহণ করিলাম।"
             </p>
           </div>
 

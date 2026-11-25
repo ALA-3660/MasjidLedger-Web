@@ -67,6 +67,7 @@ import {
   generateDenominationSummaryNoteWithAi,
   summarizeAuditLogsWithAi,
   suggestAuditLogFiltersWithAi,
+  analyzeFormAlertWithAi,
   GeminiServiceError,
 } from './src/server/geminiService.ts';
 import { sanitizeGeminiModelName, isValidGeminiModelName } from './src/config/aiConfig.ts';
@@ -5348,6 +5349,401 @@ app.get('/api/v1/accounting/accounts/transfers', authenticate, dalContextMiddlew
 });
 
 // ==========================================
+// 4B. TENANT-ISOLATED BANK RECONCILIATION LOGS
+// ==========================================
+app.get('/api/v1/accounting/bank-reconciliations', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosqueId = req.currentMosque?.id;
+    if (!mosqueId) {
+      return res.status(401).json({
+        success: false,
+        error: { code: 'TENANT_REQUIRED', message: 'মসজিদ কনটেক্সট আবশ্যক।' },
+      });
+    }
+    const items = (db.bankReconciliations || [])
+      .filter(
+        (r) =>
+          r.mosqueId === mosqueId &&
+          r.id !== 'recon-1' &&
+          r.verifiedBy !== 'আব্দুল কাদির (হিসাবরক্ষক)'
+      )
+      .sort((a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime());
+
+    return res.json({ success: true, data: items });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: 'ব্যাংক সমন্বয় লগ লোড করতে সমস্যা হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/accounting/bank-reconciliations', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosqueId = req.currentMosque?.id;
+    if (!mosqueId) {
+      return res.status(401).json({
+        success: false,
+        error: { code: 'TENANT_REQUIRED', message: 'মসজিদ কনটেক্সট আবশ্যক।' },
+      });
+    }
+
+    const {
+      accountId,
+      accountName,
+      accountNumberMasked,
+      date,
+      bookBalance,
+      totalBankCredit,
+      totalBankDebit,
+      netBankAdjustment,
+      adjustedBookBalance,
+      statementBalance,
+      verifiedBy,
+      notes,
+    } = req.body || {};
+
+    if (!accountId || !date) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'ব্যাংক হিসাব এবং স্টেটমেন্টের তারিখ আবশ্যক।' },
+      });
+    }
+
+    const numBook = Number(bookBalance);
+    const numStmt = Number(statementBalance);
+    const numCredit = Number(totalBankCredit || 0);
+    const numDebit = Number(totalBankDebit || 0);
+    const numNetAdj = Number.isFinite(Number(netBankAdjustment))
+      ? Number(netBankAdjustment)
+      : Number((numCredit - numDebit).toFixed(2));
+    const numAdjustedBook = Number.isFinite(Number(adjustedBookBalance))
+      ? Number(adjustedBookBalance)
+      : Number((numBook + numNetAdj).toFixed(2));
+
+    if (!Number.isFinite(numBook) || !Number.isFinite(numStmt)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'বুক ব্যালেন্স ও ব্যাংক স্টেটমেন্ট ব্যালেন্সের সঠিক সংখ্যা লিখুন।' },
+      });
+    }
+
+    const acc = db.accounts.find((a) => a.id === accountId && a.mosqueId === mosqueId);
+    const resolvedAccountName = acc?.nameBn || acc?.name || accountName || 'ব্যাংক হিসাব';
+    const diff = Number((numStmt - numAdjustedBook).toFixed(2));
+    const nowIso = new Date().toISOString();
+
+    const record = {
+      id: `recon-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      mosqueId,
+      accountId,
+      accountName: resolvedAccountName,
+      accountNumberMasked: accountNumberMasked || acc?.accountNumber || '',
+      date: String(date),
+      bookBalance: numBook,
+      totalBankCredit: numCredit,
+      totalBankDebit: numDebit,
+      netBankAdjustment: numNetAdj,
+      adjustedBookBalance: numAdjustedBook,
+      statementBalance: numStmt,
+      difference: diff,
+      status: Math.abs(diff) < 0.01 ? ('VERIFIED' as const) : ('DISCREPANCY' as const),
+      verifiedBy: String(verifiedBy || req.user?.name || 'হিসাবরক্ষক').trim(),
+      notes: notes ? String(notes).trim() : '',
+      createdBy: req.user?.id || 'system',
+      createdByName: req.user?.name || 'হিসাবরক্ষক',
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+
+    if (!Array.isArray(db.bankReconciliations)) {
+      db.bankReconciliations = [];
+    }
+    db.bankReconciliations.unshift(record);
+
+    db.logAudit(
+      mosqueId,
+      req.user?.id || 'system',
+      req.user?.name || 'হিসাবরক্ষক',
+      req.user?.role || 'ACCOUNTANT',
+      'CREATE',
+      'BANK_RECONCILIATION',
+      `ব্যাংক সমন্বয় স্ন্যাপশট সংরক্ষণ: ${resolvedAccountName} (${date}) — মূল বুক: ৳${numBook}, ব্যাংক সমন্বয়: ৳${numNetAdj}, সমন্বিত বুক: ৳${numAdjustedBook}, স্টেটমেন্ট: ৳${numStmt}, পার্থক্য: ৳${diff}`,
+      record.id,
+      req.ip
+    );
+
+    db.save();
+
+    return res.json({
+      success: true,
+      data: record,
+      message: 'ব্যাংক সমন্বয়ের স্ন্যাপশট ডাটাবেসে স্থায়ীভাবে সংরক্ষিত হয়েছে।',
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: err?.message || 'ব্যাংক সমন্বয় সংরক্ষণ ব্যর্থ হয়েছে।' },
+    });
+  }
+});
+
+app.delete('/api/v1/accounting/bank-reconciliations/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosqueId = req.currentMosque?.id;
+    if (!mosqueId) {
+      return res.status(401).json({
+        success: false,
+        error: { code: 'TENANT_REQUIRED', message: 'মসজিদ কনটেক্সট আবশ্যক।' },
+      });
+    }
+
+    const { id } = req.params;
+    if (!Array.isArray(db.bankReconciliations)) {
+      db.bankReconciliations = [];
+    }
+
+    const idx = db.bankReconciliations.findIndex((r) => r.id === id && r.mosqueId === mosqueId);
+    if (idx === -1) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'ব্যাংক সমন্বয় রেকর্ড পাওয়া যায়নি।' },
+      });
+    }
+
+    const removed = db.bankReconciliations[idx];
+    db.bankReconciliations.splice(idx, 1);
+
+    db.logAudit(
+      mosqueId,
+      req.user?.id || 'system',
+      req.user?.name || 'হিসাবরক্ষক',
+      req.user?.role || 'ACCOUNTANT',
+      'DELETE',
+      'BANK_RECONCILIATION',
+      `ব্যাংক সমন্বয় লগ মুছে ফেলা হয়েছে: ${removed.accountName} (${removed.date})`,
+      removed.id,
+      req.ip
+    );
+
+    db.save();
+
+    return res.json({
+      success: true,
+      data: { id },
+      message: 'ব্যাংক সমন্বয় লগ সফলভাবে মুছে ফেলা হয়েছে।',
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: err?.message || 'ব্যাংক সমন্বয় লগ মুছতে সমস্যা হয়েছে।' },
+    });
+  }
+});
+
+// ==========================================
+// 4C. ISOLATED BANK ADJUSTMENTS (PROFIT / INTEREST / CHARGES — SEPARATE FROM CORE INCOME/EXPENSE)
+// ==========================================
+const BANK_ADJUSTMENT_CATEGORY_LABELS: Record<string, string> = {
+  BANK_PROFIT: 'ব্যাংক মুনাফা (ইসলামী ব্যাংক)',
+  BANK_INTEREST: 'ব্যাংক ইন্টারেস্ট / সুদ (পৃথক হিসাব)',
+  OTHER_CREDIT: 'অন্যান্য ব্যাংক ক্রেডিট / রিফান্ড',
+  SERVICE_CHARGE: 'ব্যাংক সার্ভিস ও মেইনটেন্যান্স চার্জ',
+  EXCISE_DUTY: 'আবগারি শুল্ক (Excise Duty)',
+  TAX_AIT: 'উৎসে কর / ভ্যাট / AIT',
+  SMS_CHEQUE_FEE: 'SMS / চেকবই / অনলাইন চার্জ',
+  INTEREST_DISPOSAL: 'সুদ / পৃথক তহবিল নিষ্পত্তি',
+  OTHER_DEBIT: 'অন্যান্য ব্যাংক চার্জ / কর্তন',
+};
+
+app.get('/api/v1/accounting/bank-adjustments', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosqueId = req.currentMosque?.id;
+    if (!mosqueId) {
+      return res.status(401).json({
+        success: false,
+        error: { code: 'TENANT_REQUIRED', message: 'মসজিদ কনটেক্সট আবশ্যক।' },
+      });
+    }
+
+    const accountIdFilter = typeof req.query.accountId === 'string' ? req.query.accountId.trim() : '';
+    const items = (db.bankAdjustments || [])
+      .filter((item) => item.mosqueId === mosqueId && (!accountIdFilter || item.accountId === accountIdFilter))
+      .sort((a, b) => {
+        const dCmp = String(b.date || '').localeCompare(String(a.date || ''));
+        if (dCmp !== 0) return dCmp;
+        return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+      });
+
+    return res.json({ success: true, data: items });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: 'ব্যাংক মুনাফা ও চার্জ তালিকা লোড করতে সমস্যা হয়েছে।' },
+    });
+  }
+});
+
+app.post('/api/v1/accounting/bank-adjustments', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosqueId = req.currentMosque?.id;
+    if (!mosqueId) {
+      return res.status(401).json({
+        success: false,
+        error: { code: 'TENANT_REQUIRED', message: 'মসজিদ কনটেক্সট আবশ্যক।' },
+      });
+    }
+
+    const {
+      accountId,
+      accountName,
+      accountNumberMasked,
+      date,
+      direction,
+      category,
+      amount,
+      reference,
+      notes,
+    } = req.body || {};
+
+    if (!accountId || !date) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'ব্যাংক হিসাব ও তারিখ নির্বাচন আবশ্যক।' },
+      });
+    }
+
+    if (direction !== 'CREDIT' && direction !== 'DEBIT') {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'সঠিক ধরন (জমা/মুনাফা অথবা কর্তন/চার্জ) নির্বাচন করুন।' },
+      });
+    }
+
+    const numAmount = Number(amount);
+    if (!Number.isFinite(numAmount) || numAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'সঠিক টাকার পরিমাণ লিখুন (০-এর বেশি হতে হবে)।' },
+      });
+    }
+
+    const safeCategory =
+      typeof category === 'string' && BANK_ADJUSTMENT_CATEGORY_LABELS[category]
+        ? category
+        : direction === 'CREDIT'
+        ? 'BANK_PROFIT'
+        : 'SERVICE_CHARGE';
+
+    const acc = db.accounts.find((a) => a.id === accountId && a.mosqueId === mosqueId);
+    const resolvedAccountName = acc?.nameBn || acc?.name || accountName || 'ব্যাংক হিসাব';
+    const nowIso = new Date().toISOString();
+
+    const record = {
+      id: `badj-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      mosqueId,
+      accountId,
+      accountName: resolvedAccountName,
+      accountNumberMasked: accountNumberMasked || acc?.accountNumber || '',
+      date: String(date),
+      direction: direction as 'CREDIT' | 'DEBIT',
+      category: safeCategory as any,
+      categoryLabelBn: BANK_ADJUSTMENT_CATEGORY_LABELS[safeCategory],
+      amount: Number(numAmount.toFixed(2)),
+      reference: reference ? String(reference).trim() : '',
+      notes: notes ? String(notes).trim() : '',
+      createdBy: req.user?.id || 'system',
+      createdByName: req.user?.name || 'হিসাবরক্ষক',
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+
+    if (!Array.isArray(db.bankAdjustments)) {
+      db.bankAdjustments = [];
+    }
+    db.bankAdjustments.unshift(record);
+
+    db.logAudit(
+      mosqueId,
+      req.user?.id || 'system',
+      req.user?.name || 'হিসাবরক্ষক',
+      req.user?.role || 'ACCOUNTANT',
+      'CREATE',
+      'BANK_RECONCILIATION_ADJUSTMENT',
+      `পৃথক ব্যাংক সমন্বয় এন্ট্রি (${direction === 'CREDIT' ? '+' : '-'}৳${record.amount}): ${record.categoryLabelBn} — ${resolvedAccountName} (${date}) [মূল আয়-ব্যয় হতে পৃথক]`,
+      record.id,
+      req.ip
+    );
+
+    db.save();
+
+    return res.json({
+      success: true,
+      data: record,
+      message: 'ব্যাংক মুনাফা/চার্জ পৃথক সমন্বয় হিসাবে সফলভাবে সংরক্ষিত হয়েছে।',
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: err?.message || 'ব্যাংক সমন্বয় এন্ট্রি সংরক্ষণ ব্যর্থ হয়েছে।' },
+    });
+  }
+});
+
+app.delete('/api/v1/accounting/bank-adjustments/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosqueId = req.currentMosque?.id;
+    if (!mosqueId) {
+      return res.status(401).json({
+        success: false,
+        error: { code: 'TENANT_REQUIRED', message: 'মসজিদ কনটেক্সট আবশ্যক।' },
+      });
+    }
+
+    const { id } = req.params;
+    if (!Array.isArray(db.bankAdjustments)) {
+      db.bankAdjustments = [];
+    }
+
+    const idx = db.bankAdjustments.findIndex((item) => item.id === id && item.mosqueId === mosqueId);
+    if (idx === -1) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'ব্যাংক সমন্বয় এন্ট্রি পাওয়া যায়নি।' },
+      });
+    }
+
+    const removed = db.bankAdjustments[idx];
+    db.bankAdjustments.splice(idx, 1);
+
+    db.logAudit(
+      mosqueId,
+      req.user?.id || 'system',
+      req.user?.name || 'হিসাবরক্ষক',
+      req.user?.role || 'ACCOUNTANT',
+      'DELETE',
+      'BANK_RECONCILIATION_ADJUSTMENT',
+      `পৃথক ব্যাংক সমন্বয় এন্ট্রি মুছে ফেলা হয়েছে: ${removed.categoryLabelBn} (৳${removed.amount}) — ${removed.accountName}`,
+      removed.id,
+      req.ip
+    );
+
+    db.save();
+
+    return res.json({
+      success: true,
+      data: { id },
+      message: 'ব্যাংক সমন্বয় এন্ট্রি মুছে ফেলা হয়েছে।',
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: err?.message || 'ব্যাংক সমন্বয় এন্ট্রি মুছতে সমস্যা হয়েছে।' },
+    });
+  }
+});
+
+// ==========================================
 // 5. INCOME MANAGEMENT (With Idempotency & Vault Self-Healing)
 // ==========================================
 app.post('/api/v1/accounting/reconcile-vault', authenticate, async (req: AuthRequest, res: Response) => {
@@ -6022,7 +6418,24 @@ app.put('/api/v1/accounting/expense/:id', authenticate, dalContextMiddleware, re
       return res.json(cachedRecord.responsePayload);
     }
 
-    const { amount, mainHeadId, subHeadId, accountId, paymentMethod, payeeName, payeePhone, reference, description, date } = req.body;
+    const {
+      amount,
+      mainHeadId,
+      subHeadId,
+      accountId,
+      paymentMethod,
+      payeeName,
+      payeePhone,
+      reference,
+      description,
+      attachmentUrl,
+      date,
+      sourceModule,
+      sourceId,
+      sourceType,
+      staffId,
+      salaryMonth,
+    } = req.body;
 
     const item = await req.dal!.expense!.update(dalOptions, req.params.id, {
       amount,
@@ -6034,7 +6447,13 @@ app.put('/api/v1/accounting/expense/:id', authenticate, dalContextMiddleware, re
       payeePhone,
       reference,
       description,
-      date
+      attachmentUrl,
+      date,
+      sourceModule,
+      sourceId,
+      sourceType,
+      staffId,
+      salaryMonth,
     });
 
     realtime.broadcastToMosque(mosqueId, 'EXPENSE_UPDATED', item, { senderId: req.user!.id });
@@ -10691,17 +11110,43 @@ app.put('/api/v1/staff/:id/leave/:leaveId', authenticate, dalContextMiddleware, 
   }
 });
 
-// Staff Attendance Logging
+// Staff Attendance Logging (supports both bulk records[] and single-staff quick entry)
 app.post('/api/v1/staff/attendance/bulk', authenticate, dalContextMiddleware, requirePermission('MANAGE_STAFF'), async (req: AuthRequest, res: Response) => {
   const mosqueId = req.currentMosque!.id;
   try {
-    const { date, records = [], entries = [] } = req.body;
-    const result = await req.dal!.staff!.logBulkAttendance(req.dalOptions!, {
+    const {
       date,
-      entries: Array.isArray(records) && records.length > 0 ? records : entries
+      records = [],
+      entries = [],
+      staffId,
+      status,
+      inTime,
+      outTime,
+      prayersAttended,
+      remarks,
+    } = req.body || {};
+
+    let normalizedEntries = Array.isArray(records) && records.length > 0 ? records : entries;
+    if ((!Array.isArray(normalizedEntries) || normalizedEntries.length === 0) && staffId) {
+      normalizedEntries = [
+        {
+          staffId,
+          status: status || 'PRESENT',
+          inTime,
+          outTime,
+          prayersAttended,
+          remarks,
+        },
+      ];
+    }
+
+    const effectiveDate = date || new Date().toISOString().split('T')[0];
+    const result = await req.dal!.staff!.logBulkAttendance(req.dalOptions!, {
+      date: effectiveDate,
+      entries: normalizedEntries,
     });
-    const attDate = result?.date || date || new Date().toISOString().split('T')[0];
-    const count = result?.updatedCount ?? result?.count ?? 0;
+    const attDate = result?.date || effectiveDate;
+    const count = result?.updatedCount ?? result?.count ?? normalizedEntries.length ?? 0;
 
     realtime.broadcastToMosque(mosqueId, 'STAFF_ATTENDANCE_LOGGED', { date: attDate, count }, { senderId: req.user!.id });
     res.json({ success: true, message: `${count} জন স্টাফের উপস্থিতি সংরক্ষিত হয়েছে।` });
@@ -13674,6 +14119,12 @@ app.post('/api/v1/ai/smart-entry', authenticate, async (req: AuthRequest, res: R
         message: error?.message || 'AI স্মার্ট এন্ট্রি বিশ্লেষণে ত্রুটি ঘটেছে।',
       },
     });
+  } finally {
+    // Zero-storage policy: ensure no scanned image buffer stays in request body memory
+    if (req.body && typeof req.body === 'object') {
+      req.body.imageBase64 = undefined;
+      delete req.body.imageBase64;
+    }
   }
 });
 
@@ -14613,6 +15064,35 @@ app.post('/api/v1/ai/staff/scan-document', authenticate, async (req: AuthRequest
     return res.status(status).json({
       success: false,
       error: { code, message: error?.message || 'NID বা ডকুমেন্ট স্ক্যান করতে ত্রুটি হয়েছে।' },
+    });
+  } finally {
+    // Zero-storage policy: clear raw scanned file buffer immediately after inference
+    if (req.body && typeof req.body === 'object') {
+      req.body.fileBase64 = undefined;
+      delete req.body.fileBase64;
+    }
+  }
+});
+
+// Universal AI Form Alert & Validation Assistant (Human-in-the-loop)
+app.post('/api/v1/ai/form-alert-assist', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' },
+      });
+    }
+    const result = await analyzeFormAlertWithAi(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_FORM_ALERT_ERROR';
+    console.error('AI Form Alert Assist error:', error);
+    return res.status(status).json({
+      success: false,
+      error: { code, message: error?.message || 'AI সতর্কতা বিশ্লেষণ ব্যর্থ হয়েছে।' },
     });
   }
 });
