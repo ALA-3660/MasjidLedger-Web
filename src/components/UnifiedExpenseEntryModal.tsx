@@ -681,9 +681,18 @@ export const UnifiedExpenseEntryModal: React.FC<UnifiedExpenseEntryModalProps> =
               }
               if (parsed.paymentMethod) {
                 setPaymentMethod(parsed.paymentMethod as PaymentMethod);
+                const matchingAcc = accounts.find((a) =>
+                  parsed.paymentMethod === 'CASH'
+                    ? a.accountType === 'CASH'
+                    : parsed.paymentMethod === 'BANK'
+                    ? a.accountType === 'BANK'
+                    : a.accountType === 'MFS' || a.accountType === 'BANK'
+                );
+                if (matchingAcc) setAccountId(matchingAcc.id);
               }
-              if (parsed.personName) {
-                setPayeeName(parsed.personName);
+              const resolvedPayee = parsed.vendorOrOrgName || parsed.personName;
+              if (resolvedPayee) {
+                setPayeeName(resolvedPayee);
               }
               if (parsed.personPhone) {
                 setPayeePhone(parsed.personPhone);
@@ -697,7 +706,7 @@ export const UnifiedExpenseEntryModal: React.FC<UnifiedExpenseEntryModalProps> =
               if (parsed.matchedStaffId) {
                 setSelectedStaffId(parsed.matchedStaffId);
                 const matched = staffList.find((s) => s.id === parsed.matchedStaffId);
-                if (matched && !parsed.personName) {
+                if (matched && !resolvedPayee) {
                   setPayeeName(matched.name);
                   if (matched.phone) setPayeePhone(matched.phone);
                 }

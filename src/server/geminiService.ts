@@ -633,37 +633,46 @@ export async function parseSmartEntry(mosque: Mosque, payload: SmartEntryRequest
     .filter((s) => s.mosqueId === mosque.id && s.status === 'ACTIVE')
     .map((s) => ({ id: s.id, name: s.name, designation: s.designation, monthlySalary: s.monthlySalary }));
 
-  const instructionPrompt = `আপনি "${mosque.nameBn || 'মসজিদ লেজার'}"-এর স্মার্ট অ্যাকাউন্টিং ডাটা এক্সট্র্যাক্টর।
-আজকের তারিখ: ${todayStr}।
+  const instructionPrompt = `আপনি "${mosque.nameBn || 'মসজিদ লেজার'}"-এর জিরো-স্টোরেজ স্মার্ট অ্যাকাউন্টিং ডাটা এক্সট্র্যাক্টর।
+আজকের তারিখ (শুধুমাত্র রেফারেন্স): ${todayStr}।
 লেনদেনের ধরন: ${payload.entryType === 'INCOME' ? 'আয় (INCOME)' : 'ব্যয় (EXPENSE)'}।
 
-নিচে এই মসজিদের প্রকৃত হিসাব খাত ও উপ-খাতের তালিকা দেওয়া হলো — অবশ্যই এই তালিকা থেকে সবচেয়ে উপযুক্ত mainHeadId ও subHeadId বেছে নিন:
+নিচে শুধুমাত্র এই মসজিদের প্রকৃত হিসাব খাত ও উপ-খাতের তালিকা দেওয়া হলো — অবশ্যই এই তালিকা থেকে সবচেয়ে উপযুক্ত mainHeadId ও subHeadId বেছে নিন:
 ${JSON.stringify(headsCatalog, null, 2)}
 
 ${payload.entryType === 'EXPENSE' && staffNames.length > 0 ? `মসজিদের সক্রিয় স্টাফ তালিকা (বেতন/সম্মানী হলে মিলাতে সাহায্য করবে):\n${JSON.stringify(staffNames, null, 2)}` : ''}
 
-কঠোর নির্দেশনা:
+কঠোর নির্ভুলতা ও নিরাপত্তা নির্দেশনা:
 ১. ${payload.mode === 'RECEIPT_SCAN'
-    ? 'প্রদত্ত কাঁচা রসিদ, বাজারের ক্যাশ মেমো, হার্ডওয়্যার বিল, নির্মাণ সামগ্রীর রসিদ, বিকাশ/নগদ স্ক্রিনশট, বিদ্যুৎ/গ্যাস/পানির বিল বা ভাড়ার কাগজের ছবিটি ভালোভাবে পড়ে তারিখ, মোট টাকার পরিমাণ (সংখ্যায়), দোকান/ভেন্ডর/দাতা/প্রাপকের নাম, মোবাইল নম্বর, বিল/মেমো/রসিদ/TrxID নম্বর, সঠিক প্রধান খাত ও উপ-খাত এবং স্পষ্ট বাংলা বিবরণ বের করুন।'
-    : `ক্যাশিয়ারের বাংলা লেখা, ভয়েস নোট অথবা বিকাশ/নগদ/রকেট SMS টেক্সট বিশ্লেষণ করে তারিখ ("আজ" হলে ${todayStr}, "গতকাল" হলে আগের দিন; SMS-এ তারিখ থাকলে সেটি YYYY-MM-DD), টাকার পরিমাণ (সংখ্যায়, যেমন ৫০০০ বা ১,২৫০ টাকা হলে 1250), উপযুক্ত প্রধান খাত ও উপখাত (যেমন: বাথরুম পরিষ্কারের সামগ্রী হলে পরিষ্কার-পরিচ্ছন্নতা খাত, ট্যাপ/ফ্যান/মাইক হলে মেরামত খাত, ইট/বালু/সিমেন্ট হলে নির্মাণ ও উন্নয়ন খাত), দোকান/ভেন্ডর/দাতা/প্রাপকের নাম, মোবাইল নম্বর, মেমো/TrxID/রেফারেন্স এবং প্রাঞ্জল বাংলা বিবরণ বের করুন।`}
-২. তারিখ অবশ্যই YYYY-MM-DD ফরম্যাটে দিন (না পাওয়া গেলে ${todayStr} দিন)।
-৩. টাকার পরিমাণ অবশ্যই ইংরেজি সংখ্যা (number) হিসেবে দিন (যেমন 25500 বা 1250)।
+    ? payload.entryType === 'INCOME'
+      ? 'প্রদত্ত কাঁচা রসিদ, মানি রসিদ বা বিকাশ/নগদ/ব্যাংক পেমেন্ট স্ক্রিনশটটি ভালোভাবে পড়ে দাতার নাম, মোট টাকার অঙ্ক (সংখ্যায়), তারিখ, পেমেন্ট মাধ্যম (CASH/BANK/BKASH/NAGAD/ROCKET), মোবাইল নম্বর, রসিদ/রেফারেন্স/TrxID নম্বর, সঠিক আয়ের খাত ও উপ-খাত এবং স্পষ্ট বাংলা বিবরণ বের করুন।'
+      : 'প্রদত্ত বাজারের ক্যাশ মেমো, হার্ডওয়্যার/নির্মাণ বিল বা খরচের রসিদটি ভালোভাবে পড়ে মোট টাকার অঙ্ক (সংখ্যায়), তারিখ, দোকান/প্রতিষ্ঠানের নাম (vendorOrOrgName), প্রাপকের নাম, মোবাইল নম্বর, মেমো/বিল/ভাউচার নম্বর (reference), সঠিক ব্যয়ের খাত ও উপ-খাত এবং আইটেমসহ স্পষ্ট বাংলা বিবরণ বের করুন।'
+    : `ক্যাশিয়ারের বাংলা লেখা, ভয়েস নোট অথবা বিকাশ/নগদ/রকেট SMS টেক্সট বিশ্লেষণ করে তারিখ ("আজ" হলে ${todayStr}, "গতকাল" হলে আগের দিন; SMS-এ তারিখ থাকলে সেটি YYYY-MM-DD), টাকার পরিমাণ (সংখ্যায়, যেমন ৫০০০ বা ১,২৫০ টাকা হলে 1250), উপযুক্ত প্রধান খাত ও উপখাত, দোকান/ভেন্ডর/দাতা/প্রাপকের নাম, মোবাইল নম্বর, মেমো/TrxID/রেফারেন্স এবং প্রাঞ্জল বাংলা বিবরণ বের করুন।`}
+২. ${payload.mode === 'RECEIPT_SCAN'
+    ? 'তারিখ ও টাকার অঙ্ক কখনোই অনুমান (guess) করে বানাবেন না! ছবিতে তারিখ স্পষ্ট না থাকলে date হিসেবে খালি স্ট্রিং "" দিন (আজকের তারিখ বসাবেন না)। মোট টাকার অঙ্ক স্পষ্ট না থাকলে amount হিসেবে 0 দিন এবং warningsBn-এ বাংলায় সতর্কতা যোগ করুন। ছবি ঝাপসা বা আলো কম হলে তাও warningsBn-এ উল্লেখ করুন।'
+    : `তারিখ অবশ্যই YYYY-MM-DD ফরম্যাটে দিন (ইনপুটে "আজ" বা তারিখ উল্লেখ না থাকলে ${todayStr} দিন)।`}
+৩. টাকার পরিমাণ স্পষ্ট থাকলে অবশ্যই ইংরেজি সংখ্যা (number) হিসেবে দিন (যেমন 25500 বা 1250)।
 ৪. ${payload.entryType === 'INCOME'
     ? 'suggestedIncomeType নির্বাচন করুন: জুমার কালেকশন হলে JUMMA, দানবাক্স হলে DONATION_BOX, দোকান/বাড়ি/ওয়াকফ ভাড়া হলে WAQF_RENT, ব্যক্তিগত দান/অনুদান/চাঁদা/যাকাত/ফিতরা হলে DONATION, অন্য যেকোনো আয় হলে OTHER_INCOME।'
     : 'suggestedExpenseType নির্বাচন করুন: ইমাম/মুয়াজ্জিন/খাদেম/স্টাফ বেতন-ভাতা হলে STAFF_EXPENSE, মসজিদের সম্পদ/মাইক/ফ্যান/এসি/যন্ত্রপাতি মেরামত হলে ASSET_EXPENSE, ওয়াকফ সম্পত্তি/দোকান/মার্কেট রক্ষণাবেক্ষণ বা নির্মাণ হলে PROPERTY_EXPENSE, অন্য সকল খরচ/বিদ্যুৎ বিল/পরিষ্কার-পরিচ্ছন্নতা/বাজার/হার্ডওয়্যার/ক্রয়/প্রশাসনিক ব্যয় হলে GENERAL_EXPENSE।'}
-৫. paymentMethod নির্বাচন করুন: CASH, BANK, BKASH, NAGAD, অথবা ROCKET (উল্লেখ না থাকলে CASH)।
+৫. paymentMethod নির্বাচন করুন: CASH, BANK, BKASH, NAGAD, অথবা ROCKET (ছবিতে স্পষ্ট না হলে CASH দিন)।
 ৬. confidenceNoteBn-এ সংক্ষিপ্ত ১ লাইনে বাংলায় জানান AI কী কী তথ্য শনাক্ত করেছে।`;
 
-  const contents: any =
+  const inlinePart =
     payload.mode === 'RECEIPT_SCAN'
       ? {
+          inlineData: {
+            mimeType: payload.mimeType || 'image/jpeg',
+            data: (payload.imageBase64 || '').replace(/^data:[^;]+;base64,/, ''),
+          },
+        }
+      : null;
+
+  const contents: any =
+    payload.mode === 'RECEIPT_SCAN' && inlinePart
+      ? {
           parts: [
-            {
-              inlineData: {
-                mimeType: payload.mimeType || 'image/jpeg',
-                data: (payload.imageBase64 || '').replace(/^data:[^;]+;base64,/, ''),
-              },
-            },
+            inlinePart,
             {
               text: `${instructionPrompt}\n\n${payload.text ? `অতিরিক্ত নোট: ${payload.text}` : 'ছবিটি বিশ্লেষণ করে JSON আউটপুট দিন।'}`,
             },
@@ -682,8 +691,14 @@ ${payload.entryType === 'EXPENSE' && staffNames.length > 0 ? `মসজিদে
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              date: { type: Type.STRING, description: 'তারিখ YYYY-MM-DD ফরম্যাটে' },
-              amount: { type: Type.NUMBER, description: 'মোট টাকার পরিমাণ (সংখ্যায়)' },
+              date: {
+                type: Type.STRING,
+                description: 'তারিখ YYYY-MM-DD ফরম্যাটে; স্ক্যানে তারিখ স্পষ্ট না থাকলে অবশ্যই খালি স্ট্রিং "" দিন',
+              },
+              amount: {
+                type: Type.NUMBER,
+                description: 'মোট টাকার পরিমাণ (সংখ্যায়); স্ক্যানে স্পষ্ট না থাকলে 0 দিন',
+              },
               mainHeadId: { type: Type.STRING, description: 'প্রদত্ত তালিকা থেকে নির্বাচিত প্রধান খাতের ID' },
               mainHeadNameBn: { type: Type.STRING, description: 'নির্বাচিত প্রধান খাতের বাংলা নাম' },
               subHeadId: { type: Type.STRING, description: 'প্রদত্ত তালিকা থেকে নির্বাচিত উপ-খাতের ID (না থাকলে খালি স্ট্রিং)' },
@@ -692,8 +707,8 @@ ${payload.entryType === 'EXPENSE' && staffNames.length > 0 ? `মসজিদে
               vendorOrOrgName: { type: Type.STRING, description: 'দোকান, প্রতিষ্ঠান, হার্ডওয়্যার স্টোর বা সংস্থার নাম (থাকলে, নতুবা খালি স্ট্রিং)' },
               personPhone: { type: Type.STRING, description: 'মোবাইল নম্বর (যদি থাকে, নতুবা খালি স্ট্রিং)' },
               paymentMethod: { type: Type.STRING, description: 'CASH, BANK, BKASH, NAGAD, অথবা ROCKET' },
-              reference: { type: Type.STRING, description: 'রসিদ/বিল/ভাউচার/মিটার/TrxID নম্বর (যদি থাকে)' },
-              description: { type: Type.STRING, description: 'মার্জিত ও স্পষ্ট বাংলা বিবরণ' },
+              reference: { type: Type.STRING, description: 'রসিদ/বিল/ক্যাশ মেমো/ভাউচার/মিটার/TrxID নম্বর (যদি থাকে)' },
+              description: { type: Type.STRING, description: 'আইটেম ও বিস্তারিতসহ মার্জিত বাংলা বিবরণ' },
               suggestedIncomeType: {
                 type: Type.STRING,
                 description: 'আয়ের ক্ষেত্রে: JUMMA | DONATION | DONATION_BOX | WAQF_RENT | OTHER_INCOME',
@@ -705,6 +720,11 @@ ${payload.entryType === 'EXPENSE' && staffNames.length > 0 ? `মসজিদে
               matchedStaffId: {
                 type: Type.STRING,
                 description: 'স্টাফ বেতন হলে তালিকা থেকে স্টাফের ID, নতুবা খালি স্ট্রিং',
+              },
+              warningsBn: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+                description: 'যদি কোনো তথ্য অস্পষ্ট, আলো কম বা অনুপস্থিত থাকে তবে বাংলায় সতর্কবার্তার তালিকা',
               },
               confidenceNoteBn: {
                 type: Type.STRING,
@@ -720,7 +740,10 @@ ${payload.entryType === 'EXPENSE' && staffNames.length > 0 ? `মসজিদে
       return JSON.parse(rawText);
     });
   } finally {
-    // Zero-storage policy: drop binary buffer reference immediately after inference
+    // Zero-storage policy: drop binary buffer references immediately after inference
+    if (inlinePart && inlinePart.inlineData) {
+      inlinePart.inlineData.data = '';
+    }
     if (payload && typeof payload === 'object') {
       payload.imageBase64 = undefined;
     }
@@ -743,31 +766,51 @@ ${payload.entryType === 'EXPENSE' && staffNames.length > 0 ? `মসজিদে
     resolvedMainHeadId = byName ? byName.id : mainHeads[0]?.id || '';
   }
 
-  const validDate = /^\d{4}-\d{2}-\d{2}$/.test(parsed.date || '') ? parsed.date : todayStr;
+  // Strict accuracy policy: NEVER fabricate/guess date on RECEIPT_SCAN when absent from document
+  const rawDate = String(parsed.date || '').trim();
+  const hasIsoDate = /^\d{4}-\d{2}-\d{2}$/.test(rawDate);
+  const validDate = hasIsoDate ? rawDate : payload.mode === 'RECEIPT_SCAN' ? '' : todayStr;
+
   const validPayment = ['CASH', 'BANK', 'BKASH', 'NAGAD', 'ROCKET'].includes(parsed.paymentMethod)
     ? parsed.paymentMethod
     : 'CASH';
 
   const cleanPerson = String(parsed.personName || '').trim();
   const cleanVendor = String(parsed.vendorOrOrgName || '').trim();
+  const resolvedAmount = Number(parsed.amount) > 0 ? Number(parsed.amount) : 0;
+
+  const warningsBn: string[] = Array.isArray(parsed.warningsBn)
+    ? parsed.warningsBn.map((w: any) => String(w || '').trim()).filter(Boolean)
+    : [];
+
+  if (payload.mode === 'RECEIPT_SCAN') {
+    if (resolvedAmount <= 0 && !warningsBn.some((w) => w.includes('টাকা'))) {
+      warningsBn.push('ছবিতে মোট টাকার অঙ্ক স্পষ্ট পাওয়া যায়নি — অনুগ্রহ করে যাচাই করে ম্যানুয়ালি বসান।');
+    }
+    if (!validDate && !warningsBn.some((w) => w.includes('তারিখ'))) {
+      warningsBn.push('ছবিতে তারিখ স্পষ্ট পাওয়া যায়নি — অনুগ্রহ করে সঠিক তারিখ নিজে নির্বাচন করুন।');
+    }
+  }
 
   return {
     date: validDate,
-    amount: Number(parsed.amount) > 0 ? Number(parsed.amount) : 0,
+    amount: resolvedAmount,
     mainHeadId: resolvedMainHeadId,
     mainHeadNameBn: mainHeads.find((m) => m.id === resolvedMainHeadId)?.nameBn || parsed.mainHeadNameBn || '',
     subHeadId: resolvedSubHeadId,
     subHeadNameBn: subHeads.find((s) => s.id === resolvedSubHeadId)?.nameBn || parsed.subHeadNameBn || '',
     personName: cleanPerson || cleanVendor,
     vendorOrOrgName: cleanVendor,
-    personPhone: parsed.personPhone || '',
+    personPhone: String(parsed.personPhone || '').trim(),
     paymentMethod: validPayment,
-    reference: parsed.reference || '',
-    description: parsed.description || '',
+    reference: String(parsed.reference || '').trim(),
+    description: String(parsed.description || '').trim(),
     suggestedIncomeType: parsed.suggestedIncomeType || 'OTHER_INCOME',
     suggestedExpenseType: parsed.suggestedExpenseType || 'GENERAL_EXPENSE',
     matchedStaffId: parsed.matchedStaffId || '',
-    confidenceNoteBn: parsed.confidenceNoteBn || 'তথ্য সফলভাবে শনাক্ত করা হয়েছে — সংরক্ষণের আগে যাচাই করুন।',
+    warningsBn,
+    confidenceNoteBn:
+      parsed.confidenceNoteBn || 'তথ্য সফলভাবে শনাক্ত করা হয়েছে — সংরক্ষণের আগে টাকার অঙ্ক ও তারিখ যাচাই করুন।',
   };
 }
 
@@ -11245,4 +11288,166 @@ export async function analyzeFormAlertWithAi(
     generatedAt: new Date().toISOString(),
   };
 }
+
+// ============================================================
+// 26. USER MANUAL & OPERATIONS AI ASSISTANT
+// ============================================================
+export interface UserManualAiRequest {
+  question: string;
+  sectionContext?: {
+    id?: string;
+    title?: string;
+    summary?: string;
+  };
+  history?: Array<{ role: 'user' | 'model'; text: string }>;
+}
+
+const VALID_MANUAL_TARGET_TABS = new Set([
+  'dashboard',
+  'income',
+  'expense',
+  'financialManagement',
+  'accountHeads',
+  'staff',
+  'musalliDatabase',
+  'committee',
+  'notices',
+  'cemetery',
+  'assets',
+  'knowledgeCenter',
+  'prayerTimes',
+  'live',
+  'publicPortal',
+  'reports',
+  'documents',
+  'mosqueManagement',
+  'users',
+  'qrManagement',
+  'audit',
+  'backupRestore',
+  'smsGateway',
+  'userManual',
+]);
+
+export async function askUserManualAiAssistant(
+  mosque: Mosque,
+  payload: UserManualAiRequest
+) {
+  const ai = getGeminiClient();
+  const activeModel = getActiveGeminiModel();
+  const question = String(payload?.question || '').trim().slice(0, 1200);
+  if (!question) {
+    throw new GeminiServiceError('অনুগ্রহ করে আপনার প্রশ্ন লিখুন।', 400, 'QUESTION_REQUIRED');
+  }
+
+  const responseSchema = {
+    type: Type.OBJECT,
+    properties: {
+      answerBn: {
+        type: Type.STRING,
+        description: 'প্রশ্নের সংক্ষিপ্ত ও স্পষ্ট মূল উত্তর (২-৪ বাক্যে বাংলায়)।',
+      },
+      stepsBn: {
+        type: Type.ARRAY,
+        items: { type: Type.STRING },
+        description: 'সর্বোচ্চ ৬টি সহজ ধাপভিত্তিক নির্দেশনা (মেনুর সঠিক বাংলা নামসহ)।',
+      },
+      tipBn: {
+        type: Type.STRING,
+        description: '১টি গুরুত্বপূর্ণ পরামর্শ বা সতর্কতা (বাংলায়)।',
+      },
+      recommendedTab: {
+        type: Type.STRING,
+        description: 'সংশ্লিষ্ট মডিউলের navTab আইডি (না থাকলে খালি স্ট্রিং)।',
+      },
+      recommendedTabLabelBn: {
+        type: Type.STRING,
+        description: 'ওই মেনু বাটনের বাংলা নাম।',
+      },
+    },
+    required: ['answerBn', 'stepsBn', 'tipBn', 'recommendedTab', 'recommendedTabLabelBn'],
+  };
+
+  const manualKnowledgeBase = `
+MasjidLedger Pro v2.6 মডিউল ও সর্বশেষ ফিচার তালিকা (সঠিক বাংলা মেনু ও targetTab আইডি সহ):
+1. ড্যাশবোর্ড (targetTab: "dashboard"): সারসংক্ষেপ হিসাব, নগদ ও ব্যাংক ব্যালেন্স, চলতি মাসের আয়-ব্যয়, এআই অডিটর ও ফ্লোটিং এআই চ্যাটবট।
+2. 💵 আয় ও প্রাপ্তি (targetTab: "income"): জুমার কালেকশন, দান ও অনুদান, দানবাক্স কালেকশন, ওয়াকফ ভাড়া, অন্যান্য আয়, আয় রেজিস্টার ও বিশ্লেষণ।
+   - জিরো-স্টোরেজ ক্যামেরা স্ক্যান: "📷 ক্যামেরা দিয়ে রসিদ স্ক্যান করুন (ফাইল সেভ না করে)" ও "রসিদ / স্ক্রিনশট স্ক্যান" বাটনে ছবি/স্ক্রিনশট/বিকাশ SMS দিলে মেমোরিতে স্ক্যান করে প্রিভিউ দেখায়—ছবি ডিস্ক বা JSON ডাটাবেসে সেভ হয় না। ব্যবহারকারী যাচাই করে "ফর্মে বসান / Apply" চাপলে ফর্মে বসে; সরাসরি সেভ হয় না।
+3. 💸 ব্যয় ও পরিশোধ (targetTab: "expense"): নতুন ব্যয় এন্ট্রি, বেতন ও সম্মানী, বিদ্যুৎ/গ্যাস/পানি, পরিষ্কার-পরিচ্ছন্নতা, মেরামত ও রক্ষণাবেক্ষণ, নির্মাণ ও উন্নয়ন, ক্রয় ও অন্যান্য, ব্যয় রেজিস্টার, ব্যয় রিকনসিলিয়েশন ও বাজেট নিয়ন্ত্রণ।
+   - বেতন ও সম্মানী ট্যাবে "+ বেতন পরিশোধ" বাটনে ক্লিক করলে সরাসরি "ইমাম ও স্টাফ মাসিক হাদিয়া/বেতন পরিশোধ" ফর্ম খোলে এবং মসজিদের প্রকৃত "বেতন-ভাতা প্রদান" প্রধান খাতে যুক্ত হয়। এডিট করলে মূল ফর্মই খোলে।
+   - বিল/ক্যাশ মেমো স্ক্যান: "📷 ক্যামেরা দিয়ে বিল/ক্যাশ মেমো স্ক্যান করুন (ফাইল সেভ না করে)" ও "বিল / ক্যাশ মেমো স্ক্যান" (জিরো-স্টোরেজ)।
+4. 📊 হিসাব ও লেনদেন (targetTab: "financialManagement"):
+   - দৈনিক লেনদেন, প্রারম্ভিক স্থিতি (Opening Balance), ক্যাশবুক (নগদ লেনদেন ও নোট-কয়েন ভাংতি সমন্বয়), ব্যাংক অ্যাকাউন্ট ও তহবিল স্থানান্তর।
+   - ব্যাংক সমন্বয় মডিউল (ব্যাংক চার্জ ও মুনাফা): মূল আয়-ব্যয়ের সাথে না মিশিয়ে ব্যাংক সার্ভিস চার্জ, ভ্যাট, ব্যাংক মুনাফা/ইন্টারেস্ট আলাদাভাবে ব্যাংক সমন্বয় মডিউল থেকে এন্ট্রি ও সমন্বয় করা যায়।
+5. 📑 আয়-ব্যয় খাত (হেড) (targetTab: "accountHeads"): প্রধান খাত ও উপ-খাত তৈরি/সংশোধন (যেমন: EXP-100 বেতন-ভাতা প্রদান), AI খাত অপ্টিমাইজার ও স্ট্যান্ডার্ড টেমপ্লেট।
+6. 👤 ইমাম, স্টাফ ও বেতন (targetTab: "staff"): স্টাফ ডিরেক্টরি ও প্রোফাইল (সকল পেমেন্ট হিস্ট্রি বাংলা মাসে যেমন জানুয়ারি-২০২৬ ফরম্যাটে), মাস্টার রেজিস্টার, দৈনিক হাজিরা, ছুটি আবেদন, মাসিক বেতন ও পরিশোধ, উৎসব ভাতা, অগ্রিম ও ঋণ, বেতন ব্যাংক ট্রান্সফার লেটার, চূড়ান্ত হিসাব নিষ্পত্তি, AI ডকুমেন্ট ও স্টাফ আইডি কার্ড প্রিন্ট।
+7. 👥 মুসল্লি ও দাতা ডেটাবেস (targetTab: "musalliDatabase"): মুসল্লি/ব্যক্তি, পরিবার/বাড়ি, এলাকা/মহল্লা, মাসিক/বাৎসরিক দান পরিকল্পনা, অনুদান সংগ্রহ ট্র্যাকিং, আদায়কারী কর্মী ও রিপোর্ট।
+8. 👥 কমিটি ব্যবস্থাপনা (targetTab: "committee"): সদস্য তালিকা, বর্তমান কমিটি, উপদেষ্টা পরিষদ (Advisory Council), মেয়াদকাল, মিটিং ও কার্যবিবরণী (AI মিনিটস), কর্মপরিকল্পনা (Action Plans), সদস্য মূল্যায়ন স্কোর, কমিটি ভিত্তিক আর্থিক ইতিহাস, সাব-কমিটি ও দায়িত্ব হস্তান্তর।
+9. 📢 নোটিশ ও দাপ্তরিক যোগাযোগ (targetTab: "notices"): অফিসিয়াল লেটারহেড/প্যাডে নোটিশ, প্রত্যয়নপত্র, রেজুলেশন তৈরি, AI ড্রাফট/বানান সংশোধন ও প্রিন্ট।
+10. 🪦 কবরস্থান ব্যবস্থাপনা (targetTab: "cemetery"): দাফন রেজিস্টার, কবর ব্লক/প্লট ট্র্যাকিং, AI তথ্য এক্সট্র্যাকশন ও শোকবার্তা, QR কোডযুক্ত A4 দাফন সনদ ও POS 80mm থার্মাল স্লিপ।
+11. 🏢 সম্পদ ও ওয়াকফ ব্যবস্থাপনা (targetTab: "assets"): অস্থাবর সম্পদ ও সার্ভিসিং, ওয়াকফ জমি/দোকান/মার্কেট, ভাড়াটিয়া ও ইজারা চুক্তি, ভূমি রেকর্ড (মৌজা/দাগ/খতিয়ান/খাজনা), ওয়াকফ দলিল আর্কাইভ, চতুঃসীমানা ও GPS এবং মামলা ও আইনি বিষয় (জমি বিরোধ, আদালত, শুনানি, আইনজীবী, আদেশ/রায়)।
+12. 📚 পাঠাগার ও জ্ঞানকেন্দ্র (targetTab: "knowledgeCenter"): ৩টি সমন্বিত উপ-মডিউল — পাঠাগার (১১টি বিভাগ: কিতাব ক্যাটালগ, ধার/ফেরত, AI বই ও সারসংক্ষেপ), মক্তব (১০টি বিভাগ: শিক্ষার্থী, ক্লাস, হাজিরা, ফি), হেফজখানা (সবক, সবকী, দাওর, আবাসন ও হাজিরা)।
+13. 🕌 নামাজের সময়সূচি (targetTab: "prayerTimes") ও 🔴 লাইভ কিয়স্ক (targetTab: "live"): জেলা ভিত্তিক স্বয়ংক্রিয় ওয়াক্ত শুরু-শেষ এবং ১২-ঘণ্টা AM/PM ফরম্যাটে আজান-জামাত সময় নির্ধারণ ও স্মার্ট টিভি ডিসপ্লে।
+14. 🌐 পাবলিক পোর্টাল (targetTab: "publicPortal"): সাধারণ মুসল্লিদের জন্য স্বচ্ছতা ওয়েবসাইট, নোটিশ, নামাজের সময় ও QR কোড।
+15. 📊 রিপোর্ট সেন্টার (targetTab: "reports"): ২০+ স্ট্যান্ডার্ড অডিট রিপোর্ট, মাস/তারিখ/খাত/অ্যাকাউন্ট ফিল্টার, A4 পোর্ট্রেট/ল্যান্ডস্কেপ ও POS থার্মাল প্রিন্ট, PDF ও Excel (.xlsx) এক্সপোর্ট, AI নির্বাহী সারাংশ।
+16. POS থার্মাল প্রিন্টার (80mm / 58mm) ও প্রিন্ট সেটআপ (targetTab: "income" অথবা "qrManagement"): কম্পিউটারে USB/LAN ড্রাইভার বা Android মোবাইলে RawBT/Bluetooth দিয়ে পেয়ার করে যেকোনো রসিদ/ভাউচার প্রিন্ট উইন্ডো থেকে "POS 80mm" বা "58mm" বেছে নিন। প্রিন্ট ডায়ালগে Margins: None এবং Headers and footers বন্ধ রাখুন।
+17. 📁 সেন্ট্রাল ডকুমেন্ট ও আর্কাইভ (targetTab: "documents"): সকল মডিউলের স্ক্যান নথি/দলিল, Google Drive লিংক ও "স্মার্ট ডাটা মাইগ্রেশন" (ছবি/PDF/Excel থেকে ১-ক্লিকে দাতা/ভাড়াটিয়া/ব্যালেন্স ইমপোর্ট)।
+18. 🏛️ মসজিদ পরিচিতি ও সেটিংস (targetTab: "mosqueManagement") এবং 👤 ইউজার ব্যবস্থাপনা (targetTab: "users"): মসজিদ লোগো, সভাপতি-সম্পাদক স্বাক্ষর, লেটারহেড সেটিংস, এবং ভূমিকা-ভিত্তিক (RBAC) ইউজার অনুমতি।
+19. ⚡ QR ও কুইক এন্ট্রি (targetTab: "qrManagement"): QR স্ক্যান রসিদ, দ্রুত এন্ট্রি, POS 80mm প্রিন্ট, অ্যাকশন QR কার্ড, লাইভ ক্যামেরা স্ক্যান ও নোট-কয়েন কাউন্টার।
+20. 💾 অটো-ব্যাকআপ ও রিমাইন্ডার (targetTab: "backupRestore"): JSON ফুল ব্যাকআপ/রিস্টোর, অটো-ব্যাকআপ রিমাইন্ডার ও Google Drive ক্লাউড ব্যাকআপ।
+21. 📱 এসএমএস ও নোটিফিকেশন (targetTab: "smsGateway") ও 🛡️ অডিট লগ (targetTab: "audit"): অনুদান/বেতন/ভাড়া SMS, এবং সিস্টেমের প্রতিটি পরিবর্তন ও মুছে ফেলার অডিট ট্রেইল।
+22. মোবাইল অ্যাপ (PWA) ও অফলাইন মোড: ব্রাউজার বা সাইডবারের "অ্যাপ ইনস্টল করুন" বাটনে ক্লিক করে Android/iPhone/PC-তে হোম স্ক্রিন অ্যাপ হিসেবে ইনস্টল করা যায়।
+`;
+
+  const sectionHint = payload.sectionContext?.title
+    ? `\nব্যবহারকারী বর্তমানে এই নির্দেশিকা সেকশনটি দেখছেন: "${payload.sectionContext.title}" (${payload.sectionContext.summary || ''})`
+    : '';
+
+  const recentHistory = Array.isArray(payload.history)
+    ? payload.history.slice(-6).map((h) => ({
+        role: h.role === 'model' ? 'model' : 'user',
+        parts: [{ text: String(h.text || '') }],
+      }))
+    : [];
+
+  const systemInstruction = `আপনি "${mosque.nameBn || 'মসজিদ'}"-এর ব্যবহৃত "MasjidLedger Pro v2.6" সফটওয়্যারের অফিসিয়াল AI ব্যবহার বিধি ও কার্যপদ্ধতি সহায়তাকারী।
+নিয়মাবলি:
+১. শুধুমাত্র নিচের MasjidLedger Pro v2.6 মডিউল ও ফিচার তালিকা থেকে বাস্তব ও সঠিক উত্তর দিন। কখনোই অস্তিত্বহীন বা কাল্পনিক বাটন/মেনুর নাম বানাবেন না।
+২. সহজ, প্রাঞ্জল ও ভদ্র বাংলায় ধাপভিত্তিক নির্দেশনা দিন যাতে মসজিদ কমিটির সদস্য, ক্যাশিয়ার বা ইমাম সাহেব সহজে অনুসরণ করতে পারেন।
+৩. প্রাসঙ্গিক হলে recommendedTab-এ ওপরের তালিকা থেকে সঠিক targetTab আইডি দিন, নাহলে "" রাখুন।
+
+${manualKnowledgeBase}${sectionHint}`;
+
+  const parsed = await withRetry(async () => {
+    const response = await ai.models.generateContent({
+      model: activeModel,
+      contents: [
+        ...recentHistory,
+        { role: 'user', parts: [{ text: question }] },
+      ],
+      config: {
+        systemInstruction,
+        responseMimeType: 'application/json',
+        responseSchema,
+      },
+    });
+    return JSON.parse(cleanJsonText(response.text || '{}'));
+  });
+
+  const rawTab = String(parsed.recommendedTab || '').trim();
+  const safeTab = VALID_MANUAL_TARGET_TABS.has(rawTab) ? rawTab : '';
+
+  return {
+    answerBn: String(parsed.answerBn || '').trim(),
+    stepsBn: Array.isArray(parsed.stepsBn)
+      ? parsed.stepsBn.map((s: any) => String(s || '').trim()).filter(Boolean).slice(0, 8)
+      : [],
+    tipBn: String(parsed.tipBn || '').trim(),
+    recommendedTab: safeTab,
+    recommendedTabLabelBn: safeTab ? String(parsed.recommendedTabLabelBn || '').trim() : '',
+    modelUsed: activeModel,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
 

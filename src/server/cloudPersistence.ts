@@ -383,6 +383,9 @@ class CloudPersistenceService {
         smartNoteComments: state.smartNoteComments || [],
         smartNoteActivities: state.smartNoteActivities || [],
         smartNoteReminders: state.smartNoteReminders || [],
+        agreements: state.agreements || [],
+        agreementCategories: state.agreementCategories || [],
+        agreementTemplates: state.agreementTemplates || [],
         updatedAt: now,
       };
 

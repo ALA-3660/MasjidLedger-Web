@@ -6,13 +6,13 @@ export interface UnifiedStaffPaymentItem extends StaffPayment {
   linkedExpense?: ExpenseEntry;
 }
 
-const SALARY_KEYWORDS = [
+const SALARY_MAIN_HEAD_KEYWORDS = [
   'বেতন',
-  'সম্মানী',
   'ভাতা',
   'হাদিয়া',
   'হাদিয়া',
   'বোনাস',
+  'স্টাফ',
   'ইমাম',
   'মুয়াজ্জিন',
   'মুয়াজ্জিন',
@@ -21,9 +21,54 @@ const SALARY_KEYWORDS = [
   'salary',
   'honorarium',
   'haadia',
+  'payroll',
+];
+
+const NON_SALARY_MAIN_HEAD_KEYWORDS = [
+  'মেরামত',
+  'রক্ষণাবেক্ষণ',
+  'সংস্কার',
+  'নির্মাণ',
+  'অবকাঠামো',
+  'উন্নয়ন',
+  'উন্নয়ন',
+  'প্রশাসনিক',
+  'আপ্যায়ন',
+  'আপ্যায়ন',
+  'বিদ্যুৎ',
+  'পানি',
+  'গ্যাস',
+  'ইউটিলিটি',
+  'পরিষ্কার',
+  'পরিচ্ছন্নতা',
+  'ওয়াকফ',
+  'ওয়াকফ',
+  'ভূমি',
+  'কবরস্থান',
+  'রমজান',
+  'দান বাক্স',
+  'ক্রয়',
+  'ক্রয়',
+  'অফিস',
+  'maintenance',
+  'repair',
+  'construction',
+  'utility',
+  'utilities',
+  'cleaning',
+  'admin',
 ];
 
 const BONUS_KEYWORDS = ['বোনাস', 'ঈদ', 'উৎসব', 'শবেবরাত', 'শবে বরাত', 'শবে কদর', 'সম্মানী', 'bonus', 'festival'];
+
+function normalizeBanglaUnicode(str?: string): string {
+  if (!str) return '';
+  return str
+    .normalize('NFC')
+    .replace(/য\u09BC/g, 'য়')
+    .replace(/ড\u09BC/g, 'ড়')
+    .replace(/ঢ\u09BC/g, 'ঢ়');
+}
 
 const MONTH_NAME_PATTERNS: Array<{ month: string; patterns: string[] }> = [
   { month: '01', patterns: ['জানুয়ারি', 'জানুয়ারি', 'জানুয়ারী', 'জানুয়ারী', 'january', 'jan'] },
@@ -51,12 +96,13 @@ function bnToEnDigits(str: string): string {
 function normalizePhone(phone?: string): string {
   if (!phone) return '';
   const digits = bnToEnDigits(phone).replace(/\D/g, '');
+  if (!digits || /^0+$/.test(digits)) return '';
   return digits.length >= 10 ? digits.slice(-10) : digits;
 }
 
 function normalizeTextForMatch(text?: string): string {
   if (!text) return '';
-  return bnToEnDigits(text)
+  return normalizeBanglaUnicode(bnToEnDigits(text))
     .toLowerCase()
     .replace(/[\(\)\[\]\{\},.\-:;'"/\\|–—]/g, ' ')
     // Normalize common Bangla/English honorific & spelling variants
@@ -78,24 +124,38 @@ function getSignificantTokens(text?: string): string[] {
 }
 
 /**
- * Checks whether an ExpenseEntry belongs to Staff Salary / Honorarium / Bonus category.
+ * Checks whether an ExpenseEntry strictly belongs to Staff Salary / Honorarium / Bonus category.
+ * Checks ONLY explicit staff links or the Main Expense Head (never loose description/sub-head words
+ * like "শ্রমিকের বেতন", "মিস্ত্রি বেতন", or "আপ্যায়ন ব্যয় (সম্মানীত খতিব)").
  */
 export function isSalaryExpenseEntry(expense: ExpenseEntry | null | undefined): boolean {
   if (!expense) return false;
+
+  const mainHead = normalizeBanglaUnicode(expense.mainHeadNameBn || '').toLowerCase();
+  const mainHeadId = (expense.mainHeadId || '').toLowerCase();
+
+  // Explicitly exclude non-salary main heads (Maintenance, Construction, Admin/Hospitality, Utilities, Cleaning, etc.)
+  if (
+    mainHead &&
+    NON_SALARY_MAIN_HEAD_KEYWORDS.some((nk) => mainHead.includes(normalizeBanglaUnicode(nk).toLowerCase()))
+  ) {
+    return false;
+  }
+
   if (expense.sourceModule === 'STAFF_EXPENSE') return true;
   if (expense.staffId) return true;
-  if (expense.mainHeadId === 'head-exp-01') return true;
+  if (mainHeadId === 'head-exp-01' || mainHeadId.endsWith('-exp-01')) return true;
 
-  const headText = `${expense.mainHeadNameBn || ''} ${expense.subHeadNameBn || ''}`.toLowerCase();
-  if (SALARY_KEYWORDS.some((kw) => headText.includes(kw))) {
-    // Guard against labor/mason wages under construction/maintenance heads like "শ্রমিকের বেতন"
-    const nonStaffHeadKeywords = ['নির্মাণ', 'মেরামত', 'রক্ষণাবেক্ষণ', 'সংস্কার', 'ক্রয়', 'বিদ্যুৎ', 'পরিষ্কার'];
-    if (nonStaffHeadKeywords.some((nk) => (expense.mainHeadNameBn || '').includes(nk))) {
-      return false;
-    }
+  if (!mainHead) return false;
+
+  // Match "সম্মানী" (honorarium) without false-matching "সম্মানীত" (respected)
+  if (/(?:^|[\s\-\(\/])সম্মানী(?![ত])/u.test(mainHead)) {
     return true;
   }
-  return false;
+
+  return SALARY_MAIN_HEAD_KEYWORDS.some((kw) =>
+    mainHead.includes(normalizeBanglaUnicode(kw).toLowerCase())
+  );
 }
 
 /**
@@ -231,24 +291,30 @@ export function extractSalaryMonthFromExpense(expense: ExpenseEntry): string {
     }
   }
 
-  // Check Bengali or English month name + optional year
+  // Check Bengali or English month name + optional 4-digit or 2-digit year (e.g. জানুয়ারী-২৬)
   const yearMatch = text.match(/\b(20\d{2})\b/);
   const fallbackYear = (expense.date && expense.date.slice(0, 4)) || String(new Date().getFullYear());
-  const resolvedYear = yearMatch ? yearMatch[1] : fallbackYear;
 
   for (const entry of MONTH_NAME_PATTERNS) {
     for (const pat of entry.patterns) {
+      let matched = false;
       // Avoid matching short Bengali "মে" inside words like "মেরামত" or "সিমেন্ট"
       if (pat === 'মে') {
-        if (/(?:^|\s|[-,/])মে(?:\s|[-,/]|20\d{2}|মাস|$)/.test(text)) {
-          return `${resolvedYear}-${entry.month}`;
-        }
+        matched = /(?:^|\s|[-,/])মে(?:\s|[-,/]|20\d{2}|\d{2}|মাস|$)/.test(text);
       } else if (pat.length <= 3 && /^[a-z]+$/.test(pat)) {
         const re = new RegExp(`\\b${pat}\\b`, 'i');
-        if (re.test(text)) {
-          return `${resolvedYear}-${entry.month}`;
+        matched = re.test(text);
+      } else {
+        matched = text.includes(pat);
+      }
+
+      if (matched) {
+        if (yearMatch) {
+          return `${yearMatch[1]}-${entry.month}`;
         }
-      } else if (text.includes(pat)) {
+        const escapedPat = pat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const shortYearMatch = text.match(new RegExp(`${escapedPat}[\\s\\-/]+(\\d{2})(?:\\b|\\s|মাস)`, 'i'));
+        const resolvedYear = shortYearMatch ? `20${shortYearMatch[1]}` : fallbackYear;
         return `${resolvedYear}-${entry.month}`;
       }
     }

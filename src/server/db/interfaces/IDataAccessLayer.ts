@@ -153,6 +153,7 @@ export interface UpdateIncomeInput {
   amount?: number;
   donorName?: string;
   donorPhone?: string;
+  donorAddress?: string;
   reference?: string;
   description?: string;
   date?: string;

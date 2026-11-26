@@ -87,6 +87,7 @@ export const ZeroStorageCameraModal: React.FC<ZeroStorageCameraModalProps> = ({
   const [capturedMimeType, setCapturedMimeType] = useState<string>('image/jpeg');
   const [capturedSource, setCapturedSource] = useState<'CAMERA' | 'FILE'>('CAMERA');
   const [capturedPdfBase64, setCapturedPdfBase64] = useState<string | null>(null);
+  const [lowLightWarning, setLowLightWarning] = useState<boolean>(false);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [processError, setProcessError] = useState<string | null>(null);
 
@@ -113,6 +114,7 @@ export const ZeroStorageCameraModal: React.FC<ZeroStorageCameraModalProps> = ({
   const clearVolatileMemory = useCallback(() => {
     setCapturedPreviewUrl(null);
     setCapturedPdfBase64(null);
+    setLowLightWarning(false);
     setProcessError(null);
     if (canvasRef.current) {
       const c = canvasRef.current;
@@ -150,15 +152,20 @@ export const ZeroStorageCameraModal: React.FC<ZeroStorageCameraModalProps> = ({
       setCameraState('READY');
     } catch (err: any) {
       const name = err?.name || '';
-      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError') {
         setCameraState('DENIED');
         setCameraErrorBn(
-          'ক্যামেরা ব্যবহারের অনুমতি পাওয়া যায়নি। ব্রাউজার সেটিংস থেকে ক্যামেরা Allow করুন অথবা নিচের ফাইল/গ্যালারি থেকে ছবি বাছাই করুন।'
+          'ক্যামেরা ব্যবহারের অনুমতি পাওয়া যায়নি। ব্রাউজার সেটিংস থেকে ক্যামেরা Allow করুন, অথবা নিচের গ্যালারি/ছবি স্ক্যান কিংবা ম্যানুয়াল/টেক্সট এন্ট্রি ব্যবহার করুন।'
+        );
+      } else if (name === 'NotReadableError' || name === 'TrackStartError') {
+        setCameraState('UNAVAILABLE');
+        setCameraErrorBn(
+          'ক্যামেরাটি অন্য কোনো অ্যাপে চালু রয়েছে বা সাড়া দিচ্ছে না। গ্যালারি থেকে ছবি বাছাই করুন অথবা ম্যানুয়াল/টেক্সট এন্ট্রিতে ফিরে যান।'
         );
       } else {
         setCameraState('UNAVAILABLE');
         setCameraErrorBn(
-          'ডিভাইসে ক্যামেরা চালু করা যায়নি (সম্ভবত কোনো ওয়েবক্যাম সংযুক্ত নেই)। নিচের বাটন থেকে ছবি আপলোড করেও একইভাবে জিরো-স্টোরেজ স্ক্যান করতে পারবেন।'
+          'ডিভাইসে ক্যামেরা চালু করা যায়নি (সম্ভবত ওয়েবক্যাম সংযুক্ত নেই)। নিচের বাটন থেকে গ্যালারির ছবি দিয়েও জিরো-স্টোরেজ স্ক্যান করতে পারবেন অথবা ম্যানুয়াল এন্ট্রি চালু রাখুন।'
         );
       }
     }
@@ -215,14 +222,35 @@ export const ZeroStorageCameraModal: React.FC<ZeroStorageCameraModalProps> = ({
     if (!ctx) return;
 
     ctx.drawImage(video, 0, 0, width, height);
+
+    // Quick ephemeral low-light brightness check before clearing canvas
+    let isDim = false;
+    try {
+      const sample = ctx.getImageData(0, 0, Math.min(width, 160), Math.min(height, 120)).data;
+      let sumLum = 0;
+      let count = 0;
+      for (let i = 0; i < sample.length; i += 16) {
+        sumLum += 0.299 * sample[i] + 0.587 * sample[i + 1] + 0.114 * sample[i + 2];
+        count++;
+      }
+      if (count > 0 && sumLum / count < 55) {
+        isDim = true;
+      }
+    } catch {
+      // ignore luminance sampling errors
+    }
+
     const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
     ctx.clearRect(0, 0, width, height);
+    canvas.width = 0;
+    canvas.height = 0;
 
     stopStream();
     setCapturedMimeType('image/jpeg');
     setCapturedSource('CAMERA');
     setCapturedPdfBase64(null);
     setCapturedPreviewUrl(dataUrl);
+    setLowLightWarning(isDim);
     setProcessError(null);
   };
 
@@ -381,6 +409,15 @@ export const ZeroStorageCameraModal: React.FC<ZeroStorageCameraModalProps> = ({
                 </span>
               </div>
 
+              {lowLightWarning && (
+                <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-300 text-xs text-amber-900 flex items-start gap-2 font-tiro">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <span>
+                    আলো কিছুটা কম মনে হচ্ছে — লেখা ঝাপসা হলে পর্যাপ্ত আলোতে পুনরায় ছবি তুলুন অথবা স্ক্যান করে প্রিভিউ ভালোভাবে যাচাই করুন।
+                  </span>
+                </div>
+              )}
+
               <div className="flex flex-wrap items-center justify-between gap-2.5">
                 <button
                   type="button"
@@ -494,6 +531,13 @@ export const ZeroStorageCameraModal: React.FC<ZeroStorageCameraModalProps> = ({
                       >
                         <Upload className="w-3.5 h-3.5" />
                         <span>{allowPdfFallback ? 'ছবি / PDF বাছাই করুন' : 'গ্যালারি থেকে ছবি নিন'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleClose}
+                        className="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-100 text-xs font-bold"
+                      >
+                        ম্যানুয়াল / টেক্সট এন্ট্রিতে ফিরুন
                       </button>
                     </div>
                   </div>

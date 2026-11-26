@@ -3,6 +3,7 @@ import path from 'path';
 import { AsyncLocalStorage } from 'async_hooks';
 import bcrypt from 'bcryptjs';
 import { cloudPersistence } from './cloudPersistence';
+import { reconcileStaffSalaryExpenseHeads } from './salaryHeadResolver';
 import { buildDailyPrayerSchedule, toBanglaDigits } from '../lib/prayerEngine';
 import {
   User,
@@ -131,6 +132,11 @@ import {
   NotificationDraftQueueItem,
   AutomationExecutionLog,
 } from '../types/automationTypes';
+import {
+  AgreementRecord,
+  AgreementCategoryDef,
+  AgreementTemplateDef,
+} from '../types/agreementTypes';
 import { DEFAULT_DOCUMENT_TEMPLATES } from '../lib/officialDocumentTemplates';
 import { getStarterOfficialDocuments } from '../lib/starterOfficialDocuments';
 import type { AiModelSettings } from '../config/aiConfig';
@@ -626,6 +632,9 @@ export class DatabaseStore {
   notificationDraftQueue: NotificationDraftQueueItem[] = [];
   automationLogs: AutomationExecutionLog[] = [];
   dismissedReminderKeys: Record<string, string[]> = {};
+  agreements: AgreementRecord[] = [];
+  agreementCategories: AgreementCategoryDef[] = [];
+  agreementTemplates: AgreementTemplateDef[] = [];
 
   private _transactionActive: boolean = false;
   private _currentTxContext: TransactionContext | null = null;
@@ -934,6 +943,9 @@ export class DatabaseStore {
         this.notificationDraftQueue = parsed.notificationDraftQueue || [];
         this.automationLogs = parsed.automationLogs || [];
         this.dismissedReminderKeys = parsed.dismissedReminderKeys || {};
+        this.agreements = parsed.agreements || [];
+        this.agreementCategories = parsed.agreementCategories || [];
+        this.agreementTemplates = parsed.agreementTemplates || [];
 
         // Ensure all registered and core mosques are always preserved
         const coreMosques: Mosque[] = [
@@ -1357,6 +1369,9 @@ export class DatabaseStore {
       notificationDraftQueue: this.notificationDraftQueue,
       automationLogs: this.automationLogs,
       dismissedReminderKeys: this.dismissedReminderKeys,
+      agreements: this.agreements,
+      agreementCategories: this.agreementCategories,
+      agreementTemplates: this.agreementTemplates,
     };
   }
 
@@ -1539,6 +1554,17 @@ export class DatabaseStore {
         }
       }
 
+      const salaryFixRefresh = reconcileStaffSalaryExpenseHeads({
+        accountHeads: this.accountHeads,
+        staffList: this.staffList,
+        staffPayments: this.staffPayments,
+        expenseEntries: this.expenseEntries,
+      });
+      if (salaryFixRefresh.fixedCount > 0) {
+        changed = true;
+        console.log(`[DB] Reconciled ${salaryFixRefresh.fixedCount} staff salary expense head(s) during finance refresh.`);
+      }
+
       if (changed) {
         try {
           this.persistStateAtomically(true);
@@ -1575,6 +1601,16 @@ export class DatabaseStore {
         console.log('[DB] Cloud persistence not configured or unavailable. Continuing with local storage.');
         const localBrandingMap = await cloudPersistence.loadAllMosqueBranding(knownMosqueIds);
         this.applyMosqueBrandingMap(localBrandingMap);
+        const localSalaryFix = reconcileStaffSalaryExpenseHeads({
+          accountHeads: this.accountHeads,
+          staffList: this.staffList,
+          staffPayments: this.staffPayments,
+          expenseEntries: this.expenseEntries,
+        });
+        if (localSalaryFix.fixedCount > 0) {
+          console.log(`[DB] Reconciled ${localSalaryFix.fixedCount} staff salary expense head(s) on local boot.`);
+          this.persistStateAtomically();
+        }
         this._cloudSyncReady = true;
         return;
       }
@@ -1775,6 +1811,17 @@ export class DatabaseStore {
           }
         }
 
+        const cloudSalaryFix = reconcileStaffSalaryExpenseHeads({
+          accountHeads: this.accountHeads,
+          staffList: this.staffList,
+          staffPayments: this.staffPayments,
+          expenseEntries: this.expenseEntries,
+        });
+        if (cloudSalaryFix.fixedCount > 0) {
+          needsCloudFlush = true;
+          console.log(`[DB] Reconciled ${cloudSalaryFix.fixedCount} staff salary expense head(s) after Firestore restore.`);
+        }
+
         this.persistStateAtomically();
         this._cloudSyncReady = true;
         if (needsCloudFlush) {
@@ -1783,6 +1830,16 @@ export class DatabaseStore {
         console.log('[DB] System successfully restored and synchronized from Firestore.');
       } else {
         this.applyMosqueBrandingMap(brandingMap);
+        const initSalaryFix = reconcileStaffSalaryExpenseHeads({
+          accountHeads: this.accountHeads,
+          staffList: this.staffList,
+          staffPayments: this.staffPayments,
+          expenseEntries: this.expenseEntries,
+        });
+        if (initSalaryFix.fixedCount > 0) {
+          console.log(`[DB] Reconciled ${initSalaryFix.fixedCount} staff salary expense head(s) before initial cloud sync.`);
+          this.persistStateAtomically();
+        }
         this._cloudSyncReady = true;
         console.log('[DB] Firestore has no prior state. Queuing initial snapshot to Firestore...');
         cloudPersistence.queueSync(this.serializeDatabaseState());

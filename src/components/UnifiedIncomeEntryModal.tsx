@@ -71,6 +71,7 @@ export interface UnifiedIncomeEntryModalProps {
   initialTenantId?: string;
   initialDenomination?: CashDenominationData | null;
   initialAiPrefill?: AiSmartEntryResult | null;
+  editingIncome?: IncomeEntry | null;
   accounts: FinancialAccount[];
   accountHeads?: AccountHead[];
   donationBoxes?: DonationBox[];
@@ -89,6 +90,7 @@ export interface UnifiedIncomeEntryModalProps {
   onSaveBoxCollection?: (data: any, options?: { print?: boolean }) => Promise<any>;
   onSaveWaqfRent?: (propertyId: string, data: any, options?: { print?: boolean }) => Promise<any>;
   onSaveOtherIncome?: (data: any, options?: { print?: boolean }) => Promise<any>;
+  onUpdateIncome?: (id: string, data: any) => Promise<any>;
   onPrintReceipt?: (donation: Donation, format?: PrintFormat, isReprint?: boolean) => void;
   onPrintVoucher?: (voucher: IncomeEntry, type: 'INCOME', format?: PrintFormat, isReprint?: boolean) => void;
 }
@@ -103,6 +105,60 @@ function getNearestFridayDate(): string {
   return lastFriday.toISOString().split('T')[0];
 }
 
+function getAccountTypeCode(acc: FinancialAccount): string {
+  return acc.accountType || (acc as any).type || 'CASH';
+}
+
+function inferIncomeTypeFromEntry(entry: IncomeEntry, heads: AccountHead[]): IncomeEntryType {
+  const hay = `${entry.mainHeadNameBn || ''} ${entry.subHeadNameBn || ''} ${entry.reference || ''} ${entry.description || ''} ${entry.donorName || ''}`.toLowerCase();
+
+  if (entry.subHeadId === 'head-inc-01-2' || hay.includes('জুমা') || hay.includes('juma')) {
+    return 'JUMMA';
+  }
+  if (
+    entry.subHeadId === 'head-inc-01-3' ||
+    hay.includes('দানবাক্স') ||
+    hay.includes('দান বাক্স') ||
+    hay.includes('donation box') ||
+    (entry.reference || '').toUpperCase().startsWith('BOX-')
+  ) {
+    return 'DONATION_BOX';
+  }
+  if (
+    entry.mainHeadId === 'head-inc-02' ||
+    hay.includes('ভাড়া') ||
+    hay.includes('ভাড়া') ||
+    hay.includes('ওয়াকফ') ||
+    hay.includes('ওয়াকফ') ||
+    hay.includes('দোকান') ||
+    hay.includes('waqf') ||
+    hay.includes('rent')
+  ) {
+    return 'WAQF_RENT';
+  }
+  if (
+    entry.mainHeadId === 'head-inc-01' ||
+    (entry.reference || '').startsWith('Receipt:') ||
+    (entry.reference || '').toUpperCase().startsWith('MR-') ||
+    hay.includes('দান') ||
+    hay.includes('অনুদান') ||
+    hay.includes('যাকাত') ||
+    hay.includes('ফিতরা') ||
+    hay.includes('সদকা') ||
+    hay.includes('মানি রিসিট')
+  ) {
+    return 'DONATION';
+  }
+
+  const matchedHead = heads.find((h) => h.id === entry.mainHeadId);
+  const headText = (matchedHead?.nameBn || entry.mainHeadNameBn || '').toLowerCase();
+  if (headText.includes('দান') || headText.includes('অনুদান')) {
+    return 'DONATION';
+  }
+
+  return 'OTHER_INCOME';
+}
+
 export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = ({
   isOpen,
   onClose,
@@ -115,6 +171,7 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
   initialTenantId,
   initialDenomination = null,
   initialAiPrefill = null,
+  editingIncome = null,
   accounts: initialAccounts,
   accountHeads = [],
   donationBoxes: initialDonationBoxes,
@@ -133,10 +190,12 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
   onSaveBoxCollection,
   onSaveWaqfRent,
   onSaveOtherIncome,
+  onUpdateIncome,
   onPrintReceipt,
   onPrintVoucher,
 }) => {
   const isBn = language === 'bn';
+  const isEditMode = Boolean(editingIncome);
 
   // Master Data States (with fallbacks / async fetch if not passed)
   const [accounts, setAccounts] = useState<FinancialAccount[]>(initialAccounts || []);
@@ -269,11 +328,13 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
   }, [isOpen]);
 
   const isInitializedRef = useRef<boolean>(false);
+  const prevEditingIdRef = useRef<string | null>(null);
 
   // Sync initial setup when modal opens
   useEffect(() => {
     if (!isOpen) {
       isInitializedRef.current = false;
+      prevEditingIdRef.current = null;
       setErrorMessage('');
       setDenominationData(null);
       setSavedDonationForReceipt(null);
@@ -281,25 +342,159 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
       return;
     }
 
-    // If modal is already open and initialized, do NOT reset user-typed inputs!
-    if (isInitializedRef.current) {
+    const activeEditId = editingIncome?.id || null;
+    if (isInitializedRef.current && prevEditingIdRef.current === activeEditId) {
       // Safe non-destructive fallback: only populate account if none is selected yet
       if (!accountId && accounts.length > 0) {
-        const defaultAcc = accounts.find((a) => a.type === 'CASH') || accounts[0];
+        const defaultAcc = accounts.find((a) => getAccountTypeCode(a) === 'CASH') || accounts[0];
         if (defaultAcc) setAccountId(defaultAcc.id);
       }
       return;
     }
 
-    // First time opening the modal: perform initial setup
+    // First time opening the modal (or switched editing record): perform initial setup
     isInitializedRef.current = true;
-    setIncomeType(initialType);
+    prevEditingIdRef.current = activeEditId;
     setErrorMessage('');
+
+    // Edit Mode: pre-fill exact existing income entry values
+    if (editingIncome) {
+      const availableHeads = heads.length > 0 ? heads : accountHeads;
+      const availableBoxes = donationBoxes.length > 0 ? donationBoxes : initialDonationBoxes || [];
+      const availableProps = properties.length > 0 ? properties : initialProperties || [];
+      const availablePersons = persons.length > 0 ? persons : initialPersons || [];
+
+      const inferredType = inferIncomeTypeFromEntry(editingIncome, availableHeads);
+      setIncomeType(inferredType);
+      setDate(editingIncome.date ? editingIncome.date.split('T')[0] : new Date().toISOString().split('T')[0]);
+      setAmount(editingIncome.amount !== undefined ? String(editingIncome.amount) : '');
+      setPaymentMethod(editingIncome.paymentMethod || 'CASH');
+      setAccountId(editingIncome.accountId || accounts[0]?.id || '');
+      setReference(editingIncome.reference || '');
+      setDescription(editingIncome.description || '');
+      setDenominationData(editingIncome.denominationData || null);
+
+      // Heads & category pre-fill
+      let resolvedMainHeadId = editingIncome.mainHeadId || '';
+      if (!resolvedMainHeadId || !availableHeads.some((h) => h.id === resolvedMainHeadId)) {
+        const byName = availableHeads.find(
+          (h) =>
+            h.type === 'INCOME' &&
+            !h.parentId &&
+            (h.nameBn === editingIncome.mainHeadNameBn ||
+              (editingIncome.mainHeadNameBn && h.nameBn?.includes(editingIncome.mainHeadNameBn)))
+        );
+        if (byName) resolvedMainHeadId = byName.id;
+      }
+      setSelectedMainHeadId(resolvedMainHeadId);
+      setSelectedSubHeadId(editingIncome.subHeadId || '');
+
+      const matchedCategoryHead =
+        (editingIncome.subHeadId && availableHeads.find((h) => h.id === editingIncome.subHeadId)) ||
+        (resolvedMainHeadId && availableHeads.find((h) => h.id === resolvedMainHeadId));
+      setDonationCategory(
+        matchedCategoryHead?.nameBn ||
+          matchedCategoryHead?.id ||
+          editingIncome.subHeadNameBn ||
+          editingIncome.mainHeadNameBn ||
+          'GENERAL'
+      );
+
+      // Donor info pre-fill
+      const rawDonor = (editingIncome.donorName || '').trim();
+      const rawPhone = (editingIncome.donorPhone || '').trim();
+      const rawAddress = ((editingIncome as any).donorAddress || '').trim();
+      const isAnon =
+        rawDonor.includes('আল্লাহর এক বান্দা') ||
+        rawDonor.toLowerCase().includes('anonymous') ||
+        rawDonor === 'বেনামী দাতা';
+
+      setManualDonorName(isAnon ? '' : rawDonor);
+      setDonorPhone(rawPhone);
+      setDonorAddress(rawAddress);
+      setOtherIncomeSource(
+        rawDonor && rawDonor !== editingIncome.mainHeadNameBn
+          ? rawDonor
+          : editingIncome.description || ''
+      );
+
+      if (isAnon) {
+        setIsAnonymous(true);
+        setSelectedPersonId('');
+        setSelectedPlanId('');
+        setDonorMode('MANUAL');
+      } else {
+        setIsAnonymous(false);
+        const matchedPerson = availablePersons.find(
+          (p) =>
+            (rawPhone && p.mobile && p.mobile.trim() === rawPhone) ||
+            (rawDonor && ((p.fullName || (p as any).name || '').trim() === rawDonor))
+        );
+        if (matchedPerson && inferredType === 'DONATION') {
+          setDonorMode('REGISTERED');
+          setSelectedPersonId(matchedPerson.id);
+        } else {
+          setDonorMode('MANUAL');
+          setSelectedPersonId('');
+        }
+        setSelectedPlanId('');
+      }
+
+      // Specialized fields pre-fill
+      if (inferredType === 'JUMMA') {
+        const desc = editingIncome.description || '';
+        const jumaOptions = [
+          'সাধারণ জুমা কালেকশন',
+          'বিশেষ জুমা কালেকশন',
+          'রমজান জুমা কালেকশন',
+          'ঈদের জামাত কালেকশন',
+          'শবে বরাত / কদর কালেকশন',
+        ];
+        const matchedCat = jumaOptions.find((opt) => desc.startsWith(opt));
+        if (matchedCat) setJumaCategory(matchedCat);
+
+        const teamMatch = desc.match(/গণনা টিম:\s*([^.।]+)/);
+        if (teamMatch?.[1]) setJumaCountingTeam(teamMatch[1].trim());
+        const witnessMatch = desc.match(/সাক্ষী:\s*([^.।]+)/);
+        if (witnessMatch?.[1]) setJumaWitness(witnessMatch[1].trim());
+      } else if (inferredType === 'DONATION_BOX') {
+        const hay = `${editingIncome.reference || ''} ${editingIncome.description || ''} ${editingIncome.donorName || ''}`.toLowerCase();
+        const matchedBox =
+          availableBoxes.find(
+            (b) =>
+              (b.boxCode && hay.includes(b.boxCode.toLowerCase())) ||
+              (b.manualName && hay.includes(b.manualName.toLowerCase())) ||
+              (b.shopName && hay.includes(b.shopName.toLowerCase()))
+          ) || availableBoxes[0];
+        setSelectedBoxId(matchedBox?.id || '');
+      } else if (inferredType === 'WAQF_RENT') {
+        const hay = `${editingIncome.description || ''} ${editingIncome.donorName || ''} ${editingIncome.reference || ''}`.toLowerCase();
+        const matchedProp =
+          availableProps.find(
+            (p) =>
+              (p.propertyCode && hay.includes(p.propertyCode.toLowerCase())) ||
+              (p.name && hay.includes(p.name.toLowerCase()))
+          ) || availableProps[0];
+        if (matchedProp) {
+          setSelectedPropertyId(matchedProp.id);
+          const activeTenants = (matchedProp.tenants || []).filter((t) => t.status !== 'TERMINATED');
+          const matchedTenant = activeTenants.find((t) => t.name && hay.includes(t.name.toLowerCase()));
+          setSelectedTenantId(matchedTenant?.id || activeTenants[0]?.id || '');
+          setMonthlyRent(matchedTenant?.monthlyRent || matchedProp.monthlyIncome || matchedProp.monthlyRent || 0);
+        }
+        const monthMatch = (editingIncome.description || '').match(/(\d{4}-\d{2})/);
+        setBillingMonth(monthMatch?.[1] || (editingIncome.date ? editingIncome.date.slice(0, 7) : billingMonth));
+      }
+
+      return;
+    }
+
+    setIncomeType(initialType);
     setDenominationData(null);
 
     // Default account
-    const defaultAcc = accounts.find((a) => a.type === 'CASH') || accounts[0];
-    if (defaultAcc && !accountId) {
+    const defaultAcc = accounts.find((a) => getAccountTypeCode(a) === 'CASH') || accounts[0];
+    if (defaultAcc) {
       setAccountId(defaultAcc.id);
     }
 
@@ -427,7 +622,7 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
         setDonorPhone(initialAiPrefill.personPhone);
       }
     }
-  }, [isOpen, initialType, initialPersonId, initialPlanId, initialCollection, initialBoxId, initialPropertyId, initialTenantId, initialDenomination, initialAiPrefill]);
+  }, [isOpen, editingIncome?.id, initialType, initialPersonId, initialPlanId, initialCollection, initialBoxId, initialPropertyId, initialTenantId, initialDenomination, initialAiPrefill]);
 
   // Selected Property details & Active Tenants
   const selectedProperty = useMemo(() => {
@@ -560,30 +755,72 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
 
   // Account filtering based on payment method
   const filteredAccounts = useMemo(() => {
+    const activeAccounts = accounts.filter((a) => a.status === 'ACTIVE');
+    const pool = activeAccounts.length > 0 ? activeAccounts : accounts;
+    let base: FinancialAccount[] = pool;
+
     if (paymentMethod === 'CASH') {
-      const cashOnes = accounts.filter((a) => a.type === 'CASH' && a.status === 'ACTIVE');
-      return cashOnes.length > 0 ? cashOnes : accounts.filter((a) => a.status === 'ACTIVE');
+      const cashOnes = pool.filter((a) => getAccountTypeCode(a) === 'CASH');
+      base = cashOnes.length > 0 ? cashOnes : pool;
+    } else if (paymentMethod === 'BANK') {
+      const bankOnes = pool.filter((a) => getAccountTypeCode(a) === 'BANK');
+      base = bankOnes.length > 0 ? bankOnes : pool;
+    } else {
+      const mbOnes = pool.filter((a) => {
+        const code = getAccountTypeCode(a);
+        return code === 'MFS' || code === 'MOBILE_BANKING' || code === 'BANK' || code === 'CASH';
+      });
+      base = mbOnes.length > 0 ? mbOnes : pool;
     }
-    if (paymentMethod === 'BANK') {
-      const bankOnes = accounts.filter((a) => a.type === 'BANK' && a.status === 'ACTIVE');
-      return bankOnes.length > 0 ? bankOnes : accounts.filter((a) => a.status === 'ACTIVE');
+
+    if (isEditMode && editingIncome?.accountId && paymentMethod === editingIncome.paymentMethod) {
+      const existingAcc = accounts.find((a) => a.id === editingIncome.accountId);
+      if (existingAcc && !base.some((a) => a.id === existingAcc.id)) {
+        return [existingAcc, ...base];
+      }
     }
-    // Mobile Banking
-    const mbOnes = accounts.filter((a) => (a.type === 'MOBILE_BANKING' || a.type === 'BANK' || a.type === 'CASH') && a.status === 'ACTIVE');
-    return mbOnes.length > 0 ? mbOnes : accounts.filter((a) => a.status === 'ACTIVE');
-  }, [accounts, paymentMethod]);
+
+    return base;
+  }, [accounts, paymentMethod, isEditMode, editingIncome?.accountId, editingIncome?.paymentMethod]);
 
   // Ensure selected account is valid when payment method changes
   useEffect(() => {
+    if (
+      isEditMode &&
+      editingIncome?.accountId &&
+      accountId === editingIncome.accountId &&
+      accounts.some((a) => a.id === accountId) &&
+      paymentMethod === editingIncome.paymentMethod
+    ) {
+      return;
+    }
     if (filteredAccounts.length > 0 && !filteredAccounts.some((a) => a.id === accountId)) {
       setAccountId(filteredAccounts[0].id);
     }
-  }, [filteredAccounts, accountId]);
+  }, [filteredAccounts, accountId, isEditMode, editingIncome?.accountId, editingIncome?.paymentMethod, accounts, paymentMethod]);
 
   // Change type handler
   const handleTypeChange = (newType: IncomeEntryType) => {
     setIncomeType(newType);
     setErrorMessage('');
+    if (isEditMode) {
+      if (newType === 'OTHER_INCOME' && !selectedMainHeadId) {
+        const incomeHeads = (heads.length > 0 ? heads : accountHeads).filter((h) => h.type === 'INCOME' && !h.parentId);
+        const nonDonationHead =
+          incomeHeads.find(
+            (h) =>
+              !h.nameBn?.includes('দান') &&
+              !h.nameBn?.includes('জুমা') &&
+              !h.nameBn?.includes('বাক্স')
+          ) || incomeHeads[0];
+        if (nonDonationHead) setSelectedMainHeadId(nonDonationHead.id);
+      } else if (newType === 'DONATION_BOX' && !selectedBoxId && donationBoxes.length > 0) {
+        setSelectedBoxId(donationBoxes[0].id);
+      } else if (newType === 'WAQF_RENT' && !selectedPropertyId && properties.length > 0) {
+        setSelectedPropertyId(properties[0].id);
+      }
+      return;
+    }
     if (newType === 'JUMMA') {
       setDate(getNearestFridayDate());
       setPaymentMethod('CASH');
@@ -671,6 +908,191 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
     setIsSubmitting(true);
 
     try {
+      // ==========================================
+      // EDIT MODE: Update existing Income Entry (PUT /api/v1/accounting/income/:id)
+      // ==========================================
+      if (isEditMode && editingIncome) {
+        const availableHeads = (heads.length > 0 ? heads : accountHeads).filter((h) => h.type === 'INCOME');
+        const originalType = inferIncomeTypeFromEntry(editingIncome, availableHeads);
+
+        if (incomeType === 'DONATION') {
+          if (!isAnonymous && donorMode === 'REGISTERED' && !selectedPersonId) {
+            setErrorMessage(
+              isBn
+                ? 'অনুগ্রহ করে একজন নিবন্ধিত মুসল্লি নির্বাচন করুন অথবা ম্যানুয়াল নাম লিখুন।'
+                : 'Please select a registered musalli or enter name manually.'
+            );
+            setIsSubmitting(false);
+            return;
+          }
+          if (!isAnonymous && donorMode === 'MANUAL' && !manualDonorName.trim()) {
+            setErrorMessage(isBn ? 'দাতার পূর্ণ নাম আবশ্যক।' : 'Donor name is required.');
+            setIsSubmitting(false);
+            return;
+          }
+        }
+
+        // Resolve Main & Sub Head IDs safely against availableHeads
+        let resolvedMainHeadId = editingIncome.mainHeadId;
+        let resolvedSubHeadId: string = editingIncome.subHeadId || '';
+
+        if (incomeType === 'OTHER_INCOME') {
+          if (selectedMainHeadId) resolvedMainHeadId = selectedMainHeadId;
+          resolvedSubHeadId = selectedSubHeadId || '';
+        } else if (incomeType === 'DONATION') {
+          const matchedHead = availableHeads.find(
+            (h) => (h.nameBn || h.id) === donationCategory || h.id === donationCategory
+          );
+          if (matchedHead) {
+            if (matchedHead.parentId) {
+              resolvedMainHeadId = matchedHead.parentId;
+              resolvedSubHeadId = matchedHead.id;
+            } else {
+              resolvedMainHeadId = matchedHead.id;
+              resolvedSubHeadId =
+                editingIncome.mainHeadId === matchedHead.id ? editingIncome.subHeadId || '' : '';
+            }
+          }
+        } else if (incomeType !== originalType) {
+          if (incomeType === 'JUMMA') {
+            const jumaH = availableHeads.find((h) => h.id === 'head-inc-01-2' || h.nameBn?.includes('জুমা'));
+            if (jumaH) {
+              resolvedMainHeadId = jumaH.parentId || jumaH.id;
+              resolvedSubHeadId = jumaH.parentId ? jumaH.id : '';
+            }
+          } else if (incomeType === 'DONATION_BOX') {
+            const boxH = availableHeads.find((h) => h.id === 'head-inc-01-3' || h.nameBn?.includes('বাক্স'));
+            if (boxH) {
+              resolvedMainHeadId = boxH.parentId || boxH.id;
+              resolvedSubHeadId = boxH.parentId ? boxH.id : '';
+            }
+          } else if (incomeType === 'WAQF_RENT') {
+            const waqfH = availableHeads.find(
+              (h) =>
+                !h.parentId &&
+                (h.id === 'head-inc-02' || h.nameBn?.includes('ভাড়া') || h.nameBn?.includes('ওয়াকফ'))
+            );
+            if (waqfH) {
+              resolvedMainHeadId = waqfH.id;
+              resolvedSubHeadId = '';
+            }
+          }
+        }
+
+        // Ensure resolvedMainHeadId exists if availableHeads are loaded
+        if (
+          availableHeads.length > 0 &&
+          resolvedMainHeadId &&
+          !availableHeads.some((h) => h.id === resolvedMainHeadId) &&
+          !(resolvedMainHeadId.startsWith('head-'))
+        ) {
+          const fallbackMain = availableHeads.find((h) => !h.parentId) || availableHeads[0];
+          if (fallbackMain) {
+            resolvedMainHeadId = fallbackMain.id;
+            resolvedSubHeadId = '';
+          }
+        }
+
+        // Resolve donor & description fields without duplicating metadata
+        let finalDonorName = editingIncome.donorName || '';
+        let finalDonorPhone = donorPhone.trim();
+        let finalDonorAddress = donorAddress.trim();
+        let finalDescription = description.trim();
+        let finalReference = reference.trim();
+
+        if (incomeType === 'DONATION') {
+          if (isAnonymous) {
+            finalDonorName = 'আল্লাহর এক বান্দা (Anonymous)';
+          } else if (donorMode === 'REGISTERED' && selectedPerson) {
+            finalDonorName = selectedPerson.fullName || (selectedPerson as any).name || 'নিবন্ধিত মুসল্লি';
+            finalDonorPhone = donorPhone.trim() || selectedPerson.mobile || '';
+            finalDonorAddress = donorAddress.trim() || selectedPerson.address || '';
+          } else {
+            finalDonorName = manualDonorName.trim();
+          }
+        } else if (incomeType === 'JUMMA') {
+          finalDonorName = editingIncome.donorName || 'পবিত্র জুমার জামাত ও মুসল্লিবৃন্দ';
+          if (!finalDescription) {
+            finalDescription = `${jumaCategory}. পবিত্র জুমার সাধারণ কালেকশন${jumaCountingTeam ? `. গণনা টিম: ${jumaCountingTeam}` : ''}${jumaWitness ? `. সাক্ষী: ${jumaWitness}` : ''}`;
+          }
+        } else if (incomeType === 'DONATION_BOX') {
+          const boxLabel = selectedBox
+            ? `${selectedBox.boxCode} — ${selectedBox.manualName || selectedBox.shopName || 'দানবাক্স'}`
+            : editingIncome.donorName || 'দানবাক্স কালেকশন';
+          finalDonorName = editingIncome.donorName || boxLabel;
+        } else if (incomeType === 'WAQF_RENT') {
+          if (selectedTenant?.name) {
+            finalDonorName = selectedTenant.name;
+            finalDonorPhone = donorPhone.trim() || selectedTenant.phone || '';
+          } else if (selectedProperty?.name) {
+            finalDonorName = editingIncome.donorName || selectedProperty.name;
+          }
+        } else if (incomeType === 'OTHER_INCOME') {
+          const mainHeadObj = availableHeads.find((h) => h.id === resolvedMainHeadId);
+          finalDonorName = otherIncomeSource.trim() || editingIncome.donorName || mainHeadObj?.nameBn || 'অন্যান্য আয়';
+          if (!finalDescription && otherIncomeSource.trim()) {
+            finalDescription = otherIncomeSource.trim();
+          }
+        }
+
+        const updatePayload: any = {
+          amount: numAmount,
+          date,
+          paymentMethod,
+          accountId: finalAccountId,
+          mainHeadId: resolvedMainHeadId,
+          subHeadId: resolvedSubHeadId,
+          donorName: finalDonorName,
+          donorPhone: finalDonorPhone,
+          donorAddress: finalDonorAddress,
+          reference: finalReference,
+          description: finalDescription,
+          denominationData: paymentMethod === 'CASH' ? denominationData ?? null : null,
+        };
+
+        let updatedRes: any = null;
+        if (onUpdateIncome) {
+          updatedRes = await onUpdateIncome(editingIncome.id, updatePayload);
+        } else {
+          updatedRes = await api.updateIncome(editingIncome.id, updatePayload);
+        }
+
+        const resolvedMainHeadObj = availableHeads.find((h) => h.id === resolvedMainHeadId);
+        const resolvedSubHeadObj = resolvedSubHeadId
+          ? availableHeads.find((h) => h.id === resolvedSubHeadId)
+          : undefined;
+        const resolvedAccObj = accounts.find((a) => a.id === finalAccountId);
+
+        const updatedRecord: IncomeEntry =
+          updatedRes && updatedRes.id
+            ? updatedRes
+            : {
+                ...editingIncome,
+                ...updatePayload,
+                mainHeadNameBn: resolvedMainHeadObj?.nameBn || editingIncome.mainHeadNameBn,
+                subHeadNameBn: resolvedSubHeadId
+                  ? resolvedSubHeadObj?.nameBn || editingIncome.subHeadNameBn
+                  : undefined,
+                accountName: resolvedAccObj?.nameBn || resolvedAccObj?.name || editingIncome.accountName,
+              };
+
+        if (onSuccess) {
+          onSuccess();
+        }
+
+        if (submitMode === 'SAVE_AND_PRINT') {
+          if (onPrintVoucher) {
+            onPrintVoucher(updatedRecord, 'INCOME', 'POS_80', true);
+            onClose();
+          } else {
+            setSavedVoucherForPrint(updatedRecord);
+          }
+        } else {
+          onClose();
+        }
+        return;
+      }
+
       if (incomeType === 'JUMMA') {
         // ==========================================
         // 1. 🕌 জুমার কালেকশন Financial Posting
@@ -988,9 +1410,19 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
                 )}
               </div>
               <div>
-                <div className="flex items-center space-x-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-lg font-bold font-siliguri">
-                    {incomeType === 'JUMMA'
+                    {isEditMode
+                      ? incomeType === 'JUMMA'
+                        ? '🕌 জুমার কালেকশন সংশোধন'
+                        : incomeType === 'DONATION'
+                        ? '🤲 অনুদান ও মানি রিসিট সংশোধন'
+                        : incomeType === 'DONATION_BOX'
+                        ? '📦 দানবাক্স কালেকশন সংশোধন'
+                        : incomeType === 'WAQF_RENT'
+                        ? '🏠 ওয়াক্ফ সম্পত্তির ভাড়া সংশোধন'
+                        : '💰 সাধারণ আয় ভাউচার সংশোধন'
+                      : incomeType === 'JUMMA'
                       ? '🕌 নতুন জুমা কালেকশন এন্ট্রি'
                       : incomeType === 'DONATION'
                       ? '🤲 নতুন অনুদান গ্রহণ ও মানি রিসিট'
@@ -1001,7 +1433,9 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
                       : '💰 অন্যান্য সাধারণ আয় পোস্টিং'}
                   </h2>
                   <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-slate-800 text-emerald-400 border border-emerald-500/20">
-                    {incomeType === 'JUMMA'
+                    {isEditMode && editingIncome?.voucherNumber
+                      ? `ভাউচার নং: ${editingIncome.voucherNumber}`
+                      : incomeType === 'JUMMA'
                       ? 'জুমার সাধারণ আয়'
                       : incomeType === 'DONATION'
                       ? 'অফিসিয়াল মানি রিসিট'
@@ -1013,7 +1447,11 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mt-0.5 font-tiro">
-                  {isBn
+                  {isEditMode
+                    ? isBn
+                      ? 'বিদ্যমান আয় ভাউচারের তথ্য সংশোধন করুন — অ্যাকাউন্ট ব্যালেন্স ও অডিট লগ স্বয়ংক্রিয়ভাবে সমন্বয় হবে'
+                      : 'Edit existing income entry — account balances and audit logs update automatically'
+                    : isBn
                     ? 'মসজিদলেজার প্রো একীভূত আয় গ্রহণ ও স্বয়ংক্রিয় আর্থিক লেজার পোস্টিং সিস্টেম'
                     : 'MasjidLedger Pro Unified Income Entry & Automated Ledger Posting'}
                 </p>
@@ -1041,8 +1479,15 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
               accentColor="emerald"
               onApplyData={(parsed: AiSmartEntryResult) => {
                 setErrorMessage('');
+                const resolvedDonor = parsed.personName || parsed.vendorOrOrgName || '';
                 if (parsed.suggestedIncomeType) {
-                  setIncomeType(parsed.suggestedIncomeType);
+                  const keepDonation =
+                    incomeType === 'DONATION' &&
+                    parsed.suggestedIncomeType === 'OTHER_INCOME' &&
+                    Boolean(resolvedDonor);
+                  if (!keepDonation) {
+                    setIncomeType(parsed.suggestedIncomeType);
+                  }
                 }
                 if (parsed.date) setDate(parsed.date);
                 if (parsed.amount && parsed.amount > 0) setAmount(String(parsed.amount));
@@ -1055,11 +1500,11 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
                   setSelectedMainHeadId(parsed.mainHeadId);
                   setSelectedSubHeadId(parsed.subHeadId || '');
                 }
-                if (parsed.personName) {
+                if (resolvedDonor) {
                   setIsAnonymous(false);
                   setDonorMode('MANUAL');
-                  setManualDonorName(parsed.personName);
-                  setOtherIncomeSource(parsed.personName);
+                  setManualDonorName(resolvedDonor);
+                  setOtherIncomeSource(resolvedDonor);
                 }
                 if (parsed.personPhone) {
                   setDonorPhone(parsed.personPhone);
@@ -1926,8 +2371,14 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
                       }}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-siliguri focus:bg-white focus:ring-2 focus:ring-amber-500 cursor-pointer"
                     >
-                      {accountHeads
-                        .filter((h) => h.type === 'INCOME' && !h.parentId && h.isActive !== false && h.status !== 'INACTIVE' && h.status !== 'ARCHIVED')
+                      {(heads.length > 0 ? heads : accountHeads)
+                        .filter(
+                          (h) =>
+                            h.type === 'INCOME' &&
+                            !h.parentId &&
+                            (h.id === selectedMainHeadId ||
+                              (h.isActive !== false && h.status !== 'INACTIVE' && h.status !== 'ARCHIVED'))
+                        )
                         .map((h) => (
                           <option key={h.id} value={h.id}>
                             {h.nameBn} ({h.code})
@@ -1947,8 +2398,14 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-siliguri focus:bg-white focus:ring-2 focus:ring-amber-500 cursor-pointer"
                     >
                       <option value="">-- কোনো উপ-খাত নেই --</option>
-                      {accountHeads
-                        .filter((h) => h.type === 'INCOME' && h.parentId === selectedMainHeadId && h.isActive !== false && h.status !== 'INACTIVE' && h.status !== 'ARCHIVED')
+                      {(heads.length > 0 ? heads : accountHeads)
+                        .filter(
+                          (h) =>
+                            h.type === 'INCOME' &&
+                            h.parentId === selectedMainHeadId &&
+                            (h.id === selectedSubHeadId ||
+                              (h.isActive !== false && h.status !== 'INACTIVE' && h.status !== 'ARCHIVED'))
+                        )
                         .map((h) => (
                           <option key={h.id} value={h.id}>
                             {h.nameBn} ({h.code})
@@ -2063,6 +2520,15 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
                         কথায়: {numberToBanglaWords(Number(amount))}
                       </p>
                     )}
+                    {isEditMode &&
+                      editingIncome &&
+                      Number(amount) > 0 &&
+                      Number(amount) !== Number(editingIncome.amount || 0) && (
+                        <p className="text-[11px] text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded font-siliguri font-semibold">
+                          পূর্বের পরিমাণ: ৳ {Number(editingIncome.amount || 0).toLocaleString('en-IN')} → নতুন: ৳{' '}
+                          {Number(amount).toLocaleString('en-IN')} (ব্যালেন্স স্বয়ংক্রিয়ভাবে সমন্বয় হবে)
+                        </p>
+                      )}
                     {initialCollection && Number(amount) > 0 && (
                       <div className="text-[10px] font-siliguri pt-0.5">
                         {(() => {
@@ -2139,7 +2605,7 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
                   >
                     {filteredAccounts.map((acc) => (
                       <option key={acc.id} value={acc.id}>
-                        {acc.nameBn || acc.name} ({acc.type}) — ব্যালেন্স: ৳{toBanglaNumber(acc.currentBalance || 0)}
+                        {acc.nameBn || acc.name} ({getAccountTypeCode(acc)}) — ব্যালেন্স: ৳{toBanglaNumber(acc.currentBalance || 0)}
                       </option>
                     ))}
                   </select>
@@ -2194,7 +2660,13 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
                   onClick={(e) => handleSubmit(e, 'SAVE_ONLY')}
                   className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold font-siliguri transition-all shadow-sm cursor-pointer disabled:opacity-50"
                 >
-                  {isSubmitting ? 'সংরক্ষণ হচ্ছে...' : 'শুধু সংরক্ষণ করুন'}
+                  {isSubmitting
+                    ? isEditMode
+                      ? 'আপডেট হচ্ছে...'
+                      : 'সংরক্ষণ হচ্ছে...'
+                    : isEditMode
+                    ? 'আপডেট করুন / সংরক্ষণ করুন'
+                    : 'শুধু সংরক্ষণ করুন'}
                 </button>
 
                 {/* Primary Action Button (Save & Print) */}
@@ -2213,6 +2685,8 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
                   <span>
                     {isSubmitting
                       ? 'প্রক্রিয়াধীন...'
+                      : isEditMode
+                      ? 'আপডেট ও ভাউচার প্রিন্ট'
                       : incomeType === 'DONATION_BOX'
                       ? 'টাকা জমা ও ভাউচার নিশ্চিত করুন'
                       : incomeType === 'DONATION'
@@ -2273,7 +2747,7 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
           mosque={currentMosque || null}
           language={language}
           initialFormat="POS_80"
-          isReprint={false}
+          isReprint={isEditMode}
           autoPrint={true}
         />
       )}

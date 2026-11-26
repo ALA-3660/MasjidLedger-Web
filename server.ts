@@ -68,6 +68,7 @@ import {
   summarizeAuditLogsWithAi,
   suggestAuditLogFiltersWithAi,
   analyzeFormAlertWithAi,
+  askUserManualAiAssistant,
   GeminiServiceError,
 } from './src/server/geminiService.ts';
 import { sanitizeGeminiModelName, isValidGeminiModelName } from './src/config/aiConfig.ts';
@@ -251,6 +252,7 @@ import {
   LegalDashboardStats,
 } from './src/types/index.ts';
 import { createSmartNotesRouter } from './src/server/smartNotesService.ts';
+import { createAgreementRouter } from './src/server/agreementService.ts';
 import { createAutomationRouter, startAutoBackupScheduler } from './src/server/automationService.ts';
 
 export const app = express();
@@ -5978,12 +5980,13 @@ app.put('/api/v1/accounting/income/:id', authenticate, dalContextMiddleware, req
       return res.json(cachedRecord.responsePayload);
     }
 
-    const { amount, donorName, donorPhone, reference, description, date, denominationData, accountId, paymentMethod, mainHeadId, subHeadId } = req.body;
+    const { amount, donorName, donorPhone, donorAddress, reference, description, date, denominationData, accountId, paymentMethod, mainHeadId, subHeadId } = req.body;
 
     const item = await req.dal!.income!.update(dalOptions, req.params.id, {
       amount,
       donorName,
       donorPhone,
+      donorAddress,
       reference,
       description,
       date,
@@ -13268,6 +13271,11 @@ app.post('/api/v1/official-documents/ai-assist', authenticate, async (req: AuthR
 app.use('/api/v1', createSmartNotesRouter(authenticate));
 
 // ==========================================
+// 13.55 AGREEMENT MANAGEMENT ("চুক্তিপত্র ব্যবস্থাপনা") API
+// ==========================================
+app.use('/api/v1', createAgreementRouter(authenticate));
+
+// ==========================================
 // 13.6 AUTO-BACKUP & REMINDER/NOTIFICATION AUTOMATION API
 // ==========================================
 app.use('/api/v1/automation', createAutomationRouter(authenticate, requirePermission));
@@ -15958,6 +15966,42 @@ app.post('/api/v1/ai/audit/filter-suggest', authenticate, async (req: AuthReques
       error: {
         code,
         message: error?.message || 'ফিল্টার সাজেশন তৈরি করতে সমস্যা হয়েছে। অনুগ্রহ করে নিচের ম্যানুয়াল ফিল্টার ব্যবহার করুন।',
+      },
+    });
+  }
+});
+
+// 16Q-6. User Manual & Interactive Guide AI Assistant (Authenticated, Tenant-Scoped)
+app.post('/api/v1/ai/manual-assistant', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const mosque = req.currentMosque;
+    if (!mosque?.id) {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'TENANT_REQUIRED', message: 'বৈধ মসজিদ সনাক্তকরণ আবশ্যক।' },
+      });
+    }
+    const rateKey = `${mosque.id}:${req.user?.id || 'anon'}:manual-ai`;
+    if (!checkScannerCounterAuditAiRateLimit(rateKey, 25)) {
+      return res.status(429).json({
+        success: false,
+        error: {
+          code: 'RATE_LIMITED',
+          message: 'অনেকগুলো প্রশ্ন পাঠানো হয়েছে। অনুগ্রহ করে একটু পর আবার চেষ্টা করুন।',
+        },
+      });
+    }
+    const result = await askUserManualAiAssistant(mosque, req.body || {});
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error instanceof GeminiServiceError ? error.statusCode : 500;
+    const code = error instanceof GeminiServiceError ? error.code : 'AI_MANUAL_ERROR';
+    console.error('AI Manual Assistant error:', error);
+    return res.status(status).json({
+      success: false,
+      error: {
+        code,
+        message: error?.message || 'ব্যবহার বিধি AI সহায়তা থেকে উত্তর পেতে সমস্যা হয়েছে। অনুগ্রহ করে নিচের তালিকা থেকে নির্দেশিকা দেখুন।',
       },
     });
   }

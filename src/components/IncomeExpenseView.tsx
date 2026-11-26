@@ -48,6 +48,7 @@ import { Language, translations, formatCurrency, formatDate } from '../lib/i18n'
 import { ChangeCalculatorModal } from './ChangeCalculatorModal';
 import { DenominationDetailModal } from './DenominationDetailModal';
 import { EditTransactionModal } from './EditModals';
+import { UnifiedIncomeEntryModal } from './UnifiedIncomeEntryModal';
 import { SmsPreviewModal } from './SmsPreviewModal';
 import { QuickIncomeExpenseReportModal } from './QuickIncomeExpenseReportModal';
 import { JumaCollectionModal } from './JumaCollectionModal';
@@ -1867,8 +1868,29 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
         canEdit={true}
       />
 
-      {/* EDIT TRANSACTION MODAL */}
-      {editingItem && (
+      {/* UNIFIED INCOME EDIT MODAL */}
+      {editingItem && editingItem.type === 'INCOME' && (
+        <UnifiedIncomeEntryModal
+          isOpen={true}
+          onClose={() => setEditingItem(null)}
+          editingIncome={editingItem.item as IncomeEntry}
+          accounts={accounts}
+          accountHeads={accountHeads}
+          currentUser={currentUser}
+          currentMosque={currentMosque}
+          language={language}
+          onUpdateIncome={async (id, data) => {
+            if (onUpdateIncome) {
+              await onUpdateIncome(id, data);
+            }
+            setEditingItem(null);
+          }}
+          onPrintVoucher={onPrintVoucher}
+        />
+      )}
+
+      {/* EDIT EXPENSE TRANSACTION MODAL */}
+      {editingItem && editingItem.type === 'EXPENSE' && (
         <EditTransactionModal
           isOpen={!!editingItem}
           onClose={() => setEditingItem(null)}
@@ -1878,9 +1900,7 @@ export const IncomeExpenseView: React.FC<IncomeExpenseViewProps> = ({
           accountHeads={accountHeads}
           language={language}
           onSave={async (id, data) => {
-            if (editingItem.type === 'INCOME' && onUpdateIncome) {
-              await onUpdateIncome(id, data);
-            } else if (editingItem.type === 'EXPENSE' && onUpdateExpense) {
+            if (onUpdateExpense) {
               await onUpdateExpense(id, data);
             }
           }}

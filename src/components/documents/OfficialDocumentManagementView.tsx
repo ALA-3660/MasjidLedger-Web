@@ -39,6 +39,7 @@ import { OfficialDocumentTrackingView } from './OfficialDocumentTrackingView';
 import { OfficialDocumentReportsView } from './OfficialDocumentReportsView';
 import { SmsGatewayView } from '../SmsGatewayView';
 import { SmartNotesView } from '../notes/SmartNotesView';
+import { AgreementManagementView } from '../agreements/AgreementManagementView';
 
 interface OfficialDocumentManagementViewProps {
   mosque?: Mosque | null;
@@ -87,6 +88,7 @@ export const OfficialDocumentManagementView: React.FC<OfficialDocumentManagement
   const [previewDoc, setPreviewDoc] = useState<OfficialDocument | null>(null);
   const [noticeDraftFromNote, setNoticeDraftFromNote] = useState<{ title: string; body: string } | null>(null);
   const [smsDraftFromNote, setSmsDraftFromNote] = useState<string | undefined>(undefined);
+  const [agreementCount, setAgreementCount] = useState<number>(0);
 
   useEffect(() => {
     if (initialSubTab) {
@@ -97,12 +99,16 @@ export const OfficialDocumentManagementView: React.FC<OfficialDocumentManagement
   const loadData = async () => {
     setLoading(true);
     try {
-      const [docs, statsData] = await Promise.all([
+      const [docs, statsData, agrStats] = await Promise.all([
         api.getOfficialDocuments(),
         api.getOfficialDocumentStats(),
+        api.getAgreementDashboardStats().catch(() => null),
       ]);
       setDocuments(docs || []);
       setStats(statsData || {});
+      if (agrStats && typeof agrStats.total === 'number') {
+        setAgreementCount(agrStats.total);
+      }
     } catch (err) {
       console.error('Failed to load official documents:', err);
     } finally {
@@ -152,6 +158,7 @@ export const OfficialDocumentManagementView: React.FC<OfficialDocumentManagement
   const TABS = [
     { id: 'dashboard', label: '📊 ড্যাশবোর্ড', subLabel: 'পরিসংখ্যান ও সামগ্রিক চিত্র', badge: stats.total },
     { id: 'smart-notes', label: '📝 খসড়া — Smart Notes', subLabel: 'স্মার্ট নোট, ভয়েস টাইপিং ও ক্যামেরা OCR', badge: 'AI' },
+    { id: 'agreements', label: '📜 চুক্তিপত্র ব্যবস্থাপনা', subLabel: 'নির্মাণ, ওয়াকফ/জমি, পক্ষ ও A4 PDF', badge: agreementCount > 0 ? agreementCount : 'নতুন' },
     { id: 'all-documents', label: '📄 দাপ্তরিক নথি', subLabel: 'সকল নথির মাস্টার তালিকা', badge: stats.total },
     { id: 'notices', label: '📢 নোটিশ ও বিজ্ঞপ্তি', subLabel: 'সভা ও সাধারণ বিজ্ঞপ্তি', badge: stats.byType?.NOTICE },
     { id: 'sms-service', label: '💬 এসএমএস সেবা ও সেটিংস', subLabel: 'এসএমএস গেটওয়ে, এপিআই কী ও বার্তা প্রেরণ', badge: 'SMS' },
@@ -365,6 +372,14 @@ export const OfficialDocumentManagementView: React.FC<OfficialDocumentManagement
                 setSmsDraftFromNote(draft.text);
                 setActiveTab('sms-service');
               }}
+            />
+          )}
+
+          {activeTab === 'agreements' && (
+            <AgreementManagementView
+              mosque={mosque}
+              currentUser={currentUser}
+              onAgreementCountChange={setAgreementCount}
             />
           )}
 

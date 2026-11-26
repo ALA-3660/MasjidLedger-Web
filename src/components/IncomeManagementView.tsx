@@ -52,7 +52,6 @@ import { Language, translations, formatCurrency, formatDate } from '../lib/i18n'
 import { api } from '../lib/api';
 import { ChangeCalculatorModal } from './ChangeCalculatorModal';
 import { DenominationDetailModal } from './DenominationDetailModal';
-import { EditTransactionModal } from './EditModals';
 import { SmsPreviewModal } from './SmsPreviewModal';
 import { JumaCollectionModal } from './JumaCollectionModal';
 import { AiSmartEntryToolbar, AiSmartEntryResult } from './common/AiSmartEntryToolbar';
@@ -1408,14 +1407,26 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
                               ৳ {Number(item.amount).toLocaleString('en-IN')}
                             </td>
                             <td className="px-4 py-3 text-center">
-                              <button
-                                type="button"
-                                onClick={() => onPrintVoucher(item, 'INCOME', 'POS_80', true)}
-                                className="p-1.5 text-slate-600 hover:text-emerald-700 hover:bg-slate-100 rounded-lg cursor-pointer"
-                                title="ভাউচার প্রিন্ট"
-                              >
-                                <Printer className="w-3.5 h-3.5" />
-                              </button>
+                              <div className="flex items-center justify-center space-x-1">
+                                <button
+                                  type="button"
+                                  onClick={() => onPrintVoucher(item, 'INCOME', 'POS_80', true)}
+                                  className="p-1.5 text-slate-600 hover:text-emerald-700 hover:bg-slate-100 rounded-lg cursor-pointer"
+                                  title="ভাউচার প্রিন্ট"
+                                >
+                                  <Printer className="w-3.5 h-3.5" />
+                                </button>
+                                {onUpdateIncome && item.status !== 'CANCELLED' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingItem(item)}
+                                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg cursor-pointer"
+                                    title="সম্পাদনা করুন"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         ))
@@ -2343,24 +2354,6 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
         />
       )}
 
-      {/* ==================== EDIT TRANSACTION MODAL ==================== */}
-      {editingItem && onUpdateIncome && (
-        <EditTransactionModal
-          isOpen={!!editingItem}
-          onClose={() => setEditingItem(null)}
-          transaction={editingItem}
-          item={editingItem}
-          type="INCOME"
-          accountHeads={accountHeads}
-          accounts={accounts}
-          onSave={async (id, data) => {
-            await onUpdateIncome(id, data);
-            setEditingItem(null);
-          }}
-          language={language}
-        />
-      )}
-
       {/* ==================== UNIVERSAL A4 REPORT PREVIEW MODAL ==================== */}
       <A4ReportPreviewModal<IncomeEntry>
         isOpen={isReportPreviewOpen}
@@ -2388,15 +2381,18 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
         onExcel={handleExportExcel}
       />
 
-      {/* Centralized Unified Income Entry Modal */}
+      {/* Centralized Unified Income Entry & Edit Modal */}
       <UnifiedIncomeEntryModal
-        isOpen={isUnifiedIncomeModalOpen}
+        isOpen={isUnifiedIncomeModalOpen || Boolean(editingItem)}
         onClose={() => {
           setIsUnifiedIncomeModalOpen(false);
           setUnifiedDenomination(null);
           setUnifiedAiPrefill(null);
           setUnifiedPropertyId(undefined);
           setUnifiedTenantId(undefined);
+          if (editingItem) {
+            setEditingItem(null);
+          }
         }}
         initialType={unifiedIncomeType}
         initialBoxId={unifiedBoxId}
@@ -2407,6 +2403,7 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
         initialTenantId={unifiedTenantId}
         initialDenomination={unifiedDenomination}
         initialAiPrefill={unifiedAiPrefill}
+        editingIncome={editingItem}
         accounts={accounts}
         accountHeads={accountHeads}
         donationBoxes={donationBoxes}
@@ -2446,6 +2443,12 @@ export const IncomeManagementView: React.FC<IncomeManagementViewProps> = ({
             onPrintVoucher(res, 'INCOME', 'POS_80', false);
           }
           return res;
+        }}
+        onUpdateIncome={async (id, data) => {
+          if (onUpdateIncome) {
+            await onUpdateIncome(id, data);
+          }
+          setEditingItem(null);
         }}
         onPrintReceipt={onPrintReceipt}
         onPrintVoucher={onPrintVoucher}

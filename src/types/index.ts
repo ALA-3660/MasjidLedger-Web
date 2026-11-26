@@ -54,6 +54,27 @@ export type Permission =
   | 'EXPORT_DONATION_PLAN'
   | 'EXPORT_MUSALLI_DATA'
   | 'VIEW_PERSONAL_DOCUMENTS'
+  | 'VIEW_AGREEMENTS'
+  | 'CREATE_AGREEMENT'
+  | 'EDIT_AGREEMENT'
+  | 'DELETE_AGREEMENT'
+  | 'MANAGE_AGREEMENT_TEMPLATES'
+  | 'agreement.view'
+  | 'agreement.create'
+  | 'agreement.edit'
+  | 'agreement.delete'
+  | 'agreement.review'
+  | 'agreement.approve'
+  | 'agreement.reject'
+  | 'agreement.manage_parties'
+  | 'agreement.upload_documents'
+  | 'agreement.view_sensitive_documents'
+  | 'agreement.manage_templates'
+  | 'agreement.use_ai'
+  | 'agreement.sign'
+  | 'agreement.manage_signatures'
+  | 'agreement.view_reports'
+  | 'agreement.manage_waqf_review'
   | 'VIEW_DONATION_COLLECTION'
   | 'CREATE_DONATION_COLLECTION'
   | 'EDIT_DONATION_COLLECTION'
@@ -785,6 +806,7 @@ export interface IncomeEntry {
   accountName: string;
   donorName?: string;
   donorPhone?: string;
+  donorAddress?: string;
   reference?: string;
   description?: string;
   attachmentUrl?: string;

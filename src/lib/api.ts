@@ -141,6 +141,27 @@ import {
   OfficialDocumentStatus,
 } from '../types/officialDocumentTypes';
 import {
+  AgreementRecord,
+  AgreementCategoryDef,
+  AgreementTemplateDef,
+  AgreementTemplatePublishStatus,
+  AgreementDashboardStats,
+  AgreementPartyDirectoryItem,
+  AgreementStatus,
+  AgreementAiDraftResult,
+  AgreementClauseAssistAction,
+  AgreementClauseAssistResult,
+  AgreementAiReviewResult,
+  AgreementOcrDocType,
+  AgreementOcrExtractResult,
+  AgreementReviewStage,
+  AgreementReviewDecision,
+  AgreementApprovalDecision,
+  AgreementSignatureMethod,
+  AgreementClosureInfo,
+  AgreementArchiveReport,
+} from '../types/agreementTypes';
+import {
   QuranSurah,
   QuranJuz,
   QuranAyah,
@@ -2796,6 +2817,367 @@ class ApiService {
     return res.data;
   }
 
+  // ==========================================
+  // AGREEMENT MANAGEMENT ("চুক্তিপত্র ব্যবস্থাপনা") API — ZERO FINANCIAL COUPLING
+  // ==========================================
+  async getAgreementDashboardStats(): Promise<AgreementDashboardStats> {
+    const res = await this.request<AgreementDashboardStats>('/agreements/dashboard/stats');
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'চুক্তিপত্র ড্যাশবোর্ড তথ্য লোড করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getAgreements(params?: {
+    search?: string;
+    categoryCode?: string;
+    status?: string;
+    waqfLandOnly?: boolean;
+    archivedOnly?: boolean;
+    includeArchived?: boolean;
+    sortBy?: string;
+    sortDir?: 'asc' | 'desc';
+  }): Promise<AgreementRecord[]> {
+    const query = new URLSearchParams();
+    if (params?.search) query.set('search', params.search);
+    if (params?.categoryCode && params.categoryCode !== 'ALL') query.set('categoryCode', params.categoryCode);
+    if (params?.status && params.status !== 'ALL') query.set('status', params.status);
+    if (params?.waqfLandOnly) query.set('waqfLandOnly', 'true');
+    if (params?.archivedOnly) query.set('archivedOnly', 'true');
+    if (params?.includeArchived) query.set('includeArchived', 'true');
+    if (params?.sortBy) query.set('sortBy', params.sortBy);
+    if (params?.sortDir) query.set('sortDir', params.sortDir);
+    const qs = query.toString();
+    const res = await this.request<AgreementRecord[]>(`/agreements${qs ? `?${qs}` : ''}`);
+    if (!res.success) throw new Error(res.error?.message || 'চুক্তিপত্র তালিকা লোড করতে ব্যর্থ হয়েছে');
+    return res.data || [];
+  }
+
+  async getAgreementById(id: string): Promise<AgreementRecord> {
+    const res = await this.request<AgreementRecord>(`/agreements/${id}`);
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'চুক্তিপত্রটি পাওয়া যায়নি');
+    return res.data;
+  }
+
+  async createAgreement(payload: Partial<AgreementRecord>): Promise<AgreementRecord> {
+    const res = await this.request<AgreementRecord>('/agreements', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'চুক্তিপত্র সংরক্ষণ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateAgreement(id: string, payload: Partial<AgreementRecord>): Promise<AgreementRecord> {
+    const res = await this.request<AgreementRecord>(`/agreements/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'চুক্তিপত্র হালনাগাদ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async updateAgreementStatus(id: string, status: AgreementStatus): Promise<AgreementRecord> {
+    const res = await this.request<AgreementRecord>(`/agreements/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'চুক্তিপত্রের স্ট্যাটাস পরিবর্তন করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async deleteAgreement(id: string): Promise<{ deletedId: string; message: string }> {
+    const res = await this.request<{ deletedId: string; message: string }>(`/agreements/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.success) throw new Error(res.error?.message || 'চুক্তিপত্র মুছে ফেলতে ব্যর্থ হয়েছে');
+    return res.data || { deletedId: id, message: 'চুক্তিপত্রটি সফলভাবে মুছে ফেলা হয়েছে।' };
+  }
+
+  async getAgreementPartiesDirectory(search?: string): Promise<AgreementPartyDirectoryItem[]> {
+    const qs = search ? `?search=${encodeURIComponent(search)}` : '';
+    const res = await this.request<AgreementPartyDirectoryItem[]>(`/agreements/parties/directory${qs}`);
+    if (!res.success) throw new Error(res.error?.message || 'পক্ষসমূহের তালিকা লোড করতে ব্যর্থ হয়েছে');
+    return res.data || [];
+  }
+
+  async getAgreementCategories(): Promise<AgreementCategoryDef[]> {
+    const res = await this.request<AgreementCategoryDef[]>('/agreements/categories/list');
+    if (!res.success) throw new Error(res.error?.message || 'চুক্তির ক্যাটাগরি লোড করতে ব্যর্থ হয়েছে');
+    return res.data || [];
+  }
+
+  async createAgreementCategory(payload: {
+    nameBn: string;
+    nameEn?: string;
+    descriptionBn?: string;
+    formProfile?: 'STANDARD' | 'CONSTRUCTION' | 'LAND_WAQF' | 'ROAD_RIGHT';
+  }): Promise<AgreementCategoryDef> {
+    const res = await this.request<AgreementCategoryDef>('/agreements/categories', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'নতুন ক্যাটাগরি যুক্ত করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async getAgreementTemplates(): Promise<AgreementTemplateDef[]> {
+    const res = await this.request<AgreementTemplateDef[]>('/agreements/templates/list');
+    if (!res.success) throw new Error(res.error?.message || 'চুক্তির টেমপ্লেট লোড করতে ব্যর্থ হয়েছে');
+    return res.data || [];
+  }
+
+  async createAgreementTemplate(payload: Partial<AgreementTemplateDef>): Promise<AgreementTemplateDef> {
+    const res = await this.request<AgreementTemplateDef>('/agreements/templates', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'নতুন টেমপ্লেট সংরক্ষণ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async deleteAgreementTemplate(id: string): Promise<void> {
+    const res = await this.request<any>(`/agreements/templates/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.success) throw new Error(res.error?.message || 'টেমপ্লেট মুছে ফেলতে ব্যর্থ হয়েছে');
+  }
+
+  async updateAgreementTemplate(
+    id: string,
+    payload: Partial<AgreementTemplateDef>
+  ): Promise<AgreementTemplateDef> {
+    const res = await this.request<AgreementTemplateDef>(`/agreements/templates/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'টেমপ্লেট হালনাগাদ করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async publishAgreementTemplate(
+    id: string,
+    publishStatus: AgreementTemplatePublishStatus
+  ): Promise<AgreementTemplateDef> {
+    const res = await this.request<AgreementTemplateDef>(`/agreements/templates/${id}/publish`, {
+      method: 'PATCH',
+      body: JSON.stringify({ publishStatus }),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'টেমপ্লেট প্রকাশের অবস্থা পরিবর্তন করা যায়নি');
+    return res.data;
+  }
+
+  async aiDraftAgreement(payload: {
+    instructionBn: string;
+    preferredCategoryCode?: string;
+    existingContext?: string;
+  }): Promise<AgreementAiDraftResult> {
+    const res = await this.request<AgreementAiDraftResult>('/agreements/ai/draft', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'AI চুক্তিপত্র খসড়া তৈরি করতে ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async aiAssistAgreementClause(payload: {
+    action: AgreementClauseAssistAction;
+    currentClauses: string;
+    categoryNameBn?: string;
+    agreementTitle?: string;
+    userInstruction?: string;
+  }): Promise<AgreementClauseAssistResult> {
+    const res = await this.request<AgreementClauseAssistResult>('/agreements/ai/clause-assist', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'AI ধারা সহায়তা ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async aiReviewAgreement(payload: {
+    agreementId?: string;
+    agreement?: Partial<AgreementRecord>;
+  }): Promise<AgreementAiReviewResult> {
+    const res = await this.request<AgreementAiReviewResult>('/agreements/ai/review', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'AI চুক্তি ও ঝুঁকি পর্যালোচনা ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async ocrExtractAgreementDocument(payload: {
+    docType: AgreementOcrDocType;
+    mimeType: string;
+    imageBase64: string;
+    userHint?: string;
+  }): Promise<AgreementOcrExtractResult> {
+    const res = await this.request<AgreementOcrExtractResult>('/agreements/ocr/extract', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'ডকুমেন্ট OCR শনাক্তকরণ ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  // Part 3: Approval Workflow, Digital Signatures, Versioning & Archive
+  async submitAgreementReview(
+    id: string,
+    payload: {
+      stage: AgreementReviewStage;
+      decision: AgreementReviewDecision;
+      comment: string;
+      sendForApproval?: boolean;
+    }
+  ): Promise<AgreementRecord> {
+    const res = await this.request<AgreementRecord>(`/agreements/${id}/reviews`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'পর্যালোচনা সংরক্ষণ করা যায়নি');
+    return res.data;
+  }
+
+  async submitAgreementApproval(
+    id: string,
+    payload: {
+      decision: AgreementApprovalDecision;
+      comment: string;
+      committeeResolutionRef?: string;
+      readyForSignature?: boolean;
+    }
+  ): Promise<AgreementRecord> {
+    const res = await this.request<AgreementRecord>(`/agreements/${id}/approvals`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'অনুমোদন সিদ্ধান্ত সংরক্ষণ করা যায়নি');
+    return res.data;
+  }
+
+  async requestAgreementSignatureOtp(
+    id: string,
+    payload: { slotKey: string; phoneOverride?: string }
+  ): Promise<{
+    challengeId: string;
+    maskedTarget: string;
+    expiresInSec: number;
+    verificationCodePreview: string;
+    noticeBn: string;
+  }> {
+    const res = await this.request<any>(`/agreements/${id}/signatures/otp/request`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'OTP অনুরোধ ব্যর্থ হয়েছে');
+    return res.data;
+  }
+
+  async signAgreementSlot(
+    id: string,
+    payload: {
+      slotKey: string;
+      method: AgreementSignatureMethod;
+      signatureImageDataUrl?: string;
+      typedSignatureText?: string;
+      otpChallengeId?: string;
+      otpCode?: string;
+      signerNameOverride?: string;
+      signerDesignationOverride?: string;
+      signerIdentityRef?: string;
+      authorityBasisOverride?: string;
+      legalLimitationAcknowledged: boolean;
+    }
+  ): Promise<AgreementRecord> {
+    const res = await this.request<AgreementRecord>(`/agreements/${id}/signatures`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'স্বাক্ষর সংরক্ষণ করা যায়নি');
+    return res.data;
+  }
+
+  async signAgreementWitness(
+    id: string,
+    payload: {
+      witnessId?: string;
+      witnessName: string;
+      fatherName?: string;
+      phone?: string;
+      nid?: string;
+      address?: string;
+      partySide?: string;
+      method: 'DRAW_TOUCH' | 'TYPED_ELECTRONIC';
+      signatureImageDataUrl?: string;
+      typedSignatureText?: string;
+    }
+  ): Promise<AgreementRecord> {
+    const res = await this.request<AgreementRecord>(`/agreements/${id}/witnesses/sign`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'সাক্ষীর স্বাক্ষর সংরক্ষণ করা যায়নি');
+    return res.data;
+  }
+
+  async markAgreementEffective(id: string, effectiveDate?: string): Promise<AgreementRecord> {
+    const res = await this.request<AgreementRecord>(`/agreements/${id}/mark-effective`, {
+      method: 'POST',
+      body: JSON.stringify({ effectiveDate }),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'চুক্তিপত্র কার্যকর (Effective) করা যায়নি');
+    return res.data;
+  }
+
+  async createAgreementVersionOrAmendment(
+    id: string,
+    payload: {
+      isAmendment: boolean;
+      amendmentTitle?: string;
+      changeSummary: string;
+      title?: string;
+      purpose?: string;
+      generalClauses?: string;
+      specialClauses?: string;
+      terminationClause?: string;
+      disputeResolutionClause?: string;
+      expiryDate?: string;
+      durationText?: string;
+    }
+  ): Promise<AgreementRecord> {
+    const res = await this.request<AgreementRecord>(`/agreements/${id}/versions`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'নতুন ভার্সন/সংশোধনী তৈরি করা যায়নি');
+    return res.data;
+  }
+
+  async closeOrArchiveAgreement(
+    id: string,
+    payload:
+      | { mode: 'ARCHIVE' | 'UNARCHIVE'; archiveNote?: string }
+      | {
+          mode: 'CLOSE';
+          action: AgreementClosureInfo['action'];
+          reason: string;
+          effectiveClosureDate?: string;
+          alsoArchive?: boolean;
+        }
+  ): Promise<AgreementRecord> {
+    const res = await this.request<AgreementRecord>(`/agreements/${id}/close-or-archive`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'চুক্তিপত্রের অবস্থা হালনাগাদ করা যায়নি');
+    return res.data;
+  }
+
+  async getAgreementArchiveReport(): Promise<AgreementArchiveReport> {
+    const res = await this.request<AgreementArchiveReport>('/agreements/reports/archive');
+    if (!res.success || !res.data) throw new Error(res.error?.message || 'আর্কাইভ ও গভর্ন্যান্স রিপোর্ট লোড করা যায়নি');
+    return res.data;
+  }
+
   // AI Smart Auditor, Smart Entry & Floating Chatbot
   async askAi(question: string, language: string = 'bn') {
     return this.request<any>('/ai/financial-audit', {
@@ -2839,6 +3221,7 @@ class ApiService {
       suggestedExpenseType?: 'GENERAL_EXPENSE' | 'STAFF_EXPENSE' | 'ASSET_EXPENSE' | 'PROPERTY_EXPENSE';
       matchedStaffId?: string;
       confidenceNoteBn: string;
+      warningsBn?: string[];
     }>('/ai/smart-entry', {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -2859,6 +3242,29 @@ class ApiService {
     });
     if (!res.success || !res.data) {
       throw new Error(res.error?.message || 'AI চ্যাটবট থেকে উত্তর পাওয়া যায়নি।');
+    }
+    return res.data;
+  }
+
+  async askUserManualAssistant(payload: {
+    question: string;
+    sectionContext?: { id?: string; title?: string; summary?: string };
+    history?: Array<{ role: 'user' | 'model'; text: string }>;
+  }) {
+    const res = await this.request<{
+      answerBn: string;
+      stepsBn: string[];
+      tipBn: string;
+      recommendedTab: string;
+      recommendedTabLabelBn: string;
+      modelUsed: string;
+      generatedAt: string;
+    }>('/ai/manual-assistant', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'ব্যবহার বিধি AI সহায়তা থেকে উত্তর পাওয়া যায়নি।');
     }
     return res.data;
   }

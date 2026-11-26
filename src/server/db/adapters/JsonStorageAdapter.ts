@@ -11,6 +11,7 @@
  */
 
 import crypto from 'crypto';
+import { resolveMosqueSalaryExpenseHead } from '../../salaryHeadResolver';
 import {
   IReadOnlyDataAccessLayer,
   IScopedMutationDataAccessLayer,
@@ -1507,6 +1508,7 @@ export class JsonIncomeParityRepository implements IIncomeRepository {
       if (updates.paymentMethod !== undefined) item.paymentMethod = updates.paymentMethod;
       if (updates.donorName !== undefined) item.donorName = updates.donorName;
       if (updates.donorPhone !== undefined) item.donorPhone = updates.donorPhone;
+      if (updates.donorAddress !== undefined) item.donorAddress = updates.donorAddress;
       if (updates.reference !== undefined) item.reference = updates.reference;
       if (updates.description !== undefined) item.description = updates.description;
       if (updates.date !== undefined) item.date = updates.date;
@@ -1523,6 +1525,7 @@ export class JsonIncomeParityRepository implements IIncomeRepository {
         linkedDonation.amount = item.amount;
         if (updates.donorName !== undefined && item.donorName) linkedDonation.donorName = item.donorName;
         if (updates.donorPhone !== undefined) linkedDonation.donorPhone = item.donorPhone;
+        if (updates.donorAddress !== undefined) linkedDonation.donorAddress = item.donorAddress;
         if (updates.date !== undefined && item.date) linkedDonation.date = item.date;
         if (updates.accountId !== undefined) {
           linkedDonation.accountId = item.accountId;
@@ -4320,16 +4323,28 @@ export class JsonStaffParityRepository implements IStaffRepository {
         ).padStart(5, '0')}`;
         const expEntryId = `exp-settle-${Date.now()}`;
 
+        const settleHead = resolveMosqueSalaryExpenseHead({
+          accountHeads: tx.accountHeads || [],
+          mosqueId,
+          staff: txStaff,
+          payeeName: txStaff.name,
+          fallbackSubHeadLabelBn: `স্টাফ চূড়ান্ত নিষ্পত্তি ও বিদায়ী সম্মাননা (${txStaff.name})`,
+          existingExpenses: tx.expenseEntries || [],
+        });
+
         tx.expenseEntries.unshift({
           id: expEntryId,
           mosqueId,
           termId: activeTerm ? activeTerm.id : undefined,
           voucherNumber: expVoucher,
           date: setDate,
-          mainHeadId: 'head-exp-01',
-          mainHeadNameBn: 'ইমাম ও স্টাফ বেতন-ভাতা (Staff Salary)',
-          subHeadId: 'head-exp-01-settle',
-          subHeadNameBn: `স্টাফ চূড়ান্ত নিষ্পত্তি ও বিদায়ী সম্মাননা (${txStaff.name})`,
+          mainHeadId: settleHead.mainHeadId,
+          mainHeadNameBn: settleHead.mainHeadNameBn,
+          subHeadId: settleHead.subHeadId,
+          subHeadNameBn: settleHead.subHeadNameBn,
+          sourceModule: 'STAFF_EXPENSE',
+          sourceId: txStaff.id,
+          staffId: txStaff.id,
           amount: netAmount,
           paymentMethod: paymentMethod as any,
           accountId: account.id,
@@ -4503,16 +4518,29 @@ export class JsonStaffParityRepository implements IStaffRepository {
         tx.staffPayments.unshift(payment);
         payments.push(payment);
 
+        const festHead = resolveMosqueSalaryExpenseHead({
+          accountHeads: tx.accountHeads || [],
+          mosqueId,
+          staff,
+          payeeName: staff.name,
+          fallbackSubHeadLabelBn: `${festivalName} ভাতা (${staff.name})`,
+          existingExpenses: tx.expenseEntries || [],
+        });
+
         tx.expenseEntries.unshift({
           id: expEntryId,
           mosqueId,
           termId: activeTerm ? activeTerm.id : undefined,
           voucherNumber: expVoucher,
           date: payDate,
-          mainHeadId: 'head-exp-01',
-          mainHeadNameBn: 'ইমাম ও স্টাফ বেতন-ভাতা (Staff Salary)',
-          subHeadId: staff.designation === 'IMAM' || staff.designation === 'KHATIB' ? 'head-exp-01-1' : 'head-exp-01-2',
-          subHeadNameBn: `${festivalName} ভাতা (${staff.name})`,
+          mainHeadId: festHead.mainHeadId,
+          mainHeadNameBn: festHead.mainHeadNameBn,
+          subHeadId: festHead.subHeadId,
+          subHeadNameBn: festHead.subHeadNameBn,
+          sourceModule: 'STAFF_EXPENSE',
+          sourceId: staff.id,
+          staffId: staff.id,
+          salaryMonth: payMonth,
           amount,
           paymentMethod: payment.paymentMethod,
           accountId: account.id,
@@ -4762,17 +4790,25 @@ export class JsonStaffParityRepository implements IStaffRepository {
         }
       }
 
+      const salaryHead = resolveMosqueSalaryExpenseHead({
+        accountHeads: tx.accountHeads || [],
+        mosqueId,
+        staff: txStaff,
+        payeeName: txStaff.name,
+        fallbackSubHeadLabelBn: `${txStaff.designationBn} বেতন ও হাদিয়া (${txStaff.name} - ${monthName})`,
+        existingExpenses: tx.expenseEntries || [],
+      });
+
       tx.expenseEntries.unshift({
         id: expEntryId,
         mosqueId,
         termId: activeTerm ? activeTerm.id : undefined,
         voucherNumber: expVoucher,
         date: payDate,
-        mainHeadId: 'head-exp-01',
-        mainHeadNameBn: 'ইমাম ও স্টাফ বেতন-ভাতা (Staff Salary)',
-        subHeadId:
-          txStaff.designation === 'IMAM' || txStaff.designation === 'KHATIB' ? 'head-exp-01-1' : 'head-exp-01-2',
-        subHeadNameBn: `${txStaff.designationBn} বেতন ও হাদিয়া (${txStaff.name} - ${monthName})`,
+        mainHeadId: salaryHead.mainHeadId,
+        mainHeadNameBn: salaryHead.mainHeadNameBn,
+        subHeadId: salaryHead.subHeadId,
+        subHeadNameBn: salaryHead.subHeadNameBn,
         amount: totalAmount,
         paymentMethod: paymentRecord.paymentMethod,
         accountId: account.id,
@@ -4970,9 +5006,40 @@ export class JsonStaffParityRepository implements IStaffRepository {
           }
         }
         const effectiveNotes = notes !== undefined ? notes : payment.notes;
+        expEntry.reference = `${payment.paymentType === 'FESTIVAL_ALLOWANCE' ? payment.festivalName || 'উৎসব ভাতা' : 'Salary Month'}: ${payment.month || ''}`;
         expEntry.description = `${payment.staffName} (${payment.designationBn}) এর ${formattedMonthBn} মাসের বেতন পরিশোধ [সংশোধিত] ${
           effectiveNotes ? `(${effectiveNotes})` : ''
         }`.trim();
+        (expEntry as any).updatedAt = new Date().toISOString();
+      }
+    }
+
+    // Ensure linked expense entry always points to this mosque's real Salary Main Head & matching Staff Sub-Head
+    if (expEntry) {
+      const currentStaff = (this.dataSource.staffList || []).find(
+        (s: any) => s.id === payment.staffId && s.mosqueId === mosqueId
+      );
+      const mosqueHeads = (this.dataSource.accountHeads || []).filter(
+        (h: any) => h && h.mosqueId === mosqueId && h.type === 'EXPENSE'
+      );
+      const hasValidMain = mosqueHeads.some((h: any) => h.id === expEntry.mainHeadId && !h.parentId);
+      const hasValidSub = mosqueHeads.some(
+        (h: any) => h.id === expEntry.subHeadId && h.parentId === expEntry.mainHeadId
+      );
+      if (staffChanged || !hasValidMain || !hasValidSub) {
+        const resolvedHead = resolveMosqueSalaryExpenseHead({
+          accountHeads: this.dataSource.accountHeads || [],
+          mosqueId,
+          staff: currentStaff,
+          payeeName: payment.staffName,
+          fallbackSubHeadLabelBn: `${payment.designationBn || ''} বেতন ও হাদিয়া (${payment.staffName} - ${payment.month || ''})`.trim(),
+          preferredSubHeadId: !staffChanged && hasValidSub ? expEntry.subHeadId : undefined,
+          existingExpenses: this.dataSource.expenseEntries || [],
+        });
+        expEntry.mainHeadId = resolvedHead.mainHeadId;
+        expEntry.mainHeadNameBn = resolvedHead.mainHeadNameBn;
+        expEntry.subHeadId = resolvedHead.subHeadId;
+        expEntry.subHeadNameBn = resolvedHead.subHeadNameBn;
         (expEntry as any).updatedAt = new Date().toISOString();
       }
     }
@@ -5443,17 +5510,29 @@ export class JsonStaffParityRepository implements IStaffRepository {
           }
         }
 
+        const batchHead = resolveMosqueSalaryExpenseHead({
+          accountHeads: tx.accountHeads || [],
+          mosqueId,
+          staff,
+          payeeName: staff.name,
+          fallbackSubHeadLabelBn: `${staff.designationBn} বেতন ও হাদিয়া (${staff.name} - ${batch.paymentMonth})`,
+          existingExpenses: tx.expenseEntries || [],
+        });
+
         tx.expenseEntries.unshift({
           id: expEntryId,
           mosqueId,
           termId: activeTerm ? activeTerm.id : undefined,
           voucherNumber: expVoucher,
           date: payDate,
-          mainHeadId: 'head-exp-01',
-          mainHeadNameBn: 'ইমাম ও স্টাফ বেতন-ভাতা (Staff Salary)',
-          subHeadId:
-            staff.designation === 'IMAM' || staff.designation === 'KHATIB' ? 'head-exp-01-1' : 'head-exp-01-2',
-          subHeadNameBn: `${staff.designationBn} বেতন ও হাদিয়া (${staff.name} - ${batch.paymentMonth})`,
+          mainHeadId: batchHead.mainHeadId,
+          mainHeadNameBn: batchHead.mainHeadNameBn,
+          subHeadId: batchHead.subHeadId,
+          subHeadNameBn: batchHead.subHeadNameBn,
+          sourceModule: 'STAFF_EXPENSE',
+          sourceId: staff.id,
+          staffId: staff.id,
+          salaryMonth: batch.paymentMonth,
           amount: item.netPayable,
           paymentMethod: item.paymentMethod || 'BANK',
           accountId: account.id,

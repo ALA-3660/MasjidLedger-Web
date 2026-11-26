@@ -386,6 +386,112 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
     }
   };
 
+  // Lookup set of expense IDs / voucher numbers explicitly linked to StaffPayments
+  const linkedStaffPaymentKeys = useMemo(() => {
+    const set = new Set<string>();
+    (staffPayments || []).forEach((p) => {
+      if (p.expenseEntryId) set.add(p.expenseEntryId);
+      if (p.expenseVoucherNumber) set.add(p.expenseVoucherNumber);
+    });
+    return set;
+  }, [staffPayments]);
+
+  // Deterministic, mutually-exclusive secondary tab classifier (main-head first)
+  const classifyExpenseCategory = useCallback(
+    (e: ExpenseEntry): 'salary' | 'utilities' | 'cleaning' | 'maintenance' | 'construction' | 'purchases' => {
+      const isLinkedStaffPmt =
+        linkedStaffPaymentKeys.has(e.id) ||
+        (e.voucherNumber ? linkedStaffPaymentKeys.has(e.voucherNumber) : false);
+
+      if (isLinkedStaffPmt || isSalaryExpenseEntry(e)) {
+        return 'salary';
+      }
+
+      const norm = (s?: string) =>
+        (s || '')
+          .normalize('NFC')
+          .replace(/য\u09BC/g, 'য়')
+          .replace(/ড\u09BC/g, 'ড়')
+          .replace(/ঢ\u09BC/g, 'ঢ়')
+          .toLowerCase();
+
+      const mainHead = norm(e.mainHeadNameBn);
+      const mainHeadId = (e.mainHeadId || '').toLowerCase();
+      const fullText = `${mainHead} ${norm(e.subHeadNameBn)} ${norm(e.description)}`;
+
+      // 1. Primary classification strictly by Main Expense Head
+      if (
+        mainHeadId === 'head-exp-02' ||
+        mainHeadId.endsWith('-exp-02') ||
+        ['বিদ্যুৎ', 'পানি', 'গ্যাস', 'ইউটিলিটি', 'utility', 'utilities', 'ওয়াসা', 'ওয়াসা'].some((kw) =>
+          mainHead.includes(norm(kw))
+        )
+      ) {
+        return 'utilities';
+      }
+
+      if (['পরিষ্কার', 'পরিচ্ছন্নতা', 'clean'].some((kw) => mainHead.includes(norm(kw)))) {
+        return 'cleaning';
+      }
+
+      if (
+        ['নির্মাণ', 'অবকাঠামো', 'উন্নয়ন', 'উন্নয়ন', 'construction', 'development'].some((kw) =>
+          mainHead.includes(norm(kw))
+        )
+      ) {
+        return 'construction';
+      }
+
+      if (
+        mainHeadId === 'head-exp-03' ||
+        mainHeadId.endsWith('-exp-03') ||
+        ['মেরামত', 'রক্ষণাবেক্ষণ', 'সংস্কার', 'maintenance', 'repair'].some((kw) => mainHead.includes(norm(kw)))
+      ) {
+        return 'maintenance';
+      }
+
+      if (
+        [
+          'প্রশাসনিক',
+          'আপ্যায়ন',
+          'আপ্যায়ন',
+          'ওয়াকফ',
+          'ওয়াকফ',
+          'ভূমি',
+          'কবরস্থান',
+          'রমজান',
+          'দান বাক্স',
+          'ক্রয়',
+          'ক্রয়',
+          'অন্যান্য',
+        ].some((kw) => mainHead.includes(norm(kw)))
+      ) {
+        return 'purchases';
+      }
+
+      // 2. Fallback for generic/custom main heads (never routes non-salary heads into salary)
+      if (['বিদ্যুৎ', 'গ্যাস', 'ওয়াসা', 'ওয়াসা', 'মিটার', 'পানির বিল'].some((kw) => fullText.includes(norm(kw)))) {
+        return 'utilities';
+      }
+      if (
+        ['পরিষ্কার', 'পরিচ্ছন্নতা', 'ঝাড়ু', 'ঝাড়ু', 'স্যাভলন', 'ফিনাইল', 'ক্লিনার', 'টয়লেট', 'টয়লেট'].some((kw) =>
+          fullText.includes(norm(kw))
+        )
+      ) {
+        return 'cleaning';
+      }
+      if (['নির্মাণ', 'টাইলস', 'সিমেন্ট', 'রড', 'উন্নয়ন', 'উন্নয়ন', 'গম্বুজ', 'মিনার'].some((kw) => fullText.includes(norm(kw)))) {
+        return 'construction';
+      }
+      if (['মেরামত', 'সার্ভিসিং', 'ইলেকট্রিক', 'প্লাম্বিং', 'রং', 'এসি'].some((kw) => fullText.includes(norm(kw)))) {
+        return 'maintenance';
+      }
+
+      return 'purchases';
+    },
+    [linkedStaffPaymentKeys]
+  );
+
   // KPI Calculations
   const stats = useMemo(() => {
     const now = new Date();
@@ -413,26 +519,14 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
         monthlyExpense += amt;
       }
 
-      const headName = (exp.mainHeadNameBn || '').toLowerCase();
-      const desc = (exp.description || '').toLowerCase();
-
-      if (headName.includes('বেতন') || headName.includes('সম্মানী') || desc.includes('বেতন')) {
+      const category = classifyExpenseCategory(exp);
+      if (category === 'salary') {
         salaryExpense += amt;
-      }
-      if (
-        headName.includes('বিদ্যুৎ') ||
-        headName.includes('পানি') ||
-        headName.includes('গ্যাস') ||
-        headName.includes('ইউটিলিটি') ||
-        desc.includes('বিদ্যুৎ') ||
-        desc.includes('বিল')
-      ) {
+      } else if (category === 'utilities') {
         utilityExpense += amt;
-      }
-      if (headName.includes('মেরামত') || headName.includes('রক্ষণাবেক্ষণ') || desc.includes('মেরামত')) {
+      } else if (category === 'maintenance') {
         maintenanceExpense += amt;
-      }
-      if (headName.includes('নির্মাণ') || headName.includes('উন্নয়ন') || desc.includes('নির্মাণ')) {
+      } else if (category === 'construction') {
         constructionExpense += amt;
       }
     });
@@ -447,26 +541,36 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
       constructionExpense,
       totalCount: expenses.length,
     };
-  }, [expenses]);
+  }, [expenses, classifyExpenseCategory]);
 
-  // Specific category filtered slices
+  // Specific category filtered slices (strictly separated per secondary ledger)
   const categoryFilters = useMemo(() => {
-    const matchCategory = (keywords: string[]) => {
-      return expenses.filter((e) => {
-        const text = `${e.mainHeadNameBn} ${e.subHeadNameBn || ''} ${e.description || ''}`.toLowerCase();
-        return keywords.some((kw) => text.includes(kw));
-      });
-    };
+    const salaryList: ExpenseEntry[] = [];
+    const utilitiesList: ExpenseEntry[] = [];
+    const cleaningList: ExpenseEntry[] = [];
+    const maintenanceList: ExpenseEntry[] = [];
+    const constructionList: ExpenseEntry[] = [];
+    const purchasesList: ExpenseEntry[] = [];
+
+    expenses.forEach((e) => {
+      const cat = classifyExpenseCategory(e);
+      if (cat === 'salary') salaryList.push(e);
+      else if (cat === 'utilities') utilitiesList.push(e);
+      else if (cat === 'cleaning') cleaningList.push(e);
+      else if (cat === 'maintenance') maintenanceList.push(e);
+      else if (cat === 'construction') constructionList.push(e);
+      else purchasesList.push(e);
+    });
 
     return {
-      salaryList: matchCategory(['বেতন', 'সম্মানী', 'ইমাম', 'মুয়াজ্জিন', 'খাদেম']),
-      utilitiesList: matchCategory(['বিদ্যুৎ', 'পানি', 'গ্যাস', 'বিল', 'ওয়াসা', 'মিটার']),
-      cleaningList: matchCategory(['পরিষ্কার', 'ঝাড়ু', 'স্যাভলন', 'ফিনাইল', 'ক্লিনার', 'টয়লেট']),
-      maintenanceList: matchCategory(['মেরামত', 'সার্ভিসিং', 'ইলেকট্রিক', 'প্লাম্বিং', 'রং', 'এসি']),
-      constructionList: matchCategory(['নির্মাণ', 'টাইলস', 'সিমেন্ট', 'রড', 'উন্নয়ন', 'গম্বুজ', 'মিনার']),
-      purchasesList: matchCategory(['ক্রয়', 'মাইক', 'ঘড়ি', 'ফ্যান', 'স্টেশনারি', 'ইফতার', 'মিলাদ']),
+      salaryList,
+      utilitiesList,
+      cleaningList,
+      maintenanceList,
+      constructionList,
+      purchasesList,
     };
-  }, [expenses]);
+  }, [expenses, classifyExpenseCategory]);
 
   // ===================== REGISTER & REPORTING ENGINE (PHASE E5-A & E5-B) =====================
   const [reportFilterState, setReportFilterState] = useState<DateFilterState>(getDefaultDateFilterState());
@@ -1502,7 +1606,7 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                   if (parsed.paymentMethod) {
                     setPaymentMethod(parsed.paymentMethod as PaymentMethod);
                   }
-                  if (parsed.personName) setPayeeName(parsed.personName);
+                  if (parsed.vendorOrOrgName || parsed.personName) setPayeeName(parsed.vendorOrOrgName || parsed.personName);
                   if (parsed.personPhone) setPayeePhone(parsed.personPhone);
                   if (parsed.reference) setReference(parsed.reference);
                   if (parsed.description) setDescription(parsed.description);
@@ -1799,9 +1903,9 @@ export const ExpenseManagementView: React.FC<ExpenseManagementViewProps> = ({
                         amount: parsed.amount,
                         mainHeadId: parsed.mainHeadId || undefined,
                         subHeadId: parsed.subHeadId || undefined,
-                        payeeName: parsed.personName || '',
+                        payeeName: parsed.vendorOrOrgName || parsed.personName || '',
                         payeePhone: parsed.personPhone || '',
-                        paymentMethod: parsed.paymentMethod as PaymentMethod,
+                        paymentMethod: parsed.paymentMethod ? (parsed.paymentMethod as PaymentMethod) : undefined,
                         reference: parsed.reference || '',
                         description: parsed.description || '',
                       },

@@ -11,6 +11,8 @@ import {
   Wand2,
   ShieldCheck,
   Check,
+  FileImage,
+  AlertTriangle,
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { ZeroStorageCameraModal } from './ZeroStorageCameraModal';
@@ -27,13 +29,60 @@ export interface AiSmartEntryResult {
   personName: string;
   vendorOrOrgName?: string;
   personPhone: string;
-  paymentMethod: 'CASH' | 'BANK' | 'BKASH' | 'NAGAD' | 'ROCKET';
+  paymentMethod?: 'CASH' | 'BANK' | 'BKASH' | 'NAGAD' | 'ROCKET';
   reference: string;
   description: string;
   suggestedIncomeType?: 'JUMMA' | 'DONATION' | 'DONATION_BOX' | 'WAQF_RENT' | 'OTHER_INCOME';
   suggestedExpenseType?: 'GENERAL_EXPENSE' | 'STAFF_EXPENSE' | 'ASSET_EXPENSE' | 'PROPERTY_EXPENSE';
   matchedStaffId?: string;
+  warningsBn?: string[];
   confidenceNoteBn: string;
+}
+
+function compressFileToEphemeralJpegBase64(file: File, maxDim = 1440): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('ছবিটি পড়া যায়নি। অনুগ্রহ করে একটি স্পষ্ট ছবি নির্বাচন করুন।'));
+    reader.onload = () => {
+      const dataUrl = String(reader.result || '');
+      const img = new Image();
+      img.onerror = () => {
+        const idx = dataUrl.indexOf(',');
+        resolve(idx >= 0 ? dataUrl.slice(idx + 1) : dataUrl);
+      };
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width >= height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          const idx = dataUrl.indexOf(',');
+          resolve(idx >= 0 ? dataUrl.slice(idx + 1) : dataUrl);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        const jpegUrl = canvas.toDataURL('image/jpeg', 0.86);
+        // Zero-storage cleanup: wipe canvas pixels immediately
+        ctx.clearRect(0, 0, width, height);
+        canvas.width = 0;
+        canvas.height = 0;
+        const idx = jpegUrl.indexOf(',');
+        resolve(idx >= 0 ? jpegUrl.slice(idx + 1) : jpegUrl);
+      };
+      img.src = dataUrl;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 interface AiSmartEntryToolbarProps {
@@ -72,13 +121,15 @@ export const AiSmartEntryToolbar: React.FC<AiSmartEntryToolbarProps> = ({
   accentColor = entryType === 'INCOME' ? 'emerald' : 'rose',
 }) => {
   const recognitionRef = useRef<any>(null);
+  const directFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
   const [isQuickOpen, setIsQuickOpen] = useState(false);
   const [quickText, setQuickText] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [processingMode, setProcessingMode] = useState<'RECEIPT_SCAN' | 'TEXT_ENTRY' | null>(null);
+  const [processingMode, setProcessingMode] = useState<'CAMERA_SCAN' | 'FILE_SCAN' | 'TEXT_ENTRY' | null>(null);
+  const [lastScanWasZeroStorage, setLastScanWasZeroStorage] = useState(false);
   const [pendingPreview, setPendingPreview] = useState<AiSmartEntryResult | null>(null);
   const [selectedFields, setSelectedFields] = useState<Record<PreviewFieldKey, boolean>>({
     date: true,
@@ -118,7 +169,7 @@ export const AiSmartEntryToolbar: React.FC<AiSmartEntryToolbarProps> = ({
     setErrorBanner(null);
     setSuccessBanner(null);
     setIsProcessing(true);
-    setProcessingMode('RECEIPT_SCAN');
+    setProcessingMode(payload.source === 'CAMERA' ? 'CAMERA_SCAN' : 'FILE_SCAN');
 
     try {
       const parsed = await api.parseAiSmartEntry({
@@ -127,11 +178,55 @@ export const AiSmartEntryToolbar: React.FC<AiSmartEntryToolbarProps> = ({
         imageBase64: payload.base64,
         mimeType: payload.mimeType,
       });
+      setLastScanWasZeroStorage(true);
       openPreviewCard(parsed);
     } catch (err: any) {
-      setErrorBanner(err?.message || 'রসিদ/বিল স্ক্যান করতে ব্যর্থ হয়েছে। অনুগ্রহ করে পুনরায় চেষ্টা করুন।');
+      setErrorBanner(
+        err?.message ||
+          'রসিদ/বিল স্ক্যান করতে ব্যর্থ হয়েছে। আলো কম বা ছবি ঝাপসা হলে পুনরায় চেষ্টা করুন অথবা নিচের টেক্সট/ম্যানুয়াল এন্ট্রি ব্যবহার করুন।'
+      );
       throw err;
     } finally {
+      setIsProcessing(false);
+      setProcessingMode(null);
+    }
+  };
+
+  const handleDirectFileScanChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setErrorBanner('অনুগ্রহ করে রসিদ, স্ক্রিনশট বা ক্যাশ মেমোর একটি পরিষ্কার ছবি (JPG/PNG/WEBP) নির্বাচন করুন।');
+      return;
+    }
+
+    setErrorBanner(null);
+    setSuccessBanner(null);
+    setIsProcessing(true);
+    setProcessingMode('FILE_SCAN');
+
+    let ephemeralBase64 = '';
+    try {
+      ephemeralBase64 = await compressFileToEphemeralJpegBase64(file, 1440);
+      const parsed = await api.parseAiSmartEntry({
+        mode: 'RECEIPT_SCAN',
+        entryType,
+        imageBase64: ephemeralBase64,
+        mimeType: 'image/jpeg',
+      });
+      ephemeralBase64 = '';
+      setLastScanWasZeroStorage(true);
+      openPreviewCard(parsed);
+    } catch (err: any) {
+      ephemeralBase64 = '';
+      setErrorBanner(
+        err?.message ||
+          'ছবি থেকে তথ্য পড়া যায়নি। অনুগ্রহ করে পরিষ্কার ছবি দিন অথবা টেক্সট/ম্যানুয়াল এন্ট্রি চালু রাখুন।'
+      );
+    } finally {
+      ephemeralBase64 = '';
       setIsProcessing(false);
       setProcessingMode(null);
     }
@@ -152,11 +247,12 @@ export const AiSmartEntryToolbar: React.FC<AiSmartEntryToolbarProps> = ({
         entryType,
         text: cleaned,
       });
+      setLastScanWasZeroStorage(false);
       openPreviewCard(parsed);
       setQuickText('');
       setIsQuickOpen(false);
     } catch (err: any) {
-      setErrorBanner(err?.message || 'AI দ্রুত এন্ট্রি বিশ্লেষণ ব্যর্থ হয়েছে।');
+      setErrorBanner(err?.message || 'AI দ্রুত এন্ট্রি বিশ্লেষণ ব্যর্থ হয়েছে। আপনি ম্যানুয়ালি ফর্ম পূরণ করতে পারবেন।');
     } finally {
       setIsProcessing(false);
       setProcessingMode(null);
@@ -173,7 +269,7 @@ export const AiSmartEntryToolbar: React.FC<AiSmartEntryToolbarProps> = ({
       personName: selectedFields.personName ? pendingPreview.personName : '',
       vendorOrOrgName: selectedFields.personName ? pendingPreview.vendorOrOrgName : '',
       personPhone: selectedFields.personPhone ? pendingPreview.personPhone : '',
-      paymentMethod: selectedFields.paymentMethod ? pendingPreview.paymentMethod : 'CASH',
+      paymentMethod: selectedFields.paymentMethod ? pendingPreview.paymentMethod : undefined,
       reference: selectedFields.reference ? pendingPreview.reference : '',
       mainHeadId: selectedFields.head ? pendingPreview.mainHeadId : '',
       mainHeadNameBn: selectedFields.head ? pendingPreview.mainHeadNameBn : '',
@@ -185,7 +281,9 @@ export const AiSmartEntryToolbar: React.FC<AiSmartEntryToolbarProps> = ({
     onApplyData(filtered);
     setPendingPreview(null);
     setSuccessBanner(
-      'অনুমোদিত তথ্যগুলো ফর্মে বসানো হয়েছে (ডাটাবেসে এখনো সেভ হয়নি)। অনুগ্রহ করে টাকার অঙ্ক, তারিখ ও রসিদ নম্বর যাচাই করে নিজে "সংরক্ষণ করুন" বাটনে ক্লিক করুন।'
+      lastScanWasZeroStorage
+        ? 'অনুমোদিত তথ্যগুলো ফর্মে বসানো হয়েছে (ডাটাবেসে এখনো সেভ হয়নি এবং স্ক্যান করা ছবি মেমোরি থেকে মুছে ফেলা হয়েছে)। টাকার অঙ্ক, তারিখ ও রসিদ নম্বর যাচাই করে নিজে "সংরক্ষণ করুন" বাটনে ক্লিক করুন।'
+        : 'অনুমোদিত তথ্যগুলো ফর্মে বসানো হয়েছে (ডাটাবেসে এখনো সেভ হয়নি)। অনুগ্রহ করে টাকার অঙ্ক, তারিখ ও রসিদ নম্বর যাচাই করে নিজে "সংরক্ষণ করুন" বাটনে ক্লিক করুন।'
     );
   };
 
@@ -258,6 +356,14 @@ export const AiSmartEntryToolbar: React.FC<AiSmartEntryToolbarProps> = ({
         onCaptureConfirm={handleCameraExtractConfirm}
       />
 
+      <input
+        ref={directFileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleDirectFileScanChange}
+        className="hidden"
+      />
+
       <div className="flex flex-wrap items-center justify-between gap-2.5">
         <div className="flex items-center gap-2 min-w-0">
           <div
@@ -272,18 +378,19 @@ export const AiSmartEntryToolbar: React.FC<AiSmartEntryToolbarProps> = ({
           <div className="min-w-0">
             <div className="text-xs sm:text-sm font-bold text-slate-900 leading-tight">
               {entryType === 'INCOME'
-                ? 'জিরো-স্টোরেজ ক্যামেরা স্ক্যান ও AI স্মার্ট এন্ট্রি'
-                : 'জিরো-স্টোরেজ বিল/ক্যাশ মেমো স্ক্যান ও AI স্মার্ট এন্ট্রি'}
+                ? 'AI স্মার্ট এন্ট্রি (রসিদ / বিকাশ SMS / টেক্সট)'
+                : 'AI বিল/রসিদ স্ক্যান ও দ্রুত এন্ট্রি'}
             </div>
             <div className="text-[11px] text-slate-600 leading-tight font-tiro">
               {entryType === 'INCOME'
-                ? 'রসিদ/বিকাশ স্ক্রিনশট ক্যামেরায় স্ক্যান করুন (ছবি সেভ হবে না) — প্রিভিউ যাচাই করে ফর্মে বসান'
-                : 'বাজারের ক্যাশ মেমো, হার্ডওয়্যার বা ইউটিলিটি বিল ক্যামেরায় স্ক্যান করুন (ছবি সেভ হবে না)'}
+                ? 'লাইভ ক্যামেরা বা স্ক্রিনশট থেকে রসিদ পড়ুন (জিরো-স্টোরেজ: ছবি সেভ হবে না) — প্রিভিউ যাচাই করে ফর্মে বসান'
+                : 'লাইভ ক্যামেরা বা ছবি দিয়ে ক্যাশ মেমো/হার্ডওয়্যার বিল পড়ুন (জিরো-স্টোরেজ: ছবি সেভ হবে না)'}
             </div>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* 1. Zero-Storage Live Camera Scan Button */}
           <button
             type="button"
             disabled={isProcessing}
@@ -297,22 +404,51 @@ export const AiSmartEntryToolbar: React.FC<AiSmartEntryToolbarProps> = ({
                 : 'bg-rose-700 hover:bg-rose-800 text-white'
             }`}
           >
-            {isProcessing && processingMode === 'RECEIPT_SCAN' ? (
+            {isProcessing && processingMode === 'CAMERA_SCAN' ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
             ) : (
               <Camera className="w-3.5 h-3.5" />
             )}
             <span>
-              {isProcessing && processingMode === 'RECEIPT_SCAN'
+              {isProcessing && processingMode === 'CAMERA_SCAN'
                 ? entryType === 'INCOME'
-                  ? 'রসিদ পড়া হচ্ছে...'
-                  : 'বিল / মেমো পড়া হচ্ছে...'
+                  ? 'ক্যামেরা রসিদ পড়া হচ্ছে...'
+                  : 'ক্যামেরা বিল পড়া হচ্ছে...'
                 : entryType === 'INCOME'
                 ? '📷 ক্যামেরা দিয়ে রসিদ স্ক্যান করুন (ফাইল সেভ না করে)'
                 : '📷 ক্যামেরা দিয়ে বিল/ক্যাশ মেমো স্ক্যান করুন (ফাইল সেভ না করে)'}
             </span>
           </button>
 
+          {/* 2. Existing Direct Screenshot / Cash Memo Image Scan Button (Zero-Storage) */}
+          <button
+            type="button"
+            disabled={isProcessing}
+            onClick={() => {
+              setErrorBanner(null);
+              directFileInputRef.current?.click();
+            }}
+            className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold border shadow-2xs transition disabled:opacity-50 cursor-pointer ${
+              isEmerald
+                ? 'bg-white hover:bg-emerald-50 text-emerald-900 border-emerald-300'
+                : 'bg-white hover:bg-rose-50 text-rose-900 border-rose-300'
+            }`}
+          >
+            {isProcessing && processingMode === 'FILE_SCAN' ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <FileImage className="w-3.5 h-3.5" />
+            )}
+            <span>
+              {isProcessing && processingMode === 'FILE_SCAN'
+                ? 'ছবি বিশ্লেষণ হচ্ছে...'
+                : entryType === 'INCOME'
+                ? 'রসিদ / স্ক্রিনশট স্ক্যান'
+                : 'বিল / ক্যাশ মেমো স্ক্যান'}
+            </span>
+          </button>
+
+          {/* 3. Existing SMS / Bangla Text & Voice Smart Entry Button */}
           <button
             type="button"
             disabled={isProcessing}
@@ -355,18 +491,32 @@ export const AiSmartEntryToolbar: React.FC<AiSmartEntryToolbarProps> = ({
             </button>
           </div>
 
+          {pendingPreview.warningsBn && pendingPreview.warningsBn.length > 0 && (
+            <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-300 text-[11px] text-amber-900 space-y-1 font-tiro">
+              {pendingPreview.warningsBn.map((warn, idx) => (
+                <div key={idx} className="flex items-start gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                  <span>{warn}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-xs">
             <label className="flex items-start gap-2 p-2 rounded-lg bg-slate-50 border border-slate-200 cursor-pointer">
               <input
                 type="checkbox"
                 checked={selectedFields.amount}
+                disabled={!(Number(pendingPreview.amount) > 0)}
                 onChange={(e) => setSelectedFields((p) => ({ ...p, amount: e.target.checked }))}
                 className="mt-0.5 rounded text-emerald-700"
               />
               <div>
                 <div className="text-[10px] font-bold text-slate-500">টাকার পরিমাণ *</div>
-                <div className="font-bold text-slate-900 font-baloo">
-                  ৳ {toBanglaNumber(pendingPreview.amount || 0)}
+                <div className={`font-bold font-baloo ${Number(pendingPreview.amount) > 0 ? 'text-slate-900' : 'text-amber-700 text-[11px]'}`}>
+                  {Number(pendingPreview.amount) > 0
+                    ? `৳ ${toBanglaNumber(pendingPreview.amount)}`
+                    : 'স্পষ্ট নয় (ম্যানুয়ালি দিন)'}
                 </div>
               </div>
             </label>
@@ -375,12 +525,15 @@ export const AiSmartEntryToolbar: React.FC<AiSmartEntryToolbarProps> = ({
               <input
                 type="checkbox"
                 checked={selectedFields.date}
+                disabled={!pendingPreview.date}
                 onChange={(e) => setSelectedFields((p) => ({ ...p, date: e.target.checked }))}
                 className="mt-0.5 rounded text-emerald-700"
               />
               <div>
                 <div className="text-[10px] font-bold text-slate-500">তারিখ</div>
-                <div className="font-bold text-slate-900 font-baloo">{pendingPreview.date || 'পাওয়া যায়নি'}</div>
+                <div className={`font-bold font-baloo ${pendingPreview.date ? 'text-slate-900' : 'text-amber-700 text-[11px]'}`}>
+                  {pendingPreview.date || 'পাওয়া যায়নি (ম্যানুয়ালি দিন)'}
+                </div>
               </div>
             </label>
 
@@ -393,10 +546,12 @@ export const AiSmartEntryToolbar: React.FC<AiSmartEntryToolbarProps> = ({
               />
               <div className="min-w-0">
                 <div className="text-[10px] font-bold text-slate-500">
-                  {entryType === 'INCOME' ? 'দাতা / প্রতিষ্ঠান' : 'প্রাপক / দোকান / প্রতিষ্ঠান'}
+                  {entryType === 'INCOME' ? 'দাতা / প্রতিষ্ঠান' : 'দোকান / প্রতিষ্ঠান / প্রাপক'}
                 </div>
                 <div className="font-bold text-slate-900 truncate">
-                  {pendingPreview.personName || pendingPreview.vendorOrOrgName || 'উল্লেখ নেই'}
+                  {entryType === 'EXPENSE'
+                    ? pendingPreview.vendorOrOrgName || pendingPreview.personName || 'উল্লেখ নেই'
+                    : pendingPreview.personName || pendingPreview.vendorOrOrgName || 'উল্লেখ নেই'}
                 </div>
               </div>
             </label>
@@ -410,7 +565,7 @@ export const AiSmartEntryToolbar: React.FC<AiSmartEntryToolbarProps> = ({
               />
               <div>
                 <div className="text-[10px] font-bold text-slate-500">পেমেন্ট মাধ্যম</div>
-                <div className="font-bold text-slate-900">{pendingPreview.paymentMethod}</div>
+                <div className="font-bold text-slate-900">{pendingPreview.paymentMethod || 'CASH'}</div>
               </div>
             </label>
 
@@ -464,7 +619,7 @@ export const AiSmartEntryToolbar: React.FC<AiSmartEntryToolbarProps> = ({
                 className="mt-0.5 rounded text-emerald-700"
               />
               <div className="min-w-0">
-                <div className="text-[10px] font-bold text-slate-500">বিবরণ</div>
+                <div className="text-[10px] font-bold text-slate-500">আইটেম / বিবরণ</div>
                 <div className="font-medium text-slate-800 line-clamp-2 font-tiro">
                   {pendingPreview.description || 'উল্লেখ নেই'}
                 </div>
@@ -473,9 +628,16 @@ export const AiSmartEntryToolbar: React.FC<AiSmartEntryToolbarProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100">
-            <span className="text-[11px] text-slate-600 font-tiro">
-              {pendingPreview.confidenceNoteBn}
-            </span>
+            <div className="space-y-0.5">
+              <span className="text-[11px] text-slate-600 font-tiro block">
+                {pendingPreview.confidenceNoteBn}
+              </span>
+              {lastScanWasZeroStorage && (
+                <span className="text-[10px] text-emerald-700 font-semibold block">
+                  জিরো-স্টোরেজ নিশ্চিত: ছবিটি ডিস্ক বা ডাটাবেসে সেভ করা হয়নি এবং মেমোরি থেকে পরিষ্কার করা হয়েছে।
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -490,7 +652,7 @@ export const AiSmartEntryToolbar: React.FC<AiSmartEntryToolbarProps> = ({
                 className="px-4 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
               >
                 <Check className="w-3.5 h-3.5" />
-                <span>যাচাই করে ফর্মে বসান</span>
+                <span>ফর্মে বসান / Apply</span>
               </button>
             </div>
           </div>
