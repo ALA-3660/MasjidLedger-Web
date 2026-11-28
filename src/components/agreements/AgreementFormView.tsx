@@ -52,6 +52,19 @@ import {
   AgreementOcrScannerModal,
   AgreementOcrVerifiedApplyPayload,
 } from './AgreementOcrScannerModal';
+import { PartyRecord } from '../../types/partyTypes';
+import { PartySearchSelect } from '../parties/PartySearchSelect';
+
+function mapPartyRecordToAgreementType(party: PartyRecord): AgreementPartyType {
+  if (party.partyType === 'ORGANIZATION') {
+    if (party.roles?.includes('CONTRACTOR')) return 'CONTRACTOR_FIRM';
+    return 'ORGANIZATION';
+  }
+  if (party.roles?.includes('CONTRACTOR') || party.roles?.includes('MASON')) {
+    return 'CONTRACTOR_FIRM';
+  }
+  return 'INDIVIDUAL';
+}
 
 interface AgreementFormViewProps {
   mosque?: Mosque | null;
@@ -67,6 +80,24 @@ interface AgreementFormViewProps {
 
 function makeTempId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+const DEFAULT_WITNESS_PARTY_SIDES = ['প্রথম পক্ষের সাক্ষী', 'দ্বিতীয় পক্ষের সাক্ষী', 'নিরপেক্ষ / ৩য় সাক্ষী'];
+
+function ensureMinimumWitnesses(list?: AgreementWitness[] | null): AgreementWitness[] {
+  const base = Array.isArray(list) ? list.map((w) => ({ ...w })) : [];
+  while (base.length < 3) {
+    const idx = base.length;
+    base.push({
+      id: makeTempId('wit'),
+      name: '',
+      fatherName: '',
+      address: '',
+      phone: '',
+      partySide: DEFAULT_WITNESS_PARTY_SIDES[idx] || '',
+    });
+  }
+  return base;
 }
 
 function createDefaultParties(mosque?: Mosque | null): AgreementParty[] {
@@ -203,14 +234,9 @@ export const AgreementFormView: React.FC<AgreementFormViewProps> = ({
     editingAgreement?.disputeResolutionClause || presetTemplate?.defaultDisputeResolutionClause || ''
   );
 
-  // Witnesses & Attachments
-  const [witnesses, setWitnesses] = useState<AgreementWitness[]>(
-    editingAgreement?.witnesses?.length
-      ? editingAgreement.witnesses
-      : [
-          { id: makeTempId('wit'), name: '', fatherName: '', address: '', phone: '', partySide: 'প্রথম পক্ষের সাক্ষী' },
-          { id: makeTempId('wit'), name: '', fatherName: '', address: '', phone: '', partySide: 'দ্বিতীয় পক্ষের সাক্ষী' },
-        ]
+  // Witnesses & Attachments (ন্যূনতম ৩ জন সাক্ষী ডিফল্টভাবে বাধ্যতামূলক)
+  const [witnesses, setWitnesses] = useState<AgreementWitness[]>(() =>
+    ensureMinimumWitnesses(editingAgreement?.witnesses)
   );
   const [attachments, setAttachments] = useState<AgreementAttachmentRef[]>(editingAgreement?.attachments || []);
   const [templateIdUsed, setTemplateIdUsed] = useState<string | undefined>(
@@ -539,10 +565,24 @@ export const AgreementFormView: React.FC<AgreementFormViewProps> = ({
 
   // Witness handlers
   const handleAddWitness = () => {
-    setWitnesses((prev) => [
-      ...prev,
-      { id: makeTempId('wit'), name: '', fatherName: '', address: '', phone: '', partySide: '' },
-    ]);
+    setWitnesses((prev) => {
+      if (prev.length >= 12) return prev;
+      return [
+        ...prev,
+        { id: makeTempId('wit'), name: '', fatherName: '', address: '', phone: '', partySide: '' },
+      ];
+    });
+  };
+
+  const handleRemoveOrClearWitness = (idx: number, id: string) => {
+    setWitnesses((prev) => {
+      if (idx < 3) {
+        return prev.map((x) =>
+          x.id === id ? { ...x, name: '', fatherName: '', address: '', phone: '', nid: '' } : x
+        );
+      }
+      return prev.filter((x) => x.id !== id);
+    });
   };
 
   // Attachment reference handlers
@@ -594,7 +634,15 @@ export const AgreementFormView: React.FC<AgreementFormViewProps> = ({
     specialClauses: specialClauses.trim() || undefined,
     terminationClause: terminationClause.trim() || undefined,
     disputeResolutionClause: disputeResolutionClause.trim() || undefined,
-    witnesses: witnesses.filter((w) => w.name.trim()),
+    witnesses: witnesses.slice(0, 12).map((w) => ({
+      ...w,
+      name: w.name.trim(),
+      fatherName: w.fatherName?.trim() || '',
+      address: w.address?.trim() || '',
+      phone: w.phone?.trim() || '',
+      nid: w.nid?.trim() || '',
+      partySide: w.partySide?.trim() || '',
+    })),
     attachments: attachments.filter((a) => a.title.trim()),
     templateIdUsed,
     isWaqfOrLandRelated: showLandWaqfSection,
@@ -1003,6 +1051,51 @@ export const AgreementFormView: React.FC<AgreementFormViewProps> = ({
                 )}
               </div>
 
+              <div className="bg-white rounded-lg border border-slate-200/80 p-3">
+                <PartySearchSelect
+                  compact
+                  valuePartyId={party.linkedPartyId}
+                  valuePartyCode={party.linkedPartyCode}
+                  selectedSnapshotName={party.name}
+                  onSelectParty={(picked) => {
+                    if (!picked) {
+                      handleUpdateParty(party.id, {
+                        linkedPartyId: undefined,
+                        linkedPartyCode: undefined,
+                      });
+                      return;
+                    }
+                    const addr =
+                      picked.fullAddress ||
+                      [picked.villageOrArea, picked.upazila, picked.district]
+                        .filter(Boolean)
+                        .join(', ');
+                    handleUpdateParty(party.id, {
+                      linkedPartyId: picked.partyId,
+                      linkedPartyCode: picked.partyCode,
+                      partyType: mapPartyRecordToAgreementType(picked),
+                      name: picked.name,
+                      fatherOrOrgHead:
+                        picked.partyType === 'ORGANIZATION'
+                          ? picked.organizationHeadName || party.fatherOrOrgHead || ''
+                          : picked.fatherOrGuardianName || party.fatherOrOrgHead || '',
+                      phone: picked.phone || party.phone || '',
+                      nidOrRegNo: picked.nidNumber || party.nidOrRegNo || '',
+                      address: addr || party.address || '',
+                    });
+                  }}
+                  label="কেন্দ্রীয় পার্টি রেজিস্ট্রি থেকে এই পক্ষ নির্বাচন / দ্রুত নিবন্ধন (ঐচ্ছিক)"
+                  placeholder="রেজিস্ট্রি থেকে ব্যক্তি বা প্রতিষ্ঠান খুঁজুন (নাম, মোবাইল বা PTY কোড)..."
+                  categoryGroup="ALL"
+                  defaultQuickCreateRoles={['CONTRACTOR', 'SUPPLIER', 'LAND_BUYER']}
+                  defaultQuickCreateType={party.partyType === 'INDIVIDUAL' ? 'INDIVIDUAL' : 'ORGANIZATION'}
+                  defaultQuickCreateTitle="চুক্তির পক্ষ হিসেবে নতুন ব্যক্তি/প্রতিষ্ঠান নিবন্ধন"
+                  prefillName={party.name}
+                  prefillPhone={party.phone}
+                  prefillAddress={party.address}
+                />
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-700 font-siliguri mb-1">
@@ -1110,8 +1203,40 @@ export const AgreementFormView: React.FC<AgreementFormViewProps> = ({
                 {party.representatives.map((rep, rIdx) => (
                   <div
                     key={rep.id}
-                    className="p-3 rounded-lg bg-white border border-slate-200 grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end"
+                    className="p-3 rounded-lg bg-white border border-slate-200 space-y-2.5"
                   >
+                    <PartySearchSelect
+                      compact
+                      partyTypeFilter="INDIVIDUAL"
+                      valuePartyId={rep.linkedPartyId}
+                      valuePartyCode={rep.linkedPartyCode}
+                      selectedSnapshotName={rep.name}
+                      onSelectParty={(picked) => {
+                        if (!picked) {
+                          handleUpdateRepresentative(party.id, rep.id, {
+                            linkedPartyId: undefined,
+                            linkedPartyCode: undefined,
+                          });
+                          return;
+                        }
+                        handleUpdateRepresentative(party.id, rep.id, {
+                          linkedPartyId: picked.partyId,
+                          linkedPartyCode: picked.partyCode,
+                          name: picked.name,
+                          phone: picked.phone || rep.phone || '',
+                          nid: picked.nidNumber || rep.nid || '',
+                          designation: rep.designation || picked.occupationOrSkill || 'প্রতিনিধি',
+                        });
+                      }}
+                      label={`প্রতিনিধি #${rIdx + 1} — কেন্দ্রীয় রেজিস্ট্রি থেকে নির্বাচন / দ্রুত যোগ (ঐচ্ছিক)`}
+                      placeholder="ব্যক্তি প্রোফাইল খুঁজুন..."
+                      defaultQuickCreateRoles={['CONTRACTOR', 'SERVICE_PROVIDER', 'OTHER']}
+                      defaultQuickCreateType="INDIVIDUAL"
+                      defaultQuickCreateTitle="চুক্তির প্রতিনিধি হিসেবে নতুন ব্যক্তি নিবন্ধন"
+                      prefillName={rep.name}
+                      prefillPhone={rep.phone}
+                    />
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
                     <div className="sm:col-span-3">
                       <label className="block text-[10px] font-semibold text-slate-600 font-siliguri mb-0.5">
                         প্রতিনিধির নাম #{rIdx + 1}
@@ -1184,6 +1309,7 @@ export const AgreementFormView: React.FC<AgreementFormViewProps> = ({
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
+                    </div>
                     </div>
                   </div>
                 ))}
@@ -1811,94 +1937,140 @@ export const AgreementFormView: React.FC<AgreementFormViewProps> = ({
       <section className="bg-white rounded-xl border border-slate-200 p-5 space-y-5">
         {/* Witnesses */}
         <div className="space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h4 className="text-sm font-bold text-slate-900 font-siliguri flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-emerald-700" />
-              <span>৬. সাক্ষীগণের তথ্য (Witnesses)</span>
-            </h4>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+            <div>
+              <h4 className="text-sm font-bold text-slate-900 font-siliguri flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-emerald-700" />
+                <span>৬. সাক্ষীগণের তথ্য (ন্যূনতম ৩ জন সাক্ষী বাধ্যতামূলক)</span>
+              </h4>
+              <p className="text-[11px] text-slate-500 font-tiro mt-0.5">
+                তিনজন সাক্ষীর নাম, পিতা, ঠিকানা, মোবাইল ও হাতে কলমে স্বাক্ষরের ঘর ডিফল্ট থাকবে। তথ্য পূরণ করে বা খালি রেখেই প্রিন্ট করা যাবে।
+              </p>
+            </div>
             <button
               type="button"
               onClick={handleAddWitness}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-200 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 font-siliguri"
+              disabled={witnesses.length >= 12}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-200 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 font-siliguri"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>সাক্ষী যোগ করুন</span>
+              <span>আরও সাক্ষী যোগ করুন</span>
             </button>
           </div>
 
           <div className="space-y-2.5">
-            {witnesses.map((w, idx) => (
-              <div
-                key={w.id}
-                className="p-3 rounded-lg bg-slate-50 border border-slate-200 grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end"
-              >
-                <div className="sm:col-span-3">
-                  <label className="block text-[10px] font-semibold text-slate-600 font-siliguri mb-0.5">
-                    সাক্ষীর নাম #{idx + 1}
-                  </label>
-                  <input
-                    type="text"
-                    value={w.name}
-                    onChange={(e) =>
-                      setWitnesses((prev) => prev.map((x) => (x.id === w.id ? { ...x, name: e.target.value } : x)))
-                    }
-                    placeholder="পূর্ণ নাম"
-                    className="w-full px-2.5 py-1.5 text-xs font-tiro rounded-md border border-slate-200 bg-white"
-                  />
+            {witnesses.map((w, idx) => {
+              const isMandatorySlot = idx < 3;
+              const hasAnyInput = Boolean(w.name.trim() || w.fatherName?.trim() || w.phone?.trim() || w.address?.trim());
+              return (
+                <div
+                  key={w.id}
+                  className="p-3 rounded-lg bg-slate-50 border border-slate-200 space-y-2"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[11px] font-bold text-slate-800 font-siliguri">
+                        সাক্ষী #{idx + 1}
+                      </span>
+                      {isMandatorySlot && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 font-siliguri">
+                          বাধ্যতামূলক ঘর
+                        </span>
+                      )}
+                      {w.partySide && (
+                        <span className="text-[10px] text-slate-500 font-tiro">({w.partySide})</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-slate-500 font-siliguri">
+                        স্বাক্ষর ঘর: প্রিন্টে যুক্ত থাকবে
+                      </span>
+                      {isMandatorySlot ? (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveOrClearWitness(idx, w.id)}
+                          disabled={!hasAnyInput}
+                          title="এই সাক্ষীর তথ্য খালি করুন"
+                          className="text-[10px] px-2 py-0.5 rounded border border-slate-200 text-slate-600 hover:bg-white disabled:opacity-40 font-siliguri"
+                        >
+                          খালি করুন
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveOrClearWitness(idx, w.id)}
+                          title="অতিরিক্ত সাক্ষীর ঘর মুছুন"
+                          className="text-rose-500 hover:text-rose-700"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                    <div className="sm:col-span-3">
+                      <label className="block text-[10px] font-semibold text-slate-600 font-siliguri mb-0.5">
+                        সাক্ষীর নাম #{idx + 1}
+                      </label>
+                      <input
+                        type="text"
+                        value={w.name}
+                        onChange={(e) =>
+                          setWitnesses((prev) => prev.map((x) => (x.id === w.id ? { ...x, name: e.target.value } : x)))
+                        }
+                        placeholder="পূর্ণ নাম (অথবা প্রিন্টে লিখতে খালি রাখুন)"
+                        className="w-full px-2.5 py-1.5 text-xs font-tiro rounded-md border border-slate-200 bg-white"
+                      />
+                    </div>
+                    <div className="sm:col-span-3">
+                      <label className="block text-[10px] font-semibold text-slate-600 font-siliguri mb-0.5">
+                        পিতার নাম
+                      </label>
+                      <input
+                        type="text"
+                        value={w.fatherName || ''}
+                        onChange={(e) =>
+                          setWitnesses((prev) =>
+                            prev.map((x) => (x.id === w.id ? { ...x, fatherName: e.target.value } : x))
+                          )
+                        }
+                        placeholder="পিতার নাম"
+                        className="w-full px-2.5 py-1.5 text-xs font-tiro rounded-md border border-slate-200 bg-white"
+                      />
+                    </div>
+                    <div className="sm:col-span-4">
+                      <label className="block text-[10px] font-semibold text-slate-600 font-siliguri mb-0.5">
+                        ঠিকানা
+                      </label>
+                      <input
+                        type="text"
+                        value={w.address || ''}
+                        onChange={(e) =>
+                          setWitnesses((prev) => prev.map((x) => (x.id === w.id ? { ...x, address: e.target.value } : x)))
+                        }
+                        placeholder="গ্রাম/মহল্লা, ওয়ার্ড, ডাকঘর"
+                        className="w-full px-2.5 py-1.5 text-xs font-tiro rounded-md border border-slate-200 bg-white"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-[10px] font-semibold text-slate-600 font-siliguri mb-0.5">
+                        মোবাইল নং
+                      </label>
+                      <input
+                        type="text"
+                        value={w.phone || ''}
+                        onChange={(e) =>
+                          setWitnesses((prev) => prev.map((x) => (x.id === w.id ? { ...x, phone: e.target.value } : x)))
+                        }
+                        placeholder="০১..."
+                        className="w-full px-2.5 py-1.5 text-xs font-baloo rounded-md border border-slate-200 bg-white"
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-[10px] font-semibold text-slate-600 font-siliguri mb-0.5">
-                    পিতার নাম
-                  </label>
-                  <input
-                    type="text"
-                    value={w.fatherName || ''}
-                    onChange={(e) =>
-                      setWitnesses((prev) =>
-                        prev.map((x) => (x.id === w.id ? { ...x, fatherName: e.target.value } : x))
-                      )
-                    }
-                    className="w-full px-2.5 py-1.5 text-xs font-tiro rounded-md border border-slate-200 bg-white"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-[10px] font-semibold text-slate-600 font-siliguri mb-0.5">
-                    মোবাইল
-                  </label>
-                  <input
-                    type="text"
-                    value={w.phone || ''}
-                    onChange={(e) =>
-                      setWitnesses((prev) => prev.map((x) => (x.id === w.id ? { ...x, phone: e.target.value } : x)))
-                    }
-                    className="w-full px-2.5 py-1.5 text-xs font-baloo rounded-md border border-slate-200 bg-white"
-                  />
-                </div>
-                <div className="sm:col-span-4">
-                  <label className="block text-[10px] font-semibold text-slate-600 font-siliguri mb-0.5">
-                    ঠিকানা ও পরিচয়
-                  </label>
-                  <input
-                    type="text"
-                    value={w.address || ''}
-                    onChange={(e) =>
-                      setWitnesses((prev) => prev.map((x) => (x.id === w.id ? { ...x, address: e.target.value } : x)))
-                    }
-                    placeholder="গ্রাম/মহল্লা, পদবি"
-                    className="w-full px-2.5 py-1.5 text-xs font-tiro rounded-md border border-slate-200 bg-white"
-                  />
-                </div>
-                <div className="sm:col-span-1 flex justify-end pb-1">
-                  <button
-                    type="button"
-                    onClick={() => setWitnesses((prev) => prev.filter((x) => x.id !== w.id))}
-                    className="text-rose-500 hover:text-rose-700"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 

@@ -48,6 +48,10 @@ import {
   reviewAgreementRisksWithAi,
 } from './agreementAiService.ts';
 import {
+  resolveTenantParty,
+  syncAgreementReferencesToParties,
+} from './partyService.ts';
+import {
   buildAgreementArchiveReport,
   buildAgreementVersionSnapshot,
   canHardDeleteAgreement,
@@ -134,13 +138,15 @@ function isSafeAttachmentUrl(url: string): boolean {
   }
 }
 
-function sanitizeRepresentatives(raw: unknown): AgreementRepresentative[] {
+function sanitizeRepresentatives(raw: unknown, mosqueId?: string): AgreementRepresentative[] {
   if (!Array.isArray(raw)) return [];
   return raw
     .slice(0, 15)
     .map((item: any): AgreementRepresentative | null => {
       const name = cleanStr(item?.name, 160);
       if (!name) return null;
+      const rawLinkedPartyId = cleanOptionalStr(item?.linkedPartyId, 80);
+      const resolvedParty = rawLinkedPartyId && mosqueId ? resolveTenantParty(mosqueId, rawLinkedPartyId) : null;
       return {
         id: cleanStr(item?.id, 80) || `rep-${crypto.randomUUID().slice(0, 8)}`,
         name,
@@ -149,12 +155,14 @@ function sanitizeRepresentatives(raw: unknown): AgreementRepresentative[] {
         nid: cleanOptionalStr(item?.nid, 40),
         authorityBasis: cleanStr(item?.authorityBasis, 300),
         isSignatory: Boolean(item?.isSignatory ?? true),
+        linkedPartyId: resolvedParty ? resolvedParty.partyId : undefined,
+        linkedPartyCode: resolvedParty ? resolvedParty.partyCode : undefined,
       };
     })
     .filter((x): x is AgreementRepresentative => x !== null);
 }
 
-function sanitizeParties(raw: unknown): AgreementParty[] {
+function sanitizeParties(raw: unknown, mosqueId?: string): AgreementParty[] {
   if (!Array.isArray(raw)) return [];
   return raw
     .slice(0, 12)
@@ -163,6 +171,8 @@ function sanitizeParties(raw: unknown): AgreementParty[] {
       if (!name) return null;
       const roleOrder = idx + 1;
       const rawType = cleanStr(item?.partyType, 40) as AgreementPartyType;
+      const rawLinkedPartyId = cleanOptionalStr(item?.linkedPartyId, 80);
+      const resolvedParty = rawLinkedPartyId && mosqueId ? resolveTenantParty(mosqueId, rawLinkedPartyId) : null;
       return {
         id: cleanStr(item?.id, 80) || `party-${crypto.randomUUID().slice(0, 8)}`,
         roleLabel: cleanStr(item?.roleLabel, 80) || getOrdinalPartyRoleBn(roleOrder),
@@ -173,7 +183,9 @@ function sanitizeParties(raw: unknown): AgreementParty[] {
         address: cleanOptionalStr(item?.address, 400),
         phone: cleanOptionalStr(item?.phone, 35),
         nidOrRegNo: cleanOptionalStr(item?.nidOrRegNo, 60),
-        representatives: sanitizeRepresentatives(item?.representatives),
+        linkedPartyId: resolvedParty ? resolvedParty.partyId : undefined,
+        linkedPartyCode: resolvedParty ? resolvedParty.partyCode : undefined,
+        representatives: sanitizeRepresentatives(item?.representatives, mosqueId),
       };
     })
     .filter((x): x is AgreementParty => x !== null);
@@ -184,11 +196,10 @@ function sanitizeWitnesses(raw: unknown): AgreementWitness[] {
   return raw
     .slice(0, 12)
     .map((item: any): AgreementWitness | null => {
-      const name = cleanStr(item?.name, 160);
-      if (!name) return null;
+      if (!item || typeof item !== 'object') return null;
       return {
         id: cleanStr(item?.id, 80) || `wit-${crypto.randomUUID().slice(0, 8)}`,
-        name,
+        name: cleanStr(item?.name, 160),
         fatherName: cleanOptionalStr(item?.fatherName, 160),
         address: cleanOptionalStr(item?.address, 300),
         phone: cleanOptionalStr(item?.phone, 35),
@@ -1186,7 +1197,7 @@ export function createAgreementRouter(
     const categoryCode = cleanStr(req.body?.categoryCode, 60) || 'OTHER_CUSTOM';
     const purpose = cleanStr(req.body?.purpose, 2000);
     const generalClauses = cleanStr(req.body?.generalClauses, 25000);
-    const parties = sanitizeParties(req.body?.parties);
+    const parties = sanitizeParties(req.body?.parties, mosqueId);
 
     if (!title) {
       return res.status(400).json({
@@ -1291,6 +1302,7 @@ export function createAgreementRouter(
       `নতুন চুক্তিপত্র তৈরি করা হয়েছে (v1): ${newRecord.agreementNumber} — ${newRecord.title}`
     );
     db.save();
+    syncAgreementReferencesToParties(mosqueId, newRecord);
 
     return res.status(201).json({ success: true, data: newRecord });
   });
@@ -1326,7 +1338,7 @@ export function createAgreementRouter(
     const title = cleanStr(req.body?.title, 250);
     const categoryCode = cleanStr(req.body?.categoryCode, 60) || existing.categoryCode;
     const generalClauses = cleanStr(req.body?.generalClauses, 25000);
-    const parties = sanitizeParties(req.body?.parties);
+    const parties = sanitizeParties(req.body?.parties, mosqueId);
 
     if (!title) {
       return res.status(400).json({
@@ -1428,6 +1440,7 @@ export function createAgreementRouter(
       `চুক্তিপত্র হালনাগাদ করা হয়েছে: ${updated.agreementNumber} — ${updated.title}`
     );
     db.save();
+    syncAgreementReferencesToParties(mosqueId, updated);
 
     return res.json({ success: true, data: updated });
   });
@@ -1526,6 +1539,7 @@ export function createAgreementRouter(
       `চুক্তিপত্র (${db.agreements[idx].agreementNumber}) স্ট্যাটাস পরিবর্তন: ${prevStatus} → ${db.agreements[idx].status}`
     );
     db.save();
+    syncAgreementReferencesToParties(mosqueId, db.agreements[idx]);
 
     return res.json({ success: true, data: db.agreements[idx] });
   });
@@ -2287,6 +2301,7 @@ export function createAgreementRouter(
       `চুক্তিপত্র (${updated.agreementNumber} v${versionNumber}) কার্যকর (Effective) ঘোষণা করা হয়েছে`
     );
     db.save();
+    syncAgreementReferencesToParties(mosqueId, updated);
 
     return res.json({ success: true, data: updated });
   });
@@ -2423,6 +2438,7 @@ export function createAgreementRouter(
       `চুক্তিপত্র (${updatedDraft.agreementNumber}) v${prevVersion} → v${nextVersion}${isAmendment ? ' (সংশোধনী)' : ''}: ${changeSummary.slice(0, 120)}`
     );
     db.save();
+    syncAgreementReferencesToParties(mosqueId, updatedDraft);
 
     return res.status(201).json({ success: true, data: updatedDraft });
   });
@@ -2477,6 +2493,7 @@ export function createAgreementRouter(
         `চুক্তিপত্র (${updated.agreementNumber}) ${archiveFlag ? 'আর্কাইভ করা হয়েছে' : 'আর্কাইভ থেকে ফিরিয়ে আনা হয়েছে'}`
       );
       db.save();
+      syncAgreementReferencesToParties(mosqueId, updated);
       return res.json({ success: true, data: updated });
     }
 
@@ -2535,6 +2552,7 @@ export function createAgreementRouter(
       `চুক্তিপত্র (${updated.agreementNumber}) অবস্থা: ${rawAction} — কারণ: ${reason.slice(0, 140)}`
     );
     db.save();
+    syncAgreementReferencesToParties(mosqueId, updated);
 
     return res.json({ success: true, data: updated });
   });

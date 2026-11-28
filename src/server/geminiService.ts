@@ -61,35 +61,78 @@ function getGeminiClient(): GoogleGenAI {
   });
 }
 
-function mapGeminiError(err: any): GeminiServiceError {
+function mapGeminiError(err: any, requestedModel?: string): GeminiServiceError {
   if (err instanceof GeminiServiceError) return err;
   const rawMsg = String(err?.message || err || '');
+  const lowerMsg = rawMsg.toLowerCase();
   const status = Number(err?.status || err?.statusCode || 0);
+  const targetModel = sanitizeGeminiModelName(requestedModel) || getActiveGeminiModel();
 
-  if (status === 403 || rawMsg.includes('PERMISSION_DENIED') || rawMsg.includes('API_KEY_INVALID') || status === 400 && rawMsg.toLowerCase().includes('api key')) {
+  if (
+    lowerMsg.includes('timeout') ||
+    lowerMsg.includes('timed out') ||
+    err?.name === 'AbortError' ||
+    err?.code === 'ETIMEDOUT'
+  ) {
     return new GeminiServiceError(
-      'Gemini API Key সঠিক নয় বা অনুমতি পাওয়া যায়নি। অনুগ্রহ করে Settings > Secrets প্যানেলে API Key যাচাই করুন।',
+      `মডেল "${targetModel}" থেকে নির্ধারিত সময়ের মধ্যে সাড়া পাওয়া যায়নি (Timeout)। অনুগ্রহ করে ইন্টারনেট সংযোগ যাচাই করে পুনরায় চেষ্টা করুন।`,
+      504,
+      'AI_TIMEOUT'
+    );
+  }
+  if (
+    status === 401 ||
+    status === 403 ||
+    rawMsg.includes('PERMISSION_DENIED') ||
+    rawMsg.includes('API_KEY_INVALID') ||
+    rawMsg.includes('UNAUTHENTICATED') ||
+    (status === 400 && lowerMsg.includes('api key'))
+  ) {
+    return new GeminiServiceError(
+      'সার্ভারে কনফিগারকৃত Gemini API Key সঠিক নয় বা এই মডেলের জন্য অনুমতি পাওয়া যায়নি। অনুগ্রহ করে সার্ভার এনভায়রনমেন্টে API Key যাচাই করুন।',
       403,
       'API_KEY_INVALID'
     );
   }
-  if (status === 429 || rawMsg.includes('RESOURCE_EXHAUSTED') || rawMsg.includes('429')) {
+  if (status === 429 || rawMsg.includes('RESOURCE_EXHAUSTED') || rawMsg.includes('429') || lowerMsg.includes('quota')) {
     return new GeminiServiceError(
-      'Gemini API-এর সাময়িক অনুরোধ সীমা (Quota) পূর্ণ হয়েছে। কিছুক্ষণ পর পুনরায় চেষ্টা করুন।',
+      `মডেল "${targetModel}"-এর API অনুরোধ সীমা (Quota) পূর্ণ হয়েছে অথবা এই মডেলের জন্য পেইড বিলিং প্রয়োজন। কিছুক্ষণ পর চেষ্টা করুন অথবা ফ্ল্যাশ মডেল নির্বাচন করুন।`,
       429,
       'RESOURCE_EXHAUSTED'
     );
   }
-  if (status === 404 || rawMsg.includes('NOT_FOUND')) {
-    const activeModel = getActiveGeminiModel();
+  if (status === 404 || rawMsg.includes('NOT_FOUND') || lowerMsg.includes('is not found')) {
     return new GeminiServiceError(
-      `নির্বাচিত AI মডেল (${activeModel}) পাওয়া যায়নি। সেন্ট্রাল SaaS এডমিন হাব → AI মডেল সেটিংস থেকে সক্রিয় মডেল নির্বাচন করুন।`,
+      `নির্বাচিত AI মডেল "${targetModel}" API-তে পাওয়া যায়নি (404 NOT_FOUND)। সেন্ট্রাল AI মডেল সেটিংস থেকে সক্রিয় মডেল (যেমন: gemini-4-hydrogen) নির্বাচন করুন।`,
       404,
       'MODEL_NOT_FOUND'
     );
   }
+  if (status === 400 || rawMsg.includes('INVALID_ARGUMENT')) {
+    return new GeminiServiceError(
+      `মডেল "${targetModel}" এই অনুরোধ বা API ফরম্যাট সমর্থন করছে না (400 INVALID_ARGUMENT)। অনুগ্রহ করে সঠিক টেক্সট/ফ্ল্যাশ মডেলের নাম দিন।`,
+      400,
+      'INVALID_MODEL_OR_REQUEST'
+    );
+  }
+  if (
+    lowerMsg.includes('enotfound') ||
+    lowerMsg.includes('econnrefused') ||
+    lowerMsg.includes('econnreset') ||
+    lowerMsg.includes('fetch failed') ||
+    lowerMsg.includes('network')
+  ) {
+    return new GeminiServiceError(
+      'Gemini API সার্ভারের সাথে নেটওয়ার্ক সংযোগ স্থাপন করা যায়নি। অনুগ্রহ করে সার্ভারের ইন্টারনেট সংযোগ যাচাই করে পুনরায় চেষ্টা করুন।',
+      502,
+      'NETWORK_ERROR'
+    );
+  }
+
+  // Strip any accidental key-like query parameter before showing sanitized message
+  const safeReason = rawMsg.replace(/key=[A-Za-z0-9_-]+/gi, 'key=[REDACTED]').slice(0, 180);
   return new GeminiServiceError(
-    `AI সেবা প্রদানে সাময়িক ত্রুটি ঘটেছে: ${rawMsg.slice(0, 180) || 'অজানা ত্রুটি'}`,
+    `AI সেবা প্রদানে সাময়িক ত্রুটি ঘটেছে: ${safeReason || 'অজানা ত্রুটি'}`,
     502,
     'GEMINI_UPSTREAM_ERROR'
   );
@@ -3177,12 +3220,13 @@ export async function getIncomeFinancialInsightsAi(mosque: Mosque) {
 
 /**
  * Super Admin live health-check for any specified or active Gemini model.
+ * Uses a lightweight, timeout-protected backend proxy call and never exposes API keys.
  */
 export async function testGeminiModelConnection(candidateModel?: string) {
   const cleaned = sanitizeGeminiModelName(candidateModel);
   if (candidateModel && candidateModel.trim() && !isValidGeminiModelName(cleaned)) {
     throw new GeminiServiceError(
-      'মডেলের নাম সঠিক ফরম্যাটে নয়। উদাহরণ: gemini-4-hydrogen বা gemini-3.1-flash-lite',
+      'মডেলের নাম সঠিক ফরম্যাটে নয়। শুধুমাত্র ইংরেজি অক্ষর, সংখ্যা, ডট, ড্যাশ বা আন্ডারস্কোর ব্যবহার করুন (যেমন: gemini-4-hydrogen বা gemini-3.1-flash-lite)।',
       400,
       'INVALID_MODEL_NAME'
     );
@@ -3191,32 +3235,51 @@ export async function testGeminiModelConnection(candidateModel?: string) {
   const targetModel = cleaned || getActiveGeminiModel();
   const ai = getGeminiClient();
   const startedAt = Date.now();
+  const TEST_TIMEOUT_MS = 15000;
+
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      reject(
+        new GeminiServiceError(
+          `মডেল "${targetModel}" ১৫ সেকেন্ডের মধ্যে সাড়া দেয়নি (Timeout)। অনুগ্রহ করে নেটওয়ার্ক বা মডেলের প্রাপ্যতা যাচাই করুন।`,
+          504,
+          'AI_TIMEOUT'
+        )
+      );
+    }, TEST_TIMEOUT_MS);
+  });
 
   try {
-    const response = await ai.models.generateContent({
-      model: targetModel,
-      contents: 'শুধুমাত্র এক বাক্যে বাংলায় লিখুন: মসজিদ লেজার AI সংযোগ সফল।',
-    });
-    const latencyMs = Date.now() - startedAt;
-    const replyPreviewBn = (response.text || '').trim().slice(0, 160) || 'মসজিদ লেজার AI সংযোগ সফল।';
+    const response: any = await Promise.race([
+      ai.models.generateContent({
+        model: targetModel,
+        contents: 'শুধুমাত্র এক বাক্যে বাংলায় লিখুন: মসজিদ লেজার AI সংযোগ সফল।',
+        config: {
+          maxOutputTokens: 48,
+          temperature: 0,
+        },
+      }),
+      timeoutPromise,
+    ]);
+    const latencyMs = Math.max(1, Date.now() - startedAt);
+    const replyPreviewBn = (response?.text || '').trim().slice(0, 160) || 'মসজিদ লেজার AI সংযোগ সফল।';
     return {
       ok: true,
       modelName: targetModel,
       latencyMs,
+      responseTimeMs: latencyMs,
+      statusLabelBn: 'সংযোগ সফল',
       replyPreviewBn,
       testedAt: new Date().toISOString(),
+      isSavedActiveModel: targetModel === getActiveGeminiModel(),
     };
   } catch (err: any) {
-    const status = Number(err?.status || err?.statusCode || 0);
-    const rawMsg = String(err?.message || err || '');
-    if (status === 404 || rawMsg.includes('NOT_FOUND')) {
-      throw new GeminiServiceError(
-        `মডেল "${targetModel}" API-তে পাওয়া যায়নি (404 NOT_FOUND)। অনুগ্রহ করে সক্রিয় মডেল (যেমন: gemini-4-hydrogen) ব্যবহার করুন।`,
-        404,
-        'MODEL_NOT_FOUND'
-      );
+    throw mapGeminiError(err, targetModel);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
     }
-    throw mapGeminiError(err);
   }
 }
 

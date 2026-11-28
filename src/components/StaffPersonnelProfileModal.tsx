@@ -56,6 +56,9 @@ import {
 } from '../types';
 import { Language, translations, formatCurrency, formatDate, formatSalaryMonth } from '../lib/i18n';
 import { printElement } from '../lib/printUtils';
+import { api } from '../lib/api';
+import { PartyRecord } from '../types/partyTypes';
+import { PartySearchSelect } from './parties/PartySearchSelect';
 import { AiStaffDocumentModal } from './staff/AiStaffDocumentModal';
 import {
   buildUnifiedStaffPaymentHistory,
@@ -132,6 +135,18 @@ export const StaffPersonnelProfileModal: React.FC<StaffPersonnelProfileModalProp
 
   const [activeTab, setActiveTab] = useState<ProfileTab>('PERSONAL');
   const [isAiDocModalOpen, setIsAiDocModalOpen] = useState(false);
+  const [localLinkedPartyId, setLocalLinkedPartyId] = useState<string>(staff?.linkedPartyId || '');
+  const [localLinkedPartyCode, setLocalLinkedPartyCode] = useState<string>(staff?.linkedPartyCode || '');
+  const [partyLinkBusy, setPartyLinkBusy] = useState(false);
+  const [partyLinkError, setPartyLinkError] = useState('');
+  const [partyLinkNotice, setPartyLinkNotice] = useState('');
+
+  React.useEffect(() => {
+    setLocalLinkedPartyId(staff?.linkedPartyId || '');
+    setLocalLinkedPartyCode(staff?.linkedPartyCode || '');
+    setPartyLinkError('');
+    setPartyLinkNotice('');
+  }, [staff?.id, staff?.linkedPartyId, staff?.linkedPartyCode, isOpen]);
 
   // Photo modal state
   const [isAddPhotoOpen, setIsAddPhotoOpen] = useState(false);
@@ -505,6 +520,121 @@ export const StaffPersonnelProfileModal: React.FC<StaffPersonnelProfileModalProp
                   </span>
                   <p className="text-xs text-slate-700 leading-relaxed">{staff.permanentAddress || staff.address || 'তথ্য নেই'}</p>
                 </div>
+              </div>
+              {/* Central Party Registry Link Card (Does not alter Salary/Payroll) */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900 font-siliguri flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-emerald-700" />
+                      কেন্দ্রীয় পার্টি রেজিস্ট্রি সংযোগ (Central Party Registry Link)
+                    </h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      মসজিদের নিয়মিত কর্মী পেরোল অপরিবর্তিত রেখে কেন্দ্রীয় প্রোফাইলের সাথে পরিচয় সংযোগ ও ডুপ্লিকেট প্রতিরোধ
+                    </p>
+                  </div>
+                  {localLinkedPartyCode && (
+                    <span className="text-xs font-bold font-baloo text-emerald-800 bg-emerald-100/80 px-2.5 py-1 rounded-lg">
+                      সংযুক্ত কোড: {localLinkedPartyCode}
+                    </span>
+                  )}
+                </div>
+
+                {partyLinkError && (
+                  <div className="px-3 py-2 rounded-lg bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-700">
+                    {partyLinkError}
+                  </div>
+                )}
+                {partyLinkNotice && (
+                  <div className="px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-800">
+                    {partyLinkNotice}
+                  </div>
+                )}
+
+                <PartySearchSelect
+                  compact
+                  partyTypeFilter="INDIVIDUAL"
+                  valuePartyId={localLinkedPartyId}
+                  valuePartyCode={localLinkedPartyCode}
+                  disabled={partyLinkBusy}
+                  onSelectParty={async (picked: PartyRecord | null) => {
+                    if (!staff) return;
+                    setPartyLinkError('');
+                    setPartyLinkNotice('');
+                    try {
+                      setPartyLinkBusy(true);
+                      if (!picked) {
+                        const res = await api.unlinkStaffFromParty(staff.id);
+                        setLocalLinkedPartyId('');
+                        setLocalLinkedPartyCode('');
+                        setPartyLinkNotice('কেন্দ্রীয় পার্টি রেজিস্ট্রির সংযোগ বিচ্ছিন্ন করা হয়েছে।');
+                        if (onUpdateStaff) {
+                          await onUpdateStaff(staff.id, { linkedPartyId: undefined, linkedPartyCode: undefined });
+                        }
+                        void res;
+                      } else {
+                        const res = await api.linkStaffToParty(staff.id, { partyId: picked.partyId });
+                        setLocalLinkedPartyId(res.staff.linkedPartyId || picked.partyId);
+                        setLocalLinkedPartyCode(res.staff.linkedPartyCode || picked.partyCode);
+                        setPartyLinkNotice(`পার্টি প্রোফাইল ${picked.partyCode} এর সাথে সফলভাবে সংযুক্ত হয়েছে।`);
+                        if (onUpdateStaff) {
+                          await onUpdateStaff(staff.id, {
+                            linkedPartyId: res.staff.linkedPartyId || picked.partyId,
+                            linkedPartyCode: res.staff.linkedPartyCode || picked.partyCode,
+                          });
+                        }
+                      }
+                    } catch (err: any) {
+                      setPartyLinkError(err?.message || 'সংযোগ পরিবর্তন করতে ব্যর্থ হয়েছে।');
+                    } finally {
+                      setPartyLinkBusy(false);
+                    }
+                  }}
+                  label="সংযুক্ত ব্যক্তি প্রোফাইল নির্বাচন / পরিবর্তন করুন"
+                  placeholder="ব্যক্তির নাম, মোবাইল বা PTY কোড দিয়ে খুঁজুন..."
+                  defaultQuickCreateRoles={['OTHER']}
+                  defaultQuickCreateType="INDIVIDUAL"
+                  defaultQuickCreateTitle="স্টাফের জন্য নতুন পার্টি প্রোফাইল তৈরি"
+                  prefillName={staff.fullNameBn || staff.name}
+                  prefillPhone={staff.phone}
+                  prefillAddress={staff.presentAddress || staff.address}
+                />
+
+                {!localLinkedPartyId && (
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      disabled={partyLinkBusy}
+                      onClick={async () => {
+                        if (!staff) return;
+                        setPartyLinkError('');
+                        setPartyLinkNotice('');
+                        try {
+                          setPartyLinkBusy(true);
+                          const res = await api.linkStaffToParty(staff.id, { createNewIfMissing: true });
+                          setLocalLinkedPartyId(res.staff.linkedPartyId || '');
+                          setLocalLinkedPartyCode(res.staff.linkedPartyCode || '');
+                          setPartyLinkNotice(
+                            `স্বয়ংক্রিয়ভাবে পার্টি প্রোফাইল (${res.staff.linkedPartyCode}) সংযুক্ত হয়েছে।`
+                          );
+                          if (onUpdateStaff && res.staff.linkedPartyId) {
+                            await onUpdateStaff(staff.id, {
+                              linkedPartyId: res.staff.linkedPartyId,
+                              linkedPartyCode: res.staff.linkedPartyCode,
+                            });
+                          }
+                        } catch (err: any) {
+                          setPartyLinkError(err?.message || 'স্বয়ংক্রিয় সংযোগ ব্যর্থ হয়েছে।');
+                        } finally {
+                          setPartyLinkBusy(false);
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg border border-emerald-200 bg-white hover:bg-emerald-50 text-emerald-800 text-xs font-bold disabled:opacity-60"
+                    >
+                      {partyLinkBusy ? 'প্রক্রিয়াকরণ...' : 'মোবাইল/NID মিলিয়ে স্বয়ংক্রিয় পার্টি সংযোগ করুন'}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}

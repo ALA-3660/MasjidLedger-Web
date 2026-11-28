@@ -253,6 +253,13 @@ import {
 } from './src/types/index.ts';
 import { createSmartNotesRouter } from './src/server/smartNotesService.ts';
 import { createAgreementRouter } from './src/server/agreementService.ts';
+import {
+  createPartyRouter,
+  resolveTenantParty,
+  buildPartySnapshot,
+  syncVoucherReferenceToParty,
+  syncStaffPartyLink,
+} from './src/server/partyService.ts';
 import { createAutomationRouter, startAutoBackupScheduler } from './src/server/automationService.ts';
 
 export const app = express();
@@ -605,7 +612,8 @@ const ALL_VALID_PERMISSIONS: Set<string> = new Set([
   'VIEW_HIFZ_RESIDENTIAL_ALLOCATION', 'CREATE_HIFZ_RESIDENTIAL_ALLOCATION', 'EDIT_HIFZ_RESIDENTIAL_ALLOCATION',
   'CHECKIN_HIFZ_RESIDENTIAL', 'CHECKOUT_HIFZ_RESIDENTIAL',
   'VIEW_HIFZ_RESIDENTIAL_TRANSFER', 'CREATE_HIFZ_RESIDENTIAL_TRANSFER',
-  'VIEW_FINANCE_HEADS', 'CREATE_FINANCE_HEAD', 'EDIT_FINANCE_HEAD', 'DEACTIVATE_FINANCE_HEAD', 'ARCHIVE_FINANCE_HEAD'
+  'VIEW_FINANCE_HEADS', 'CREATE_FINANCE_HEAD', 'EDIT_FINANCE_HEAD', 'DEACTIVATE_FINANCE_HEAD', 'ARCHIVE_FINANCE_HEAD',
+  'party.view', 'party.create', 'party.edit', 'party.merge', 'party.delete', 'party.manage_roles', 'party.view_audit'
 ]);
 
 const getAuthoritativeRolePermissions = (targetRole: UserRole): Permission[] => {
@@ -622,7 +630,8 @@ const getAuthoritativeRolePermissions = (targetRole: UserRole): Permission[] => 
         'VIEW_LIBRARY', 'VIEW_LIBRARY_REPORT', 'EXPORT_LIBRARY_REPORT',
         'VIEW_EDUCATION', 'VIEW_MAKTAB', 'MANAGE_MAKTAB_FEES', 'VIEW_HIFZ', 'VIEW_HIFZ_SABAK', 'VIEW_HIFZ_SABAKI',
         'VIEW_HIFZ_DAUR', 'VIEW_HIFZ_REVISION', 'VIEW_HIFZ_ATTENDANCE', 'VIEW_HIFZ_USTAD_ASSIGNMENT',
-        'VIEW_HIFZ_RESIDENTIAL', 'VIEW_HIFZ_RESIDENTIAL_ALLOCATION'
+        'VIEW_HIFZ_RESIDENTIAL', 'VIEW_HIFZ_RESIDENTIAL_ALLOCATION',
+        'party.view', 'party.create', 'party.edit', 'party.manage_roles', 'party.view_audit'
       ] as Permission[];
     case 'COMMITTEE_ADMIN':
       return [
@@ -631,7 +640,8 @@ const getAuthoritativeRolePermissions = (targetRole: UserRole): Permission[] => 
         'VIEW_LIBRARY', 'VIEW_LIBRARY_REPORT',
         'VIEW_EDUCATION', 'VIEW_MAKTAB', 'VIEW_HIFZ', 'VIEW_HIFZ_SABAK', 'VIEW_HIFZ_SABAKI',
         'VIEW_HIFZ_DAUR', 'VIEW_HIFZ_REVISION', 'VIEW_HIFZ_ATTENDANCE', 'VIEW_HIFZ_USTAD_ASSIGNMENT',
-        'VIEW_HIFZ_RESIDENTIAL', 'VIEW_HIFZ_RESIDENTIAL_ALLOCATION'
+        'VIEW_HIFZ_RESIDENTIAL', 'VIEW_HIFZ_RESIDENTIAL_ALLOCATION',
+        'party.view', 'party.create', 'party.edit', 'party.merge', 'party.delete', 'party.manage_roles', 'party.view_audit'
       ] as Permission[];
     case 'DATA_ENTRY_OPERATOR':
       return [
@@ -645,21 +655,24 @@ const getAuthoritativeRolePermissions = (targetRole: UserRole): Permission[] => 
         'VIEW_HIFZ_REVISION', 'CREATE_HIFZ_REVISION', 'EDIT_HIFZ_REVISION', 'RESOLVE_HIFZ_REVISION',
         'VIEW_HIFZ_ATTENDANCE', 'CREATE_HIFZ_ATTENDANCE', 'EDIT_HIFZ_ATTENDANCE',
         'VIEW_HIFZ_USTAD_ASSIGNMENT', 'CREATE_HIFZ_USTAD_ASSIGNMENT', 'EDIT_HIFZ_USTAD_ASSIGNMENT',
-        'VIEW_HIFZ_RESIDENTIAL', 'CREATE_HIFZ_RESIDENTIAL', 'EDIT_HIFZ_RESIDENTIAL'
+        'VIEW_HIFZ_RESIDENTIAL', 'CREATE_HIFZ_RESIDENTIAL', 'EDIT_HIFZ_RESIDENTIAL',
+        'party.view', 'party.create', 'party.edit'
       ] as Permission[];
     case 'AUDITOR':
       return [
         'VIEW_DASHBOARD', 'VIEW_REPORT', 'EXPORT_REPORT', 'VIEW_AUDIT_LOG', 'VIEW_BUDGET_ANALYSIS', 'EXPORT_BUDGET_REPORT',
         'VIEW_LIBRARY', 'VIEW_LIBRARY_REPORT', 'EXPORT_LIBRARY_REPORT', 'VIEW_EDUCATION', 'VIEW_MAKTAB',
         'VIEW_HIFZ', 'VIEW_HIFZ_SABAK', 'VIEW_HIFZ_SABAKI', 'VIEW_HIFZ_DAUR', 'VIEW_HIFZ_REVISION',
-        'VIEW_HIFZ_ATTENDANCE', 'VIEW_HIFZ_USTAD_ASSIGNMENT', 'VIEW_HIFZ_RESIDENTIAL'
+        'VIEW_HIFZ_ATTENDANCE', 'VIEW_HIFZ_USTAD_ASSIGNMENT', 'VIEW_HIFZ_RESIDENTIAL',
+        'party.view', 'party.view_audit'
       ] as Permission[];
     case 'VIEWER':
     default:
       return [
         'VIEW_DASHBOARD', 'VIEW_REPORT', 'VIEW_LIBRARY', 'VIEW_EDUCATION', 'VIEW_MAKTAB',
         'VIEW_HIFZ', 'VIEW_HIFZ_SABAK', 'VIEW_HIFZ_SABAKI', 'VIEW_HIFZ_DAUR', 'VIEW_HIFZ_REVISION',
-        'VIEW_HIFZ_ATTENDANCE', 'VIEW_HIFZ_USTAD_ASSIGNMENT', 'VIEW_HIFZ_RESIDENTIAL'
+        'VIEW_HIFZ_ATTENDANCE', 'VIEW_HIFZ_USTAD_ASSIGNMENT', 'VIEW_HIFZ_RESIDENTIAL',
+        'party.view'
       ] as Permission[];
   }
 };
@@ -1229,6 +1242,7 @@ app.get('/api/v1/saas/stats', authenticate, (req: AuthRequest, res: Response) =>
   const totalExpenses = db.expenseEntries.reduce((acc, curr) => acc + (curr.amount || 0), 0);
   const totalTransactions = db.incomeEntries.length + db.expenseEntries.length;
 
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.json({
     success: true,
     data: {
@@ -1484,10 +1498,28 @@ app.delete('/api/v1/saas/broadcasts/:id', authenticate, (req: AuthRequest, res: 
 
 // Central SaaS Super Admin AI Model Settings
 app.get('/api/v1/saas/ai-settings', authenticate, (req: AuthRequest, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   if (req.user?.role !== 'SUPER_ADMIN') {
+    logSecurityAuditEvent({
+      mosqueId: req.currentMosque?.id || 'GLOBAL_SAAS',
+      userId: req.user?.id || 'unknown',
+      userName: req.user?.name || 'Unknown',
+      userRole: req.user?.role || 'UNKNOWN',
+      action: 'UNAUTHORIZED_AI_SETTINGS_READ',
+      details: 'সুপার অ্যাডমিন ব্যতীত সেন্ট্রাল AI মডেল সেটিংস দেখার চেষ্টা প্রতিহত হয়েছে।',
+      ipAddress: getClientIp(req),
+      status: 'FAILED',
+    });
     return res.status(403).json({
       success: false,
       error: { code: 'FORBIDDEN', message: 'AI মডেল সেটিংস দেখার জন্য সুপার অ্যাডমিন অনুমতি আবশ্যক।' },
+    });
+  }
+
+  if (!req.currentMosque?.id) {
+    return res.status(403).json({
+      success: false,
+      error: { code: 'TENANT_REQUIRED', message: 'বৈধ টেন্যান্ট (মসজিদ) সেশন পাওয়া যায়নি।' },
     });
   }
 
@@ -1497,87 +1529,190 @@ app.get('/api/v1/saas/ai-settings', authenticate, (req: AuthRequest, res: Respon
   });
 });
 
-app.put('/api/v1/saas/ai-settings', authenticate, (req: AuthRequest, res: Response) => {
+const handleSaveCentralAiSettings = async (req: AuthRequest, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  const clientIp = getClientIp(req);
+
   if (req.user?.role !== 'SUPER_ADMIN') {
+    logSecurityAuditEvent({
+      mosqueId: req.currentMosque?.id || 'GLOBAL_SAAS',
+      userId: req.user?.id || 'unknown',
+      userName: req.user?.name || 'Unknown',
+      userRole: req.user?.role || 'UNKNOWN',
+      action: 'UNAUTHORIZED_AI_SETTINGS_UPDATE',
+      details: 'সুপার অ্যাডমিন ব্যতীত সেন্ট্রাল AI মডেল পরিবর্তনের চেষ্টা প্রতিহত হয়েছে।',
+      ipAddress: clientIp,
+      status: 'FAILED',
+    });
     return res.status(403).json({
       success: false,
       error: { code: 'FORBIDDEN', message: 'AI মডেল পরিবর্তন করার জন্য সুপার অ্যাডমিন অনুমতি আবশ্যক।' },
     });
   }
 
-  const rawModelName = typeof req.body?.modelName === 'string' ? req.body.modelName : '';
-  const cleaned = sanitizeGeminiModelName(rawModelName);
+  const tenantId = req.currentMosque?.id;
+  if (!tenantId) {
+    return res.status(403).json({
+      success: false,
+      error: { code: 'TENANT_REQUIRED', message: 'বৈধ টেন্যান্ট (মসজিদ) কনটেক্সট ছাড়া AI মডেল সেভ করা যাবে না।' },
+    });
+  }
+
+  const rawInput =
+    typeof req.body?.modelName === 'string'
+      ? req.body.modelName
+      : typeof req.body?.model === 'string'
+      ? req.body.model
+      : '';
+  const cleaned = sanitizeGeminiModelName(rawInput);
   const notes = typeof req.body?.notes === 'string' ? req.body.notes.trim().slice(0, 300) : '';
 
-  if (rawModelName.trim() !== '' && !isValidGeminiModelName(cleaned)) {
+  if (rawInput.trim() !== '' && !isValidGeminiModelName(cleaned)) {
     return res.status(400).json({
       success: false,
       error: {
         code: 'INVALID_MODEL_NAME',
-        message: 'মডেলের নাম সঠিক নয়। শুধুমাত্র ইংরেজি অক্ষর, সংখ্যা, ডট, ড্যাশ বা আন্ডারস্কোর ব্যবহার করুন (যেমন: gemini-4-hydrogen)।',
+        message:
+          'মডেলের নাম সঠিক নয়। শুধুমাত্র ইংরেজি অক্ষর, সংখ্যা, ডট, ড্যাশ বা আন্ডারস্কোর ব্যবহার করুন (যেমন: gemini-4-hydrogen বা gemini-3.1-flash-lite)।',
       },
     });
   }
 
+  const previousSettings = { ...(db.aiModelSettings || { modelName: '' }) };
   const previousModel = getActiveGeminiModel();
-  db.aiModelSettings = {
+  const nextSettings = {
     modelName: cleaned,
     notes,
     updatedAt: new Date().toISOString(),
     updatedBy: req.user.id,
     updatedByName: req.user.name || 'Super Admin',
+    updatedByTenantId: tenantId,
   };
 
+  db.aiModelSettings = nextSettings;
   const updatedSnapshot = getAiModelConfigSnapshot();
-  const mosqueId = req.currentMosque?.id || db.mosques[0]?.id || 'GLOBAL_SAAS';
+
   db.logAudit(
-    mosqueId,
+    tenantId,
     req.user.id,
     req.user.name || 'Super Admin',
     req.user.role,
     'UPDATE',
     'SAAS_AI_SETTINGS',
     cleaned
-      ? `কেন্দ্রীয় AI মডেল পরিবর্তন করা হয়েছে: ${previousModel} → ${updatedSnapshot.activeModel}`
-      : `কেন্দ্রীয় AI মডেল ডিফল্টে রিসেট করা হয়েছে (বর্তমান সক্রিয় মডেল: ${updatedSnapshot.activeModel})`,
+      ? `কেন্দ্রীয় AI মডেল পরিবর্তন করা হয়েছে: ${previousModel} → ${updatedSnapshot.activeModel}${notes ? ` (নোট: ${notes})` : ''}`
+      : `কেন্দ্রীয় AI মডেল ডিফল্টে রিসেট করা হয়েছে: ${previousModel} → ${updatedSnapshot.activeModel}`,
     'ai-model-settings',
-    req.ip
+    clientIp
   );
-  db.save();
+
+  try {
+    // Atomic JSON database write with concurrency lock
+    db.save();
+  } catch (err: any) {
+    // Roll back in-memory state if atomic disk write failed
+    db.aiModelSettings = previousSettings;
+    const reason =
+      err instanceof StoragePersistenceError
+        ? err.message
+        : err?.message || 'ডাটাবেস ফাইলে স্থায়ীভাবে সংরক্ষণ করতে ত্রুটি ঘটেছে।';
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: 'PERSISTENCE_FAILED',
+        message: `AI মডেল কনফিগারেশন স্থায়ীভাবে সেভ করা যায়নি: ${reason}`,
+      },
+    });
+  }
+
+  // Also commit to dedicated atomic store + Firestore system_config (non-fatal if offline)
+  try {
+    await cloudPersistence.saveAiModelSettings(nextSettings);
+  } catch (cloudErr) {
+    console.warn('[AI Settings] Dedicated cloud sync warning (local atomic save succeeded):', cloudErr);
+  }
 
   return res.json({
     success: true,
     data: updatedSnapshot,
     message: cleaned
-      ? `সেন্ট্রাল AI মডেল "${updatedSnapshot.activeModel}" সফলভাবে সেভ করা হয়েছে।`
+      ? `সেন্ট্রাল AI মডেল "${updatedSnapshot.activeModel}" স্থায়ীভাবে সংরক্ষণ করা হয়েছে।`
       : `সেন্ট্রাল AI মডেল ডিফল্ট কনফিগারেশনে (${updatedSnapshot.activeModel}) রিসেট করা হয়েছে।`,
   });
-});
+};
+
+app.put('/api/v1/saas/ai-settings', authenticate, handleSaveCentralAiSettings);
+app.post('/api/v1/saas/ai-settings', authenticate, handleSaveCentralAiSettings);
 
 app.post('/api/v1/saas/ai-settings/test', authenticate, async (req: AuthRequest, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  const clientIp = getClientIp(req);
+
   if (req.user?.role !== 'SUPER_ADMIN') {
+    logSecurityAuditEvent({
+      mosqueId: req.currentMosque?.id || 'GLOBAL_SAAS',
+      userId: req.user?.id || 'unknown',
+      userName: req.user?.name || 'Unknown',
+      userRole: req.user?.role || 'UNKNOWN',
+      action: 'UNAUTHORIZED_AI_SETTINGS_TEST',
+      details: 'সুপার অ্যাডমিন ব্যতীত সেন্ট্রাল AI মডেল সংযোগ পরীক্ষার চেষ্টা প্রতিহত হয়েছে।',
+      ipAddress: clientIp,
+      status: 'FAILED',
+    });
     return res.status(403).json({
       success: false,
       error: { code: 'FORBIDDEN', message: 'AI মডেল পরীক্ষা করার জন্য সুপার অ্যাডমিন অনুমতি আবশ্যক।' },
     });
   }
 
+  const tenantId = req.currentMosque?.id;
+  if (!tenantId) {
+    return res.status(403).json({
+      success: false,
+      error: { code: 'TENANT_REQUIRED', message: 'বৈধ টেন্যান্ট (মসজিদ) সেশন ছাড়া সংযোগ পরীক্ষা করা যাবে না।' },
+    });
+  }
+
+  const rawCandidate =
+    typeof req.body?.modelName === 'string'
+      ? req.body.modelName
+      : typeof req.body?.model === 'string'
+      ? req.body.model
+      : undefined;
+  const normalizedCandidate = rawCandidate !== undefined ? sanitizeGeminiModelName(rawCandidate) : undefined;
+
   try {
-    const candidateModel = typeof req.body?.modelName === 'string' ? req.body.modelName : undefined;
-    const result = await testGeminiModelConnection(candidateModel);
+    const result = await testGeminiModelConnection(normalizedCandidate);
+    db.logAudit(
+      tenantId,
+      req.user.id,
+      req.user.name || 'Super Admin',
+      req.user.role,
+      'VIEW',
+      'SAAS_AI_SETTINGS',
+      `AI মডেল সংযোগ পরীক্ষা সফল: ${result.modelName} (${result.latencyMs}ms)`,
+      'ai-model-settings',
+      clientIp
+    );
+    try {
+      db.save();
+    } catch (_) {}
+
     return res.json({
       success: true,
       data: result,
-      message: `মডেল "${result.modelName}" সঠিকভাবে সক্রিয় আছে (${result.latencyMs}ms)।`,
+      message: `মডেল "${result.modelName}" সক্রিয়ভাবে সাড়া দিয়েছে (${result.latencyMs}ms)।`,
     });
   } catch (err: any) {
     const statusCode = err instanceof GeminiServiceError ? err.statusCode : 500;
     const code = err instanceof GeminiServiceError ? err.code : 'AI_TEST_FAILED';
+    const testedModel = normalizedCandidate || getActiveGeminiModel();
     return res.status(statusCode).json({
       success: false,
       error: {
         code,
-        message: err?.message || 'AI মডেল পরীক্ষা করতে ব্যর্থ হয়েছে।',
+        modelName: testedModel,
+        message: err?.message || `মডেল "${testedModel}" সংযোগ পরীক্ষা ব্যর্থ হয়েছে।`,
       },
     });
   }
@@ -5900,10 +6035,23 @@ app.post('/api/v1/accounting/income', authenticate, dalContextMiddleware, requir
       return res.json(cachedRecord.responsePayload);
     }
 
-    const { mainHeadId, subHeadId, amount, paymentMethod, accountId, donorName, donorPhone, reference, description, date, attachmentUrl, denominationData } = req.body;
+    const { mainHeadId, subHeadId, amount, paymentMethod, accountId, donorName, donorPhone, donorAddress, partyId, reference, description, date, attachmentUrl, denominationData } = req.body;
     const numAmount = Number(amount);
     if (!numAmount || numAmount <= 0) {
       return res.status(400).json({ success: false, error: { code: 'INVALID_AMOUNT', message: 'টাকার পরিমাণ অবশ্যই শূন্যের চেয়ে বেশি হতে হবে।' } });
+    }
+
+    let resolvedPartyId: string | undefined = undefined;
+    let resolvedPartyCode: string | undefined = undefined;
+    let resolvedPartySnapshot: any = undefined;
+    if (partyId) {
+      const party = resolveTenantParty(mosqueId, String(partyId));
+      if (!party) {
+        return res.status(400).json({ success: false, error: { code: 'INVALID_PARTY', message: 'নির্বাচিত ব্যক্তি বা প্রতিষ্ঠান এই মসজিদের রেজিস্ট্রিতে পাওয়া যায়নি।' } });
+      }
+      resolvedPartyId = party.partyId;
+      resolvedPartyCode = party.partyCode;
+      resolvedPartySnapshot = buildPartySnapshot(party);
     }
 
     const nowIso = new Date().toISOString();
@@ -5918,8 +6066,12 @@ app.post('/api/v1/accounting/income', authenticate, dalContextMiddleware, requir
       paymentMethod: paymentMethod || 'CASH',
       accountId: accountId || 'acc-cash-01',
       accountName: '',
-      donorName,
-      donorPhone,
+      donorName: donorName || resolvedPartySnapshot?.name,
+      donorPhone: donorPhone || resolvedPartySnapshot?.phone,
+      donorAddress: donorAddress || resolvedPartySnapshot?.address,
+      partyId: resolvedPartyId,
+      partyCode: resolvedPartyCode,
+      partySnapshot: resolvedPartySnapshot,
       reference,
       description,
       attachmentUrl,
@@ -5933,6 +6085,10 @@ app.post('/api/v1/accounting/income', authenticate, dalContextMiddleware, requir
       createdAt: nowIso,
       updatedAt: nowIso
     });
+
+    if (entry.partyId) {
+      syncVoucherReferenceToParty(mosqueId, 'INCOME', entry);
+    }
 
     const responsePayload = {
       success: true,
@@ -5980,13 +6136,35 @@ app.put('/api/v1/accounting/income/:id', authenticate, dalContextMiddleware, req
       return res.json(cachedRecord.responsePayload);
     }
 
-    const { amount, donorName, donorPhone, donorAddress, reference, description, date, denominationData, accountId, paymentMethod, mainHeadId, subHeadId } = req.body;
+    const { amount, donorName, donorPhone, donorAddress, partyId, reference, description, date, denominationData, accountId, paymentMethod, mainHeadId, subHeadId } = req.body;
+
+    let resolvedPartyId: string | null | undefined = undefined;
+    let resolvedPartyCode: string | null | undefined = undefined;
+    let resolvedPartySnapshot: any = undefined;
+    if (partyId !== undefined) {
+      if (!partyId) {
+        resolvedPartyId = null;
+        resolvedPartyCode = null;
+        resolvedPartySnapshot = null;
+      } else {
+        const party = resolveTenantParty(mosqueId, String(partyId));
+        if (!party) {
+          return res.status(400).json({ success: false, error: { code: 'INVALID_PARTY', message: 'নির্বাচিত ব্যক্তি বা প্রতিষ্ঠান এই মসজিদের রেজিস্ট্রিতে পাওয়া যায়নি।' } });
+        }
+        resolvedPartyId = party.partyId;
+        resolvedPartyCode = party.partyCode;
+        resolvedPartySnapshot = buildPartySnapshot(party);
+      }
+    }
 
     const item = await req.dal!.income!.update(dalOptions, req.params.id, {
       amount,
       donorName,
       donorPhone,
       donorAddress,
+      partyId: resolvedPartyId,
+      partyCode: resolvedPartyCode,
+      partySnapshot: resolvedPartySnapshot,
       reference,
       description,
       date,
@@ -5996,6 +6174,8 @@ app.put('/api/v1/accounting/income/:id', authenticate, dalContextMiddleware, req
       mainHeadId,
       subHeadId
     });
+
+    syncVoucherReferenceToParty(mosqueId, 'INCOME', item);
 
     realtime.broadcastToMosque(mosqueId, 'INCOME_UPDATED', item, { senderId: req.user!.id });
     realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
@@ -6089,6 +6269,9 @@ app.post('/api/v1/accounting/income/:id/reverse', authenticate, dalContextMiddle
   const { reason } = req.body;
   try {
     const item = await req.dal!.income!.reverse(req.dalOptions!, req.params.id, reason);
+    if (item?.partyId) {
+      syncVoucherReferenceToParty(req.currentMosque!.id, 'INCOME', item);
+    }
 
     realtime.broadcastToMosque(req.currentMosque!.id, 'INCOME_REVERSED', item, { senderId: req.user!.id });
     realtime.broadcastToMosque(req.currentMosque!.id, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(req.currentMosque!.id));
@@ -6126,6 +6309,9 @@ app.post('/api/v1/accounting/income/:id/restore', authenticate, dalContextMiddle
   const { reason } = req.body;
   try {
     const item = await req.dal!.income!.restore!(req.dalOptions!, req.params.id, reason);
+    if (item?.partyId) {
+      syncVoucherReferenceToParty(req.currentMosque!.id, 'INCOME', item);
+    }
 
     realtime.broadcastToMosque(req.currentMosque!.id, 'INCOME_UPDATED', item, { senderId: req.user!.id });
     realtime.broadcastToMosque(req.currentMosque!.id, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(req.currentMosque!.id));
@@ -6206,7 +6392,7 @@ app.post('/api/v1/accounting/expense', authenticate, dalContextMiddleware, requi
       return res.json(cachedRecord.responsePayload);
     }
 
-    const { mainHeadId, subHeadId, amount, paymentMethod, accountId, payeeName, payeePhone, reference, description, date, attachmentUrl, sourceModule, sourceId, sourceType } = req.body;
+    const { mainHeadId, subHeadId, amount, paymentMethod, accountId, payeeName, payeePhone, payeeAddress, partyId, reference, description, date, attachmentUrl, sourceModule, sourceId, sourceType } = req.body;
     const numAmount = Number(amount);
     if (!numAmount || isNaN(numAmount) || !isFinite(numAmount) || numAmount <= 0) {
       return res.status(400).json({ success: false, error: { code: 'INVALID_AMOUNT', message: 'খরচের পরিমাণ অবশ্যই বৈধ এবং শূন্যের চেয়ে বেশি হতে হবে।' } });
@@ -6272,6 +6458,19 @@ app.post('/api/v1/accounting/expense', authenticate, dalContextMiddleware, requi
       }
     }
 
+    let resolvedPartyId: string | undefined = undefined;
+    let resolvedPartyCode: string | undefined = undefined;
+    let resolvedPartySnapshot: any = undefined;
+    if (partyId && sourceModule !== 'STAFF_EXPENSE') {
+      const party = resolveTenantParty(mosqueId, String(partyId));
+      if (!party) {
+        return res.status(400).json({ success: false, error: { code: 'INVALID_PARTY', message: 'নির্বাচিত ব্যক্তি বা প্রতিষ্ঠান এই মসজিদের রেজিস্ট্রিতে পাওয়া যায়নি।' } });
+      }
+      resolvedPartyId = party.partyId;
+      resolvedPartyCode = party.partyCode;
+      resolvedPartySnapshot = buildPartySnapshot(party);
+    }
+
     const nowIso = new Date().toISOString();
     const entry = await req.dal!.expense!.create(dalOptions, {
       mosqueId,
@@ -6284,8 +6483,12 @@ app.post('/api/v1/accounting/expense', authenticate, dalContextMiddleware, requi
       paymentMethod: paymentMethod || 'CASH',
       accountId: account.id,
       accountName: account.nameBn || 'প্রধান ক্যাশ',
-      payeeName: cleanPayee,
-      payeePhone: payeePhone ? String(payeePhone).trim() : undefined,
+      payeeName: cleanPayee || resolvedPartySnapshot?.name || '',
+      payeePhone: payeePhone ? String(payeePhone).trim() : resolvedPartySnapshot?.phone,
+      payeeAddress: payeeAddress ? String(payeeAddress).trim() : resolvedPartySnapshot?.address,
+      partyId: resolvedPartyId,
+      partyCode: resolvedPartyCode,
+      partySnapshot: resolvedPartySnapshot,
       reference: reference ? String(reference).trim() : undefined,
       description: description ? String(description).trim() : undefined,
       attachmentUrl: attachmentUrl ? String(attachmentUrl).trim() : undefined,
@@ -6301,6 +6504,10 @@ app.post('/api/v1/accounting/expense', authenticate, dalContextMiddleware, requi
       createdAt: nowIso,
       updatedAt: nowIso
     });
+
+    if (entry.partyId) {
+      syncVoucherReferenceToParty(mosqueId, 'EXPENSE', entry);
+    }
 
     const responsePayload = {
       success: true,
@@ -6347,6 +6554,9 @@ app.post('/api/v1/accounting/expense/:id/reverse', authenticate, dalContextMiddl
   const { reason } = req.body;
   try {
     const item = await req.dal!.expense!.reverse(req.dalOptions!, req.params.id, reason);
+    if (item?.partyId) {
+      syncVoucherReferenceToParty(req.currentMosque!.id, 'EXPENSE', item);
+    }
 
     realtime.broadcastToMosque(req.currentMosque!.id, 'EXPENSE_REVERSED', item, { senderId: req.user!.id });
     realtime.broadcastToMosque(req.currentMosque!.id, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(req.currentMosque!.id));
@@ -6384,6 +6594,9 @@ app.post('/api/v1/accounting/expense/:id/restore', authenticate, dalContextMiddl
   const { reason } = req.body;
   try {
     const item = await req.dal!.expense!.restore!(req.dalOptions!, req.params.id, reason);
+    if (item?.partyId) {
+      syncVoucherReferenceToParty(req.currentMosque!.id, 'EXPENSE', item);
+    }
 
     realtime.broadcastToMosque(req.currentMosque!.id, 'EXPENSE_UPDATED', item, { senderId: req.user!.id });
     realtime.broadcastToMosque(req.currentMosque!.id, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(req.currentMosque!.id));
@@ -6429,6 +6642,8 @@ app.put('/api/v1/accounting/expense/:id', authenticate, dalContextMiddleware, re
       paymentMethod,
       payeeName,
       payeePhone,
+      payeeAddress,
+      partyId,
       reference,
       description,
       attachmentUrl,
@@ -6440,6 +6655,25 @@ app.put('/api/v1/accounting/expense/:id', authenticate, dalContextMiddleware, re
       salaryMonth,
     } = req.body;
 
+    let resolvedPartyId: string | null | undefined = undefined;
+    let resolvedPartyCode: string | null | undefined = undefined;
+    let resolvedPartySnapshot: any = undefined;
+    if (partyId !== undefined) {
+      if (!partyId) {
+        resolvedPartyId = null;
+        resolvedPartyCode = null;
+        resolvedPartySnapshot = null;
+      } else {
+        const party = resolveTenantParty(mosqueId, String(partyId));
+        if (!party) {
+          return res.status(400).json({ success: false, error: { code: 'INVALID_PARTY', message: 'নির্বাচিত ব্যক্তি বা প্রতিষ্ঠান এই মসজিদের রেজিস্ট্রিতে পাওয়া যায়নি।' } });
+        }
+        resolvedPartyId = party.partyId;
+        resolvedPartyCode = party.partyCode;
+        resolvedPartySnapshot = buildPartySnapshot(party);
+      }
+    }
+
     const item = await req.dal!.expense!.update(dalOptions, req.params.id, {
       amount,
       mainHeadId,
@@ -6448,6 +6682,10 @@ app.put('/api/v1/accounting/expense/:id', authenticate, dalContextMiddleware, re
       paymentMethod,
       payeeName,
       payeePhone,
+      payeeAddress,
+      partyId: resolvedPartyId,
+      partyCode: resolvedPartyCode,
+      partySnapshot: resolvedPartySnapshot,
       reference,
       description,
       attachmentUrl,
@@ -6458,6 +6696,8 @@ app.put('/api/v1/accounting/expense/:id', authenticate, dalContextMiddleware, re
       staffId,
       salaryMonth,
     });
+
+    syncVoucherReferenceToParty(mosqueId, 'EXPENSE', item);
 
     realtime.broadcastToMosque(mosqueId, 'EXPENSE_UPDATED', item, { senderId: req.user!.id });
     realtime.broadcastToMosque(mosqueId, 'DASHBOARD_STATS_UPDATED', db.getDashboardStats(mosqueId));
@@ -6679,14 +6919,32 @@ app.post('/api/v1/donations', authenticate, dalContextMiddleware, requirePermiss
       return res.json(cachedRecord.responsePayload);
     }
 
-    const result = await req.dal!.donations!.create(dalOptions, {
-      ...req.body,
-      _idempotencyKey: req.idempotencyKey
-    });
+    let donationPayload = { ...req.body, _idempotencyKey: req.idempotencyKey };
+    if (req.body?.partyId && !req.body?.isAnonymous) {
+      const party = resolveTenantParty(mosqueId, String(req.body.partyId));
+      if (!party) {
+        return res.status(400).json({ success: false, error: { code: 'INVALID_PARTY', message: 'নির্বাচিত ব্যক্তি বা প্রতিষ্ঠান এই মসজিদের রেজিস্ট্রিতে পাওয়া যায়নি।' } });
+      }
+      const snapshot = buildPartySnapshot(party);
+      donationPayload = {
+        ...donationPayload,
+        partyId: party.partyId,
+        partyCode: party.partyCode,
+        partySnapshot: snapshot,
+        donorName: req.body?.donorName || snapshot.name,
+        donorPhone: req.body?.donorPhone || snapshot.phone,
+        donorAddress: req.body?.donorAddress || snapshot.address,
+      };
+    }
+
+    const result = await req.dal!.donations!.create(dalOptions, donationPayload);
 
     const donation = result?.donation || result;
     const incEntry = result?.incEntry;
     const targetCollection = result?.targetCollection;
+    if (incEntry?.partyId) {
+      syncVoucherReferenceToParty(mosqueId, 'INCOME', incEntry);
+    }
     const responsePayload = result?.responsePayload || {
       success: true,
       data: donation,
@@ -6724,6 +6982,9 @@ app.post('/api/v1/donations/:id/cancel', authenticate, dalContextMiddleware, req
 
     const donation = result?.donation || result;
     const incEntry = result?.incEntry;
+    if (incEntry?.partyId) {
+      syncVoucherReferenceToParty(mosqueId, 'INCOME', incEntry);
+    }
     const updatedCollection = result?.updatedCollection;
     const payload = result?.payload || {
       success: true,
@@ -6757,6 +7018,9 @@ app.post('/api/v1/donations/:id/restore', authenticate, dalContextMiddleware, re
 
     const donation = result?.donation || result;
     const incEntry = result?.incEntry;
+    if (incEntry?.partyId) {
+      syncVoucherReferenceToParty(mosqueId, 'INCOME', incEntry);
+    }
     const payload = result?.payload || {
       success: true,
       data: donation,
@@ -11034,7 +11298,37 @@ app.get('/api/v1/staff/next-code', authenticate, dalContextMiddleware, async (re
 app.post('/api/v1/staff', authenticate, dalContextMiddleware, requirePermission('MANAGE_STAFF'), async (req: AuthRequest, res: Response) => {
   const mosqueId = req.currentMosque!.id;
   try {
+    if (req.body?.linkedPartyId) {
+      const targetParty = resolveTenantParty(mosqueId, String(req.body.linkedPartyId));
+      if (!targetParty) {
+        return res.status(400).json({ success: false, error: { code: 'PARTY_NOT_FOUND', message: 'নির্বাচিত পার্টি প্রোফাইলটি এই মসজিদে পাওয়া যায়নি।' } });
+      }
+      const conflictingStaff = (db.staffList || []).find(
+        (s) => s.mosqueId === mosqueId && s.linkedPartyId === targetParty.partyId && s.status !== 'EMPLOYMENT_ENDED' && s.status !== 'INACTIVE'
+      );
+      if (conflictingStaff) {
+        return res.status(409).json({
+          success: false,
+          error: { code: 'PARTY_ALREADY_LINKED_TO_STAFF', message: `এই পার্টি প্রোফাইলটি ইতিমধ্যেই স্টাফ "${conflictingStaff.fullNameBn || conflictingStaff.name}"-এর সাথে সংযুক্ত।` },
+        });
+      }
+    }
     const staff = await req.dal!.staff!.createStaff(req.dalOptions!, req.body);
+    if (req.body?.linkedPartyId || req.body?.autoCreatePartyLink) {
+      const liveStaff = (db.staffList || []).find((s) => s.id === staff.id && s.mosqueId === mosqueId) || staff;
+      const linkRes = syncStaffPartyLink({
+        mosqueId,
+        staff: liveStaff,
+        user: req.user!,
+        ipAddress: getClientIp(req),
+        partyId: req.body?.linkedPartyId || undefined,
+        createNewIfMissing: Boolean(req.body?.autoCreatePartyLink),
+      });
+      if (!linkRes.errorCode) {
+        staff.linkedPartyId = liveStaff.linkedPartyId;
+        staff.linkedPartyCode = liveStaff.linkedPartyCode;
+      }
+    }
     realtime.broadcastToMosque(mosqueId, 'STAFF_CREATED', staff, { senderId: req.user!.id });
     res.json({ success: true, data: staff, message: 'স্টাফ সফলভাবে যুক্ত করা হয়েছে।' });
   } catch (err: any) {
@@ -11043,9 +11337,40 @@ app.post('/api/v1/staff', authenticate, dalContextMiddleware, requirePermission(
 });
 
 app.put('/api/v1/staff/:id', authenticate, dalContextMiddleware, requirePermission('MANAGE_STAFF'), async (req: AuthRequest, res: Response) => {
+  const mosqueId = req.currentMosque!.id;
   try {
+    if (req.body?.linkedPartyId) {
+      const targetParty = resolveTenantParty(mosqueId, String(req.body.linkedPartyId));
+      if (!targetParty) {
+        return res.status(400).json({ success: false, error: { code: 'PARTY_NOT_FOUND', message: 'নির্বাচিত পার্টি প্রোফাইলটি এই মসজিদে পাওয়া যায়নি।' } });
+      }
+      const conflictingStaff = (db.staffList || []).find(
+        (s) => s.mosqueId === mosqueId && s.id !== req.params.id && s.linkedPartyId === targetParty.partyId && s.status !== 'EMPLOYMENT_ENDED' && s.status !== 'INACTIVE'
+      );
+      if (conflictingStaff) {
+        return res.status(409).json({
+          success: false,
+          error: { code: 'PARTY_ALREADY_LINKED_TO_STAFF', message: `এই পার্টি প্রোফাইলটি ইতিমধ্যেই স্টাফ "${conflictingStaff.fullNameBn || conflictingStaff.name}"-এর সাথে সংযুক্ত।` },
+        });
+      }
+    }
     const staff = await req.dal!.staff!.updateStaff(req.dalOptions!, req.params.id, req.body);
-    realtime.broadcastToMosque(req.currentMosque!.id, 'STAFF_UPDATED', staff, { senderId: req.user!.id });
+    if (req.body?.linkedPartyId !== undefined || req.body?.autoCreatePartyLink) {
+      const liveStaff = (db.staffList || []).find((s) => s.id === staff.id && s.mosqueId === mosqueId) || staff;
+      const linkRes = syncStaffPartyLink({
+        mosqueId,
+        staff: liveStaff,
+        user: req.user!,
+        ipAddress: getClientIp(req),
+        partyId: req.body?.linkedPartyId === null || req.body?.linkedPartyId === '' ? null : req.body?.linkedPartyId,
+        createNewIfMissing: Boolean(req.body?.autoCreatePartyLink),
+      });
+      if (!linkRes.errorCode) {
+        staff.linkedPartyId = liveStaff.linkedPartyId;
+        staff.linkedPartyCode = liveStaff.linkedPartyCode;
+      }
+    }
+    realtime.broadcastToMosque(mosqueId, 'STAFF_UPDATED', staff, { senderId: req.user!.id });
     res.json({ success: true, data: staff, message: 'স্টাফ তথ্য সফলভাবে আপডেট হয়েছে।' });
   } catch (err: any) {
     return handleDomainDalError(res, err, 'স্টাফ তথ্য আপডেট ব্যর্থ হয়েছে।');
@@ -13274,6 +13599,11 @@ app.use('/api/v1', createSmartNotesRouter(authenticate));
 // 13.55 AGREEMENT MANAGEMENT ("চুক্তিপত্র ব্যবস্থাপনা") API
 // ==========================================
 app.use('/api/v1', createAgreementRouter(authenticate));
+
+// ==========================================
+// 13.58 CENTRAL PARTY REGISTRY ("ব্যক্তি, প্রতিষ্ঠান ও সেবাদাতা ব্যবস্থাপনা") API
+// ==========================================
+app.use('/api/v1', createPartyRouter(authenticate));
 
 // ==========================================
 // 13.6 AUTO-BACKUP & REMINDER/NOTIFICATION AUTOMATION API

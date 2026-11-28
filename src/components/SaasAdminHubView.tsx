@@ -36,6 +36,12 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { Language, translations } from '../lib/i18n';
+import {
+  sanitizeGeminiModelName,
+  isValidGeminiModelName,
+  RECOMMENDED_AI_MODELS,
+  DEFAULT_GEMINI_MODEL,
+} from '../config/aiConfig';
 
 interface SaasAdminHubViewProps {
   currentUser: any;
@@ -62,10 +68,18 @@ export const SaasAdminHubView: React.FC<SaasAdminHubViewProps> = ({
   const [aiSettings, setAiSettings] = useState<any | null>(null);
   const [aiModelInput, setAiModelInput] = useState<string>('');
   const [aiModelNotes, setAiModelNotes] = useState<string>('');
+  const [isRefreshingAiSettings, setIsRefreshingAiSettings] = useState<boolean>(false);
   const [isSavingAiModel, setIsSavingAiModel] = useState<boolean>(false);
   const [isTestingAiModel, setIsTestingAiModel] = useState<boolean>(false);
+  const [aiSaveFeedback, setAiSaveFeedback] = useState<{
+    type: 'success' | 'error';
+    text: string;
+    modelName?: string;
+  } | null>(null);
   const [aiTestResult, setAiTestResult] = useState<{
     type: 'success' | 'error';
+    modelName: string;
+    statusLabelBn: string;
     text: string;
     latencyMs?: number;
     preview?: string;
@@ -128,19 +142,28 @@ export const SaasAdminHubView: React.FC<SaasAdminHubViewProps> = ({
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [statsRes, mosquesRes, broadcastsRes, aiSettingsRes] = await Promise.all([
+      const [statsRes, mosquesRes, broadcastsRes] = await Promise.all([
         api.getSaasStats().catch(() => null),
         api.getSaasMosques().catch(() => []),
         api.getSaasBroadcasts().catch(() => []),
-        api.getSaasAiSettings().catch(() => null),
       ]);
       if (statsRes) setStats(statsRes);
       if (mosquesRes) setMosques(mosquesRes);
       if (broadcastsRes) setBroadcasts(broadcastsRes);
-      if (aiSettingsRes) {
+
+      try {
+        const aiSettingsRes = await api.getSaasAiSettings();
         setAiSettings(aiSettingsRes);
-        setAiModelInput(aiSettingsRes.overrideModel || aiSettingsRes.activeModel || '');
+        const authoritativeModel = sanitizeGeminiModelName(
+          aiSettingsRes.overrideModel || aiSettingsRes.activeModel || ''
+        );
+        setAiModelInput(authoritativeModel);
         setAiModelNotes(aiSettingsRes.notes || '');
+      } catch (aiErr: any) {
+        setAiSaveFeedback({
+          type: 'error',
+          text: aiErr?.message || 'সেন্ট্রাল AI মডেল স্ট্যাটাস লোড করতে ব্যর্থ হয়েছে।',
+        });
       }
     } catch (err: any) {
       setNotificationMsg({ type: 'error', text: err.message || 'ডাটা লোড করতে ব্যর্থ হয়েছে।' });
@@ -149,38 +172,72 @@ export const SaasAdminHubView: React.FC<SaasAdminHubViewProps> = ({
     }
   };
 
+  const handleRefreshAiSettings = async () => {
+    setIsRefreshingAiSettings(true);
+    setAiSaveFeedback(null);
+    try {
+      const aiSettingsRes = await api.getSaasAiSettings();
+      setAiSettings(aiSettingsRes);
+      const authoritativeModel = sanitizeGeminiModelName(
+        aiSettingsRes.overrideModel || aiSettingsRes.activeModel || ''
+      );
+      setAiModelInput(authoritativeModel);
+      setAiModelNotes(aiSettingsRes.notes || '');
+      setStats((prev: any) =>
+        prev ? { ...prev, activeAiModel: aiSettingsRes.activeModel } : prev
+      );
+    } catch (err: any) {
+      const msg = err?.message || 'AI মডেল স্ট্যাটাস রিফ্রেশ করতে ব্যর্থ হয়েছে।';
+      setAiSaveFeedback({ type: 'error', text: msg });
+      setNotificationMsg({ type: 'error', text: msg });
+    } finally {
+      setIsRefreshingAiSettings(false);
+    }
+  };
+
   const handleSaveAiModel = async (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmed = aiModelInput.trim();
-    if (!trimmed) {
-      setNotificationMsg({
-        type: 'error',
-        text: 'অনুগ্রহ করে একটি বৈধ Gemini মডেলের নাম লিখুন (যেমন: gemini-4-hydrogen)।',
-      });
+    const normalized = sanitizeGeminiModelName(aiModelInput);
+    if (!normalized) {
+      const msg = 'অনুগ্রহ করে একটি বৈধ Gemini মডেলের নাম লিখুন (যেমন: gemini-4-hydrogen)।';
+      setAiSaveFeedback({ type: 'error', text: msg });
+      setNotificationMsg({ type: 'error', text: msg });
       return;
     }
+    if (!isValidGeminiModelName(normalized)) {
+      const msg =
+        'মডেলের নাম সঠিক নয়। শুধুমাত্র ইংরেজি অক্ষর, সংখ্যা (0-9), ডট, ড্যাশ বা আন্ডারস্কোর ব্যবহার করুন (যেমন: gemini-4-hydrogen বা gemini-3.1-flash-lite)।';
+      setAiSaveFeedback({ type: 'error', text: msg });
+      setNotificationMsg({ type: 'error', text: msg });
+      return;
+    }
+
+    setAiModelInput(normalized);
     setIsSavingAiModel(true);
+    setAiSaveFeedback(null);
     setAiTestResult(null);
     try {
       const res = await api.updateSaasAiSettings({
-        modelName: trimmed,
+        modelName: normalized,
         notes: aiModelNotes.trim(),
       });
       if (res.data) {
         setAiSettings(res.data);
-        setAiModelInput(res.data.overrideModel || res.data.activeModel || trimmed);
+        const savedModel = sanitizeGeminiModelName(
+          res.data.overrideModel || res.data.activeModel || normalized
+        );
+        setAiModelInput(savedModel);
         setAiModelNotes(res.data.notes || '');
         setStats((prev: any) => (prev ? { ...prev, activeAiModel: res.data.activeModel } : prev));
+        const successText =
+          res.message || `সেন্ট্রাল AI মডেল "${savedModel}" স্থায়ীভাবে সংরক্ষণ করা হয়েছে।`;
+        setAiSaveFeedback({ type: 'success', text: successText, modelName: savedModel });
+        setNotificationMsg({ type: 'success', text: successText });
       }
-      setNotificationMsg({
-        type: 'success',
-        text: res.message || `সেন্ট্রাল AI মডেল "${trimmed}" সফলভাবে সংরক্ষণ করা হয়েছে।`,
-      });
     } catch (err: any) {
-      setNotificationMsg({
-        type: 'error',
-        text: err?.message || 'AI মডেল সেভ করতে সমস্যা হয়েছে।',
-      });
+      const errorText = err?.message || 'AI মডেল সেভ করতে সমস্যা হয়েছে।';
+      setAiSaveFeedback({ type: 'error', text: errorText });
+      setNotificationMsg({ type: 'error', text: errorText });
     } finally {
       setIsSavingAiModel(false);
     }
@@ -188,44 +245,70 @@ export const SaasAdminHubView: React.FC<SaasAdminHubViewProps> = ({
 
   const handleResetAiModelToDefault = async () => {
     setIsSavingAiModel(true);
+    setAiSaveFeedback(null);
     setAiTestResult(null);
     try {
       const res = await api.updateSaasAiSettings({ modelName: '', notes: '' });
       if (res.data) {
         setAiSettings(res.data);
-        setAiModelInput(res.data.activeModel || '');
+        const resolvedModel = sanitizeGeminiModelName(res.data.activeModel || DEFAULT_GEMINI_MODEL);
+        setAiModelInput(resolvedModel);
         setAiModelNotes('');
         setStats((prev: any) => (prev ? { ...prev, activeAiModel: res.data.activeModel } : prev));
+        const msg = res.message || `AI মডেল ডিফল্ট কনফিগারেশনে (${resolvedModel}) রিসেট করা হয়েছে।`;
+        setAiSaveFeedback({ type: 'success', text: msg, modelName: resolvedModel });
+        setNotificationMsg({ type: 'success', text: msg });
       }
-      setNotificationMsg({
-        type: 'success',
-        text: res.message || 'AI মডেল ডিফল্ট কনফিগারেশনে রিসেট করা হয়েছে।',
-      });
     } catch (err: any) {
-      setNotificationMsg({
-        type: 'error',
-        text: err?.message || 'ডিফল্টে রিসেট করতে সমস্যা হয়েছে।',
-      });
+      const errorText = err?.message || 'ডিফল্টে রিসেট করতে সমস্যা হয়েছে।';
+      setAiSaveFeedback({ type: 'error', text: errorText });
+      setNotificationMsg({ type: 'error', text: errorText });
     } finally {
       setIsSavingAiModel(false);
     }
   };
 
   const handleTestAiModel = async (overrideCandidate?: string) => {
-    const candidate = (overrideCandidate ?? aiModelInput).trim();
+    const candidate = sanitizeGeminiModelName(overrideCandidate ?? aiModelInput);
+    if (!candidate) {
+      setAiTestResult({
+        type: 'error',
+        modelName: aiSettings?.activeModel || DEFAULT_GEMINI_MODEL,
+        statusLabelBn: 'সংযোগ ব্যর্থ',
+        text: 'সংযোগ পরীক্ষার জন্য অনুগ্রহ করে একটি বৈধ Gemini মডেলের নাম নির্বাচন করুন বা লিখুন।',
+      });
+      return;
+    }
+    if (!isValidGeminiModelName(candidate)) {
+      setAiTestResult({
+        type: 'error',
+        modelName: candidate,
+        statusLabelBn: 'অবৈধ মডেল আইডি',
+        text: 'মডেলের নাম সঠিক ফরম্যাটে নয়। শুধুমাত্র ইংরেজি অক্ষর ও সংখ্যা ব্যবহার করুন (যেমন: gemini-4-hydrogen)।',
+      });
+      return;
+    }
+
+    setAiModelInput(candidate);
     setIsTestingAiModel(true);
     setAiTestResult(null);
     try {
       const res = await api.testSaasAiModel(candidate);
+      const testedModel = sanitizeGeminiModelName(res.modelName) || candidate;
+      const ms = typeof res.responseTimeMs === 'number' ? res.responseTimeMs : res.latencyMs;
       setAiTestResult({
         type: 'success',
-        text: `মডেল "${res.modelName}" সক্রিয়ভাবে সাড়া দিয়েছে।`,
-        latencyMs: res.latencyMs,
+        modelName: testedModel,
+        statusLabelBn: res.statusLabelBn || 'সংযোগ সফল',
+        text: `মডেলটি সক্রিয়ভাবে সাড়া দিয়েছে এবং ব্যবহারের জন্য প্রস্তুত।`,
+        latencyMs: ms,
         preview: res.replyPreviewBn,
       });
     } catch (err: any) {
       setAiTestResult({
         type: 'error',
+        modelName: candidate,
+        statusLabelBn: 'সংযোগ ব্যর্থ',
         text: err?.message || 'মডেল সংযোগ পরীক্ষা ব্যর্থ হয়েছে।',
       });
     } finally {
@@ -443,8 +526,12 @@ export const SaasAdminHubView: React.FC<SaasAdminHubViewProps> = ({
               ভার্সন: {stats?.version || '2.6.0-SaaS'}
             </div>
             {(aiSettings?.activeModel || stats?.activeAiModel) && (
-              <div className="text-[11px] text-indigo-700 mt-0.5 font-mono font-semibold truncate">
-                AI: {aiSettings?.activeModel || stats?.activeAiModel}
+              <div
+                data-no-bn-digits="true"
+                dir="ltr"
+                className="text-[11px] text-indigo-700 mt-0.5 font-mono font-semibold truncate"
+              >
+                AI: {sanitizeGeminiModelName(aiSettings?.activeModel || stats?.activeAiModel)}
               </div>
             )}
           </div>
@@ -491,8 +578,12 @@ export const SaasAdminHubView: React.FC<SaasAdminHubViewProps> = ({
           <Sparkles className="w-4 h-4" />
           <span>AI মডেল সেটিংস</span>
           {(aiSettings?.activeModel || stats?.activeAiModel) && (
-            <span className="ml-1 px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 font-mono text-[10px]">
-              {aiSettings?.activeModel || stats?.activeAiModel}
+            <span
+              data-no-bn-digits="true"
+              dir="ltr"
+              className="ml-1 px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 font-mono text-[10px]"
+            >
+              {sanitizeGeminiModelName(aiSettings?.activeModel || stats?.activeAiModel)}
             </span>
           )}
         </button>
@@ -703,59 +794,77 @@ export const SaasAdminHubView: React.FC<SaasAdminHubViewProps> = ({
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
             <div>
-              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2 font-siliguri">
                 <Cpu className="w-5 h-5 text-indigo-600" />
                 <span>সেন্ট্রাল AI মডেল সেটিংস (Central AI Configuration)</span>
               </h2>
-              <p className="text-xs text-slate-500 mt-1">
-                সফটওয়্যারের সকল AI ফিচার (অডিটর, চ্যাট, স্মার্ট এন্ট্রি, কমিটি, আয়-ব্যয় বিশ্লেষণ, ডাটা মাইগ্রেশন) এখান থেকে নির্ধারিত একটি সেন্ট্রাল মডেল ব্যবহার করে।
+              <p className="text-xs text-slate-500 mt-1 font-tiro">
+                সফটওয়্যারের সকল AI ফিচার (অডিটর, চ্যাট, স্মার্ট এন্ট্রি, কমিটি, চুক্তিপত্র, আয়-ব্যয় বিশ্লেষণ, ডাটা মাইগ্রেশন) এখান থেকে নির্ধারিত একটি সেন্ট্রাল মডেল ব্যবহার করে।
               </p>
             </div>
             <button
               type="button"
-              onClick={loadData}
-              className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+              onClick={handleRefreshAiSettings}
+              disabled={isRefreshingAiSettings}
+              className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-60 text-slate-700 text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-              <span>স্ট্যাটাস রিফ্রেশ</span>
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingAiSettings || isLoading ? 'animate-spin' : ''}`} />
+              <span>{isRefreshingAiSettings ? 'রিফ্রেশ হচ্ছে...' : 'স্ট্যাটাস রিফ্রেশ'}</span>
             </button>
           </div>
 
           {/* Current Active Model Banner */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="lg:col-span-2 bg-gradient-to-br from-indigo-50 via-white to-emerald-50/60 border border-indigo-200/80 rounded-2xl p-5 space-y-2.5">
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-[11px] font-bold text-indigo-800 uppercase tracking-wide flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5" />
                   বর্তমান সক্রিয় AI মডেল
                 </span>
-                <span className="px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] font-bold">
+                <span
+                  className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold border ${
+                    aiSettings?.source === 'SUPER_ADMIN_OVERRIDE'
+                      ? 'bg-indigo-100 text-indigo-800 border-indigo-200'
+                      : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                  }`}
+                >
                   {aiSettings?.sourceLabelBn || 'সিস্টেম ডিফল্ট'}
                 </span>
               </div>
 
-              <div className="text-2xl font-black font-mono text-slate-900 tracking-tight">
-                {aiSettings?.activeModel || stats?.activeAiModel || 'gemini-4-hydrogen'}
+              <div
+                data-no-bn-digits="true"
+                dir="ltr"
+                className="text-2xl font-black font-mono text-slate-900 tracking-tight break-all"
+              >
+                {sanitizeGeminiModelName(aiSettings?.activeModel || stats?.activeAiModel) || DEFAULT_GEMINI_MODEL}
               </div>
 
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-600 pt-1">
                 <span>
+                  সুপার অ্যাডমিন সেভকৃত মডেল:{' '}
+                  <strong data-no-bn-digits="true" dir="ltr" className="font-mono text-indigo-800">
+                    {aiSettings?.overrideModel ? sanitizeGeminiModelName(aiSettings.overrideModel) : 'সেভ করা নেই'}
+                  </strong>
+                </span>
+                <span>•</span>
+                <span>
                   এনভায়রনমেন্ট ভেরিয়েবল (<code className="font-mono text-indigo-700">GEMINI_MODEL</code> / <code className="font-mono text-indigo-700">VITE_GEMINI_MODEL</code>):{' '}
-                  <strong className="font-mono text-slate-800">
-                    {aiSettings?.envModel || 'সেট করা নেই'}
+                  <strong data-no-bn-digits="true" dir="ltr" className="font-mono text-slate-800">
+                    {aiSettings?.envModel ? sanitizeGeminiModelName(aiSettings.envModel) : 'সেট করা নেই'}
                   </strong>
                 </span>
                 <span>•</span>
                 <span>
                   সিস্টেম ডিফল্ট:{' '}
-                  <strong className="font-mono text-slate-800">
-                    {aiSettings?.defaultModel || 'gemini-4-hydrogen'}
+                  <strong data-no-bn-digits="true" dir="ltr" className="font-mono text-slate-800">
+                    {sanitizeGeminiModelName(aiSettings?.defaultModel) || DEFAULT_GEMINI_MODEL}
                   </strong>
                 </span>
               </div>
 
               {aiSettings?.updatedAt && (
-                <div className="text-[11px] text-slate-500 pt-1 border-t border-indigo-100">
+                <div className="text-[11px] text-slate-500 pt-1.5 border-t border-indigo-100">
                   সর্বশেষ আপডেট: <strong>{new Date(aiSettings.updatedAt).toLocaleString('bn-BD')}</strong>
                   {aiSettings.updatedByName ? ` — ${aiSettings.updatedByName}` : ''}
                   {aiSettings.notes ? ` (${aiSettings.notes})` : ''}
@@ -764,13 +873,13 @@ export const SaasAdminHubView: React.FC<SaasAdminHubViewProps> = ({
             </div>
 
             <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-2">
-              <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+              <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5 font-siliguri">
                 <Info className="w-4 h-4 text-indigo-600" />
                 <span>মডেল লোড হওয়ার অগ্রাধিকার ক্রম</span>
               </div>
-              <ol className="text-xs text-slate-600 space-y-1.5 list-decimal list-inside leading-relaxed">
+              <ol className="text-xs text-slate-600 space-y-1.5 list-decimal list-inside leading-relaxed font-tiro">
                 <li>
-                  <strong className="text-slate-800">সুপার অ্যাডমিন সেটিংস</strong> (এই প্যানেল থেকে সেভ করা মডেল)
+                  <strong className="text-slate-800">সুপার অ্যাডমিন সেটিংস</strong> (এই প্যানেল থেকে সেভ করা মডেল — সর্বোচ্চ অগ্রাধিকার)
                 </li>
                 <li>
                   <strong className="text-slate-800">এনভায়রনমেন্ট ভেরিয়েবল</strong> (<code className="font-mono text-[11px]">GEMINI_MODEL</code> / <code className="font-mono text-[11px]">VITE_GEMINI_MODEL</code>)
@@ -791,16 +900,30 @@ export const SaasAdminHubView: React.FC<SaasAdminHubViewProps> = ({
                 </label>
                 <input
                   type="text"
+                  dir="ltr"
+                  spellCheck={false}
+                  autoComplete="off"
+                  data-no-bn-digits="true"
                   value={aiModelInput}
                   onChange={(e) => {
-                    setAiModelInput(e.target.value);
+                    const cleanedLive = e.target.value.replace(/[০-৯٠-٩]/g, (d) =>
+                      sanitizeGeminiModelName(d)
+                    );
+                    setAiModelInput(cleanedLive);
+                    setAiSaveFeedback(null);
                     setAiTestResult(null);
+                  }}
+                  onBlur={() => {
+                    const normalized = sanitizeGeminiModelName(aiModelInput);
+                    if (normalized !== aiModelInput) {
+                      setAiModelInput(normalized);
+                    }
                   }}
                   placeholder="যেমন: gemini-4-hydrogen বা gemini-3.1-flash-lite"
                   className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-mono font-bold text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-hidden"
                 />
-                <p className="text-[11px] text-slate-500 mt-1.5">
-                  ভবিষ্যতে গুগল নতুন কোনো মডেল রিলিজ করলে কোড পরিবর্তন না করেই এখানে নতুন মডেলের নাম লিখে সেভ করতে পারবেন।
+                <p className="text-[11px] text-slate-500 mt-1.5 font-tiro">
+                  মডেল আইডি সর্বদা শুদ্ধ ASCII অক্ষর ও ইংরেজি সংখ্যায় (<code className="font-mono text-[10px]">0-9</code>) সংরক্ষিত হবে। ভবিষ্যতে গুগল নতুন কোনো মডেল রিলিজ করলে কোড পরিবর্তন না করেই এখানে লিখে সেভ করতে পারবেন।
                 </p>
               </div>
 
@@ -815,8 +938,8 @@ export const SaasAdminHubView: React.FC<SaasAdminHubViewProps> = ({
                   placeholder="যেমন: সর্বশেষ স্টেবল ফ্ল্যাশ মডেলে আপগ্রেড"
                   className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-hidden"
                 />
-                <p className="text-[11px] text-slate-500 mt-1.5">
-                  অডিট লগ এবং ইতিহাস সংরক্ষণের জন্য সংক্ষিপ্ত নোট লিখে রাখতে পারেন।
+                <p className="text-[11px] text-slate-500 mt-1.5 font-tiro">
+                  প্রতিটি পরিবর্তন সিস্টেম অডিট লগে সংরক্ষিত হয়।
                 </p>
               </div>
             </div>
@@ -825,34 +948,16 @@ export const SaasAdminHubView: React.FC<SaasAdminHubViewProps> = ({
             <div className="space-y-2">
               <div className="text-xs font-bold text-slate-700">দ্রুত নির্বাচন (প্রস্তাবিত মডেল তালিকা):</div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {(aiSettings?.recommendedModels || [
-                  {
-                    id: 'gemini-4-hydrogen',
-                    labelBn: 'Gemini 4 Hydrogen (সর্বশেষ সক্রিয় ফ্ল্যাশ)',
-                    descriptionBn: 'বাংলা আর্থিক বিশ্লেষণ, রসিদ/ছবি পড়া, চ্যাট ও দ্রুত কাজের জন্য বর্তমানে সবচেয়ে স্থিতিশীল ও সচল ফ্ল্যাশ মডেল।',
-                    badgeBn: 'সুপারিশকৃত',
-                    recommended: true,
-                  },
-                  {
-                    id: 'gemini-3.1-flash-lite',
-                    labelBn: 'Gemini 3.1 Flash Lite (দ্রুত ও হালকা)',
-                    descriptionBn: 'অতি দ্রুত উত্তর ও হালকা বাংলা কাজের জন্য সাশ্রয়ী ফ্ল্যাশ লাইট মডেল।',
-                    badgeBn: 'হালকা ও দ্রুত',
-                  },
-                  {
-                    id: 'gemini-2.5-flash',
-                    labelBn: 'Gemini 2.5 Flash (লিগ্যাসি/কাস্টম API)',
-                    descriptionBn: 'শুধুমাত্র যেসব কাস্টম API কী-তে 2.5 Flash সক্রিয় আছে সেগুলোর জন্য।',
-                    badgeBn: 'লিগ্যাসি',
-                  },
-                ]).map((opt: any) => {
-                  const isSelected = aiModelInput.trim() === opt.id;
+                {(aiSettings?.recommendedModels || RECOMMENDED_AI_MODELS).map((opt: any) => {
+                  const normalizedOptId = sanitizeGeminiModelName(opt.id);
+                  const isSelected = sanitizeGeminiModelName(aiModelInput) === normalizedOptId;
                   return (
                     <button
-                      key={opt.id}
+                      key={normalizedOptId}
                       type="button"
                       onClick={() => {
-                        setAiModelInput(opt.id);
+                        setAiModelInput(normalizedOptId);
+                        setAiSaveFeedback(null);
                         setAiTestResult(null);
                       }}
                       className={`text-left p-3.5 rounded-xl border transition-all cursor-pointer space-y-1.5 ${
@@ -862,7 +967,13 @@ export const SaasAdminHubView: React.FC<SaasAdminHubViewProps> = ({
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="font-mono text-xs font-extrabold text-slate-900">{opt.id}</span>
+                        <code
+                          data-no-bn-digits="true"
+                          dir="ltr"
+                          className="font-mono text-xs font-extrabold text-slate-900 bg-transparent"
+                        >
+                          {normalizedOptId}
+                        </code>
                         <span
                           className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
                             opt.recommended
@@ -873,40 +984,97 @@ export const SaasAdminHubView: React.FC<SaasAdminHubViewProps> = ({
                           {opt.badgeBn}
                         </span>
                       </div>
-                      <div className="text-[11px] font-bold text-indigo-800">{opt.labelBn}</div>
-                      <p className="text-[11px] text-slate-600 leading-relaxed">{opt.descriptionBn}</p>
+                      <div data-no-bn-digits="true" className="text-[11px] font-bold text-indigo-800">
+                        {opt.labelBn}
+                      </div>
+                      <p data-no-bn-digits="true" className="text-[11px] text-slate-600 leading-relaxed font-tiro">
+                        {opt.descriptionBn}
+                      </p>
                     </button>
                   );
                 })}
               </div>
             </div>
 
+            {/* Inline Save Feedback Banner (Always visible right inside the AI tab) */}
+            {aiSaveFeedback && (
+              <div
+                className={`p-3.5 rounded-xl border text-xs flex items-start justify-between gap-3 ${
+                  aiSaveFeedback.type === 'success'
+                    ? 'bg-indigo-50 border-indigo-200 text-indigo-900'
+                    : 'bg-rose-50 border-rose-200 text-rose-900'
+                }`}
+              >
+                <div className="flex items-start gap-2">
+                  {aiSaveFeedback.type === 'success' ? (
+                    <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  )}
+                  <div className="space-y-0.5">
+                    <div className="font-bold">{aiSaveFeedback.text}</div>
+                    {aiSaveFeedback.modelName && (
+                      <div className="text-[11px] text-indigo-700">
+                        সক্রিয় মডেল আইডি:{' '}
+                        <code data-no-bn-digits="true" dir="ltr" className="font-mono font-bold px-1.5 py-0.5 bg-white rounded border border-indigo-200">
+                          {aiSaveFeedback.modelName}
+                        </code>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAiSaveFeedback(null)}
+                  className="text-slate-400 hover:text-slate-600 shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
             {/* Live Connection Test Result */}
             {aiTestResult && (
               <div
-                className={`p-4 rounded-xl border text-xs space-y-1 ${
+                className={`p-4 rounded-xl border text-xs space-y-2 ${
                   aiTestResult.type === 'success'
                     ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
                     : 'bg-rose-50 border-rose-200 text-rose-900'
                 }`}
               >
-                <div className="flex items-center justify-between gap-2 font-bold">
-                  <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 font-bold">
+                  <div className="flex flex-wrap items-center gap-2">
                     {aiTestResult.type === 'success' ? (
                       <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                     ) : (
                       <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
                     )}
-                    <span>{aiTestResult.text}</span>
+                    <span
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
+                        aiTestResult.type === 'success'
+                          ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                          : 'bg-rose-100 text-rose-800 border-rose-300'
+                      }`}
+                    >
+                      {aiTestResult.statusLabelBn}
+                    </span>
+                    <code
+                      data-no-bn-digits="true"
+                      dir="ltr"
+                      className="font-mono text-xs font-extrabold px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-900"
+                    >
+                      {aiTestResult.modelName}
+                    </code>
                   </div>
                   {typeof aiTestResult.latencyMs === 'number' && (
-                    <span className="font-mono text-[11px] px-2 py-0.5 rounded-md bg-white border border-emerald-200 text-emerald-700">
-                      {aiTestResult.latencyMs} ms
+                    <span className="font-baloo text-[11px] px-2.5 py-0.5 rounded-md bg-white border border-emerald-200 text-emerald-700 font-bold">
+                      রেসপন্স টাইম: {aiTestResult.latencyMs} ms
                     </span>
                   )}
                 </div>
+                <p className="text-xs leading-relaxed pl-6 font-tiro">{aiTestResult.text}</p>
                 {aiTestResult.preview && (
-                  <p className="text-[11px] text-emerald-800 pl-6">
+                  <p className="text-[11px] text-emerald-800 pl-6 font-tiro">
                     AI উত্তর: “{aiTestResult.preview}”
                   </p>
                 )}
@@ -918,7 +1086,7 @@ export const SaasAdminHubView: React.FC<SaasAdminHubViewProps> = ({
               <div className="flex flex-wrap items-center gap-2.5">
                 <button
                   type="submit"
-                  disabled={isSavingAiModel || !aiModelInput.trim()}
+                  disabled={isSavingAiModel || isTestingAiModel || !sanitizeGeminiModelName(aiModelInput)}
                   className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-sm flex items-center gap-2 transition cursor-pointer"
                 >
                   {isSavingAiModel ? (
@@ -931,7 +1099,7 @@ export const SaasAdminHubView: React.FC<SaasAdminHubViewProps> = ({
 
                 <button
                   type="button"
-                  disabled={isTestingAiModel || !aiModelInput.trim()}
+                  disabled={isTestingAiModel || isSavingAiModel || !sanitizeGeminiModelName(aiModelInput)}
                   onClick={() => handleTestAiModel()}
                   className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-sm flex items-center gap-2 transition cursor-pointer"
                 >
@@ -940,16 +1108,16 @@ export const SaasAdminHubView: React.FC<SaasAdminHubViewProps> = ({
                   ) : (
                     <Zap className="w-4 h-4" />
                   )}
-                  <span>{isTestingAiModel ? 'পরীক্ষা চলছে...' : 'মডেল সংযোগ পরীক্ষা করুন'}</span>
+                  <span>{isTestingAiModel ? 'সংযোগ পরীক্ষা চলছে...' : 'মডেল সংযোগ পরীক্ষা করুন'}</span>
                 </button>
               </div>
 
               {aiSettings?.overrideModel && (
                 <button
                   type="button"
-                  disabled={isSavingAiModel}
+                  disabled={isSavingAiModel || isTestingAiModel}
                   onClick={handleResetAiModelToDefault}
-                  className="px-4 py-2.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-bold rounded-xl flex items-center gap-1.5 transition cursor-pointer"
+                  className="px-4 py-2.5 bg-white hover:bg-slate-100 disabled:opacity-50 text-slate-700 border border-slate-300 text-xs font-bold rounded-xl flex items-center gap-1.5 transition cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>ডিফল্টে রিসেট করুন</span>

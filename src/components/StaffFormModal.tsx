@@ -23,13 +23,17 @@ import {
   Loader2,
   CheckCircle2,
   Camera,
-  Check
+  Check,
+  Link2,
+  AlertTriangle
 } from 'lucide-react';
 import { Staff, StaffEmploymentType } from '../types';
+import { PartyRecord } from '../types/partyTypes';
 import { Language, translations } from '../lib/i18n';
 import { api, StaffDocumentScanResult } from '../lib/api';
 import { ZeroStorageCameraModal } from './common/ZeroStorageCameraModal';
 import { FormAlertAssistant } from './common/FormAlertAssistant';
+import { PartySearchSelect } from './parties/PartySearchSelect';
 
 interface StaffFormModalProps {
   isOpen: boolean;
@@ -71,6 +75,13 @@ export const StaffFormModal: React.FC<StaffFormModalProps> = ({
   const [emergencyContactPhone, setEmergencyContactPhone] = useState('');
   const [photoUrl, setPhotoUrl] = useState('');
   const [signatureUrl, setSignatureUrl] = useState('');
+  const [linkedPartyId, setLinkedPartyId] = useState('');
+  const [linkedPartyCode, setLinkedPartyCode] = useState('');
+  const [autoCreatePartyLink, setAutoCreatePartyLink] = useState(false);
+  const [duplicateCheckResult, setDuplicateCheckResult] = useState<{
+    matchingStaff: Staff[];
+    matchingParties: PartyRecord[];
+  }>({ matchingStaff: [], matchingParties: [] });
 
   // Tab 2: Appointment & Employment
   const [designation, setDesignation] = useState<Staff['designation']>('IMAM');
@@ -208,6 +219,9 @@ export const StaffFormModal: React.FC<StaffFormModalProps> = ({
       setEmergencyContactPhone(staff.emergencyContactPhone || '');
       setPhotoUrl(staff.photoUrl || '');
       setSignatureUrl(staff.signatureUrl || '');
+      setLinkedPartyId(staff.linkedPartyId || '');
+      setLinkedPartyCode(staff.linkedPartyCode || '');
+      setAutoCreatePartyLink(false);
 
       setDesignation(staff.designation || 'IMAM');
       setDesignationBn(staff.designationBn || designationMap[staff.designation || 'IMAM']);
@@ -269,6 +283,9 @@ export const StaffFormModal: React.FC<StaffFormModalProps> = ({
       setEmergencyContactPhone('');
       setPhotoUrl('');
       setSignatureUrl('');
+      setLinkedPartyId('');
+      setLinkedPartyCode('');
+      setAutoCreatePartyLink(false);
 
       setDesignation('IMAM');
       setDesignationBn('পেশ ইমাম');
@@ -314,7 +331,42 @@ export const StaffFormModal: React.FC<StaffFormModalProps> = ({
     setAiScanMessage(null);
     setAiScanError(null);
     setPendingScanPreview(null);
+    setDuplicateCheckResult({ matchingStaff: [], matchingParties: [] });
   }, [staff, isOpen]);
+
+  // Debounced live duplicate check across Staff + Central Party Registry
+  useEffect(() => {
+    if (!isOpen) return;
+    const cleanPhone = phone.trim();
+    const cleanNid = nid.trim();
+    const cleanName = (fullNameBn || name).trim();
+    if (cleanPhone.length < 5 && cleanNid.length < 5 && cleanName.length < 3) {
+      setDuplicateCheckResult({ matchingStaff: [], matchingParties: [] });
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = await api.checkStaffPartyMatch({
+          phone: cleanPhone || undefined,
+          nid: cleanNid || undefined,
+          name: cleanName || undefined,
+          excludeStaffId: staff?.id,
+        });
+        if (!cancelled) {
+          setDuplicateCheckResult(res);
+        }
+      } catch {
+        // Non-blocking duplicate helper
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [isOpen, phone, nid, fullNameBn, name, staff?.id]);
 
   const prepareScanPreview = (extracted: StaffDocumentScanResult) => {
     setPendingScanPreview(extracted);
@@ -554,7 +606,7 @@ export const StaffFormModal: React.FC<StaffFormModalProps> = ({
     try {
       setLoading(true);
 
-      const payload: Partial<Staff> = {
+      const payload: Partial<Staff> & { autoCreatePartyLink?: boolean } = {
         staffCode: staffCode.trim() || generateAutoCode(joiningDate),
         name: name.trim() || fullNameBn.trim(),
         fullNameBn: fullNameBn.trim() || name.trim(),
@@ -620,6 +672,10 @@ export const StaffFormModal: React.FC<StaffFormModalProps> = ({
         documentLinks: documentLinks
           ? documentLinks.split('\n').map((l) => l.trim()).filter(Boolean)
           : undefined,
+
+        linkedPartyId: linkedPartyId || (isEdit && staff?.linkedPartyId ? '' : undefined),
+        linkedPartyCode: linkedPartyId ? linkedPartyCode || undefined : undefined,
+        ...(autoCreatePartyLink && !linkedPartyId ? { autoCreatePartyLink: true } : {}),
       };
 
       await onSubmit(payload);
@@ -1225,6 +1281,108 @@ export const StaffFormModal: React.FC<StaffFormModalProps> = ({
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl"
                   />
                 </div>
+              </div>
+
+              {/* Central Party Registry Link & Live Duplicate Match Detection */}
+              {(duplicateCheckResult.matchingStaff.length > 0 ||
+                (duplicateCheckResult.matchingParties.length > 0 && !linkedPartyId)) && (
+                <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 space-y-2">
+                  <div className="flex items-start gap-2 text-amber-900 font-bold text-xs font-siliguri">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <span>সম্ভাব্য ডুপ্লিকেট / মিল পাওয়া গেছে</span>
+                  </div>
+                  {duplicateCheckResult.matchingStaff.length > 0 && (
+                    <div className="text-[11px] text-amber-800 space-y-1">
+                      <p className="font-semibold">বিদ্যমান স্টাফ তালিকায় মিল:</p>
+                      {duplicateCheckResult.matchingStaff.map((s) => (
+                        <div key={s.id} className="px-2.5 py-1.5 rounded-lg bg-white/80 border border-amber-200 flex flex-wrap items-center justify-between gap-2">
+                          <span>
+                            {s.fullNameBn || s.name} · কোড: <span className="font-baloo">{s.staffCode}</span> · মোবাইল:{' '}
+                            <span className="font-baloo">{s.phone}</span>
+                          </span>
+                          <span className="text-[10px] font-semibold text-amber-700">পেরোল ডুপ্লিকেট এড়িয়ে চলুন</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {duplicateCheckResult.matchingParties.length > 0 && !linkedPartyId && (
+                    <div className="text-[11px] text-amber-900 space-y-1">
+                      <p className="font-semibold">কেন্দ্রীয় পার্টি রেজিস্ট্রিতে মিল পাওয়া গেছে:</p>
+                      {duplicateCheckResult.matchingParties.map((p) => (
+                        <div key={p.partyId} className="px-2.5 py-1.5 rounded-lg bg-white/90 border border-amber-200 flex flex-wrap items-center justify-between gap-2">
+                          <span>
+                            {p.name} · <span className="font-baloo">{p.partyCode}</span>
+                            {p.phone ? ` · ${p.phone}` : ''}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLinkedPartyId(p.partyId);
+                              setLinkedPartyCode(p.partyCode);
+                              setAutoCreatePartyLink(false);
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-bold cursor-pointer"
+                          >
+                            এই পার্টি সংযুক্ত করুন
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Link2 className="w-4 h-4 text-emerald-700" />
+                    <span className="font-bold text-slate-900 font-siliguri">
+                      কেন্দ্রীয় পার্টি রেজিস্ট্রি সংযোগ (ঐচ্ছিক)
+                    </span>
+                  </div>
+                  {linkedPartyCode && (
+                    <span className="text-[11px] font-bold font-baloo text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-md">
+                      {linkedPartyCode}
+                    </span>
+                  )}
+                </div>
+
+                <PartySearchSelect
+                  compact
+                  partyTypeFilter="INDIVIDUAL"
+                  valuePartyId={linkedPartyId}
+                  valuePartyCode={linkedPartyCode}
+                  onSelectParty={(picked: PartyRecord | null) => {
+                    if (!picked) {
+                      setLinkedPartyId('');
+                      setLinkedPartyCode('');
+                    } else {
+                      setLinkedPartyId(picked.partyId);
+                      setLinkedPartyCode(picked.partyCode);
+                      setAutoCreatePartyLink(false);
+                    }
+                  }}
+                  label="ব্যক্তি প্রোফাইলের সাথে সংযুক্ত করুন"
+                  placeholder="নাম, মোবাইল বা PTY কোড দিয়ে খুঁজুন..."
+                  defaultQuickCreateRoles={['OTHER']}
+                  defaultQuickCreateType="INDIVIDUAL"
+                  defaultQuickCreateTitle="স্টাফের জন্য নতুন পার্টি প্রোফাইল তৈরি"
+                  prefillName={(fullNameBn || name).trim()}
+                  prefillPhone={phone.trim()}
+                  prefillAddress={(presentAddress || permanentAddress).trim()}
+                />
+
+                {!linkedPartyId && (
+                  <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer pt-0.5">
+                    <input
+                      type="checkbox"
+                      checked={autoCreatePartyLink}
+                      onChange={(e) => setAutoCreatePartyLink(e.target.checked)}
+                      className="rounded text-emerald-700"
+                    />
+                    <span>সংরক্ষণের সাথে সাথে স্বয়ংক্রিয়ভাবে কেন্দ্রীয় পার্টি প্রোফাইল তৈরি/সংযুক্ত করুন</span>
+                  </label>
+                )}
               </div>
             </div>
           )}

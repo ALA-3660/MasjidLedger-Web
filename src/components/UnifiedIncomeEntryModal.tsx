@@ -56,6 +56,8 @@ import { getDurationSinceLastOpened } from './DonationView';
 import { AiSmartEntryToolbar, AiSmartEntryResult } from './common/AiSmartEntryToolbar';
 import { AiNoteCounterModal } from './income/AiNoteCounterModal';
 import { FormAlertAssistant } from './common/FormAlertAssistant';
+import { PartyRecord } from '../types/partyTypes';
+import { PartySearchSelect } from './parties/PartySearchSelect';
 
 export type IncomeEntryType = 'JUMMA' | 'DONATION' | 'DONATION_BOX' | 'WAQF_RENT' | 'OTHER_INCOME';
 
@@ -257,10 +259,13 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
   const [monthlyRent, setMonthlyRent] = useState<number>(0);
   const [previousDue, setPreviousDue] = useState<number>(0);
 
-  // 7. Specialized State - 💰 OTHER GENERAL INCOME
+  // 7. Specialized State - 💰 OTHER GENERAL INCOME & Central Party Registry Link
   const [selectedMainHeadId, setSelectedMainHeadId] = useState<string>('');
   const [selectedSubHeadId, setSelectedSubHeadId] = useState<string>('');
   const [otherIncomeSource, setOtherIncomeSource] = useState<string>('');
+  const [selectedParty, setSelectedParty] = useState<PartyRecord | null>(null);
+  const [selectedPartyId, setSelectedPartyId] = useState<string>('');
+  const [selectedPartyCode, setSelectedPartyCode] = useState<string>('');
 
   // UI / Modal Helpers
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -339,6 +344,9 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
       setDenominationData(null);
       setSavedDonationForReceipt(null);
       setSavedVoucherForPrint(null);
+      setSelectedParty(null);
+      setSelectedPartyId('');
+      setSelectedPartyCode('');
       return;
     }
 
@@ -412,6 +420,9 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
       setManualDonorName(isAnon ? '' : rawDonor);
       setDonorPhone(rawPhone);
       setDonorAddress(rawAddress);
+      setSelectedParty(null);
+      setSelectedPartyId(editingIncome.partyId || '');
+      setSelectedPartyCode(editingIncome.partyCode || '');
       setOtherIncomeSource(
         rawDonor && rawDonor !== editingIncome.mainHeadNameBn
           ? rawDonor
@@ -1035,6 +1046,12 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
           }
         }
 
+        const clearPartyForType =
+          incomeType === 'JUMMA' ||
+          incomeType === 'DONATION_BOX' ||
+          incomeType === 'WAQF_RENT' ||
+          (incomeType === 'DONATION' && (isAnonymous || donorMode === 'REGISTERED'));
+
         const updatePayload: any = {
           amount: numAmount,
           date,
@@ -1045,6 +1062,8 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
           donorName: finalDonorName,
           donorPhone: finalDonorPhone,
           donorAddress: finalDonorAddress,
+          partyId: clearPartyForType ? null : selectedPartyId || null,
+          partyCode: clearPartyForType ? null : selectedPartyCode || null,
           reference: finalReference,
           description: finalDescription,
           denominationData: paymentMethod === 'CASH' ? denominationData ?? null : null,
@@ -1194,6 +1213,8 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
           payload.donorName = manualDonorName.trim();
           payload.donorPhone = donorPhone.trim() || undefined;
           payload.donorAddress = donorAddress.trim() || undefined;
+          payload.partyId = selectedPartyId || undefined;
+          payload.partyCode = selectedPartyCode || undefined;
           payload.personId = undefined;
           payload.donationPlanId = undefined;
         }
@@ -1345,6 +1366,15 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
           mainHeadNameBn: targetMainHead?.nameBn || 'অন্যান্য বিবিধ আয়',
           subHeadId: targetSubHead?.id || undefined,
           subHeadNameBn: targetSubHead?.nameBn || undefined,
+          donorName:
+            selectedParty?.name ||
+            otherIncomeSource.trim() ||
+            targetMainHead?.nameBn ||
+            'অন্যান্য বিবিধ সাধারণ আয়',
+          donorPhone: donorPhone.trim() || selectedParty?.phone || undefined,
+          donorAddress: donorAddress.trim() || selectedParty?.fullAddress || undefined,
+          partyId: selectedPartyId || undefined,
+          partyCode: selectedPartyCode || undefined,
           reference: reference.trim() || undefined,
           description: description.trim() || otherIncomeSource.trim() || 'অন্যান্য বিবিধ সাধারণ আয়',
         };
@@ -2080,42 +2110,74 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
 
                     {/* Mode B: Manual / General Donor Fields */}
                     {donorMode === 'MANUAL' && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-700 mb-1 font-siliguri">
-                            দাতার পূর্ণ নাম *
-                          </label>
-                          <input
-                            type="text"
-                            value={manualDonorName}
-                            onChange={(e) => setManualDonorName(e.target.value)}
-                            placeholder="যেমন: হাজী মোঃ আব্দুর রহিম"
-                            className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-siliguri focus:bg-white focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-700 mb-1 font-siliguri">
-                            মোবাইল নম্বর (ঐচ্ছিক)
-                          </label>
-                          <input
-                            type="text"
-                            value={donorPhone}
-                            onChange={(e) => setDonorPhone(e.target.value)}
-                            placeholder="০১XXXXXXXXX"
-                            className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono focus:bg-white focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                        <div className="sm:col-span-2">
-                          <label className="block text-xs font-semibold text-slate-700 mb-1 font-siliguri">
-                            ঠিকানা / গ্রাম / এলাকা (ঐচ্ছিক)
-                          </label>
-                          <input
-                            type="text"
-                            value={donorAddress}
-                            onChange={(e) => setDonorAddress(e.target.value)}
-                            placeholder="গ্রাম/বাড়ি/মহল্লা"
-                            className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-siliguri focus:bg-white focus:ring-2 focus:ring-blue-500"
-                          />
+                      <div className="space-y-3">
+                        <PartySearchSelect
+                          compact
+                          valuePartyId={selectedPartyId}
+                          valuePartyCode={selectedPartyCode}
+                          selectedParty={selectedParty}
+                          selectedSnapshotName={editingIncome?.partySnapshot?.name || manualDonorName}
+                          onSelectParty={(party) => {
+                            setSelectedParty(party);
+                            setSelectedPartyId(party?.partyId || '');
+                            setSelectedPartyCode(party?.partyCode || '');
+                            if (party) {
+                              setManualDonorName(party.name);
+                              setDonorPhone(party.phone || '');
+                              setDonorAddress(
+                                party.fullAddress ||
+                                  [party.villageOrArea, party.upazila, party.district]
+                                    .filter(Boolean)
+                                    .join(', ')
+                              );
+                            }
+                          }}
+                          label="কেন্দ্রীয় রেজিস্ট্রি থেকে দাতা / ক্রেতা / পার্টি নির্বাচন (ঐচ্ছিক)"
+                          placeholder="নাম, মোবাইল বা PTY কোড দিয়ে খুঁজুন অথবা ম্যানুয়ালি নিচে লিখুন..."
+                          categoryGroup="ALL"
+                          defaultQuickCreateRoles={['BUYER', 'OTHER']}
+                          prefillName={manualDonorName}
+                          prefillPhone={donorPhone}
+                          prefillAddress={donorAddress}
+                          helperText="নির্বাচন করলে নাম, ফোন ও ঠিকানা স্বয়ংক্রিয়ভাবে পূরণ হবে; পরে প্রোফাইল পরিবর্তন করলেও পূর্বের ভাউচার অক্ষত থাকবে।"
+                        />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-700 mb-1 font-siliguri">
+                              দাতার পূর্ণ নাম *
+                            </label>
+                            <input
+                              type="text"
+                              value={manualDonorName}
+                              onChange={(e) => setManualDonorName(e.target.value)}
+                              placeholder="যেমন: হাজী মোঃ আব্দুর রহিম"
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-siliguri focus:bg-white focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-700 mb-1 font-siliguri">
+                              মোবাইল নম্বর (ঐচ্ছিক)
+                            </label>
+                            <input
+                              type="text"
+                              value={donorPhone}
+                              onChange={(e) => setDonorPhone(e.target.value)}
+                              placeholder="০১XXXXXXXXX"
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono focus:bg-white focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                          <div className="sm:col-span-2">
+                            <label className="block text-xs font-semibold text-slate-700 mb-1 font-siliguri">
+                              ঠিকানা / গ্রাম / এলাকা (ঐচ্ছিক)
+                            </label>
+                            <input
+                              type="text"
+                              value={donorAddress}
+                              onChange={(e) => setDonorAddress(e.target.value)}
+                              placeholder="গ্রাম/বাড়ি/মহল্লা"
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-siliguri focus:bg-white focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
                         </div>
                       </div>
                     )}
@@ -2414,10 +2476,45 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
                     </select>
                   </div>
 
+                  {/* Central Party Registry Selector for Buyer / Customer / Payer */}
+                  <div className="sm:col-span-2">
+                    <PartySearchSelect
+                      compact
+                      valuePartyId={selectedPartyId}
+                      valuePartyCode={selectedPartyCode}
+                      selectedParty={selectedParty}
+                      selectedSnapshotName={editingIncome?.partySnapshot?.name || otherIncomeSource}
+                      onSelectParty={(party) => {
+                        setSelectedParty(party);
+                        setSelectedPartyId(party?.partyId || '');
+                        setSelectedPartyCode(party?.partyCode || '');
+                        if (party) {
+                          setOtherIncomeSource(party.name);
+                          setManualDonorName(party.name);
+                          setDonorPhone(party.phone || '');
+                          setDonorAddress(
+                            party.fullAddress ||
+                              [party.villageOrArea, party.upazila, party.district]
+                                .filter(Boolean)
+                                .join(', ')
+                          );
+                        }
+                      }}
+                      label="ক্রেতা / ইজারাদার / প্রাপক ব্যক্তি বা প্রতিষ্ঠান (কেন্দ্রীয় রেজিস্ট্রি — ঐচ্ছিক)"
+                      placeholder="ক্রেতা বা সংশ্লিষ্ট ব্যক্তির নাম, মোবাইল বা PTY কোড দিয়ে খুঁজুন..."
+                      categoryGroup="BUYER"
+                      defaultQuickCreateRoles={['BUYER']}
+                      defaultQuickCreateTitle="নতুন ক্রেতা / ব্যক্তি নিবন্ধন"
+                      prefillName={otherIncomeSource}
+                      prefillPhone={donorPhone}
+                      prefillAddress={donorAddress}
+                    />
+                  </div>
+
                   {/* Income Source / Context */}
                   <div className="sm:col-span-2">
                     <label className="block text-xs font-semibold text-slate-700 mb-1 font-siliguri">
-                      আয়ের বিস্তারিত বিবরণ / প্রেক্ষাপট (ঐচ্ছিক)
+                      ক্রেতা / আয়ের উৎসের নাম ও প্রেক্ষাপট (ঐচ্ছিক)
                     </label>
                     <input
                       type="text"
@@ -2426,7 +2523,33 @@ export const UnifiedIncomeEntryModal: React.FC<UnifiedIncomeEntryModalProps> = (
                         setOtherIncomeSource(e.target.value);
                         if (!description) setDescription(e.target.value);
                       }}
-                      placeholder="যেমন: পুকুর ইজারা বাবদ আয় / পুরনো সামগ্রী নিলাম / সরকারি বা বিশেষ অনুদান..."
+                      placeholder="যেমন: পুকুর ইজারা বাবদ আয় / পুরনো সামগ্রী নিলাম / ক্রেতার নাম..."
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-siliguri focus:bg-white focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1 font-siliguri">
+                      মোবাইল নম্বর (ঐচ্ছিক)
+                    </label>
+                    <input
+                      type="text"
+                      value={donorPhone}
+                      onChange={(e) => setDonorPhone(e.target.value)}
+                      placeholder="01XXXXXXXXX"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono focus:bg-white focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1 font-siliguri">
+                      ঠিকানা (ঐচ্ছিক)
+                    </label>
+                    <input
+                      type="text"
+                      value={donorAddress}
+                      onChange={(e) => setDonorAddress(e.target.value)}
+                      placeholder="ঠিকানা"
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-siliguri focus:bg-white focus:ring-2 focus:ring-amber-500"
                     />
                   </div>

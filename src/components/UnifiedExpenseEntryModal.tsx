@@ -48,6 +48,8 @@ import { PrintFormat } from './PrintModals';
 import { AiSmartEntryToolbar, AiSmartEntryResult } from './common/AiSmartEntryToolbar';
 import { FormAlertAssistant } from './common/FormAlertAssistant';
 import { extractSalaryMonthFromExpense } from '../lib/staffPaymentSync';
+import { PartyRecord } from '../types/partyTypes';
+import { PartySearchSelect } from './parties/PartySearchSelect';
 
 export type ExpenseEntryType =
   | 'GENERAL_EXPENSE'   // 💸 সাধারণ পরিচালন ব্যয়
@@ -147,6 +149,10 @@ export const UnifiedExpenseEntryModal: React.FC<UnifiedExpenseEntryModalProps> =
   const [accountId, setAccountId] = useState<string>('');
   const [payeeName, setPayeeName] = useState<string>('');
   const [payeePhone, setPayeePhone] = useState<string>('');
+  const [payeeAddress, setPayeeAddress] = useState<string>('');
+  const [selectedParty, setSelectedParty] = useState<PartyRecord | null>(null);
+  const [selectedPartyId, setSelectedPartyId] = useState<string>('');
+  const [selectedPartyCode, setSelectedPartyCode] = useState<string>('');
   const [reference, setReference] = useState<string>('');
   const [description, setDescription] = useState<string>('');
   const [attachmentUrl, setAttachmentUrl] = useState<string>('');
@@ -247,6 +253,10 @@ export const UnifiedExpenseEntryModal: React.FC<UnifiedExpenseEntryModalProps> =
     if (!isOpen) {
       isInitializedRef.current = false;
       setErrorMessage('');
+      setSelectedParty(null);
+      setSelectedPartyId('');
+      setSelectedPartyCode('');
+      setPayeeAddress('');
       return;
     }
 
@@ -286,6 +296,10 @@ export const UnifiedExpenseEntryModal: React.FC<UnifiedExpenseEntryModalProps> =
       setAccountId(editingExpense.accountId || accounts[0]?.id || '');
       setPayeeName(editingExpense.payeeName || '');
       setPayeePhone(editingExpense.payeePhone || '');
+      setPayeeAddress(editingExpense.payeeAddress || editingExpense.partySnapshot?.address || '');
+      setSelectedParty(null);
+      setSelectedPartyId(editingExpense.partyId || '');
+      setSelectedPartyCode(editingExpense.partyCode || '');
       setReference(editingExpense.reference || '');
       setDescription(editingExpense.description || '');
       setAttachmentUrl(editingExpense.attachmentUrl || '');
@@ -310,6 +324,10 @@ export const UnifiedExpenseEntryModal: React.FC<UnifiedExpenseEntryModalProps> =
     setSubHeadId('');
     setReference('');
     setAttachmentUrl('');
+    setPayeeAddress('');
+    setSelectedParty(null);
+    setSelectedPartyId('');
+    setSelectedPartyCode('');
 
     // Pre-select cash account
     const defaultAcc = accounts.find((a) => a.accountType === 'CASH') || accounts[0];
@@ -372,8 +390,16 @@ export const UnifiedExpenseEntryModal: React.FC<UnifiedExpenseEntryModalProps> =
       }
       setPayeeName('');
       setPayeePhone('');
+      setPayeeAddress('');
+      setSelectedParty(null);
+      setSelectedPartyId('');
+      setSelectedPartyCode('');
       setDescription('');
     } else if (type === 'STAFF_EXPENSE') {
+      setSelectedParty(null);
+      setSelectedPartyId('');
+      setSelectedPartyCode('');
+      setPayeeAddress('');
       // Find salary head
       const salaryHead = expenseMainHeads.find(
         (h) => h.nameBn.includes('বেতন') || h.nameBn.includes('সম্মানী') || h.id === 'head-exp-01'
@@ -548,6 +574,13 @@ export const UnifiedExpenseEntryModal: React.FC<UnifiedExpenseEntryModalProps> =
         accountId: effectiveAccId,
         payeeName: payeeName.trim(),
         payeePhone: payeePhone.trim() || undefined,
+        payeeAddress: payeeAddress.trim() || undefined,
+        ...(expenseType !== 'STAFF_EXPENSE'
+          ? {
+              partyId: selectedPartyId || (isEditMode ? null : undefined),
+              partyCode: selectedPartyCode || undefined,
+            }
+          : {}),
         reference: reference.trim() || undefined,
         description: description.trim() || undefined,
         attachmentUrl: attachmentUrl.trim() || undefined,
@@ -1325,8 +1358,53 @@ export const UnifiedExpenseEntryModal: React.FC<UnifiedExpenseEntryModalProps> =
               </div>
             </div>
 
-            {/* Row 4: Payee Details */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Row 4: Central Party Registry Picker (Vendor/Supplier/Artisan/Labour/Contractor) + Payee Details */}
+            {expenseType !== 'STAFF_EXPENSE' && (
+              <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-3.5">
+                <PartySearchSelect
+                  compact
+                  valuePartyId={selectedPartyId}
+                  valuePartyCode={selectedPartyCode}
+                  selectedParty={selectedParty}
+                  selectedSnapshotName={editingExpense?.partySnapshot?.name || payeeName}
+                  onSelectParty={(party) => {
+                    setSelectedParty(party);
+                    setSelectedPartyId(party?.partyId || '');
+                    setSelectedPartyCode(party?.partyCode || '');
+                    if (party) {
+                      setPayeeName(party.name);
+                      setPayeePhone(party.phone || '');
+                      setPayeeAddress(
+                        party.fullAddress ||
+                          [party.villageOrArea, party.upazila, party.district]
+                            .filter(Boolean)
+                            .join(', ')
+                      );
+                    }
+                  }}
+                  label="কেন্দ্রীয় রেজিস্ট্রি থেকে সরবরাহকারী / মিস্ত্রি / ঠিকাদার / প্রাপক নির্বাচন করুন (ঐচ্ছিক)"
+                  placeholder="দোকান, সরবরাহকারী, মিস্ত্রি বা ঠিকাদারের নাম, ফোন বা PTY কোড লিখুন..."
+                  categoryGroup={
+                    expenseType === 'ASSET_EXPENSE' || expenseType === 'PROPERTY_EXPENSE'
+                      ? 'ARTISAN_LABOUR'
+                      : 'SELLER_SUPPLIER'
+                  }
+                  defaultQuickCreateRoles={
+                    expenseType === 'ASSET_EXPENSE' || expenseType === 'PROPERTY_EXPENSE'
+                      ? ['ARTISAN', 'CONTRACTOR', 'SUPPLIER']
+                      : ['SUPPLIER', 'SERVICE_PROVIDER']
+                  }
+                  defaultQuickCreateType="ORGANIZATION"
+                  defaultQuickCreateTitle="নতুন সরবরাহকারী / মিস্ত্রি / সেবাদাতা নিবন্ধন"
+                  prefillName={payeeName}
+                  prefillPhone={payeePhone}
+                  prefillAddress={payeeAddress}
+                  helperText="একটি ব্যয়ে কেবল একটি মূল ব্যয় ভাউচারই তৈরি হবে এবং প্রাপকের ঐতিহাসিক স্ন্যাপশট সংরক্ষিত থাকবে।"
+                />
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {/* Payee Name */}
               <div>
                 <label className="text-xs font-semibold text-slate-700 block mb-1">
@@ -1358,6 +1436,20 @@ export const UnifiedExpenseEntryModal: React.FC<UnifiedExpenseEntryModalProps> =
                     className="w-full pl-9 pr-3.5 py-2.5 rounded-xl text-xs font-mono border border-slate-300 bg-white focus:ring-2 focus:ring-rose-500 focus:border-transparent outline-none"
                   />
                 </div>
+              </div>
+
+              {/* Payee Address */}
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  প্রাপকের ঠিকানা (ঐচ্ছিক):
+                </label>
+                <input
+                  type="text"
+                  placeholder="দোকান / ঠিকানা / এলাকা"
+                  value={payeeAddress}
+                  onChange={(e) => setPayeeAddress(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl text-xs font-medium border border-slate-300 bg-white focus:ring-2 focus:ring-rose-500 focus:border-transparent outline-none"
+                />
               </div>
             </div>
 

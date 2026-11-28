@@ -778,7 +778,7 @@ export async function reviewAgreementRisksWithAi(
     specialClauses: (agreement.specialClauses || '').slice(0, 2000),
     terminationClause: (agreement.terminationClause || '').slice(0, 1500),
     disputeResolutionClause: (agreement.disputeResolutionClause || '').slice(0, 1500),
-    witnessesCount: (agreement.witnesses || []).length,
+    witnessesCount: (agreement.witnesses || []).filter((w) => w.name && w.name.trim()).length,
   };
 
   const response = await withAiRetry(() =>

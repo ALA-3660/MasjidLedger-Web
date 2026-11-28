@@ -162,7 +162,16 @@ export type Permission =
   | 'EDIT_SMART_NOTE'
   | 'DELETE_SMART_NOTE'
   | 'SHARE_SMART_NOTE'
-  | 'USE_NOTES_AI';
+  | 'USE_NOTES_AI'
+  | 'party.view'
+  | 'party.create'
+  | 'party.edit'
+  | 'party.merge'
+  | 'party.delete'
+  | 'party.manage_roles'
+  | 'party.view_audit'
+  | 'party.view_sensitive'
+  | 'party.ocr';
 
 export interface User {
   id: string;
@@ -807,6 +816,18 @@ export interface IncomeEntry {
   donorName?: string;
   donorPhone?: string;
   donorAddress?: string;
+  partyId?: string;
+  partyCode?: string;
+  partySnapshot?: {
+    partyId: string;
+    partyCode: string;
+    name: string;
+    partyType?: 'INDIVIDUAL' | 'ORGANIZATION';
+    phone?: string;
+    address?: string;
+    occupationOrSkill?: string;
+    roles?: string[];
+  };
   reference?: string;
   description?: string;
   attachmentUrl?: string;
@@ -840,6 +861,19 @@ export interface ExpenseEntry {
   accountName: string;
   payeeName: string;
   payeePhone?: string;
+  payeeAddress?: string;
+  partyId?: string;
+  partyCode?: string;
+  partySnapshot?: {
+    partyId: string;
+    partyCode: string;
+    name: string;
+    partyType?: 'INDIVIDUAL' | 'ORGANIZATION';
+    phone?: string;
+    address?: string;
+    occupationOrSkill?: string;
+    roles?: string[];
+  };
   reference?: string;
   description?: string;
   attachmentUrl?: string;
@@ -869,6 +903,18 @@ export interface Donation {
   donorPhone?: string;
   donorEmail?: string;
   donorAddress?: string;
+  partyId?: string;
+  partyCode?: string;
+  partySnapshot?: {
+    partyId: string;
+    partyCode: string;
+    name: string;
+    partyType?: 'INDIVIDUAL' | 'ORGANIZATION';
+    phone?: string;
+    address?: string;
+    occupationOrSkill?: string;
+    roles?: string[];
+  };
   isAnonymous: boolean;
   category: 'GENERAL' | 'CONSTRUCTION' | 'WAQF' | 'CEMETERY' | 'WUDU_KHANA' | 'MADRASA' | 'SPECIAL_PROJECT' | 'OTHER';
   amount: number;
@@ -2205,6 +2251,8 @@ export interface Staff {
   employmentHistory?: StaffEmploymentHistoryRecord[];
   statusHistory?: StaffStatusHistoryRecord[];
   finalSettlement?: StaffFinalSettlement;
+  linkedPartyId?: string;
+  linkedPartyCode?: string;
   createdAt: string;
   updatedAt?: string;
 }

@@ -255,6 +255,7 @@ export const AgreementGovernanceModal: React.FC<AgreementGovernanceModalProps> =
   const [otpCode, setOtpCode] = useState('');
 
   // Witness signature state
+  const [selectedWitnessId, setSelectedWitnessId] = useState(agreement.witnesses?.[0]?.id || '');
   const [witnessName, setWitnessName] = useState(agreement.witnesses?.[0]?.name || '');
   const [witnessFatherName, setWitnessFatherName] = useState(agreement.witnesses?.[0]?.fatherName || '');
   const [witnessPhone, setWitnessPhone] = useState(agreement.witnesses?.[0]?.phone || '');
@@ -527,7 +528,11 @@ export const AgreementGovernanceModal: React.FC<AgreementGovernanceModalProps> =
     }
     setBusy(true);
     try {
+      const matchedPreset = (agreement.witnesses || []).find(
+        (w) => w.id === selectedWitnessId && w.name.trim() === witnessName.trim()
+      );
       const updated = await api.signAgreementWitness(agreement.id, {
+        witnessId: matchedPreset?.id,
         witnessName: witnessName.trim(),
         fatherName: witnessFatherName.trim() || undefined,
         phone: witnessPhone.trim() || undefined,
@@ -541,6 +546,7 @@ export const AgreementGovernanceModal: React.FC<AgreementGovernanceModalProps> =
       setWitnessCanvasUrl('');
       setWitnessCanvasReset((c) => c + 1);
       setWitnessTypedText('');
+      setSelectedWitnessId('');
       setWitnessName('');
       setWitnessFatherName('');
       setWitnessPhone('');
@@ -1449,6 +1455,39 @@ export const AgreementGovernanceModal: React.FC<AgreementGovernanceModalProps> =
                     </p>
                   ) : (
                     <>
+                      {(agreement.witnesses || []).some((w) => w.name && w.name.trim()) && (
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-semibold text-slate-600 font-siliguri">
+                            তালিকাভুক্ত সাক্ষী নির্বাচন করুন (ঐচ্ছিক):
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {(agreement.witnesses || [])
+                              .filter((w) => w.name && w.name.trim())
+                              .map((w, idx) => (
+                                <button
+                                  key={w.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedWitnessId(w.id);
+                                    setWitnessName(w.name || '');
+                                    setWitnessFatherName(w.fatherName || '');
+                                    setWitnessPhone(w.phone || '');
+                                    setWitnessNid(w.nid || '');
+                                    setWitnessAddress(w.address || '');
+                                    setWitnessPartySide(w.partySide || 'সাক্ষী');
+                                  }}
+                                  className={`px-2 py-1 rounded text-[11px] font-tiro border ${
+                                    selectedWitnessId === w.id
+                                      ? 'bg-emerald-50 border-emerald-500 text-emerald-800 font-semibold'
+                                      : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  {idx + 1}. {w.name}
+                                </button>
+                              ))}
+                          </div>
+                        </div>
+                      )}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                         <input
                           type="text"

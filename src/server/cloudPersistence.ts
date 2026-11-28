@@ -254,6 +254,7 @@ class CloudPersistenceService {
         users: state.users || [],
         accounts: state.accounts || [],
         accountHeads: state.accountHeads || [],
+        aiModelSettings: state.aiModelSettings || { modelName: '' },
         updatedAt: now,
       };
 
@@ -386,6 +387,10 @@ class CloudPersistenceService {
         agreements: state.agreements || [],
         agreementCategories: state.agreementCategories || [],
         agreementTemplates: state.agreementTemplates || [],
+        parties: state.parties || [],
+        partyCustomRoles: state.partyCustomRoles || [],
+        partyAuditLogs: state.partyAuditLogs || [],
+        partyMergeHistory: state.partyMergeHistory || [],
         updatedAt: now,
       };
 
@@ -696,6 +701,115 @@ class CloudPersistenceService {
     } catch (_) {}
 
     return result;
+  }
+
+  /**
+   * Dedicated atomic persistence for Central AI Model Settings.
+   * Writes atomically to `data/ai_model_settings.json` (temp + fsync + rename) AND
+   * commits to Firestore `system_config/ai_model_settings` when available so Super Admin's
+   * saved model permanently survives refreshes and container restarts.
+   */
+  async saveAiModelSettings(settings: {
+    modelName: string;
+    updatedAt?: string;
+    updatedBy?: string;
+    updatedByName?: string;
+    updatedByTenantId?: string;
+    notes?: string;
+  }): Promise<boolean> {
+    const payload = {
+      modelName: typeof settings?.modelName === 'string' ? settings.modelName : '',
+      notes: typeof settings?.notes === 'string' ? settings.notes : '',
+      updatedAt: settings?.updatedAt || new Date().toISOString(),
+      updatedBy: settings?.updatedBy || '',
+      updatedByName: settings?.updatedByName || '',
+      updatedByTenantId: settings?.updatedByTenantId || '',
+    };
+
+    // 1. Atomic local file persistence (0o600 + fsync + rename)
+    try {
+      const dataDir = path.join(process.cwd(), 'data');
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+      }
+      const localPath = path.join(dataDir, 'ai_model_settings.json');
+      const tmpPath = `${localPath}.tmp.${process.pid}.${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const fd = fs.openSync(tmpPath, 'w', 0o600);
+      try {
+        fs.writeFileSync(fd, JSON.stringify(payload, null, 2), 'utf8');
+        fs.fsyncSync(fd);
+      } finally {
+        fs.closeSync(fd);
+      }
+      fs.renameSync(tmpPath, localPath);
+    } catch (err) {
+      console.warn('[CloudPersistence] Warning writing local ai_model_settings.json:', (err as Error)?.message || err);
+    }
+
+    if (!this.isAvailable || Date.now() < this.quotaExhaustedUntil) {
+      return false;
+    }
+
+    // 2. Immediate Firestore persistence (non-blocking failure)
+    try {
+      await withTimeout(
+        setDoc(doc(this.db, 'system_config', 'ai_model_settings'), payload),
+        4500,
+        'setDoc(system_config/ai_model_settings)'
+      );
+      return true;
+    } catch (err) {
+      console.warn('[CloudPersistence] Warning saving system_config/ai_model_settings:', (err as Error)?.message || err);
+      return false;
+    }
+  }
+
+  /**
+   * Loads Central AI Model Settings from dedicated local file and Firestore,
+   * returning whichever record has the newer `updatedAt` timestamp.
+   */
+  async loadAiModelSettings(): Promise<{
+    modelName: string;
+    updatedAt?: string;
+    updatedBy?: string;
+    updatedByName?: string;
+    updatedByTenantId?: string;
+    notes?: string;
+  } | null> {
+    let localRecord: any = null;
+    try {
+      const localPath = path.join(process.cwd(), 'data', 'ai_model_settings.json');
+      if (fs.existsSync(localPath)) {
+        const parsed = JSON.parse(fs.readFileSync(localPath, 'utf8'));
+        if (parsed && typeof parsed === 'object') {
+          localRecord = parsed;
+        }
+      }
+    } catch (_) {}
+
+    if (!this.isAvailable) {
+      return localRecord;
+    }
+
+    let cloudRecord: any = null;
+    try {
+      const snap = await withTimeout(
+        getDoc(doc(this.db, 'system_config', 'ai_model_settings')),
+        4500,
+        'getDoc(system_config/ai_model_settings)'
+      );
+      if (snap.exists()) {
+        cloudRecord = snap.data();
+      }
+    } catch (_) {}
+
+    if (!localRecord && !cloudRecord) return null;
+    if (localRecord && !cloudRecord) return localRecord;
+    if (cloudRecord && !localRecord) return cloudRecord;
+
+    const localTs = new Date(localRecord.updatedAt || 0).getTime();
+    const cloudTs = new Date(cloudRecord.updatedAt || 0).getTime();
+    return cloudTs > localTs ? cloudRecord : localRecord;
   }
 }
 

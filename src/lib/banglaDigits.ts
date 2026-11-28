@@ -125,11 +125,12 @@ export function normalizeNumericInputString(
 }
 
 /**
- * Technical token matcher: URLs, API paths, emails, hex color codes, UUIDs, and long hex hashes.
- * Digits inside these tokens are preserved in ASCII so links, emails, and hashes remain valid.
+ * Technical token matcher: URLs, API paths, emails, hex color codes, UUIDs, long hex hashes,
+ * and technical AI model identifiers (e.g. gemini-4-hydrogen, gemini-3.1-flash-lite, gemini-2.5-flash).
+ * Digits inside these tokens are preserved in ASCII so links, emails, hashes, and model IDs remain valid.
  */
 const PROTECTED_TOKEN_REGEX =
-  /(https?:\/\/[^\s<>'"]+|www\.[^\s<>'"]+|\/(?:api|public)\/[^\s<>'"]+|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b|\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b|\b[0-9a-fA-F]{24,}\b)/g;
+  /(https?:\/\/[^\s<>'"]+|www\.[^\s<>'"]+|\/(?:api|public)\/[^\s<>'"]+|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b|\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b|\b[0-9a-fA-F]{24,}\b|\b(?:models\/)?(?:gemini|imagen|veo|lyria|gemma|text-embedding|embedding)-[a-zA-Z0-9._:-]+\b|\bGemini\s+\d+(?:\.\d+)?(?:\s+[A-Za-z0-9-]+)?\b|\b\d+(?:\.\d+)?\s+Flash\b)/g;
 
 /**
  * Context-aware UI display converter:

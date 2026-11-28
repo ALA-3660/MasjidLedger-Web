@@ -154,6 +154,9 @@ export interface UpdateIncomeInput {
   donorName?: string;
   donorPhone?: string;
   donorAddress?: string;
+  partyId?: string | null;
+  partyCode?: string | null;
+  partySnapshot?: any;
   reference?: string;
   description?: string;
   date?: string;
@@ -188,6 +191,10 @@ export interface UpdateExpenseInput {
   paymentMethod?: any;
   payeeName?: string;
   payeePhone?: string;
+  payeeAddress?: string;
+  partyId?: string | null;
+  partyCode?: string | null;
+  partySnapshot?: any;
   reference?: string;
   description?: string;
   attachmentUrl?: string;

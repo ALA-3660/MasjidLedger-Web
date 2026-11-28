@@ -78,6 +78,7 @@ import { AdvisoryCouncilView } from './components/AdvisoryCouncilView';
 import { DocumentCenter } from './components/DocumentCenter';
 import { SalaryBankTransferView } from './components/SalaryBankTransferView';
 import { AssetWaqfManagementView } from './components/AssetWaqfManagementView';
+import { PartyManagementView } from './components/parties/PartyManagementView';
 import { OfficialDocumentManagementView } from './components/documents/OfficialDocumentManagementView';
 import { QrActionCardsModal } from './components/QrActionCardsModal';
 import { RecordActionModal } from './components/RecordActionModal';
@@ -1813,6 +1814,15 @@ export default function App() {
           onAddPropertyLegalCase={handleAddPropertyLegalCase}
           onAddPropertyDocument={handleAddPropertyDocument}
           onDeletePropertyDocument={handleDeletePropertyDocument}
+        />
+      )}
+
+      {/* 7.15 Central Party, Organization & Service Provider Registry (ব্যক্তি, প্রতিষ্ঠান ও সেবাদাতা ব্যবস্থাপনা) */}
+      {currentTab === 'partyRegistry' && (
+        <PartyManagementView
+          currentMosque={mosque}
+          currentUser={currentUser}
+          language={language}
         />
       )}
 

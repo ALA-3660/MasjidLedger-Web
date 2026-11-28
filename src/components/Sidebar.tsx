@@ -59,6 +59,7 @@ export type NavTab =
   | 'salaryBankTransfer'
   | 'assets'
   | 'property'
+  | 'partyRegistry'
   | 'documents'
   | 'cemetery'
   | 'notices'
@@ -293,6 +294,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           color: 'text-amber-700',
         },
         {
+          id: 'partyRegistry',
+          label: language === 'bn' ? '🤝 ব্যক্তি ও প্রতিষ্ঠান ব্যবস্থাপনা' : '🤝 Party & Vendor Registry',
+          icon: Users,
+          color: 'text-emerald-700',
+        },
+        {
           id: 'knowledgeCenter',
           label: language === 'bn' ? '📚 পাঠাগার ও জ্ঞানকেন্দ্র' : '📚 Library & Knowledge Center',
           icon: BookOpen,
@@ -452,6 +459,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
     if (itemId === 'assets') {
       return ['assets', 'property'].includes(activeTab as string);
+    }
+    if (itemId === 'partyRegistry') {
+      return activeTab === 'partyRegistry';
     }
     if (itemId === 'knowledgeCenter') {
       return ['knowledgeCenter', 'library', 'maktab', 'hifz'].includes(activeTab as string);

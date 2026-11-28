@@ -1296,6 +1296,17 @@ export class JsonIncomeParityRepository implements IIncomeRepository {
         accountName: account?.nameBn || entryInput.accountName || 'প্রধান ক্যাশ',
         donorName: entryInput.donorName || mainHead?.nameBn || entryInput.mainHeadNameBn || 'সাধারণ আয়',
         donorPhone: entryInput.donorPhone,
+        donorAddress: entryInput.donorAddress,
+        partyId: entryInput.partyId || undefined,
+        partyCode: entryInput.partyCode || undefined,
+        partySnapshot: entryInput.partySnapshot
+          ? {
+              ...entryInput.partySnapshot,
+              roles: Array.isArray(entryInput.partySnapshot.roles)
+                ? [...entryInput.partySnapshot.roles]
+                : [],
+            }
+          : undefined,
         reference: entryInput.reference,
         description: entryInput.description,
         attachmentUrl: entryInput.attachmentUrl,
@@ -1509,6 +1520,18 @@ export class JsonIncomeParityRepository implements IIncomeRepository {
       if (updates.donorName !== undefined) item.donorName = updates.donorName;
       if (updates.donorPhone !== undefined) item.donorPhone = updates.donorPhone;
       if (updates.donorAddress !== undefined) item.donorAddress = updates.donorAddress;
+      if (updates.partyId !== undefined) item.partyId = updates.partyId || undefined;
+      if (updates.partyCode !== undefined) item.partyCode = updates.partyCode || undefined;
+      if (updates.partySnapshot !== undefined) {
+        item.partySnapshot = updates.partySnapshot
+          ? {
+              ...updates.partySnapshot,
+              roles: Array.isArray(updates.partySnapshot.roles)
+                ? [...updates.partySnapshot.roles]
+                : [],
+            }
+          : undefined;
+      }
       if (updates.reference !== undefined) item.reference = updates.reference;
       if (updates.description !== undefined) item.description = updates.description;
       if (updates.date !== undefined) item.date = updates.date;
@@ -1526,6 +1549,9 @@ export class JsonIncomeParityRepository implements IIncomeRepository {
         if (updates.donorName !== undefined && item.donorName) linkedDonation.donorName = item.donorName;
         if (updates.donorPhone !== undefined) linkedDonation.donorPhone = item.donorPhone;
         if (updates.donorAddress !== undefined) linkedDonation.donorAddress = item.donorAddress;
+        if (updates.partyId !== undefined) linkedDonation.partyId = item.partyId;
+        if (updates.partyCode !== undefined) linkedDonation.partyCode = item.partyCode;
+        if (updates.partySnapshot !== undefined) linkedDonation.partySnapshot = item.partySnapshot;
         if (updates.date !== undefined && item.date) linkedDonation.date = item.date;
         if (updates.accountId !== undefined) {
           linkedDonation.accountId = item.accountId;
@@ -1926,6 +1952,17 @@ export class JsonExpenseParityRepository implements IExpenseRepository {
         accountName: account.nameBn || entryInput.accountName || 'প্রধান ক্যাশ',
         payeeName: cleanPayee,
         payeePhone: entryInput.payeePhone ? String(entryInput.payeePhone).trim() : undefined,
+        payeeAddress: entryInput.payeeAddress ? String(entryInput.payeeAddress).trim() : undefined,
+        partyId: entryInput.partyId || undefined,
+        partyCode: entryInput.partyCode || undefined,
+        partySnapshot: entryInput.partySnapshot
+          ? {
+              ...entryInput.partySnapshot,
+              roles: Array.isArray(entryInput.partySnapshot.roles)
+                ? [...entryInput.partySnapshot.roles]
+                : [],
+            }
+          : undefined,
         reference: entryInput.reference ? String(entryInput.reference).trim() : undefined,
         description: entryInput.description ? String(entryInput.description).trim() : undefined,
         attachmentUrl: entryInput.attachmentUrl ? String(entryInput.attachmentUrl).trim() : undefined,
@@ -2134,6 +2171,19 @@ export class JsonExpenseParityRepository implements IExpenseRepository {
       if (updates.paymentMethod !== undefined) item.paymentMethod = updates.paymentMethod;
       if (updates.payeeName !== undefined) item.payeeName = updates.payeeName;
       if (updates.payeePhone !== undefined) item.payeePhone = updates.payeePhone;
+      if (updates.payeeAddress !== undefined) item.payeeAddress = updates.payeeAddress;
+      if (updates.partyId !== undefined) item.partyId = updates.partyId || undefined;
+      if (updates.partyCode !== undefined) item.partyCode = updates.partyCode || undefined;
+      if (updates.partySnapshot !== undefined) {
+        item.partySnapshot = updates.partySnapshot
+          ? {
+              ...updates.partySnapshot,
+              roles: Array.isArray(updates.partySnapshot.roles)
+                ? [...updates.partySnapshot.roles]
+                : [],
+            }
+          : undefined;
+      }
       if (updates.reference !== undefined) item.reference = updates.reference;
       if (updates.description !== undefined) item.description = updates.description;
       if (updates.attachmentUrl !== undefined) item.attachmentUrl = updates.attachmentUrl;
@@ -2611,6 +2661,9 @@ export class JsonDonationParityRepository implements IDonationRepository {
       areaId,
       collectionWorkerId,
       collectionId,
+      partyId,
+      partyCode,
+      partySnapshot,
       _idempotencyKey
     } = payload;
 
@@ -2792,6 +2845,15 @@ export class JsonDonationParityRepository implements IDonationRepository {
       planCode: verifiedPlanCode,
       collectionId: verifiedCollectionId,
       collectionWorkerId: verifiedWorkerId,
+      partyId: !isAnonymous && partyId ? partyId : undefined,
+      partyCode: !isAnonymous && partyCode ? partyCode : undefined,
+      partySnapshot:
+        !isAnonymous && partySnapshot
+          ? {
+              ...partySnapshot,
+              roles: Array.isArray(partySnapshot.roles) ? [...partySnapshot.roles] : [],
+            }
+          : undefined,
       status: 'COMPLETED' as const,
       createdAt: new Date().toISOString(),
     };
@@ -2817,6 +2879,17 @@ export class JsonDonationParityRepository implements IDonationRepository {
       accountName: account.nameBn,
       donorName: isJumaRecord ? 'পবিত্র জুমার জামাত ও মুসল্লিবৃন্দ' : donation.donorName,
       donorPhone: donation.donorPhone,
+      donorAddress: isAnonymous ? undefined : donorAddress,
+      partyId: donation.partyId,
+      partyCode: donation.partyCode,
+      partySnapshot: donation.partySnapshot
+        ? {
+            ...donation.partySnapshot,
+            roles: Array.isArray(donation.partySnapshot.roles)
+              ? [...donation.partySnapshot.roles]
+              : [],
+          }
+        : undefined,
       reference: `Receipt: ${receiptNumber}`,
       description: description || `দান রসিদ ${receiptNumber} এর বিপরীতে সংগৃহীত অনুদান`,
       denominationData: denominationData || undefined,
@@ -3486,7 +3559,7 @@ export class JsonStaffParityRepository implements IStaffRepository {
       emergencyContactName, emergencyContactRelation, emergencyContactPhone,
       paymentChannel, bankName, bankBranch, bankAccountName, bankAccountNo,
       routingNumber, mfsProvider, mfsAccountNo, isResidential, residenceDetails,
-      linkedUserId, photoUrl, status, notes, documents
+      linkedUserId, photoUrl, status, notes, documents, linkedPartyId, linkedPartyCode
     } = payload;
 
     if (!name || !designationBn || !phone) {
@@ -3624,6 +3697,8 @@ export class JsonStaffParityRepository implements IStaffRepository {
       isResidential: Boolean(isResidential),
       residenceDetails: residenceDetails || '',
       linkedUserId: linkedUserId || '',
+      linkedPartyId: linkedPartyId || undefined,
+      linkedPartyCode: linkedPartyCode || undefined,
       photoUrl: photoUrl || '',
       status: status || 'ACTIVE',
       notes: notes || '',

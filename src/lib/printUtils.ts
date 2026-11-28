@@ -11,7 +11,8 @@ import { convertSubtreeDigitsToBangla } from './banglaDisplayEngine';
 
 export interface PrintOptions {
   title?: string;
-  pageSize?: 'A4' | 'POS_80' | 'POS_58' | 'letter';
+  pageSize?: 'A4' | 'Legal' | 'NonJudicialStamp' | 'Cartridge' | 'Custom' | 'POS_80' | 'POS_58' | 'letter';
+  customPageSizeCss?: string;
   pageOrientation?: 'portrait' | 'landscape';
   margin?: string;
   customStyles?: string;
@@ -51,6 +52,7 @@ export function printElement(
     const {
       title = 'MasjidLedger Document',
       pageSize = 'A4',
+      customPageSizeCss,
       pageOrientation = 'portrait',
       margin = pageOrientation === 'landscape' ? '8mm 10mm' : '10mm 12mm',
       customStyles = '',
@@ -100,8 +102,16 @@ export function printElement(
       const contentHtml = clonedElement.outerHTML;
 
       const pageRule =
-        pageSize === 'A4'
+        customPageSizeCss
+          ? `@page { size: ${customPageSizeCss} !important; margin: ${margin} !important; }`
+          : pageSize === 'A4'
           ? `@page { size: A4 ${pageOrientation} !important; margin: ${margin} !important; }`
+          : pageSize === 'Legal'
+          ? `@page { size: legal ${pageOrientation} !important; margin: ${margin} !important; }`
+          : pageSize === 'NonJudicialStamp'
+          ? `@page { size: ${pageOrientation === 'landscape' ? '13in 8.5in' : '8.5in 13in'} !important; margin: ${margin} !important; }`
+          : pageSize === 'Cartridge'
+          ? `@page { size: ${pageOrientation === 'landscape' ? '30in 20in' : '20in 30in'} !important; margin: ${margin} !important; }`
           : pageSize === 'POS_80'
           ? `@page { size: 80mm auto !important; margin: 2mm 3mm !important; }`
           : pageSize === 'POS_58'

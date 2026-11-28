@@ -162,6 +162,26 @@ import {
   AgreementArchiveReport,
 } from '../types/agreementTypes';
 import {
+  PartyRecord,
+  PartyCustomRoleDef,
+  PartyRegistryStats,
+  PartyDuplicateCandidatePair,
+  PartyDuplicateReasonCode,
+  PartyAuditLogEntry,
+  PartyMergeHistoryRecord,
+  PartyStatus,
+  PartyProfileType,
+  PartyRoleCategoryGroup,
+  PartyVoucherReference,
+  PartyAgreementReference,
+  PartyStaffLinkRef,
+  PartyHistoryBundle,
+  PartyReportBundle,
+  PartyOcrDocType,
+  PartyOcrExtractResult,
+} from '../types/partyTypes';
+import { PartyRoleDefinitionMeta } from './partyCatalog';
+import {
   QuranSurah,
   QuranJuz,
   QuranAyah,
@@ -599,7 +619,9 @@ class ApiService {
       recommended?: boolean;
     }>;
   }> {
-    const res = await this.request<any>('/saas/ai-settings');
+    const res = await this.request<any>('/saas/ai-settings', {
+      cache: 'no-store',
+    });
     if (!res.success || !res.data) {
       throw new Error(res.error?.message || 'AI মডেল সেটিংস লোড করতে ব্যর্থ হয়েছে');
     }
@@ -612,9 +634,10 @@ class ApiService {
   }> {
     const res = await this.request<any>('/saas/ai-settings', {
       method: 'PUT',
+      cache: 'no-store',
       body: JSON.stringify(payload),
     });
-    if (!res.success) {
+    if (!res.success || !res.data) {
       throw new Error(res.error?.message || 'AI মডেল সেভ করতে ব্যর্থ হয়েছে');
     }
     return { data: res.data, message: res.message };
@@ -624,11 +647,15 @@ class ApiService {
     ok: boolean;
     modelName: string;
     latencyMs: number;
+    responseTimeMs: number;
+    statusLabelBn: string;
     replyPreviewBn: string;
     testedAt: string;
+    isSavedActiveModel?: boolean;
   }> {
     const res = await this.request<any>('/saas/ai-settings/test', {
       method: 'POST',
+      cache: 'no-store',
       body: JSON.stringify({ modelName: modelName || '' }),
     });
     if (!res.success || !res.data) {
@@ -7547,6 +7574,326 @@ class ApiService {
     });
     if (!res.success || !res.data) {
       throw new Error(res.error?.message || 'সতর্কতার AI ব্যাখ্যা পাওয়া যায়নি।');
+    }
+    return res.data;
+  }
+
+  // ==========================================
+  // CENTRAL PARTY & CONTACT REGISTRY API
+  // ==========================================
+
+  async getPartyStats(): Promise<PartyRegistryStats> {
+    const res = await this.request<PartyRegistryStats>('/parties/stats');
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'ব্যক্তি ও প্রতিষ্ঠান পরিসংখ্যান লোড করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async getPartyRoles(): Promise<{ builtIn: PartyRoleDefinitionMeta[]; custom: PartyCustomRoleDef[] }> {
+    const res = await this.request<{ builtIn: PartyRoleDefinitionMeta[]; custom: PartyCustomRoleDef[] }>('/parties/roles');
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'ভূমিকার তালিকা লোড করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async createPartyCustomRole(payload: {
+    labelBn: string;
+    labelEn?: string;
+    categoryGroup?: PartyRoleCategoryGroup;
+    descriptionBn?: string;
+  }): Promise<PartyCustomRoleDef> {
+    const res = await this.request<PartyCustomRoleDef>('/parties/roles', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'নতুন ভূমিকা সংরক্ষণ করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async getParties(params?: {
+    search?: string;
+    categoryGroup?: string;
+    role?: string;
+    partyType?: PartyProfileType | 'ALL';
+    status?: PartyStatus | 'ALL';
+    includeMerged?: boolean;
+  }): Promise<PartyRecord[]> {
+    const query = new URLSearchParams();
+    if (params?.search) query.set('search', params.search);
+    if (params?.categoryGroup && params.categoryGroup !== 'ALL') query.set('categoryGroup', params.categoryGroup);
+    if (params?.role && params.role !== 'ALL') query.set('role', params.role);
+    if (params?.partyType && params.partyType !== 'ALL') query.set('partyType', params.partyType);
+    if (params?.status && params.status !== 'ALL') query.set('status', params.status);
+    if (params?.includeMerged) query.set('includeMerged', 'true');
+    const qs = query.toString();
+    const res = await this.request<PartyRecord[]>(`/parties${qs ? `?${qs}` : ''}`);
+    if (!res.success) {
+      throw new Error(res.error?.message || 'ব্যক্তি ও প্রতিষ্ঠানের তালিকা লোড করতে ব্যর্থ হয়েছে');
+    }
+    return res.data || [];
+  }
+
+  async getPartyById(id: string): Promise<{
+    party: PartyRecord;
+    resolvedPrimaryParty?: PartyRecord;
+    auditLogs: PartyAuditLogEntry[];
+    mergeHistory: PartyMergeHistoryRecord[];
+    voucherReferences?: PartyVoucherReference[];
+    agreementReferences?: PartyAgreementReference[];
+    linkedStaff?: PartyStaffLinkRef[];
+  }> {
+    const res = await this.request<{
+      party: PartyRecord;
+      resolvedPrimaryParty?: PartyRecord;
+      auditLogs: PartyAuditLogEntry[];
+      mergeHistory: PartyMergeHistoryRecord[];
+      voucherReferences?: PartyVoucherReference[];
+      agreementReferences?: PartyAgreementReference[];
+      linkedStaff?: PartyStaffLinkRef[];
+    }>(`/parties/${encodeURIComponent(id)}`);
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'প্রোফাইলের বিস্তারিত লোড করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async getPartyAuditLogs(id: string): Promise<PartyAuditLogEntry[]> {
+    const res = await this.request<PartyAuditLogEntry[]>(`/parties/${encodeURIComponent(id)}/audit`);
+    if (!res.success) {
+      throw new Error(res.error?.message || 'অডিট লগ লোড করতে ব্যর্থ হয়েছে');
+    }
+    return res.data || [];
+  }
+
+  async createParty(payload: Partial<PartyRecord>): Promise<PartyRecord> {
+    const res = await this.request<PartyRecord>('/parties', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'প্রোফাইল সংরক্ষণ করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async updateParty(id: string, payload: Partial<PartyRecord>): Promise<PartyRecord> {
+    const res = await this.request<PartyRecord>(`/parties/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'প্রোফাইল হালনাগাদ করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async updatePartyStatus(id: string, status: PartyStatus): Promise<PartyRecord> {
+    const res = await this.request<PartyRecord>(`/parties/${encodeURIComponent(id)}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'স্ট্যাটাস পরিবর্তন করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async deleteParty(id: string): Promise<{ deletedId: string }> {
+    const res = await this.request<{ deletedId: string }>(`/parties/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'প্রোফাইল মুছে ফেলতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async checkPartyDuplicates(payload: {
+    excludePartyId?: string;
+    partyType: PartyProfileType;
+    name: string;
+    phone: string;
+    alternatePhone?: string;
+    nidNumber?: string;
+  }): Promise<
+    Array<{
+      party: PartyRecord;
+      confidence: 'HIGH' | 'MEDIUM';
+      reasons: PartyDuplicateReasonCode[];
+      reasonLabelsBn: string[];
+    }>
+  > {
+    const res = await this.request<
+      Array<{
+        party: PartyRecord;
+        confidence: 'HIGH' | 'MEDIUM';
+        reasons: PartyDuplicateReasonCode[];
+        reasonLabelsBn: string[];
+      }>
+    >('/parties/check-duplicates', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success) {
+      throw new Error(res.error?.message || 'ডুপ্লিকেট যাচাই করতে ব্যর্থ হয়েছে');
+    }
+    return res.data || [];
+  }
+
+  async getPartyDuplicates(): Promise<PartyDuplicateCandidatePair[]> {
+    const res = await this.request<PartyDuplicateCandidatePair[]>('/parties/duplicates');
+    if (!res.success) {
+      throw new Error(res.error?.message || 'ডুপ্লিকেট তথ্য স্ক্যান করতে ব্যর্থ হয়েছে');
+    }
+    return res.data || [];
+  }
+
+  async getPartyMergeHistory(): Promise<PartyMergeHistoryRecord[]> {
+    const res = await this.request<PartyMergeHistoryRecord[]>('/parties/merge-history');
+    if (!res.success) {
+      throw new Error(res.error?.message || 'একীভূতকরণ ইতিহাস লোড করতে ব্যর্থ হয়েছে');
+    }
+    return res.data || [];
+  }
+
+  async mergeParties(payload: {
+    targetPartyId: string;
+    sourcePartyId: string;
+    fieldChoices?: Record<string, 'TARGET' | 'SOURCE'>;
+    note?: string;
+  }): Promise<{ mergedParty: PartyRecord; mergeRecord: PartyMergeHistoryRecord }> {
+    const res = await this.request<{ mergedParty: PartyRecord; mergeRecord: PartyMergeHistoryRecord }>(
+      '/parties/merge',
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }
+    );
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'রেকর্ড একীভূতকরণ (Merge) করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async checkStaffPartyMatch(params: {
+    phone?: string;
+    nid?: string;
+    name?: string;
+    excludeStaffId?: string;
+  }): Promise<{
+    matchingStaff: Staff[];
+    matchingParties: PartyRecord[];
+  }> {
+    const query = new URLSearchParams();
+    if (params.phone) query.set('phone', params.phone);
+    if (params.nid) query.set('nid', params.nid);
+    if (params.name) query.set('name', params.name);
+    if (params.excludeStaffId) query.set('excludeStaffId', params.excludeStaffId);
+    const qs = query.toString();
+    const res = await this.request<{ matchingStaff: Staff[]; matchingParties: PartyRecord[] }>(
+      `/parties/staff/check-match${qs ? `?${qs}` : ''}`
+    );
+    if (!res.success) {
+      throw new Error(res.error?.message || 'স্টাফ ও পার্টি ডুপ্লিকেট যাচাই করতে ব্যর্থ হয়েছে');
+    }
+    return res.data || { matchingStaff: [], matchingParties: [] };
+  }
+
+  async linkStaffToParty(
+    staffId: string,
+    payload: { partyId?: string; createNewIfMissing?: boolean }
+  ): Promise<{ staff: Staff; party: PartyRecord | null }> {
+    const res = await this.request<{ staff: Staff; party: PartyRecord | null }>(
+      `/parties/link-staff/${encodeURIComponent(staffId)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }
+    );
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'স্টাফের সাথে পার্টি প্রোফাইল সংযুক্ত করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async unlinkStaffFromParty(staffId: string): Promise<{ staff: Staff; party: null }> {
+    const res = await this.request<{ staff: Staff; party: null }>(
+      `/parties/link-staff/${encodeURIComponent(staffId)}`,
+      {
+        method: 'DELETE',
+      }
+    );
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'স্টাফের পার্টি সংযোগ বিচ্ছিন্ন করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async getPartyHistory(
+    id: string,
+    params?: { startDate?: string; endDate?: string; kind?: string }
+  ): Promise<PartyHistoryBundle> {
+    const query = new URLSearchParams();
+    if (params?.startDate) query.set('startDate', params.startDate);
+    if (params?.endDate) query.set('endDate', params.endDate);
+    if (params?.kind && params.kind !== 'ALL') query.set('kind', params.kind);
+    const qs = query.toString();
+    const res = await this.request<PartyHistoryBundle>(
+      `/parties/${encodeURIComponent(id)}/history${qs ? `?${qs}` : ''}`
+    );
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'কার্যক্রমের ইতিহাস লোড করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async getPartyReports(params?: {
+    mode?: 'DIRECTORY' | 'HISTORY';
+    categoryGroup?: string;
+    role?: string;
+    partyType?: PartyProfileType | 'ALL';
+    status?: PartyStatus | 'ALL';
+    occupation?: string;
+    search?: string;
+    startDate?: string;
+    endDate?: string;
+    sourceType?: 'ALL' | 'INCOME' | 'EXPENSE' | 'AGREEMENT';
+  }): Promise<PartyReportBundle> {
+    const query = new URLSearchParams();
+    if (params?.mode) query.set('mode', params.mode);
+    if (params?.categoryGroup && params.categoryGroup !== 'ALL') query.set('categoryGroup', params.categoryGroup);
+    if (params?.role && params.role !== 'ALL') query.set('role', params.role);
+    if (params?.partyType && params.partyType !== 'ALL') query.set('partyType', params.partyType);
+    if (params?.status && params.status !== 'ALL') query.set('status', params.status);
+    if (params?.occupation) query.set('occupation', params.occupation);
+    if (params?.search) query.set('search', params.search);
+    if (params?.startDate) query.set('startDate', params.startDate);
+    if (params?.endDate) query.set('endDate', params.endDate);
+    if (params?.sourceType && params.sourceType !== 'ALL') query.set('sourceType', params.sourceType);
+    const qs = query.toString();
+    const res = await this.request<PartyReportBundle>(`/parties/reports${qs ? `?${qs}` : ''}`);
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'পার্টি রিপোর্ট তৈরি করতে ব্যর্থ হয়েছে');
+    }
+    return res.data;
+  }
+
+  async scanPartyDocumentOcr(payload: {
+    docType: PartyOcrDocType;
+    dataUrl: string;
+    mimeType?: string;
+    userHint?: string;
+  }): Promise<PartyOcrExtractResult> {
+    const res = await this.request<PartyOcrExtractResult>('/parties/ocr/scan', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'ডকুমেন্ট OCR স্ক্যান করতে ব্যর্থ হয়েছে');
     }
     return res.data;
   }

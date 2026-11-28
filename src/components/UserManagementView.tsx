@@ -56,6 +56,13 @@ const ALL_PERMISSIONS: { id: Permission; labelBn: string; category: string }[] =
   { id: 'MANAGE_USERS', labelBn: 'ইউজার ও রোল ব্যবস্থাপনা', category: 'সিস্টেম' },
   { id: 'VIEW_AUDIT_LOG', labelBn: 'অডিট লগ পর্যবেক্ষণ', category: 'সিস্টেম' },
   { id: 'MANAGE_SETTINGS', labelBn: 'মসজিদ সেটিংস পরিবর্তন', category: 'সিস্টেম' },
+  { id: 'party.view', labelBn: 'ব্যক্তি ও প্রতিষ্ঠান তালিকা দেখা', category: 'পার্টি রেজিস্ট্রি' },
+  { id: 'party.create', labelBn: 'নতুন ব্যক্তি/প্রতিষ্ঠান যোগ', category: 'পার্টি রেজিস্ট্রি' },
+  { id: 'party.edit', labelBn: 'ব্যক্তি/প্রতিষ্ঠান সম্পাদনা', category: 'পার্টি রেজিস্ট্রি' },
+  { id: 'party.merge', labelBn: 'ডুপ্লিকেট একীভূতকরণ (Merge)', category: 'পার্টি রেজিস্ট্রি' },
+  { id: 'party.delete', labelBn: 'ব্যক্তি/প্রতিষ্ঠান মুছে ফেলা', category: 'পার্টি রেজিস্ট্রি' },
+  { id: 'party.manage_roles', labelBn: 'কাস্টম ভূমিকা যোগ ও ব্যবস্থাপনা', category: 'পার্টি রেজিস্ট্রি' },
+  { id: 'party.view_audit', labelBn: 'প্রোফাইল অডিট লগ দেখা', category: 'পার্টি রেজিস্ট্রি' },
 ];
 
 export const UserManagementView: React.FC<UserManagementViewProps> = ({
@@ -113,6 +120,11 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
           'MANAGE_ACCOUNTS',
           'VIEW_REPORT',
           'EXPORT_REPORT',
+          'party.view',
+          'party.create',
+          'party.edit',
+          'party.manage_roles',
+          'party.view_audit',
         ];
       case 'COMMITTEE_ADMIN':
         return [
@@ -124,14 +136,21 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
           'MANAGE_CEMETERY',
           'VIEW_REPORT',
           'EXPORT_REPORT',
+          'party.view',
+          'party.create',
+          'party.edit',
+          'party.merge',
+          'party.delete',
+          'party.manage_roles',
+          'party.view_audit',
         ];
       case 'AUDITOR':
-        return ['VIEW_DASHBOARD', 'VIEW_REPORT', 'EXPORT_REPORT', 'VIEW_AUDIT_LOG'];
+        return ['VIEW_DASHBOARD', 'VIEW_REPORT', 'EXPORT_REPORT', 'VIEW_AUDIT_LOG', 'party.view', 'party.view_audit'];
       case 'DATA_ENTRY_OPERATOR':
-        return ['VIEW_DASHBOARD', 'CREATE_INCOME', 'CREATE_EXPENSE', 'VIEW_REPORT'];
+        return ['VIEW_DASHBOARD', 'CREATE_INCOME', 'CREATE_EXPENSE', 'VIEW_REPORT', 'party.view', 'party.create', 'party.edit'];
       case 'VIEWER':
       default:
-        return ['VIEW_DASHBOARD', 'VIEW_REPORT'];
+        return ['VIEW_DASHBOARD', 'VIEW_REPORT', 'party.view'];
     }
   };
 

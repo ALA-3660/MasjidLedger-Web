@@ -16,6 +16,7 @@ export interface AiModelSettings {
   updatedAt?: string;
   updatedBy?: string;
   updatedByName?: string;
+  updatedByTenantId?: string;
   notes?: string;
 }
 
@@ -44,7 +45,7 @@ export interface RecommendedAiModelOption {
 /**
  * Default active stable Flash model.
  * Note: gemini-4-hydrogen is Google's currently active stable Flash model
- * supported in this runtime (whereas legacy gemini-2.5-flash returns 404).
+ * supported in this runtime (whereas legacy gemini-2.5-flash may return 404 on some keys).
  * Super Admin or GEMINI_MODEL / VITE_GEMINI_MODEL env var can override this anytime.
  */
 export const DEFAULT_GEMINI_MODEL = 'gemini-4-hydrogen';
@@ -71,21 +72,54 @@ export const RECOMMENDED_AI_MODELS: RecommendedAiModelOption[] = [
   },
 ];
 
+const LOCALIZED_DIGIT_TO_ASCII: Record<string, string> = {
+  '০': '0',
+  '১': '1',
+  '২': '2',
+  '৩': '3',
+  '৪': '4',
+  '৫': '5',
+  '৬': '6',
+  '৭': '7',
+  '৮': '8',
+  '৯': '9',
+  '٠': '0',
+  '١': '1',
+  '٢': '2',
+  '٣': '3',
+  '٤': '4',
+  '٥': '5',
+  '٦': '6',
+  '٧': '7',
+  '٨': '8',
+  '٩': '9',
+};
+
 /**
- * Cleans and normalizes a Gemini model identifier.
- * Strips accidental leading/trailing spaces and optional "models/" prefix.
+ * Cleans and normalizes a Gemini model identifier into a pure ASCII string.
+ * - Strips zero-width/invisible control characters and leading/trailing spaces
+ * - Converts any Bangla (০-৯) or Arabic-Indic (٠-٩) digits to standard ASCII (0-9)
+ * - Strips optional "models/" prefix
  */
 export function sanitizeGeminiModelName(raw?: string | null): string {
   if (!raw || typeof raw !== 'string') return '';
-  return raw.trim().replace(/^models\//i, '').trim();
+  return raw
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/[০-৯٠-٩]/g, (d) => LOCALIZED_DIGIT_TO_ASCII[d] ?? d)
+    .trim()
+    .replace(/^models\//i, '')
+    .trim();
 }
 
+/** Semantic alias for model ID normalization */
+export const normalizeGeminiModelId = sanitizeGeminiModelName;
+
 /**
- * Validates that a model name contains only safe identifier characters.
+ * Validates that a normalized model name contains only safe ASCII identifier characters.
  */
 export function isValidGeminiModelName(modelName: string): boolean {
   if (!modelName) return false;
-  return /^[a-zA-Z0-9][a-zA-Z0-9._-]{1,120}$/.test(modelName);
+  return /^[a-zA-Z0-9][a-zA-Z0-9._:/-]{1,120}$/.test(modelName);
 }
 
 /**

@@ -71,6 +71,8 @@ export type AgreementPartyType =
 
 export interface AgreementRepresentative {
   id: string;
+  linkedPartyId?: string;
+  linkedPartyCode?: string;
   name: string;
   designation: string;
   phone?: string;
@@ -82,6 +84,8 @@ export interface AgreementRepresentative {
 
 export interface AgreementParty {
   id: string;
+  linkedPartyId?: string;
+  linkedPartyCode?: string;
   /** পক্ষের অবস্থান: প্রথম পক্ষ / দ্বিতীয় পক্ষ / তৃতীয় পক্ষ ইত্যাদি */
   roleLabel: string;
   roleOrder: number;

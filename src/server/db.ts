@@ -137,8 +137,15 @@ import {
   AgreementCategoryDef,
   AgreementTemplateDef,
 } from '../types/agreementTypes';
+import {
+  PartyRecord,
+  PartyCustomRoleDef,
+  PartyAuditLogEntry,
+  PartyMergeHistoryRecord,
+} from '../types/partyTypes';
 import { DEFAULT_DOCUMENT_TEMPLATES } from '../lib/officialDocumentTemplates';
 import { getStarterOfficialDocuments } from '../lib/starterOfficialDocuments';
+import { sanitizeGeminiModelName } from '../config/aiConfig';
 import type { AiModelSettings } from '../config/aiConfig';
 
 export class StoragePersistenceError extends Error {
@@ -635,6 +642,10 @@ export class DatabaseStore {
   agreements: AgreementRecord[] = [];
   agreementCategories: AgreementCategoryDef[] = [];
   agreementTemplates: AgreementTemplateDef[] = [];
+  parties: PartyRecord[] = [];
+  partyCustomRoles: PartyCustomRoleDef[] = [];
+  partyAuditLogs: PartyAuditLogEntry[] = [];
+  partyMergeHistory: PartyMergeHistoryRecord[] = [];
 
   private _transactionActive: boolean = false;
   private _currentTxContext: TransactionContext | null = null;
@@ -864,7 +875,33 @@ export class DatabaseStore {
         this.backupRecords = parsed.backupRecords || [];
         this.restoreRecords = parsed.restoreRecords || [];
         this.backupSettings = parsed.backupSettings || {};
-        this.aiModelSettings = parsed.aiModelSettings || { modelName: '' };
+        const loadedAiSettings: AiModelSettings = parsed.aiModelSettings && typeof parsed.aiModelSettings === 'object'
+          ? {
+              ...parsed.aiModelSettings,
+              modelName: sanitizeGeminiModelName(parsed.aiModelSettings.modelName),
+            }
+          : { modelName: '' };
+        // Reconcile with dedicated atomic local ai_model_settings.json if newer
+        try {
+          const dedicatedAiPath = path.join(path.dirname(dbPath), 'ai_model_settings.json');
+          if (fs.existsSync(dedicatedAiPath)) {
+            const dedicatedRaw = JSON.parse(fs.readFileSync(dedicatedAiPath, 'utf8'));
+            if (dedicatedRaw && typeof dedicatedRaw === 'object') {
+              const mainTs = new Date(loadedAiSettings.updatedAt || 0).getTime();
+              const dedTs = new Date(dedicatedRaw.updatedAt || 0).getTime();
+              const dedClean = sanitizeGeminiModelName(dedicatedRaw.modelName);
+              if (dedTs > mainTs || (!loadedAiSettings.modelName && dedClean)) {
+                loadedAiSettings.modelName = dedClean;
+                loadedAiSettings.notes = typeof dedicatedRaw.notes === 'string' ? dedicatedRaw.notes : loadedAiSettings.notes;
+                loadedAiSettings.updatedAt = dedicatedRaw.updatedAt || loadedAiSettings.updatedAt;
+                loadedAiSettings.updatedBy = dedicatedRaw.updatedBy || loadedAiSettings.updatedBy;
+                loadedAiSettings.updatedByName = dedicatedRaw.updatedByName || loadedAiSettings.updatedByName;
+                loadedAiSettings.updatedByTenantId = dedicatedRaw.updatedByTenantId || loadedAiSettings.updatedByTenantId;
+              }
+            }
+          }
+        } catch (_) {}
+        this.aiModelSettings = loadedAiSettings;
         this.officialDocuments = parsed.officialDocuments || [];
         if (this.officialDocuments.length === 0 && this.mosques.length > 0) {
           const m = this.mosques[0];
@@ -946,6 +983,10 @@ export class DatabaseStore {
         this.agreements = parsed.agreements || [];
         this.agreementCategories = parsed.agreementCategories || [];
         this.agreementTemplates = parsed.agreementTemplates || [];
+        this.parties = parsed.parties || [];
+        this.partyCustomRoles = parsed.partyCustomRoles || [];
+        this.partyAuditLogs = parsed.partyAuditLogs || [];
+        this.partyMergeHistory = parsed.partyMergeHistory || [];
 
         // Ensure all registered and core mosques are always preserved
         const coreMosques: Mosque[] = [
@@ -1372,6 +1413,10 @@ export class DatabaseStore {
       agreements: this.agreements,
       agreementCategories: this.agreementCategories,
       agreementTemplates: this.agreementTemplates,
+      parties: this.parties,
+      partyCustomRoles: this.partyCustomRoles,
+      partyAuditLogs: this.partyAuditLogs,
+      partyMergeHistory: this.partyMergeHistory,
     };
   }
 
@@ -1599,8 +1644,22 @@ export class DatabaseStore {
 
       if (!cloudPersistence.isAvailable) {
         console.log('[DB] Cloud persistence not configured or unavailable. Continuing with local storage.');
-        const localBrandingMap = await cloudPersistence.loadAllMosqueBranding(knownMosqueIds);
+        const [localBrandingMap, dedicatedAiSettings] = await Promise.all([
+          cloudPersistence.loadAllMosqueBranding(knownMosqueIds),
+          cloudPersistence.loadAiModelSettings(),
+        ]);
         this.applyMosqueBrandingMap(localBrandingMap);
+        if (dedicatedAiSettings && typeof dedicatedAiSettings === 'object') {
+          const curTs = new Date(this.aiModelSettings?.updatedAt || 0).getTime();
+          const dedTs = new Date(dedicatedAiSettings.updatedAt || 0).getTime();
+          const dedClean = sanitizeGeminiModelName(dedicatedAiSettings.modelName);
+          if (dedTs > curTs || (!this.aiModelSettings?.modelName && dedClean)) {
+            this.aiModelSettings = {
+              ...dedicatedAiSettings,
+              modelName: dedClean,
+            };
+          }
+        }
         const localSalaryFix = reconcileStaffSalaryExpenseHeads({
           accountHeads: this.accountHeads,
           staffList: this.staffList,
@@ -1616,9 +1675,10 @@ export class DatabaseStore {
       }
 
       console.log('[DB] Checking Firestore cloud persistence on boot...');
-      const [cloudState, brandingMap] = await Promise.all([
+      const [cloudState, brandingMap, dedicatedAiSettings] = await Promise.all([
         cloudPersistence.loadFromCloud(),
         cloudPersistence.loadAllMosqueBranding(knownMosqueIds),
+        cloudPersistence.loadAiModelSettings(),
       ]);
 
       if (cloudState && Object.keys(cloudState).length > 0 && Array.isArray(cloudState.mosques) && cloudState.mosques.length > 0) {
@@ -1713,10 +1773,33 @@ export class DatabaseStore {
               }
             }
             mergedState[key] = Array.from(byId.values());
+          } else if (key === 'aiModelSettings' && cloudVal && typeof cloudVal === 'object' && !Array.isArray(cloudVal)) {
+            const localTs = new Date((localVal as any)?.updatedAt || 0).getTime();
+            const cloudTs = new Date((cloudVal as any)?.updatedAt || 0).getTime();
+            const localModel = sanitizeGeminiModelName((localVal as any)?.modelName);
+            const cloudModel = sanitizeGeminiModelName((cloudVal as any)?.modelName);
+            if (cloudTs > localTs || (!localModel && cloudModel && localTs === 0)) {
+              mergedState[key] = { ...cloudVal, modelName: cloudModel };
+            } else {
+              mergedState[key] = { ...(localVal || {}), modelName: localModel };
+            }
           } else if (cloudVal && typeof cloudVal === 'object' && !Array.isArray(cloudVal)) {
             mergedState[key] = { ...cloudVal, ...(localVal || {}) };
           } else if (cloudVal !== undefined) {
             mergedState[key] = cloudVal;
+          }
+        }
+
+        if (dedicatedAiSettings && typeof dedicatedAiSettings === 'object') {
+          const curAi = mergedState.aiModelSettings || { modelName: '' };
+          const curTs = new Date(curAi.updatedAt || 0).getTime();
+          const dedTs = new Date(dedicatedAiSettings.updatedAt || 0).getTime();
+          const dedClean = sanitizeGeminiModelName(dedicatedAiSettings.modelName);
+          if (dedTs > curTs || (!sanitizeGeminiModelName(curAi.modelName) && dedClean && curTs === 0)) {
+            mergedState.aiModelSettings = {
+              ...dedicatedAiSettings,
+              modelName: dedClean,
+            };
           }
         }
 
